@@ -18,6 +18,8 @@ import (
 	"github.com/CryptoElementals/common/server/handler"
 )
 
+const SERVER_WAIT_GROUP_LABEL = "x-gin-waitgroup"
+
 type Config struct {
 	Port               int    `mapstructure:"port"`
 	ServerMode         string `mapstructure:"server-mode"`
@@ -85,8 +87,6 @@ func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store) *gin
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.Handle)
 	return r
 }
-
-const SERVER_WAIT_GROUP_LABEL = "x-gin-waitgroup"
 
 func ginWaitGroup(wg *sync.WaitGroup) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
