@@ -19,6 +19,15 @@ type RedisPool interface {
 	Get() RedisConn
 }
 
+const (
+	PING_COMMAND   = "PING"
+	AUTH_COMMAND   = "AUTH"
+	GET_COMMAND    = "GET"
+	SET_COMMAND    = "SET"
+	EXPIRE_COMMAND = "EX"
+	EXISTS_COMMAND = "EXISTS"
+)
+
 var ErrNotFound = redis.ErrNil
 
 var globalPool RedisPool
@@ -28,11 +37,11 @@ func Init(cfg *RedisConfig) {
 		MaxIdle:     cfg.Size,
 		IdleTimeout: 240 * time.Second,
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
+			_, err := c.Do(PING_COMMAND)
 			return err
 		},
 		Dial: func() (redis.Conn, error) {
-			return dial("tcp", cfg.Address, cfg.Address)
+			return dial("tcp", cfg.Address, cfg.Password)
 		},
 	}
 	globalPool = pool
@@ -48,7 +57,7 @@ func dial(network, address, password string) (redis.Conn, error) {
 		return nil, err
 	}
 	if password != "" {
-		if _, err := c.Do("AUTH", password); err != nil {
+		if _, err := c.Do(AUTH_COMMAND, password); err != nil {
 			c.Close()
 			return nil, err
 		}
@@ -64,26 +73,15 @@ func Get(key string) (string, error) {
 			log.Errorf("redis client close err: %s", err.Error())
 		}
 	}()
-	res, err := redis.String(conn.Do("GET", key))
+	res, err := redis.String(conn.Do(GET_COMMAND, key))
 	if err == redis.ErrNil {
 		return res, ErrNotFound
 	}
 	return res, err
 }
 
-func Set(key string, val string) (any, error) {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	return conn.Do("SET", key, val)
-}
-
 // expire by seconds
-func SetExpire(key string, val string, expire int) (any, error) {
+func SetWithExpire(key string, val string, expire int) error {
 	conn := globalPool.Get()
 	defer func() {
 		err := conn.Close()
@@ -91,7 +89,8 @@ func SetExpire(key string, val string, expire int) (any, error) {
 			log.Errorf("redis client close err: %s", err.Error())
 		}
 	}()
-	return conn.Do("SET", key, val, "EX", expire)
+	_, err := conn.Do(SET_COMMAND, key, val, EXPIRE_COMMAND, expire)
+	return err
 }
 
 func Exist(key string) (bool, error) {
@@ -102,5 +101,15 @@ func Exist(key string) (bool, error) {
 			log.Errorf("redis client close err: %s", err.Error())
 		}
 	}()
-	return redis.Bool(conn.Do("EXIST", key))
+	exist, err := redis.Bool(conn.Do(EXISTS_COMMAND, key))
+	if err == redis.ErrNil {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	if !exist {
+		return false, ErrNotFound
+	}
+	return true, nil
 }

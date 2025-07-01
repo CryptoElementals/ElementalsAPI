@@ -19,6 +19,8 @@ type RefreshDillRequest struct {
 
 type RefreshDillResponse struct {
 	api.BaseResponse
+	RefreshToken          string
+	RefreshTokenExpiresIn int // by second
 }
 
 type RefreshDillTask struct {
@@ -79,13 +81,18 @@ func (task *RefreshDillTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, err
 	}
 
+	err = redis.SetWithExpire(refreshToken, addr, globalRefreshTokenMaxAge)
+	if err != nil {
+		log.Errorf("update refresh failed, err: %s", err.Error())
+	}
 	//2 generate session
 	session.Set(SESSION_ADDR_KEY, addr)
 	err = session.Save()
 	if err != nil {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
 	}
-
+	task.Response.RefreshToken = refreshToken
+	task.Response.RefreshTokenExpiresIn = globalRefreshTokenMaxAge
 	return task.Response, nil
 }
 
@@ -100,7 +107,7 @@ func saveRefreshToken(addr string) (string, error) {
 		return "", errors.SaveRefreshTokenFailed()
 	}
 
-	_, err = redis.SetExpire(token, addr, globalRefreshTokenMaxAge)
+	err = redis.SetWithExpire(token, addr, globalRefreshTokenMaxAge)
 	return token, err
 }
 

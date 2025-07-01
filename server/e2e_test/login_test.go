@@ -160,8 +160,8 @@ func prepareMocks(t *testing.T) (*mocks.MockRedisPool, *mocks.MockRedisConn) {
 func setMockParams(mockPool *mocks.MockRedisPool, mockConn *mocks.MockRedisConn, addr string) {
 	mockPool.EXPECT().Get().Times(2).Return(mockConn)
 	mockConn.EXPECT().Close().Times(2).Return(nil)
-	mockConn.EXPECT().Do("EXIST", gomock.Any()).Times(1).Return(false, redigo_redis.ErrNil)
-	mockConn.EXPECT().Do("SET", gomock.Any(), addr, "EX", testRefreshExpire).Times(1).Return(nil, nil)
+	mockConn.EXPECT().Do(redis.EXISTS_COMMAND, gomock.Any()).Times(1).Return(false, redigo_redis.ErrNil)
+	mockConn.EXPECT().Do(redis.SET_COMMAND, gomock.Any(), addr, redis.EXPIRE_COMMAND, testRefreshExpire).Times(1).Return(nil, nil)
 }
 
 func checkCookieSet(t *testing.T, resp *http.Response) {
@@ -224,6 +224,16 @@ func doRefresh(t *testing.T, client *http.Client, expectedCode int, refreshToken
 	require.NoError(t, err)
 	require.Equal(t, expectedCode, resp.StatusCode)
 	return resp
+}
+
+func checkRefreshRespSuccessBody(t *testing.T, resp *http.Response, token string) {
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	refreshResp := &login.RefreshDillResponse{}
+	err = json.Unmarshal(respBody, refreshResp)
+	require.NoError(t, err)
+	require.Equal(t, token, refreshResp.RefreshToken)
+	require.Equal(t, testRefreshExpire, refreshResp.RefreshTokenExpiresIn)
 }
 
 func TestMain(m *testing.M) {
@@ -300,9 +310,11 @@ func TestFooBarSuccessAfterRefresh(t *testing.T) {
 	doFooBar(t, client, 401, false)
 	pool.EXPECT().Get().AnyTimes().Return(conn)
 	conn.EXPECT().Close().AnyTimes().Return(nil)
-	conn.EXPECT().Do("GET", gomock.Any()).Times(1).Return(addr, nil)
+	conn.EXPECT().Do(redis.GET_COMMAND, gomock.Any()).Times(1).Return(addr, nil)
+	conn.EXPECT().Do(redis.SET_COMMAND, gomock.Any(), addr, redis.EXPIRE_COMMAND, testRefreshExpire).Times(1).Return(nil, nil)
 	refreshResp := doRefresh(t, client, 200, refreshToken)
 	checkCookieSet(t, refreshResp)
+	checkRefreshRespSuccessBody(t, refreshResp, refreshToken)
 	doFooBar(t, client, 200, true)
 }
 
@@ -319,7 +331,7 @@ func TestRefreshFailureDueToExpire(t *testing.T) {
 	time.Sleep((testRefreshExpire + 1) * time.Second)
 	pool.EXPECT().Get().AnyTimes().Return(conn)
 	conn.EXPECT().Close().AnyTimes().Return(nil)
-	conn.EXPECT().Do("GET", gomock.Any()).Times(1).Return(nil, redigo_redis.ErrNil)
+	conn.EXPECT().Do(redis.GET_COMMAND, gomock.Any()).Times(1).Return(nil, redigo_redis.ErrNil)
 	resp := doRefresh(t, client, 200, refreshToken)
 	refreshResp := &login.RefreshDillResponse{}
 	body, err := io.ReadAll(resp.Body)
