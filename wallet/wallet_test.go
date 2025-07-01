@@ -109,7 +109,7 @@ func TestSimple(t *testing.T) {
 		0x1c,
 	}
 	addr := common.HexToAddress(address)
-	wallet := &wallet{
+	wallet := &Wallet{
 		address: addr,
 	}
 

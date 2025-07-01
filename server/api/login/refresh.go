@@ -78,34 +78,35 @@ func (task *RefreshDillTask) Run(c *gin.Context) (api.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	//2 generate session
-	err = saveSession(task.Request.RequestUUID, addr, session)
+	session.Set(SESSION_ADDR_KEY, addr)
+	err = session.Save()
 	if err != nil {
-		log.Errorf("generate access token failed, err: %v", err)
-		return nil, err
+		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
 	}
 
 	return task.Response, nil
 }
 
-func saveRefreshToken(addr string) error {
+func saveRefreshToken(addr string) (string, error) {
 	token := uuid.NewString()
-	_, err := redis.Get(token)
+	_, err := redis.Exist(token)
 	if err == nil {
-		return errors.SaveRefreshTokenFailed()
+		return "", errors.SaveRefreshTokenFailed()
 	}
 	if err != redis.ErrNotFound {
 		log.Errorf("get refresh token failed: %s", err.Error())
-		return errors.SaveRefreshTokenFailed()
+		return "", errors.SaveRefreshTokenFailed()
 	}
 
 	_, err = redis.SetExpire(token, addr, globalRefreshTokenMaxAge)
-	return err
+	return token, err
 }
 
 func getAddrByRefreshToken(token string) (string, error) {
 	res, err := redis.Get(token)
-	if err == redis.ErrNotFound {
+	if err == redis.ErrNotFound || res == "" {
 		return "", errors.RefreshTokenInvalid(token)
 	}
 	if err != nil {

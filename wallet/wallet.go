@@ -12,12 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type wallet struct {
+type Wallet struct {
 	privateKey *ecdsa.PrivateKey
 	address    common.Address
 }
 
-func NewWallet(priKeyPath string) (*wallet, error) {
+func NewWallet(priKeyPath string) (*Wallet, error) {
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func NewWallet(priKeyPath string) (*wallet, error) {
 
 	address := crypto.PubkeyToAddress(*publicKeyECDSA)
 
-	wallet := &wallet{
+	wallet := &Wallet{
 		privateKey: privateKey,
 		address:    address,
 	}
@@ -46,15 +46,15 @@ func NewWallet(priKeyPath string) (*wallet, error) {
 	return wallet, nil
 }
 
-func NewWalletFromAddr(addr common.Address) *wallet {
-	wallet := &wallet{
+func NewWalletFromAddr(addr common.Address) *Wallet {
+	wallet := &Wallet{
 		address: addr,
 	}
 
 	return wallet
 }
 
-func LoadWallet(priKeyPath string) (*wallet, error) {
+func LoadWallet(priKeyPath string) (*Wallet, error) {
 	privateKey, err := crypto.LoadECDSA(priKeyPath)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func LoadWallet(priKeyPath string) (*wallet, error) {
 
 	address := crypto.PubkeyToAddress(*publicKeyECDSA)
 
-	wallet := &wallet{
+	wallet := &Wallet{
 		privateKey: privateKey,
 		address:    address,
 	}
@@ -76,12 +76,12 @@ func LoadWallet(priKeyPath string) (*wallet, error) {
 	return wallet, nil
 }
 
-func (wallet *wallet) Sign(message string) (signature []byte, err error) {
+func (wallet *Wallet) Sign(message string) (signature []byte, err error) {
 	hash := crypto.Keccak256Hash([]byte(message))
 	return crypto.Sign(hash.Bytes(), wallet.privateKey) // sign the hash of data
 }
 
-func (wallet *wallet) Verify(message string, signature []byte) (bool, error) {
+func (wallet *Wallet) Verify(message string, signature []byte) (bool, error) {
 	hash := crypto.Keccak256Hash([]byte(message))
 
 	sigPublicKey, err := crypto.SigToPub(hash.Bytes(), signature)
@@ -94,7 +94,7 @@ func (wallet *wallet) Verify(message string, signature []byte) (bool, error) {
 	return bytes.Equal(sigAddr.Bytes(), wallet.address.Bytes()), nil
 }
 
-func (wallet *wallet) EthSign(message string) (signature []byte, err error) {
+func (wallet *Wallet) EthSign(message string) (signature []byte, err error) {
 	hash := crypto.Keccak256Hash([]byte("\x19Ethereum Signed Message:\n" + strconv.Itoa(len(message)) + message))
 	sig, err := crypto.Sign(hash.Bytes(), wallet.privateKey) // sign the hash of data
 	if err != nil {
@@ -108,7 +108,7 @@ func (wallet *wallet) EthSign(message string) (signature []byte, err error) {
 hash = keccak256("\x19Ethereum Signed Message:\n"${message length}${message})
 addr = ecrecover(hash, signature)
 */
-func (wallet *wallet) EthVerify(message string, sig []byte) (bool, error) {
+func (wallet *Wallet) EthVerify(message string, sig []byte) (bool, error) {
 	if len(sig) != crypto.SignatureLength {
 		return false, fmt.Errorf("signature must be %d bytes long", crypto.SignatureLength)
 	}
@@ -158,15 +158,15 @@ func EthVerify(message string, sig []byte, address []byte) (bool, error) {
 	return bytes.Equal(sigAddr.Bytes(), address), nil
 }
 
-func (wallet *wallet) GetAddrHex() string {
+func (wallet *Wallet) GetAddrHex() string {
 	return wallet.address.Hex()
 }
 
-func (wallet *wallet) GetAddr() common.Address {
+func (wallet *Wallet) GetAddr() common.Address {
 	return wallet.address
 }
 
-func (wallet *wallet) GetPrivateKeyHex() string {
+func (wallet *Wallet) GetPrivateKeyHex() string {
 	privateKeyBytes := crypto.FromECDSA(wallet.privateKey)
 	return hexutil.Encode(privateKeyBytes)[2:]
 }

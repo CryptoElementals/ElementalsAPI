@@ -13,11 +13,17 @@ type RedisConfig struct {
 	Size     int    `mapstructure:"size"`
 }
 
+type RedisConn = redis.Conn
+
+type RedisPool interface {
+	Get() RedisConn
+}
+
 var ErrNotFound = redis.ErrNil
 
-var globalPool *redis.Pool
+var globalPool RedisPool
 
-func Init(cfg *RedisConfig) *redis.Pool {
+func Init(cfg *RedisConfig) {
 	pool := &redis.Pool{
 		MaxIdle:     cfg.Size,
 		IdleTimeout: 240 * time.Second,
@@ -30,7 +36,10 @@ func Init(cfg *RedisConfig) *redis.Pool {
 		},
 	}
 	globalPool = pool
-	return pool
+}
+
+func SetGlobalPool(pool RedisPool) {
+	globalPool = pool
 }
 
 func dial(network, address, password string) (redis.Conn, error) {

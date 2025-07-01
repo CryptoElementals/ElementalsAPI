@@ -23,8 +23,8 @@ const SERVER_WAIT_GROUP_LABEL = "x-gin-waitgroup"
 type Config struct {
 	Port               int    `mapstructure:"port"`
 	ServerMode         string `mapstructure:"server-mode"`
-	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
 	SessionMaxAge      int    `mapstructure:"session-max-age"`
+	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
 	ServiceName        string `mapstructure:"service-name"`
 }
 
@@ -38,13 +38,16 @@ type Server struct {
 func New(cfg *Config, store sessions.Store) *Server {
 	wg := &sync.WaitGroup{}
 	login.SetTokenExpire(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
+	sessionName := "dill"
 	if cfg.ServiceName != "" {
 		login.SetServiceNameForTemplate(cfg.ServiceName)
+		sessionName = cfg.ServiceName
 	}
-	r := newRouter(wg, cfg.ServerMode, store)
+	r := newRouter(wg, cfg.ServerMode, sessionName, store)
 	return &Server{
-		e:  r,
-		wg: wg,
+		cfg: cfg,
+		e:   r,
+		wg:  wg,
 	}
 }
 
@@ -63,7 +66,7 @@ func (s *Server) Stop() error {
 	return err
 }
 
-func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store) *gin.Engine {
+func newRouter(wg *sync.WaitGroup, serverMode, serviceName string, store sessions.Store) *gin.Engine {
 	mode := strings.ToLower(serverMode)
 	switch mode {
 	case "release":
@@ -82,7 +85,7 @@ func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store) *gin
 	r.Use(ginWaitGroup(wg))
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	//注册session 中间件
-	r.Use(sessions.Sessions("dill_session", store))
+	r.Use(sessions.Sessions(serviceName+"_session", store))
 	// register apis here
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.Handle)
 	return r

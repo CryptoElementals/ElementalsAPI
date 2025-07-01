@@ -49,6 +49,12 @@ func SetServiceNameForTemplate(name string) {
 	codeTemplate = fmt.Sprintf(codeTemplateTemplate, name, name)
 }
 
+func GetSigningData(addr string, nonce int) string {
+	data := strings.ReplaceAll(codeTemplate, "ADDRESS", addr)
+	data = strings.ReplaceAll(data, "NONCE", strconv.Itoa(nonce))
+	return data
+}
+
 func init() {
 	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
 	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
@@ -134,8 +140,7 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 
 	//1 verify signature
 	//构造一个签名验证用的原始消息（message），用来验证用户提交的签名是否有效
-	data := strings.ReplaceAll(codeTemplate, "ADDRESS", task.Request.Address)
-	data = strings.ReplaceAll(data, "NONCE", strconv.Itoa(task.Request.Nonce))
+	data := GetSigningData(task.Request.Address, task.Request.Nonce)
 
 	// 验证签名是否合法
 	ok, err := verifySign(data, task.Request.Signature, task.Request.Address)
@@ -150,20 +155,19 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 	var refreshToken string
 	//2 generate refresh token
 	err = withRetry(10, func(retryTime int) error {
-		return saveRefreshToken(task.Request.Address)
+		var saveErr error
+		refreshToken, saveErr = saveRefreshToken(task.Request.Address)
+		return saveErr
 	})
 	if err != nil {
 		log.Errorf("save refresh token failed, err: %v", err)
 		return nil, err
 	}
 
-	//3 generate session object
-	err = saveSession(task.Request.RequestUUID, task.Request.Address, session)
-	if err != nil {
-		log.Errorf("save access token failed, err: %v", err)
-		return nil, err
+	//3 set address to session object
+	if task.Request.Address != "" {
+		session.Set(SESSION_ADDR_KEY, task.Request.Address)
 	}
-
 	// 删除一次性的nonce，退出当前登录需要重新生成nonce，之前的session-id无法再使用，会慢慢过期
 	session.Delete(key)
 	err = session.Save()
@@ -179,18 +183,6 @@ func verifySign(message string, signature string, addr string) (bool, error) {
 	signatureBytes := common.Hex2Bytes(strings.TrimPrefix(signature, "0x"))
 	addrBytes := common.Hex2Bytes(strings.TrimPrefix(addr, "0x"))
 	return wallet.EthVerify(message, signatureBytes, addrBytes)
-}
-
-func saveSession(requestID, addr string, session sessions.Session) error {
-	if addr != "" {
-		session.Set(SESSION_ADDR_KEY, addr)
-	}
-	//把 session 写入redis
-	err := session.Save()
-	if err != nil {
-		return fmt.Errorf("%s, save cookie-address to session failed, %s", requestID, err.Error())
-	}
-	return nil
 }
 
 func withRetry(retryCount int, do func(retryTime int) error) error {
