@@ -16,9 +16,9 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const codeTemplate = `Welcome to DILL!
+const codeTemplateTemplate = `Welcome to %s!
 
-This request will not trigger a blockchain transaction or cost any gas fees. It is only used to authorise logging into DILL.
+This request will not trigger a blockchain transaction or cost any gas fees. It is only used to authorise logging into %s.
 
 Your authentication status will reset after 12 hours.
 
@@ -27,6 +27,8 @@ ADDRESS
 
 Nonce:
 NONCE`
+
+var codeTemplate = fmt.Sprintf(codeTemplateTemplate, "DILL", "DILL")
 
 const (
 	GET_LOGIN_CODE_LABEL = "GetLoginCode"
@@ -41,6 +43,10 @@ var globalRefreshTokenMaxAge int
 func SetTokenExpire(sessionMaxAge, refreshTokenMaxAge int) {
 	globalSessionMaxAge = sessionMaxAge
 	globalRefreshTokenMaxAge = refreshTokenMaxAge
+}
+
+func SetServiceNameForTemplate(name string) {
+	codeTemplate = fmt.Sprintf(codeTemplateTemplate, name, name)
 }
 
 func init() {

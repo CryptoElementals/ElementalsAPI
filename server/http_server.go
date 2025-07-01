@@ -23,6 +23,7 @@ type Config struct {
 	ServerMode         string `mapstructure:"server-mode"`
 	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
 	SessionMaxAge      int    `mapstructure:"session-max-age"`
+	ServiceName        string `mapstructure:"service-name"`
 }
 
 type Web3FormationServer struct {
@@ -34,7 +35,11 @@ type Web3FormationServer struct {
 
 func NewServer(cfg *Config, store sessions.Store) *Web3FormationServer {
 	wg := &sync.WaitGroup{}
-	r := newRouter(wg, cfg.ServerMode, store, cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
+	login.SetTokenExpire(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
+	if cfg.ServiceName != "" {
+		login.SetServiceNameForTemplate(cfg.ServiceName)
+	}
+	r := newRouter(wg, cfg.ServerMode, store)
 	return &Web3FormationServer{
 		e:  r,
 		wg: wg,
@@ -56,7 +61,7 @@ func (s *Web3FormationServer) Stop() error {
 	return err
 }
 
-func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store, sessionMaxAge, refreshTokenMaxAge int) *gin.Engine {
+func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store) *gin.Engine {
 	mode := strings.ToLower(serverMode)
 	switch mode {
 	case "release":
@@ -78,10 +83,6 @@ func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store, sess
 	r.Use(sessions.Sessions("dill_session", store))
 	// register apis here
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.Handle)
-
-	// enable login api
-	login.SetTokenExpire(sessionMaxAge, refreshTokenMaxAge)
-
 	return r
 }
 
