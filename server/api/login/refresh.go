@@ -82,9 +82,7 @@ func (task *RefreshDillTask) Run(c *gin.Context) (api.Response, error) {
 	err = saveSession(task.Request.RequestUUID, addr, session)
 	if err != nil {
 		log.Errorf("generate access token failed, err: %v", err)
-		task.Response.BaseResponse.RetCode = int(errors.SaveSessionFailed().Code())
-		task.Response.BaseResponse.Message = errors.SaveSessionFailed().Message()
-		return task.Response, err
+		return nil, err
 	}
 
 	return task.Response, nil
@@ -94,11 +92,11 @@ func saveRefreshToken(addr string) error {
 	token := uuid.NewString()
 	_, err := redis.Get(token)
 	if err == nil {
-		return errors.ServiceUnavailable()
+		return errors.SaveRefreshTokenFailed()
 	}
 	if err != redis.ErrNotFound {
 		log.Errorf("get refresh token failed: %s", err.Error())
-		return errors.ServiceUnavailable()
+		return errors.SaveRefreshTokenFailed()
 	}
 
 	_, err = redis.SetExpire(token, addr, globalRefreshTokenMaxAge)

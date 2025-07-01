@@ -26,27 +26,27 @@ type Config struct {
 	ServiceName        string `mapstructure:"service-name"`
 }
 
-type Web3FormationServer struct {
+type Server struct {
 	e      *gin.Engine
 	server *http.Server
 	wg     *sync.WaitGroup
 	cfg    *Config
 }
 
-func NewServer(cfg *Config, store sessions.Store) *Web3FormationServer {
+func New(cfg *Config, store sessions.Store) *Server {
 	wg := &sync.WaitGroup{}
 	login.SetTokenExpire(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
 	if cfg.ServiceName != "" {
 		login.SetServiceNameForTemplate(cfg.ServiceName)
 	}
 	r := newRouter(wg, cfg.ServerMode, store)
-	return &Web3FormationServer{
+	return &Server{
 		e:  r,
 		wg: wg,
 	}
 }
 
-func (s *Web3FormationServer) Run() {
+func (s *Server) Run() {
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf("0.0.0.0:%d", s.cfg.Port),
 		Handler: s.e,
@@ -54,7 +54,7 @@ func (s *Web3FormationServer) Run() {
 	go s.server.ListenAndServe()
 }
 
-func (s *Web3FormationServer) Stop() error {
+func (s *Server) Stop() error {
 	err := s.server.Shutdown(context.Background())
 	// whether the err is nil, we should wait for wait group
 	s.wg.Wait()

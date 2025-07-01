@@ -123,19 +123,13 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 	v := session.Get(key)
 	if v == nil {
 		log.Errorf("%s, key %s has no nonce", task.Request.RequestUUID, key)
-		myErr := errors.AddrHasNoNonce(task.Request.Address)
-		task.Response.SetRetCode(int(myErr.Code()))
-		task.Response.SetMessage(myErr.String())
-		return task.Response, nil
+		return nil, errors.AddrHasNoNonce(task.Request.Address)
 	}
 	nonce := v.(int)
 
 	if nonce != task.Request.Nonce {
 		log.Errorf("%s, nonce %s != task.Request.Nonce %s", task.Request.RequestUUID, nonce, task.Request.Nonce)
-		myErr := errors.NonceInvalid(strconv.Itoa(task.Request.Nonce))
-		task.Response.SetRetCode(int(myErr.Code()))
-		task.Response.SetMessage(myErr.String())
-		return task.Response, nil
+		return nil, errors.NonceInvalid(strconv.Itoa(task.Request.Nonce))
 	}
 
 	//1 verify signature
@@ -151,9 +145,7 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 		} else {
 			log.Errorf("%s, verifySign failed, ok: %v", task.Request.RequestUUID, ok)
 		}
-		task.Response.BaseResponse.RetCode = int(errors.SignatureInvalid().Code())
-		task.Response.BaseResponse.Message = errors.SignatureInvalid().Message()
-		return task.Response, err
+		return nil, err
 	}
 	var refreshToken string
 	//2 generate refresh token
@@ -162,18 +154,14 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 	})
 	if err != nil {
 		log.Errorf("save refresh token failed, err: %v", err)
-		task.Response.BaseResponse.RetCode = int(errors.SaveRefreshTokenFailed().Code())
-		task.Response.BaseResponse.Message = errors.SaveRefreshTokenFailed().Message()
-		return task.Response, err
+		return nil, err
 	}
 
 	//3 generate session object
 	err = saveSession(task.Request.RequestUUID, task.Request.Address, session)
 	if err != nil {
 		log.Errorf("save access token failed, err: %v", err)
-		task.Response.BaseResponse.RetCode = int(errors.SaveSessionFailed().Code())
-		task.Response.BaseResponse.Message = errors.SaveSessionFailed().Message()
-		return task.Response, err
+		return nil, err
 	}
 
 	// 删除一次性的nonce，退出当前登录需要重新生成nonce，之前的session-id无法再使用，会慢慢过期
