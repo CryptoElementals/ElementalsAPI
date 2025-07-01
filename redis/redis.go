@@ -3,6 +3,7 @@ package redis
 import (
 	"time"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -11,6 +12,8 @@ type RedisConfig struct {
 	Password string `mapstructure:"password"`
 	Size     int    `mapstructure:"size"`
 }
+
+var ErrNotFound = redis.ErrNil
 
 var globalPool *redis.Pool
 
@@ -44,6 +47,51 @@ func dial(network, address, password string) (redis.Conn, error) {
 	return c, err
 }
 
-func Get() *redis.Pool {
-	return globalPool
+func Get(key string) (string, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	res, err := redis.String(conn.Do("GET", key))
+	if err == redis.ErrNil {
+		return res, ErrNotFound
+	}
+	return res, err
+}
+
+func Set(key string, val string) (any, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	return conn.Do("SET", key, val)
+}
+
+// expire by seconds
+func SetExpire(key string, val string, expire int) (any, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	return conn.Do("SET", key, val, "EX", expire)
+}
+
+func Exist(key string) (bool, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	return redis.Bool(conn.Do("EXIST", key))
 }

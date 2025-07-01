@@ -2,12 +2,12 @@ package middlewares
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -35,24 +35,11 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 
 		switch authType {
 		case api.COOKIEAUTH:
-			cookieValue, err := c.Cookie("login_dill")
-			if err != nil {
-				res := api.MakeErrorResponse(errors.MissingLoginCookie("login_dill from cookie not found"))
-				res.SetSession(requestUUID)
-				res.SetAction(action + "Response")
-				resJson, _ := json.Marshal(res)
-				log.Infof("Send response---> client %s, %s", c.ClientIP(), string(resJson))
-				c.Abort()
-				c.JSON(http.StatusBadRequest, res)
-				return
-			}
-
-			//从服务器的会话（session）中查找该 Cookie 是否存在。如果 Cookie 不存在或无效，返回错误响应，表示认证失败。
 			session := sessions.Default(c)
-			addr := session.Get(cookieValue)
+			//从服务器的会话（session）中查找该 Cookie 是否存在。如果 Cookie 不存在或无效，返回错误响应，表示认证失败。
+			addr := session.Get(login.SESSION_ADDR_KEY)
 			if addr == nil {
-				errStr := fmt.Sprintf("cookie %s not in backend session", cookieValue)
-				res := api.MakeErrorResponse(errors.LoginCookieInvalid(errStr))
+				res := api.MakeErrorResponse(errors.LoginCookieInvalid(""))
 				res.SetSession(requestUUID)
 				res.SetAction(action + "Response")
 				resJson, _ := json.Marshal(res)

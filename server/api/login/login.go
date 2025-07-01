@@ -1,10 +1,9 @@
 package login
 
 import (
-	"net/http"
+	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
@@ -14,23 +13,40 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 	"github.com/mitchellh/mapstructure"
 )
 
-const codeTemplate = "Welcome to DILL!\n\nThis request will not trigger a blockchain transaction or cost any gas fees. It is only used to authorise logging into DILL.\n\nYour authentication status will reset after 12 hours.\n\nWallet address:\nADDRESS\n\nNonce:\nNONCE"
+const codeTemplate = `Welcome to DILL!
+
+This request will not trigger a blockchain transaction or cost any gas fees. It is only used to authorise logging into DILL.
+
+Your authentication status will reset after 12 hours.
+
+Wallet address:
+ADDRESS
+
+Nonce:
+NONCE`
 
 const (
 	GET_LOGIN_CODE_LABEL = "GetLoginCode"
 	LOGIN_DILL_LABEL     = "LoginDill"
+	REFRESH_LABEL        = "Refresh"
+	SESSION_ADDR_KEY     = "addr"
 )
 
 var globalSessionMaxAge int
+var globalRefreshTokenMaxAge int
 
-func UseWalletLogin(sessionMaxAge int) {
+func SetTokenExpire(sessionMaxAge, refreshTokenMaxAge int) {
 	globalSessionMaxAge = sessionMaxAge
+	globalRefreshTokenMaxAge = refreshTokenMaxAge
+}
+
+func init() {
 	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
 	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
+	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
 }
 
 type LoginDillRequest struct {
@@ -42,6 +58,8 @@ type LoginDillRequest struct {
 
 type LoginDillResponse struct {
 	api.BaseResponse
+	RefreshToken          string
+	RefreshTokenExpiresIn int // by second
 }
 
 type LoginDillTask struct {
@@ -92,6 +110,9 @@ func NewLoginDillTask(data *map[string]interface{}) (api.Task, error) {
 func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 	// 验证 nonce 是否存在于 Session 中
 	session := sessions.Default(c)
+	session.Options(sessions.Options{
+		MaxAge: globalSessionMaxAge,
+	})
 	key := api.MakeAddrNonceKey(task.Request.Address)
 	v := session.Get(key)
 	if v == nil {
@@ -113,8 +134,8 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 
 	//1 verify signature
 	//构造一个签名验证用的原始消息（message），用来验证用户提交的签名是否有效
-	data := strings.Replace(codeTemplate, "ADDRESS", task.Request.Address, -1)
-	data = strings.Replace(data, "NONCE", strconv.Itoa(task.Request.Nonce), -1)
+	data := strings.ReplaceAll(codeTemplate, "ADDRESS", task.Request.Address)
+	data = strings.ReplaceAll(data, "NONCE", strconv.Itoa(task.Request.Nonce))
 
 	// 验证签名是否合法
 	ok, err := verifySign(data, task.Request.Signature, task.Request.Address)
@@ -128,46 +149,26 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.BaseResponse.Message = errors.SignatureInvalid().Message()
 		return task.Response, err
 	}
-
-	//2 generate cookie
-	//创建并保存 Cookie 到 Session 中
-	var cookieValue string
-
-	retryCount := 10
-	isSet := false
-	for i := 0; i < retryCount; i++ {
-		cookieValue = uuid.NewString()
-		v := session.Get(cookieValue)
-		if v == nil {
-			//生成唯一的session_id，值为用户地址
-			session.Set(cookieValue, task.Request.Address)
-			//把 session 的修改写入redis
-			err := session.Save()
-			if err == nil {
-				isSet = true
-				break
-			} else {
-				log.Errorf("%s, save cookie-address to session failed, %s", task.Request.RequestUUID, err.Error())
-			}
-		}
+	var refreshToken string
+	//2 generate refresh token
+	err = withRetry(10, func(retryTime int) error {
+		return saveRefreshToken(task.Request.Address)
+	})
+	if err != nil {
+		log.Errorf("save refresh token failed, err: %v", err)
+		task.Response.BaseResponse.RetCode = int(errors.SaveRefreshTokenFailed().Code())
+		task.Response.BaseResponse.Message = errors.SaveRefreshTokenFailed().Message()
+		return task.Response, err
 	}
 
-	if !isSet {
+	//3 generate session object
+	err = saveSession(task.Request.RequestUUID, task.Request.Address, session)
+	if err != nil {
+		log.Errorf("save access token failed, err: %v", err)
 		task.Response.BaseResponse.RetCode = int(errors.SaveSessionFailed().Code())
 		task.Response.BaseResponse.Message = errors.SaveSessionFailed().Message()
 		return task.Response, err
 	}
-
-	cookie := &http.Cookie{
-		Name:     "login_dill",
-		Value:    cookieValue,
-		Expires:  time.Now().UTC().Add(time.Duration(globalSessionMaxAge) * time.Second), // 设置超时时间为12小时 测试用15天
-		HttpOnly: true,                                                                   // 仅允许通过 HTTP 访问
-		Secure:   false,                                                                  // 仅在 HTTPS 连接中传输
-	}
-
-	//cookieValue 是通过 Set-Cookie HTTP 响应头直接返回给客户端的（不是task.Response）
-	http.SetCookie(c.Writer, cookie)
 
 	// 删除一次性的nonce，退出当前登录需要重新生成nonce，之前的session-id无法再使用，会慢慢过期
 	session.Delete(key)
@@ -175,14 +176,37 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 	if err != nil {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
 	}
-
+	task.Response.RefreshToken = refreshToken
+	task.Response.RefreshTokenExpiresIn = globalRefreshTokenMaxAge
 	return task.Response, nil
 }
 
 func verifySign(message string, signature string, addr string) (bool, error) {
-
 	signatureBytes := common.Hex2Bytes(strings.TrimPrefix(signature, "0x"))
 	addrBytes := common.Hex2Bytes(strings.TrimPrefix(addr, "0x"))
-
 	return wallet.EthVerify(message, signatureBytes, addrBytes)
+}
+
+func saveSession(requestID, addr string, session sessions.Session) error {
+	if addr != "" {
+		session.Set(SESSION_ADDR_KEY, addr)
+	}
+	//把 session 写入redis
+	err := session.Save()
+	if err != nil {
+		return fmt.Errorf("%s, save cookie-address to session failed, %s", requestID, err.Error())
+	}
+	return nil
+}
+
+func withRetry(retryCount int, do func(retryTime int) error) error {
+	var err error
+	for i := 0; i < retryCount; i++ {
+		err = do(i)
+		if err == nil {
+			return nil
+		}
+	}
+	// return the last error
+	return err
 }

@@ -30,14 +30,15 @@ var (
 
 	// Client
 	// 1. Param
-	c_SignatureInvalid   ErrorCode = 8046 // 签名无效
-	c_AddrHashNoNonce    ErrorCode = 8047 // 没有Nonce
-	c_NonceInvalid       ErrorCode = 8048 // Nonce无效
-	c_LoginModeInvalid   ErrorCode = 8061 // 登陆模式无效
-	c_MissingLoginCookie ErrorCode = 8062 // 没有携带登录的cookie
-	c_LoginCookieInvalid ErrorCode = 8063 // 登录的cookie无效
-	c_PasswordInvalid    ErrorCode = 8314 // 密码无效
-	c_StorageTypeInvalid ErrorCode = 8371 // 存储类型无效
+	c_SignatureInvalid    ErrorCode = 8046 // 签名无效
+	c_AddrHashNoNonce     ErrorCode = 8047 // 没有Nonce
+	c_NonceInvalid        ErrorCode = 8048 // Nonce无效
+	c_LoginModeInvalid    ErrorCode = 8061 // 登陆模式无效
+	c_MissingLoginCookie  ErrorCode = 8062 // 没有携带登录的cookie
+	c_LoginCookieInvalid  ErrorCode = 8063 // 登录的cookie无效
+	c_RefreshTokenInvalid ErrorCode = 8064 // refresh token无效
+	c_PasswordInvalid     ErrorCode = 8314 // 密码无效
+	c_StorageTypeInvalid  ErrorCode = 8371 // 存储类型无效
 
 	// Server
 	s_ActionError                ErrorCode = 8433 // [行为]出错（目前被滥用，考虑将一部分拆到s_CallThirdApiError
@@ -46,6 +47,7 @@ var (
 	s_RedisKeyConflict           ErrorCode = 8440 // [行为]redis里的Key冲突
 	s_ListDeployments            ErrorCode = 8441 // [行为]从数据库访问deployments信息失败
 	s_SaveSessionFailed          ErrorCode = 8442 // [行为]保存session失败
+	s_SaveRefreshTokenFailed     ErrorCode = 8443 // [行为]保存session失败
 	s_GetCloudsFailed            ErrorCode = 8450 // [行为]从数据库访问cloud信息失败
 	s_GetChainCombinationsFailed ErrorCode = 8451 // [行为]从数据库访问ChainCombination信息失败
 
@@ -120,6 +122,10 @@ func LoginCookieInvalid(a ...interface{}) Error {
 	return Error{code: c_LoginCookieInvalid, items: a, message: "Login cookie [%s] invalid or expired"}
 }
 
+func RefreshTokenInvalid(a ...interface{}) Error {
+	return Error{code: c_RefreshTokenInvalid, items: a, message: "Refresh token [%s] invalid or expired"}
+}
+
 func ActionError(a ...interface{}) Error {
 	return Error{code: s_ActionError, items: a, message: "Action error: "}
 }
@@ -150,6 +156,10 @@ func RedisKeyConflict(a ...interface{}) Error {
 
 func SaveSessionFailed(a ...interface{}) Error {
 	return Error{code: s_SaveSessionFailed, items: a, message: "save session failed"}
+}
+
+func SaveRefreshTokenFailed(a ...interface{}) Error {
+	return Error{code: s_SaveRefreshTokenFailed, items: a, message: "save refresh token failed"}
 }
 
 func ListDeploymentsFailed(a ...interface{}) Error {

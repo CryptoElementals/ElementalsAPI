@@ -9,7 +9,6 @@ import (
 
 	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/CryptoElementals/common/server/middlewares"
-	"github.com/CryptoElementals/common/session"
 	"github.com/gin-contrib/sessions"
 
 	"github.com/gin-contrib/gzip"
@@ -20,8 +19,10 @@ import (
 )
 
 type Config struct {
-	Port       int    `mapstructure:"port"`
-	ServerMode string `mapstructure:"server-mode"`
+	Port               int    `mapstructure:"port"`
+	ServerMode         string `mapstructure:"server-mode"`
+	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
+	SessionMaxAge      int    `mapstructure:"session-max-age"`
 }
 
 type Web3FormationServer struct {
@@ -31,9 +32,9 @@ type Web3FormationServer struct {
 	cfg    *Config
 }
 
-func NewServer(cfg *Config, store *session.SessionStore) *Web3FormationServer {
+func NewServer(cfg *Config, store sessions.Store) *Web3FormationServer {
 	wg := &sync.WaitGroup{}
-	r := newRouter(wg, cfg.ServerMode, store)
+	r := newRouter(wg, cfg.ServerMode, store, cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
 	return &Web3FormationServer{
 		e:  r,
 		wg: wg,
@@ -55,7 +56,7 @@ func (s *Web3FormationServer) Stop() error {
 	return err
 }
 
-func newRouter(wg *sync.WaitGroup, serverMode string, store *session.SessionStore) *gin.Engine {
+func newRouter(wg *sync.WaitGroup, serverMode string, store sessions.Store, sessionMaxAge, refreshTokenMaxAge int) *gin.Engine {
 	mode := strings.ToLower(serverMode)
 	switch mode {
 	case "release":
@@ -75,12 +76,12 @@ func newRouter(wg *sync.WaitGroup, serverMode string, store *session.SessionStor
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	//注册session 中间件
 	r.Use(sessions.Sessions("dill_session", store))
-
 	// register apis here
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.Handle)
 
 	// enable login api
-	login.UseWalletLogin(store.MaxAge())
+	login.SetTokenExpire(sessionMaxAge, refreshTokenMaxAge)
+
 	return r
 }
 

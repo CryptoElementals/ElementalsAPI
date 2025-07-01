@@ -71,9 +71,7 @@ func NewGetLoginCodeTask(data *map[string]interface{}) (api.Task, error) {
 }
 
 func (task *GetLoginCodeTask) Run(c *gin.Context) (api.Response, error) {
-
 	var nonce int
-
 	// save nonce redis, set TTL
 	session := sessions.Default(c)
 	key := api.MakeAddrNonceKey(task.Request.Address)
