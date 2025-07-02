@@ -1,15 +1,20 @@
-package redis
+package cache
 
 import (
 	"testing"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/stretchr/testify/require"
 )
 
-func TestMain(m *testing.M) {
-	err := Init(&Config{
+func TestMemCache(t *testing.T) {
+	c := NewMemCache()
+	testCache(t, c)
+}
+
+func TestRedisCache(t *testing.T) {
+	err := redis.Init(&redis.Config{
 		Address:  "10.9.23.165:6379",
 		Password: "qiaoyunb",
 		Size:     10,
@@ -17,41 +22,43 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	m.Run()
+	c, err := NewRedisCache()
+	require.NoError(t, err)
+	testCache(t, c)
 }
 
-func TestRedisGetSet(t *testing.T) {
+func testCache(t *testing.T, c Cache) {
 	key := "foo"
 	val := "bar"
 	expire := 5
 	// expire in 5s
-	err := Set(key, val, expire)
+	err := c.Set(key, val, expire)
 	require.NoError(t, err)
 
 	// get success
-	resp, err := Get(key)
+	resp, err := c.Get(key)
 	require.NoError(t, err)
 	require.Equal(t, val, resp)
 
 	// exist success
-	ex, err := Exist(key)
+	ex, err := c.Exist(key)
 	require.NoError(t, err)
 	require.True(t, ex)
 
 	// sleep and reset expire
 	time.Sleep(time.Duration(3) * time.Second)
-	err = Set(key, val, expire)
+	err = c.Set(key, val, expire)
 	require.NoError(t, err)
 
 	// sleep until exceeding the first expire time
 	time.Sleep(time.Duration(3) * time.Second)
 	// get success
-	resp, err = Get(key)
+	resp, err = c.Get(key)
 	require.NoError(t, err)
 	require.Equal(t, val, resp)
 
 	// exist success
-	ex, err = Exist(key)
+	ex, err = c.Exist(key)
 	require.NoError(t, err)
 	require.True(t, ex)
 
@@ -59,28 +66,28 @@ func TestRedisGetSet(t *testing.T) {
 	time.Sleep(time.Duration(3) * time.Second)
 
 	// get failed
-	resp, err = Get(key)
-	require.Equal(t, redis.ErrNil, err)
+	resp, err = c.Get(key)
+	require.Equal(t, ErrNotFound, err)
 	require.Empty(t, resp)
 
 	// exist failed
-	ex, err = Exist(key)
-	require.NoError(t, err)
+	ex, err = c.Exist(key)
+	require.Equal(t, ErrNotFound, err)
 	require.False(t, ex)
 
 	// set key val
-	err = Set(key, val, expire)
+	err = c.Set(key, val, expire)
 	require.NoError(t, err)
 	// delet key val
-	err = Delete(key)
+	err = c.Delete(key)
 	require.NoError(t, err)
 	// get failed
-	resp, err = Get(key)
-	require.Equal(t, redis.ErrNil, err)
+	resp, err = c.Get(key)
+	require.Equal(t, ErrNotFound, err)
 	require.Empty(t, resp)
 
 	// exist failed
-	ex, err = Exist(key)
-	require.NoError(t, err)
+	ex, err = c.Exist(key)
+	require.Equal(t, ErrNotFound, err)
 	require.False(t, ex)
 }

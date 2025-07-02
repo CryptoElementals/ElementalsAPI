@@ -1,9 +1,9 @@
 package login
 
 import (
+	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -81,7 +81,7 @@ func (task *RefreshDillTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, err
 	}
 
-	err = redis.SetWithExpire(refreshToken, addr, globalRefreshTokenMaxAge)
+	err = globalRefreshTokenCache.Set(refreshToken, addr, globalRefreshTokenMaxAge)
 	if err != nil {
 		log.Errorf("update refresh failed, err: %s", err.Error())
 	}
@@ -98,22 +98,22 @@ func (task *RefreshDillTask) Run(c *gin.Context) (api.Response, error) {
 
 func saveRefreshToken(addr string) (string, error) {
 	token := uuid.NewString()
-	_, err := redis.Exist(token)
+	_, err := globalRefreshTokenCache.Exist(token)
 	if err == nil {
 		return "", errors.SaveRefreshTokenFailed()
 	}
-	if err != redis.ErrNotFound {
+	if err != cache.ErrNotFound {
 		log.Errorf("get refresh token failed: %s", err.Error())
 		return "", errors.SaveRefreshTokenFailed()
 	}
 
-	err = redis.SetWithExpire(token, addr, globalRefreshTokenMaxAge)
+	err = globalRefreshTokenCache.Set(token, addr, globalRefreshTokenMaxAge)
 	return token, err
 }
 
 func getAddrByRefreshToken(token string) (string, error) {
-	res, err := redis.Get(token)
-	if err == redis.ErrNotFound || res == "" {
+	res, err := globalRefreshTokenCache.Get(token)
+	if err == cache.ErrNotFound || res == "" {
 		return "", errors.RefreshTokenInvalid(token)
 	}
 	if err != nil {

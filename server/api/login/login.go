@@ -1,10 +1,12 @@
 package login
 
 import (
+	goerrs "errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
@@ -39,26 +41,35 @@ const (
 
 var globalSessionMaxAge int
 var globalRefreshTokenMaxAge int
+var globalRefreshTokenCache cache.Cache
 
-func SetTokenExpire(sessionMaxAge, refreshTokenMaxAge int) {
+func InitLoginApi(sessionMaxAge, refreshTokenMaxAge int, serviceName string, refreshTokenCache cache.Cache) error {
+	if sessionMaxAge == 0 {
+		return goerrs.New("sessionMaxAge is zero")
+	}
+	if refreshTokenMaxAge == 0 {
+		return goerrs.New("refreshTokenMaxAge is zero")
+	}
+	if serviceName == "" {
+		return goerrs.New("serviceName is empty")
+	}
+	if refreshTokenCache == nil {
+		return goerrs.New("refreshTokenCache is empty")
+	}
 	globalSessionMaxAge = sessionMaxAge
 	globalRefreshTokenMaxAge = refreshTokenMaxAge
-}
-
-func SetServiceNameForTemplate(name string) {
-	codeTemplate = fmt.Sprintf(codeTemplateTemplate, name, name)
+	codeTemplate = fmt.Sprintf(codeTemplateTemplate, serviceName, serviceName)
+	globalRefreshTokenCache = refreshTokenCache
+	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
+	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
+	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
+	return nil
 }
 
 func GetSigningData(addr string, nonce int) string {
 	data := strings.ReplaceAll(codeTemplate, "ADDRESS", addr)
 	data = strings.ReplaceAll(data, "NONCE", strconv.Itoa(nonce))
 	return data
-}
-
-func init() {
-	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
-	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
-	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
 }
 
 type LoginDillRequest struct {

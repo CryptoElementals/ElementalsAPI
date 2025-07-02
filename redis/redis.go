@@ -27,9 +27,8 @@ const (
 	SET_COMMAND    = "SET"
 	EXPIRE_COMMAND = "EX"
 	EXISTS_COMMAND = "EXISTS"
+	DELETE_COMMAND = "DEL"
 )
-
-var ErrNotFound = redis.ErrNil
 
 var globalPool RedisPool
 
@@ -93,14 +92,11 @@ func Get(key string) (string, error) {
 		}
 	}()
 	res, err := redis.String(conn.Do(GET_COMMAND, key))
-	if err == redis.ErrNil {
-		return res, ErrNotFound
-	}
 	return res, err
 }
 
 // expire by seconds
-func SetWithExpire(key string, val string, expire int) error {
+func Set(key string, val string, expire int) error {
 	conn := globalPool.Get()
 	defer func() {
 		err := conn.Close()
@@ -112,6 +108,18 @@ func SetWithExpire(key string, val string, expire int) error {
 	return err
 }
 
+func Delete(key string) error {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	_, err := conn.Do(DELETE_COMMAND, key)
+	return err
+}
+
 func Exist(key string) (bool, error) {
 	conn := globalPool.Get()
 	defer func() {
@@ -120,15 +128,20 @@ func Exist(key string) (bool, error) {
 			log.Errorf("redis client close err: %s", err.Error())
 		}
 	}()
-	exist, err := redis.Bool(conn.Do(EXISTS_COMMAND, key))
-	if err == redis.ErrNil {
-		return false, ErrNotFound
-	}
+	return redis.Bool(conn.Do(EXISTS_COMMAND, key))
+}
+
+func Ping() error {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	_, err := conn.Do(PING_COMMAND)
 	if err != nil {
-		return false, err
+		return err
 	}
-	if !exist {
-		return false, ErrNotFound
-	}
-	return true, nil
+	return nil
 }

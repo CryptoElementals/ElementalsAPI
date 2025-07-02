@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/CryptoElementals/common/server/middlewares"
 	"github.com/gin-contrib/sessions"
@@ -66,20 +67,25 @@ func DefaultSessionStore() sessions.Store {
 	return memstore.NewStore([]byte("test-secret"))
 }
 
-func New(cfg *Config, store sessions.Store) *Server {
+func New(cfg *Config, store sessions.Store, refreshTokenCache cache.Cache) *Server {
 	if cfg == nil {
 		log.Fatal("nil config value")
 	}
 	if store == nil {
 		log.Fatal("nil session store")
 	}
+	if refreshTokenCache == nil {
+		log.Fatal("nil refresh token cache")
+	}
 	cfg = handleDefaultValue(cfg)
 	wg := &sync.WaitGroup{}
-	login.SetTokenExpire(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
 	sessionName := "dill"
 	if cfg.ServiceName != "" {
-		login.SetServiceNameForTemplate(cfg.ServiceName)
 		sessionName = cfg.ServiceName
+	}
+	err := login.InitLoginApi(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge, sessionName, refreshTokenCache)
+	if err != nil {
+		log.Fatal("login api initiation failed: %s", err.Error())
 	}
 	r := newRouter(wg, cfg.ServerMode, sessionName, store)
 	return &Server{
