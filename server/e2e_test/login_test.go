@@ -9,17 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/server"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/api/login"
-	"github.com/CryptoElementals/common/server/e2e_test/mocks"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/golang/mock/gomock"
-	redigo_redis "github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,20 +71,6 @@ func prepareLoginRequest(t *testing.T, addr string, nonce int, sig string) io.Re
 	return r
 }
 
-func prepareMocks(t *testing.T) (*mocks.MockRedisPool, *mocks.MockRedisConn) {
-	mockPool := mocks.NewMockRedisPool(gomock.NewController(t))
-	mockConn := mocks.NewMockRedisConn(gomock.NewController(t))
-	redis.SetGlobalPool(mockPool)
-	return mockPool, mockConn
-}
-
-func setMockParams(mockPool *mocks.MockRedisPool, mockConn *mocks.MockRedisConn, addr string) {
-	mockPool.EXPECT().Get().Times(2).Return(mockConn)
-	mockConn.EXPECT().Close().Times(2).Return(nil)
-	mockConn.EXPECT().Do(redis.EXISTS_COMMAND, gomock.Any()).Times(1).Return(false, redigo_redis.ErrNil)
-	mockConn.EXPECT().Do(redis.SET_COMMAND, gomock.Any(), addr, redis.EXPIRE_COMMAND, testRefreshExpire).Times(1).Return(nil, nil)
-}
-
 func checkCookieSet(t *testing.T, resp *http.Response) {
 	hasSet := false
 	cookies := resp.Cookies()
@@ -99,8 +82,7 @@ func checkCookieSet(t *testing.T, resp *http.Response) {
 	require.True(t, hasSet)
 }
 
-func doLogin(t *testing.T, w *wallet.Wallet, client *http.Client, mockPool *mocks.MockRedisPool, mockConn *mocks.MockRedisConn) string {
-	setMockParams(mockPool, mockConn, w.GetAddrHex())
+func doLogin(t *testing.T, w *wallet.Wallet, client *http.Client) string {
 	signingData, code := doGetCodeRequest(t, client, w.GetAddrHex())
 	sig, err := w.EthSign(signingData)
 	require.NoError(t, err)
@@ -171,7 +153,7 @@ func prepareMockServer() func() error {
 		ServiceName:        testSessionName,
 	}
 
-	svr := server.New(cfg, server.DefaultSessionStore())
+	svr := server.New(cfg, server.DefaultSessionStore(), cache.NewMemCache())
 	svr.Run()
 	return svr.Stop
 }
@@ -185,7 +167,6 @@ func TestNoLoginFailed(t *testing.T) {
 func TestLoginSuccess(t *testing.T) {
 	stop := prepareMockServer()
 	defer stop()
-	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	client := &http.Client{
@@ -193,13 +174,12 @@ func TestLoginSuccess(t *testing.T) {
 	}
 	w, err := wallet.NewWallet("")
 	require.NoError(t, err)
-	doLogin(t, w, client, pool, conn)
+	doLogin(t, w, client)
 }
 
 func TestLoginFooBarSuccess(t *testing.T) {
 	stop := prepareMockServer()
 	defer stop()
-	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	client := &http.Client{
@@ -207,14 +187,13 @@ func TestLoginFooBarSuccess(t *testing.T) {
 	}
 	w, err := wallet.NewWallet("")
 	require.NoError(t, err)
-	doLogin(t, w, client, pool, conn)
+	doLogin(t, w, client)
 	doFooBar(t, client, 200, true)
 }
 
 func TestLoginExpireFooBarFailed(t *testing.T) {
 	stop := prepareMockServer()
 	defer stop()
-	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	client := &http.Client{
@@ -222,7 +201,7 @@ func TestLoginExpireFooBarFailed(t *testing.T) {
 	}
 	w, err := wallet.NewWallet("")
 	require.NoError(t, err)
-	doLogin(t, w, client, pool, conn)
+	doLogin(t, w, client)
 	time.Sleep((testSessionExpire + 1) * time.Second)
 	doFooBar(t, client, 401, false)
 }
@@ -230,7 +209,6 @@ func TestLoginExpireFooBarFailed(t *testing.T) {
 func TestFooBarSuccessAfterRefresh(t *testing.T) {
 	stop := prepareMockServer()
 	defer stop()
-	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	client := &http.Client{
@@ -238,14 +216,9 @@ func TestFooBarSuccessAfterRefresh(t *testing.T) {
 	}
 	w, err := wallet.NewWallet("")
 	require.NoError(t, err)
-	addr := w.GetAddrHex()
-	refreshToken := doLogin(t, w, client, pool, conn)
+	refreshToken := doLogin(t, w, client)
 	time.Sleep((testSessionExpire + 1) * time.Second)
 	doFooBar(t, client, 401, false)
-	pool.EXPECT().Get().AnyTimes().Return(conn)
-	conn.EXPECT().Close().AnyTimes().Return(nil)
-	conn.EXPECT().Do(redis.GET_COMMAND, gomock.Any()).Times(1).Return(addr, nil)
-	conn.EXPECT().Do(redis.SET_COMMAND, gomock.Any(), addr, redis.EXPIRE_COMMAND, testRefreshExpire).Times(1).Return(nil, nil)
 	refreshResp := doRefresh(t, client, 200, refreshToken)
 	checkCookieSet(t, refreshResp)
 	checkRefreshRespSuccessBody(t, refreshResp, refreshToken)
@@ -255,7 +228,6 @@ func TestFooBarSuccessAfterRefresh(t *testing.T) {
 func TestRefreshFailureDueToExpire(t *testing.T) {
 	stop := prepareMockServer()
 	defer stop()
-	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	client := &http.Client{
@@ -263,11 +235,8 @@ func TestRefreshFailureDueToExpire(t *testing.T) {
 	}
 	w, err := wallet.NewWallet("")
 	require.NoError(t, err)
-	refreshToken := doLogin(t, w, client, pool, conn)
+	refreshToken := doLogin(t, w, client)
 	time.Sleep((testRefreshExpire + 1) * time.Second)
-	pool.EXPECT().Get().AnyTimes().Return(conn)
-	conn.EXPECT().Close().AnyTimes().Return(nil)
-	conn.EXPECT().Do(redis.GET_COMMAND, gomock.Any()).Times(1).Return(nil, redigo_redis.ErrNil)
 	resp := doRefresh(t, client, 200, refreshToken)
 	refreshResp := &login.RefreshDillResponse{}
 	body, err := io.ReadAll(resp.Body)

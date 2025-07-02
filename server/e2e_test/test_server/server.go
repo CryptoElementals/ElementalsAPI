@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
@@ -51,8 +52,12 @@ func main() {
 		log.Fatal(err)
 	}
 	e2etest.EnableTestApi()
+	redisCache, err := cache.NewRedisCache()
+	if err != nil {
+		log.Fatal(err)
+	}
 	log.Info("starting test server")
-	svr := server.New(&cfg.ServerCfg, sessionStore)
+	svr := server.New(&cfg.ServerCfg, sessionStore, redisCache)
 	svr.Run()
 
 	sigs := make(chan os.Signal, 1)
