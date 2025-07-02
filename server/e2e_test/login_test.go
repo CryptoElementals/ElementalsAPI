@@ -18,94 +18,18 @@ import (
 	"github.com/CryptoElementals/common/server/e2e_test/mocks"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/gin-contrib/sessions/memstore"
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"github.com/golang/mock/gomock"
 	redigo_redis "github.com/gomodule/redigo/redis"
-	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/require"
 )
-
-func mapStore() memstore.Store {
-	store := memstore.NewStore([]byte("test-secret"))
-	return store
-}
-
-var testAction = "TEST"
-
-type testFooRequest struct {
-	api.BaseRequest
-	Foo string
-}
-type testbarResponse struct {
-	api.BaseResponse
-	Bar string
-}
-type testFooTask struct {
-	Request  *testFooRequest
-	Response *testbarResponse
-}
-
-func (t *testFooTask) Run(c *gin.Context) (api.Response, error) {
-	if t.Request.Foo != "FOO" {
-		return nil, errors.ParamsError("request message is not FOO")
-	}
-	t.Response.Bar = "BAR"
-	return t.Response, nil
-}
-
-// 将 map 类型的数据解码为 LoginDillRequest 结构体，并提取 RequestUUID
-func newTestFooRequest(data *map[string]interface{}) (*testFooRequest, error) {
-	req := &testFooRequest{}
-	err := mapstructure.Decode(*data, &req)
-	if err != nil {
-		return nil, err
-	}
-	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
-
-	return req, nil
-}
-
-func newTestFooResponse(sessionId string) *testbarResponse {
-	return &testbarResponse{
-		BaseResponse: api.BaseResponse{
-			Action:      testAction + "Response",
-			RequestUUID: sessionId,
-		},
-	}
-}
-
-func newTestFooTask(data *map[string]interface{}) (api.Task, error) {
-	req, err := newTestFooRequest(data)
-	if err != nil {
-		return nil, err
-	}
-	task := &testFooTask{
-		Request:  req,
-		Response: newTestFooResponse(req.BaseRequest.RequestUUID),
-	}
-
-	validate := validator.New()
-	err = validate.Struct(task.Request)
-	if err != nil {
-		return nil, err
-	}
-
-	return task, nil
-}
-
-func prepareTestApi() {
-	api.Register(testAction, newTestFooTask, api.COOKIEAUTH)
-}
 
 const testSessionName = "e2e_test"
 const testSessionExpire = 3
 const testRefreshExpire = 5
 
 func prepareFooRequest(t *testing.T) io.Reader {
-	fooReq := &testFooRequest{}
-	fooReq.Action = testAction
+	fooReq := &TestFooRequest{}
+	fooReq.Action = TestAction
 	fooReq.Foo = "FOO"
 	reqBody, err := json.Marshal(fooReq)
 	require.NoError(t, err)
@@ -206,7 +130,7 @@ func doFooBar(t *testing.T, client *http.Client, expectedCode int, checkBody boo
 	}
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	barResp := &testbarResponse{}
+	barResp := &TestbarResponse{}
 	err = json.Unmarshal(body, barResp)
 	require.NoError(t, err)
 	require.Equal(t, "BAR", barResp.Bar)
@@ -236,9 +160,9 @@ func checkRefreshRespSuccessBody(t *testing.T, resp *http.Response, token string
 	require.Equal(t, testRefreshExpire, refreshResp.RefreshTokenExpiresIn)
 }
 
-func TestMain(m *testing.M) {
+func prepareMockServer() func() error {
 	log.InitGlobalLogger(&log.Config{Development: true})
-	prepareTestApi()
+	EnableTestApi()
 	cfg := &server.Config{
 		Port:               19999,
 		ServerMode:         "debug",
@@ -247,16 +171,20 @@ func TestMain(m *testing.M) {
 		ServiceName:        testSessionName,
 	}
 
-	svr := server.New(cfg, mapStore())
+	svr := server.New(cfg, server.DefaultSessionStore())
 	svr.Run()
-	m.Run()
+	return svr.Stop
 }
 
 func TestNoLoginFailed(t *testing.T) {
+	stop := prepareMockServer()
+	defer stop()
 	doFooBar(t, http.DefaultClient, 401, false)
 }
 
 func TestLoginSuccess(t *testing.T) {
+	stop := prepareMockServer()
+	defer stop()
 	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -269,6 +197,8 @@ func TestLoginSuccess(t *testing.T) {
 }
 
 func TestLoginFooBarSuccess(t *testing.T) {
+	stop := prepareMockServer()
+	defer stop()
 	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -282,6 +212,8 @@ func TestLoginFooBarSuccess(t *testing.T) {
 }
 
 func TestLoginExpireFooBarFailed(t *testing.T) {
+	stop := prepareMockServer()
+	defer stop()
 	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -296,6 +228,8 @@ func TestLoginExpireFooBarFailed(t *testing.T) {
 }
 
 func TestFooBarSuccessAfterRefresh(t *testing.T) {
+	stop := prepareMockServer()
+	defer stop()
 	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
@@ -319,6 +253,8 @@ func TestFooBarSuccessAfterRefresh(t *testing.T) {
 }
 
 func TestRefreshFailureDueToExpire(t *testing.T) {
+	stop := prepareMockServer()
+	defer stop()
 	pool, conn := prepareMocks(t)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)

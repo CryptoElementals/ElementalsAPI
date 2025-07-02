@@ -10,6 +10,7 @@ import (
 	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/CryptoElementals/common/server/middlewares"
 	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/memstore"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -35,7 +36,44 @@ type Server struct {
 	cfg    *Config
 }
 
+func handleDefaultValue(cfg *Config) *Config {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+	if cfg.Port == 0 {
+		cfg.Port = 8080
+	}
+	if cfg.ServerMode == "" {
+		cfg.ServerMode = "development"
+	}
+	if cfg.SessionMaxAge == 0 {
+		cfg.SessionMaxAge = 180
+	}
+	if cfg.RefreshTokenMaxAge == 0 {
+		cfg.RefreshTokenMaxAge = 300
+	}
+	if cfg.ServiceName == "" {
+		cfg.ServiceName = "test-server"
+	}
+	return cfg
+}
+
+func DefaultConfig() *Config {
+	return handleDefaultValue(nil)
+}
+
+func DefaultSessionStore() sessions.Store {
+	return memstore.NewStore([]byte("test-secret"))
+}
+
 func New(cfg *Config, store sessions.Store) *Server {
+	if cfg == nil {
+		log.Fatal("nil config value")
+	}
+	if store == nil {
+		log.Fatal("nil session store")
+	}
+	cfg = handleDefaultValue(cfg)
 	wg := &sync.WaitGroup{}
 	login.SetTokenExpire(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge)
 	sessionName := "dill"

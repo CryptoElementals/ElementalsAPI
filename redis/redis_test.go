@@ -8,11 +8,14 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	Init(&RedisConfig{
-		Address:  "address",
-		Password: "password",
+	err := Init(&Config{
+		Address:  "10.9.23.165:6379",
+		Password: "qiaoyunb",
 		Size:     10,
 	})
+	if err != nil {
+		panic(err)
+	}
 	m.Run()
 }
 

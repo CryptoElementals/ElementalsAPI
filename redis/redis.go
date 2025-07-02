@@ -1,13 +1,14 @@
 package redis
 
 import (
+	"errors"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/gomodule/redigo/redis"
 )
 
-type RedisConfig struct {
+type Config struct {
 	Address  string `mapstructure:"address"`
 	Password string `mapstructure:"password"`
 	Size     int    `mapstructure:"size"`
@@ -32,7 +33,7 @@ var ErrNotFound = redis.ErrNil
 
 var globalPool RedisPool
 
-func Init(cfg *RedisConfig) {
+func Init(cfg *Config) error {
 	pool := &redis.Pool{
 		MaxIdle:     cfg.Size,
 		IdleTimeout: 240 * time.Second,
@@ -44,11 +45,29 @@ func Init(cfg *RedisConfig) {
 			return dial("tcp", cfg.Address, cfg.Password)
 		},
 	}
+	// do ping for quick redis error request
+	_, err := pool.Get().Do(PING_COMMAND)
+	if err != nil {
+		return err
+	}
 	globalPool = pool
+	return nil
 }
 
 func SetGlobalPool(pool RedisPool) {
 	globalPool = pool
+}
+
+func GetGlobalPool() RedisPool {
+	return globalPool
+}
+
+func GetRedigoPool() (*redis.Pool, error) {
+	p, ok := globalPool.(*redis.Pool)
+	if !ok {
+		return nil, errors.New("pool is not a valid redisgo redis pool")
+	}
+	return p, nil
 }
 
 func dial(network, address, password string) (redis.Conn, error) {

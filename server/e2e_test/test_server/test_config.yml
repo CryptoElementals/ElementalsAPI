@@ -1,0 +1,15 @@
+log:
+  development: true
+  level: debug
+
+redis:
+  address: redis_host
+  password: redis_pwd
+  size: 10
+
+server:
+  port: 20000
+  server-mode: debug
+  session-max-age: 5
+  refresh-token-max-age: 10
+  service-name: test-service
