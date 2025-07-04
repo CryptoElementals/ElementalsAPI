@@ -35,7 +35,7 @@ var codeTemplate = fmt.Sprintf(codeTemplateTemplate, "DILL", "DILL")
 const (
 	GET_LOGIN_CODE_LABEL = "GetLoginCode"
 	LOGIN_DILL_LABEL     = "LoginWeb3"
-	REFRESH_LABEL        = "Refresh"
+	REFRESH_LABEL        = "RefreshTokens"
 	SESSION_ADDR_KEY     = "addr"
 )
 
