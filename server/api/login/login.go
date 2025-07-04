@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/errors"
@@ -81,8 +82,8 @@ type LoginDillRequest struct {
 
 type LoginDillResponse struct {
 	api.BaseResponse
-	RefreshToken          string
-	RefreshTokenExpiresIn int // by second
+	RefreshToken               string
+	RefreshTokenExpirationTime int64 // timestamp
 }
 
 type LoginDillTask struct {
@@ -186,7 +187,7 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
 	}
 	task.Response.RefreshToken = refreshToken
-	task.Response.RefreshTokenExpiresIn = globalRefreshTokenMaxAge
+	task.Response.RefreshTokenExpirationTime = int64(globalRefreshTokenMaxAge) + time.Now().Unix()
 	return task.Response, nil
 }
 
