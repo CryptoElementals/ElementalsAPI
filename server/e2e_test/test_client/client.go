@@ -67,9 +67,9 @@ func main() {
 
 	log.Info("foo request success after login")
 	// login
-	refreshToken, refreshTokenExpire, accessTokenExpire := doLogin()
+	refreshToken, refreshTokenExpireTimeStamp, accessTokenExpire := doLogin()
 	// add one second to gurantee
-	refreshTokenExpireAt := time.Now().Add(time.Duration(refreshTokenExpire+1) * time.Second)
+	refreshTokenExpireAt := time.Unix(refreshTokenExpireTimeStamp+1, 0)
 	accessTokenExpireAt := time.Now().Add(time.Duration(accessTokenExpire+1) * time.Second)
 	// foo request success
 	doFooBar(200, true)
@@ -92,8 +92,8 @@ func main() {
 	waitUntil(refreshTokenExpireAt)
 	// can still refresh
 	refrehResp = doRefresh(200, refreshToken)
-	newRefreshTokenExpire := checkRefreshRespSuccessBody(refrehResp, refreshToken)
-	newRefreshTokenExpireAt := time.Now().Add(time.Duration(newRefreshTokenExpire+1) * time.Second)
+	newRefreshTokenExpireTimestamp := checkRefreshRespSuccessBody(refrehResp, refreshToken)
+	newRefreshTokenExpireAt := time.Unix(newRefreshTokenExpireTimestamp+1, 0)
 	// foo request success
 	doFooBar(200, true)
 
@@ -184,7 +184,7 @@ func checkCookieSet(resp *http.Response) int {
 	return 0
 }
 
-func doLogin() (string, int, int) {
+func doLogin() (string, int64, int) {
 	signingData, code := doGetCodeRequest()
 	sig, err := w.EthSign(signingData)
 	if err != nil {
@@ -212,8 +212,8 @@ func doLogin() (string, int, int) {
 	if loginResp.RefreshToken == "" {
 		log.Fatal("refresh token empty")
 	}
-	log.Infof("refresh token expire in: %d", loginResp.RefreshTokenExpiresIn)
-	return loginResp.RefreshToken, loginResp.RefreshTokenExpiresIn, accessTokenExpire
+	log.Infof("refresh token expire at: %d", loginResp.RefreshTokenExpirationTime)
+	return loginResp.RefreshToken, loginResp.RefreshTokenExpirationTime, accessTokenExpire
 }
 
 func doFooBar(expectedCode int, checkBody bool) {
@@ -237,7 +237,7 @@ func doFooBar(expectedCode int, checkBody bool) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if "BAR" != barResp.Bar {
+	if barResp.Bar != "BAR" {
 		log.Fatal("response not BAR")
 	}
 }
@@ -262,7 +262,7 @@ func doRefresh(expectedCode int, refreshToken string) *http.Response {
 	return resp
 }
 
-func checkRefreshRespSuccessBody(resp *http.Response, token string) int {
+func checkRefreshRespSuccessBody(resp *http.Response, token string) int64 {
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatal(err)
@@ -275,7 +275,7 @@ func checkRefreshRespSuccessBody(resp *http.Response, token string) int {
 	if token != refreshResp.RefreshToken {
 		log.Fatal("refresh token not equal")
 	}
-	return refreshResp.RefreshTokenExpiresIn
+	return refreshResp.RefreshTokenExpirationTime
 }
 
 func checkRefreshRespFailBody(resp *http.Response, token string) {

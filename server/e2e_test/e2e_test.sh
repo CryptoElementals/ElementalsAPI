@@ -19,4 +19,6 @@ kill $(jobs -p)
 
 cd ..
 rm -rf $test_dir
+
+echo all test success
 exit $ret

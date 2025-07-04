@@ -98,7 +98,7 @@ func doLogin(t *testing.T, w *wallet.Wallet, client *http.Client) string {
 	err = json.Unmarshal(respBytes, loginResp)
 	require.NoError(t, err)
 	require.NotEmpty(t, loginResp.RefreshToken)
-	require.Equal(t, loginResp.RefreshTokenExpiresIn, testRefreshExpire)
+	require.Equal(t, testRefreshExpire+time.Now().Unix(), loginResp.RefreshTokenExpirationTime)
 	return loginResp.RefreshToken
 }
 
@@ -139,7 +139,7 @@ func checkRefreshRespSuccessBody(t *testing.T, resp *http.Response, token string
 	err = json.Unmarshal(respBody, refreshResp)
 	require.NoError(t, err)
 	require.Equal(t, token, refreshResp.RefreshToken)
-	require.Equal(t, testRefreshExpire, refreshResp.RefreshTokenExpiresIn)
+	require.Equal(t, testRefreshExpire+time.Now().Unix(), refreshResp.RefreshTokenExpirationTime)
 }
 
 func prepareMockServer() func() error {
