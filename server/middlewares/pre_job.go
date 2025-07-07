@@ -33,6 +33,9 @@ func PreJobMiddleware() gin.HandlerFunc {
 				handleAbort(c, errors.ParamsJudgeError(err.Error()))
 				return
 			}
+			// 添加请求参数的debug日志
+			requestJson, _ := json.Marshal(params)
+			log.Debugf("Request body JSON: %s", string(requestJson))
 
 		case "multipart/form-data":
 			// log.Infof("processing multipart/form-data")
@@ -57,6 +60,10 @@ func PreJobMiddleware() gin.HandlerFunc {
 				log.Infof("No file uploaded or error: %v", err)
 			}
 
+			// 添加multipart请求参数的debug日志
+			requestJson, _ := json.Marshal(params)
+			log.Debugf("Multipart request params: %s", string(requestJson))
+
 		default:
 			handleAbort(c, errors.ParamsJudgeError("Unsupported Content-Type, must be application/json or multipart/form-data"))
 			return
@@ -65,7 +72,9 @@ func PreJobMiddleware() gin.HandlerFunc {
 		// 格式化参数（补 RequestUUID）
 		formatJsonParams(&params)
 
-		// log.Infof("request data: %v", params)
+		// 添加格式化后参数的debug日志
+		formattedJson, _ := json.Marshal(params)
+		log.Debugf("Formatted request params: %s", string(formattedJson))
 
 		// 校验 action 字段
 		action, myErr := actionCheck(&params)

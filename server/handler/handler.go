@@ -29,6 +29,7 @@ func Handle(c *gin.Context) {
 	if !ok {
 		res := api.MakeErrorResponse(errors.ParamsJudgeError("params assert failed"))
 		resJson, _ := json.Marshal(res)
+		log.Debugf("Error response params: %s", string(resJson))
 		log.Infof("Send response---> client %s, %s", c.ClientIP(), string(resJson))
 		c.Abort()
 		c.JSON(http.StatusBadRequest, res)
@@ -43,6 +44,7 @@ func Handle(c *gin.Context) {
 		res.SetSession(requestUUID)
 		res.SetAction(action + "Response")
 		resJson, _ := json.Marshal(res)
+		log.Debugf("Task creation error response: %s", string(resJson))
 		log.Infof("Send response---> client %s, %s", c.ClientIP(), string(resJson))
 		c.Abort()
 		c.JSON(http.StatusBadRequest, res)
@@ -53,6 +55,7 @@ func Handle(c *gin.Context) {
 	if err == nil {
 		resJson, err := json.Marshal(res)
 		if err == nil {
+			log.Debugf("Success response: %s", string(resJson))
 			log.Infof("Send response---> client %s, %s", c.ClientIP(), string(resJson))
 			c.JSON(http.StatusOK, res)
 			return
@@ -62,6 +65,7 @@ func Handle(c *gin.Context) {
 		res.SetSession(requestUUID)
 		res.SetAction(action + "Response")
 		resJson, _ := json.Marshal(res)
+		log.Debugf("Task execution error response: %s", string(resJson))
 		c.JSON(http.StatusOK, res)
 		log.Infof("Send response---> client %s, %s", c.ClientIP(), resJson)
 		return

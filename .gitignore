@@ -32,3 +32,8 @@ config.yaml*
 # log file
 *.log
 tj/
+
+# Test API sensitive files
+test/api/cookie.txt
+test/api/private.key
+test/api/refresh_token.txt

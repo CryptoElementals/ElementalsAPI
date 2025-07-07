@@ -105,6 +105,68 @@ if echo "$get_code_response" | grep -q "RetCode.*0"; then
                     else
                         echo "   ✗ RefreshTokens API failed"
                     fi
+                    
+                    # 测试IsWalletLoggedIn API - 有效token
+                    echo "6. Testing IsWalletLoggedIn API (有效token)..."
+                    is_logged_in_response=$(curl -s -X POST $SERVER_URL/ \
+                      -H "Content-Type: application/json" \
+                      -d "{
+                        \"Action\": \"IsWalletLoggedIn\",
+                        \"RefreshToken\": \"$REFRESH_TOKEN\"
+                      }" \
+                      -c "$COOKIE_FILE" -b "$COOKIE_FILE")
+                    
+                    echo "   Response: $is_logged_in_response"
+                    
+                    # 检查IsWalletLoggedIn响应
+                    if echo "$is_logged_in_response" | grep -q "RetCode.*0"; then
+                        echo "   ✓ IsWalletLoggedIn API working"
+                        
+                        # 检查是否登录
+                        WALLET_LOGGED_IN=$(echo "$is_logged_in_response" | grep -o '"WalletLoggedIn":true')
+                        if [ -n "$WALLET_LOGGED_IN" ]; then
+                            echo "   ✓ 钱包已登录"
+                            
+                            # 提取钱包地址
+                            ADDRESS_FROM_RESPONSE=$(echo "$is_logged_in_response" | grep -o '"Address":"[^"]*"' | cut -d'"' -f4)
+                            if [ -n "$ADDRESS_FROM_RESPONSE" ]; then
+                                echo "   ✓ 钱包地址: $ADDRESS_FROM_RESPONSE"
+                            fi
+                        else
+                            echo "   ⚠ 钱包未登录"
+                        fi
+                    else
+                        echo "   ✗ IsWalletLoggedIn API failed"
+                    fi
+                    
+                    # 测试IsWalletLoggedIn API - 无效token
+                    echo "7. Testing IsWalletLoggedIn API (无效token)..."
+                    invalid_token="invalid-refresh-token-12345"
+                    is_logged_in_response_invalid=$(curl -s -X POST $SERVER_URL/ \
+                      -H "Content-Type: application/json" \
+                      -d "{
+                        \"Action\": \"IsWalletLoggedIn\",
+                        \"RefreshToken\": \"$invalid_token\"
+                      }" \
+                      -c "$COOKIE_FILE" -b "$COOKIE_FILE")
+                    
+                    echo "   Response: $is_logged_in_response_invalid"
+                    
+                    # 检查无效token的响应
+                    if echo "$is_logged_in_response_invalid" | grep -q "RetCode.*0"; then
+                        echo "   ✓ IsWalletLoggedIn API working"
+                        
+                        # 检查是否登录
+                        WALLET_LOGGED_IN=$(echo "$is_logged_in_response_invalid" | grep -o '"WalletLoggedIn":false')
+                        if [ -n "$WALLET_LOGGED_IN" ]; then
+                            echo "   ✓ 钱包未登录 (符合预期)"
+                        else
+                            echo "   ⚠ 钱包状态异常"
+                        fi
+                    else
+                        echo "   ✗ IsWalletLoggedIn API failed"
+                    fi
+                    
                 else
                     echo "   ⚠ No RefreshToken found in response"
                 fi
@@ -126,5 +188,6 @@ echo ""
 echo "=== API Test Summary ==="
 echo "✓ Server is running on port 8080"
 echo "✓ API endpoints are accessible"
+echo "✓ IsWalletLoggedIn API tested with both valid and invalid tokens"
 echo ""
 echo "Test completed with auto-generated RequestUUID" 

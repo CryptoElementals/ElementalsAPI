@@ -1,19 +1,19 @@
 #!/bin/bash
 
-BIN_DIR="bin"
-PID_FILE="$BIN_DIR/server.pid"
+APP_NAME="beast-royale-server"
 
-if [ ! -f "$PID_FILE" ]; then
-  echo "No PID file found. Server may not be running."
-  exit 1
+# 查找所有相关进程（排除grep本身和stop.sh本身）
+PIDS=$(ps aux | grep "$APP_NAME" | grep -v grep | grep -v stop.sh | awk '{print $2}')
+
+if [ -z "$PIDS" ]; then
+    echo "No $APP_NAME process found."
+    exit 0
 fi
 
-PID=$(cat $PID_FILE)
-if kill -0 $PID 2>/dev/null; then
-  kill $PID
-  echo "Server (PID: $PID) stopped."
-  rm -f $PID_FILE
-else
-  echo "Process $PID not running. Removing stale PID file."
-  rm -f $PID_FILE
-fi 
+echo "Killing $APP_NAME processes: $PIDS"
+for PID in $PIDS; do
+    kill $PID
+    echo "Killed process $PID"
+done
+
+echo "All $APP_NAME processes stopped." 

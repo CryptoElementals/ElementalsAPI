@@ -29,7 +29,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "=== Restart completed successfully ==="
     echo "Server is running on port 8080"
-    echo "Check logs with: tail -f stdout.log"
+    echo "Check logs with: tail -f logs/beast-royale.log"
 else
     echo "   ✗ Failed to start server!"
     exit 1

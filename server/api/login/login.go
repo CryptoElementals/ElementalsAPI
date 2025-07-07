@@ -34,10 +34,11 @@ NONCE`
 var codeTemplate = fmt.Sprintf(codeTemplateTemplate, "DILL", "DILL")
 
 const (
-	GET_LOGIN_CODE_LABEL = "GetLoginCode"
-	LOGIN_DILL_LABEL     = "LoginWeb3"
-	REFRESH_LABEL        = "RefreshTokens"
-	SESSION_ADDR_KEY     = "addr"
+	GET_LOGIN_CODE_LABEL      = "GetLoginCode"
+	LOGIN_DILL_LABEL          = "LoginWeb3"
+	REFRESH_LABEL             = "RefreshTokens"
+	SESSION_ADDR_KEY          = "addr"
+	IS_WALLET_LOGGED_IN_LABEL = "IsWalletLoggedIn"
 )
 
 var globalSessionMaxAge int
@@ -64,6 +65,7 @@ func InitLoginApi(sessionMaxAge, refreshTokenMaxAge int, serviceName string, ref
 	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
 	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
 	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
+	api.Register(IS_WALLET_LOGGED_IN_LABEL, NewIsWalletLoggedInTask, api.VERIFYAUTH)
 	return nil
 }
 
