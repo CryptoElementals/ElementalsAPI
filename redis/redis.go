@@ -12,6 +12,9 @@ type Config struct {
 	Address  string `mapstructure:"address"`
 	Password string `mapstructure:"password"`
 	Size     int    `mapstructure:"size"`
+
+	// 过期时间配置（秒）
+	SessionExpire int `mapstructure:"session-expire"` // 会话过期时间
 }
 
 type RedisConn = redis.Conn
@@ -31,8 +34,12 @@ const (
 )
 
 var globalPool RedisPool
+var globalConfig *Config
 
 func Init(cfg *Config) error {
+	// 保存配置到全局变量
+	globalConfig = cfg
+
 	pool := &redis.Pool{
 		MaxIdle:     cfg.Size,
 		IdleTimeout: 240 * time.Second,
@@ -144,4 +151,20 @@ func Ping() error {
 		return err
 	}
 	return nil
+}
+
+// 便捷函数：使用会话过期时间设置键值
+func SetSession(key string, val string) error {
+	if globalConfig == nil {
+		return errors.New("redis config not initialized")
+	}
+	return Set(key, val, globalConfig.SessionExpire)
+}
+
+// 获取会话过期时间
+func GetSessionExpire() int {
+	if globalConfig == nil {
+		return 43200 // 默认12小时
+	}
+	return globalConfig.SessionExpire
 }
