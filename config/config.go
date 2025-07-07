@@ -126,7 +126,7 @@ func setDefaultValues(cfg *AppConfig) {
 		cfg.ServerCfg.RefreshTokenMaxAge = 300
 	}
 	if cfg.ServerCfg.ServiceName == "" {
-		cfg.ServerCfg.ServiceName = "beast-royale-server"
+		cfg.ServerCfg.ServiceName = "DILL"
 	}
 }
 
