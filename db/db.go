@@ -39,3 +39,7 @@ func Init(cfg *Config) error {
 
 	return nil
 }
+
+func Get() *gorm.DB {
+	return db
+}
