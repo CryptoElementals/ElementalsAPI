@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
@@ -100,7 +101,7 @@ func NewLoginDillRequest(data *map[string]interface{}) (*LoginDillRequest, error
 	if err != nil {
 		return nil, err
 	}
-	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
+	req.RequestUUID = (*data)["RequestUUID"].(string)
 
 	return req, nil
 }
@@ -121,7 +122,7 @@ func NewLoginDillTask(data *map[string]interface{}) (api.Task, error) {
 	}
 	task := &LoginDillTask{
 		Request:  req,
-		Response: NewLoginDillResponse(req.BaseRequest.RequestUUID), //respose里加上request的uuid，与cookieValue两回事
+		Response: NewLoginDillResponse(req.RequestUUID), //respose里加上request的uuid，与cookieValue两回事
 	}
 
 	validate := validator.New()
@@ -166,6 +167,7 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 		}
 		return nil, err
 	}
+
 	var refreshToken string
 	//2 generate refresh token
 	err = withRetry(10, func(retryTime int) error {
@@ -176,6 +178,13 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 	if err != nil {
 		log.Errorf("save refresh token failed, err: %v", err)
 		return nil, err
+	}
+
+	// 新增：自动创建用户档案，用户名用地址
+	if task.Request.Address != "" {
+		// 将地址转换为小写
+		lowercaseAddress := strings.ToLower(task.Request.Address)
+		_, _ = db.GetOrCreateUserProfile(lowercaseAddress)
 	}
 
 	//3 set address to session object
@@ -209,4 +218,12 @@ func withRetry(retryCount int, do func(retryTime int) error) error {
 	}
 	// return the last error
 	return err
+}
+
+// RegisterLoginApis 注册登录相关API
+func RegisterLoginApis() {
+	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
+	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
+	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
+	api.Register(IS_WALLET_LOGGED_IN_LABEL, NewIsWalletLoggedInTask, api.VERIFYAUTH)
 }

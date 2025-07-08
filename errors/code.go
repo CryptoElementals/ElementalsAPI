@@ -39,6 +39,9 @@ var (
 	c_RefreshTokenInvalid ErrorCode = 8064 // refresh token无效
 	c_PasswordInvalid     ErrorCode = 8314 // 密码无效
 	c_StorageTypeInvalid  ErrorCode = 8371 // 存储类型无效
+	c_UserNotFound        ErrorCode = 8372 // 用户不存在
+	c_UserNameTooLong     ErrorCode = 8373 // 用户名过长
+	c_InvalidAvatarURL    ErrorCode = 8374 // 头像URL无效
 
 	// Server
 	s_ActionError                ErrorCode = 8433 // [行为]出错（目前被滥用，考虑将一部分拆到s_CallThirdApiError
@@ -50,6 +53,8 @@ var (
 	s_SaveRefreshTokenFailed     ErrorCode = 8443 // [行为]保存session失败
 	s_GetCloudsFailed            ErrorCode = 8450 // [行为]从数据库访问cloud信息失败
 	s_GetChainCombinationsFailed ErrorCode = 8451 // [行为]从数据库访问ChainCombination信息失败
+	s_GetUserProfileFailed       ErrorCode = 8452 // [行为]获取用户档案失败
+	s_SaveUserProfileFailed      ErrorCode = 8453 // [行为]保存用户档案失败
 
 	// Third Party
 	t_GetBuyPriceFailed ErrorCode = 8090 // 获取购买价格失败
@@ -126,6 +131,18 @@ func RefreshTokenInvalid(a ...interface{}) Error {
 	return Error{code: c_RefreshTokenInvalid, items: a, message: "Refresh token [%s] invalid or expired"}
 }
 
+func UserNotFound(a ...interface{}) Error {
+	return Error{code: c_UserNotFound, items: a, message: "User [%s] not found"}
+}
+
+func UserNameTooLong(a ...interface{}) Error {
+	return Error{code: c_UserNameTooLong, items: a, message: "User name [%s] too long, max length is 15"}
+}
+
+func InvalidAvatarURL(a ...interface{}) Error {
+	return Error{code: c_InvalidAvatarURL, items: a, message: "Avatar URL [%s] is invalid"}
+}
+
 func ActionError(a ...interface{}) Error {
 	return Error{code: s_ActionError, items: a, message: "Action error: "}
 }
@@ -168,6 +185,14 @@ func ListDeploymentsFailed(a ...interface{}) Error {
 
 func GetRealTimeRewardsFailed(a ...interface{}) Error {
 	return Error{code: t_GetRealTimeRewardsFailed, items: a, message: "GetRealTimeRewards From Contract Failed"}
+}
+
+func GetUserProfileFailed(a ...interface{}) Error {
+	return Error{code: s_GetUserProfileFailed, items: a, message: "get user profile failed"}
+}
+
+func SaveUserProfileFailed(a ...interface{}) Error {
+	return Error{code: s_SaveUserProfileFailed, items: a, message: "save user profile failed"}
 }
 
 func OperateDbFailed(a ...interface{}) Error {

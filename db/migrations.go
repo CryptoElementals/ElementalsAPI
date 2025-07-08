@@ -1,0 +1,19 @@
+package db
+
+import (
+	dao "github.com/CryptoElementals/common/models"
+)
+
+func Migrate() error {
+	migrates := []any{
+		&dao.UserProfile{},
+		&dao.CardStat{},
+		// 以后有新表直接加在这里
+	}
+	// 可选：设置表引擎
+	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
+	if err != nil {
+		return err
+	}
+	return nil
+}

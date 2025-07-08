@@ -13,6 +13,7 @@ import (
 // InitConfig loads configuration from file and unmarshals into the provided struct
 func InitConfig(configPath string, cfg any) error {
 	viper.SetConfigFile(configPath)
+	viper.SetConfigType("yaml") // 明确设置配置文件类型
 	err := viper.ReadInConfig()
 	if err != nil {
 		return err

@@ -9,6 +9,8 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/server/api/login"
+	"github.com/CryptoElementals/common/server/api/match"
+	"github.com/CryptoElementals/common/server/api/user"
 	"github.com/CryptoElementals/common/server/middlewares"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/memstore"
@@ -87,6 +89,8 @@ func New(cfg *Config, store sessions.Store, refreshTokenCache cache.Cache) *Serv
 	if err != nil {
 		log.Fatal("login api initiation failed: %s", err.Error())
 	}
+	// 统一注册所有API
+	registerAllApis()
 	r := newRouter(wg, cfg.ServerMode, sessionName, store)
 	return &Server{
 		cfg: cfg,
@@ -144,4 +148,15 @@ func ginWaitGroup(wg *sync.WaitGroup) gin.HandlerFunc {
 func ginLogger() gin.HandlerFunc {
 	w := log.GlobalLogger().Writer()
 	return gin.LoggerWithWriter(w)
+}
+
+// registerAllApis 统一注册所有API
+func registerAllApis() {
+	// 注册登录相关API
+	login.RegisterLoginApis()
+	// 注册用户相关API
+	user.RegisterUserApis()
+	// 注册匹配相关API
+	match.RegisterMatchApis()
+	// 以后有其他API模块，直接在这里添加即可
 }
