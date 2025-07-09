@@ -18,6 +18,20 @@
 - **认证**: Cookie 认证
 - **文档**: 参考现有代码
 
+#### HasCollectedDailyReward
+判断用户是否领取过今日奖励。
+
+- **Action**: `HasCollectedDailyReward`
+- **认证**: Cookie 认证
+- **文档**: [每日奖励API文档](docs/daily_reward_api.md)
+
+#### CollectDailyReward
+用户领取今日奖励。
+
+- **Action**: `CollectDailyReward`
+- **认证**: Cookie 认证
+- **文档**: [每日奖励API文档](docs/daily_reward_api.md)
+
 ### 登录相关 API
 
 - `GetLoginCode`: 获取登录验证码
@@ -48,6 +62,9 @@ Then run: `cd ./sever/e2e_test && bash -c e2e_test.sh`
 
 # 测试 SetUserProfile API
 ./test/api/script/test_set_user_profile.sh
+
+# 测试每日奖励相关 API
+./test/api/script/test_daily_reward.sh
 ```
 
 ## 开发

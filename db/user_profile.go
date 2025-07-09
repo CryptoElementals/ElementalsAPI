@@ -1,6 +1,8 @@
 package db
 
 import (
+	"time"
+
 	dao "github.com/CryptoElementals/common/models"
 )
 
@@ -40,4 +42,33 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 		}
 	}
 	return &userProfile, nil
+}
+
+// HasCollectedDailyReward 检查用户是否已领取今日奖励
+func HasCollectedDailyReward(address string) (bool, error) {
+	userProfile, err := GetUserProfileByAddress(address)
+	if err != nil {
+		return false, err
+	}
+
+	// 如果从未领取过奖励，返回false
+	if userProfile.CollectedRewardAt == nil {
+		return false, nil
+	}
+
+	// 检查领取时间是否是今天
+	now := time.Now()
+	collectedTime := *userProfile.CollectedRewardAt
+
+	// 比较年月日是否相同
+	return now.Year() == collectedTime.Year() &&
+		now.YearDay() == collectedTime.YearDay(), nil
+}
+
+// UpdateDailyRewardCollection 更新用户每日奖励领取时间
+func UpdateDailyRewardCollection(address string) error {
+	now := time.Now()
+	return Get().Model(&dao.UserProfile{}).
+		Where("address = ?", address).
+		Update("collected_reward_at", now).Error
 }

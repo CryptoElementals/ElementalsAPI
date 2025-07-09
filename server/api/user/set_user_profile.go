@@ -116,4 +116,6 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 func RegisterUserApis() {
 	api.Register(SET_USER_PROFILE_LABEL, NewSetUserProfileTask, api.COOKIEAUTH)
 	api.Register("GetUserProfile", NewGetUserProfileTask, api.NOAUTH)
+	api.Register("HasCollectedDailyReward", NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
+	api.Register("CollectDailyReward", NewCollectDailyRewardTask, api.COOKIEAUTH)
 }

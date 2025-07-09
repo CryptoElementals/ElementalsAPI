@@ -109,17 +109,17 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 验证匹配状态
-	if playerMatch.Status != "matched" {
-		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = "匹配状态不正确，无法确认战斗"
-		return task.Response, nil
-	}
-
 	// 检查玩家是否已经确认过
 	if playerMatch.Status == "confirmed" {
 		task.Response.BaseResponse.RetCode = 1006
 		task.Response.BaseResponse.Message = "您已经确认过战斗"
+		return task.Response, nil
+	}
+
+	// 验证匹配状态
+	if playerMatch.Status != "matched" {
+		task.Response.BaseResponse.RetCode = 1004
+		task.Response.BaseResponse.Message = "匹配状态不正确，无法确认战斗"
 		return task.Response, nil
 	}
 
