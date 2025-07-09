@@ -105,8 +105,9 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 func RegisterMatchApis() {
 	api.Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, api.COOKIEAUTH)
 	api.Register(CHECK_MATCH_STATUS_LABEL, NewCheckMatchStatusTask, api.COOKIEAUTH)
-	api.Register(LEAVE_QUEUE_LABEL, NewLeaveQueueTask, api.COOKIEAUTH)
+	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
 	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
 	api.Register(CANCEL_MATCH_LABEL, NewCancelMatchTask, api.COOKIEAUTH)
 	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
+	api.Register(GET_MATCH_INFO_LABEL, NewGetMatchInfoTask, api.COOKIEAUTH)
 }

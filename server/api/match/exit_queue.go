@@ -8,28 +8,27 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const LEAVE_QUEUE_LABEL = "LeaveQueue"
+const EXIT_QUEUE_LABEL = "ExitQueue"
 
-// LeaveQueueRequest 请求结构体
-type LeaveQueueRequest struct {
+// ExitQueueRequest 请求结构体
+type ExitQueueRequest struct {
 	api.BaseRequest
 	Mode string `mapstructure:"Mode" validate:"required"`
 }
 
-// LeaveQueueResponse 响应结构体
-type LeaveQueueResponse struct {
+// ExitQueueResponse 响应结构体
+type ExitQueueResponse struct {
 	api.BaseResponse
-	Success bool `json:"success"`
 }
 
-type LeaveQueueTask struct {
-	Request  *LeaveQueueRequest
-	Response *LeaveQueueResponse
+type ExitQueueTask struct {
+	Request  *ExitQueueRequest
+	Response *ExitQueueResponse
 }
 
 // 解码请求
-func NewLeaveQueueRequest(data *map[string]interface{}) (*LeaveQueueRequest, error) {
-	req := &LeaveQueueRequest{}
+func NewExitQueueRequest(data *map[string]interface{}) (*ExitQueueRequest, error) {
+	req := &ExitQueueRequest{}
 	err := mapstructure.Decode(*data, &req)
 	if err != nil {
 		return nil, err
@@ -38,23 +37,23 @@ func NewLeaveQueueRequest(data *map[string]interface{}) (*LeaveQueueRequest, err
 	return req, nil
 }
 
-func NewLeaveQueueResponse(sessionId string) *LeaveQueueResponse {
-	return &LeaveQueueResponse{
+func NewExitQueueResponse(sessionId string) *ExitQueueResponse {
+	return &ExitQueueResponse{
 		BaseResponse: api.BaseResponse{
-			Action:      LEAVE_QUEUE_LABEL + "Response",
+			Action:      EXIT_QUEUE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewLeaveQueueTask(data *map[string]interface{}) (api.Task, error) {
-	req, err := NewLeaveQueueRequest(data)
+func NewExitQueueTask(data *map[string]interface{}) (api.Task, error) {
+	req, err := NewExitQueueRequest(data)
 	if err != nil {
 		return nil, err
 	}
-	task := &LeaveQueueTask{
+	task := &ExitQueueTask{
 		Request:  req,
-		Response: NewLeaveQueueResponse(req.BaseRequest.RequestUUID),
+		Response: NewExitQueueResponse(req.BaseRequest.RequestUUID),
 	}
 
 	validate := validator.New()
@@ -66,14 +65,13 @@ func NewLeaveQueueTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *LeaveQueueTask) Run(c *gin.Context) (api.Response, error) {
+func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	// 获取玩家地址（从认证中间件设置的params中获取）
 	_params, _ := c.Get("params")
 	params, ok := _params.(*map[string]interface{})
 	if !ok {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "参数解析失败"
-		task.Response.Success = false
 		return task.Response, nil
 	}
 
@@ -81,7 +79,6 @@ func (task *LeaveQueueTask) Run(c *gin.Context) (api.Response, error) {
 	if !ok || address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "未获取到玩家地址"
-		task.Response.Success = false
 		return task.Response, nil
 	}
 
@@ -93,11 +90,9 @@ func (task *LeaveQueueTask) Run(c *gin.Context) (api.Response, error) {
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "离开匹配队列失败: " + err.Error()
-		task.Response.Success = false
 		return task.Response, nil
 	}
 
-	task.Response.Success = true
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "已成功离开匹配队列"
 
