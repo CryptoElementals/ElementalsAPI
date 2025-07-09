@@ -13,7 +13,7 @@ const JOIN_QUEUE_LABEL = "JoinQueue"
 // JoinQueueRequest 请求结构体
 type JoinQueueRequest struct {
 	api.BaseRequest
-	Model     string `mapstructure:"Model" validate:"required"`
+	Mode      string `mapstructure:"Mode" validate:"required"`
 	PublicKey string `mapstructure:"PublicKey" validate:"required"`
 }
 
@@ -87,7 +87,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	matchService := services.NewMatchQueueService()
 
 	// 加入匹配队列（传递model、address和publickey）
-	err := matchService.JoinQueue(task.Request.Model, address, task.Request.PublicKey)
+	err := matchService.JoinQueue(task.Request.Mode, address, task.Request.PublicKey)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "加入匹配队列失败: " + err.Error()
@@ -106,4 +106,7 @@ func RegisterMatchApis() {
 	api.Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, api.COOKIEAUTH)
 	api.Register(CHECK_MATCH_STATUS_LABEL, NewCheckMatchStatusTask, api.COOKIEAUTH)
 	api.Register(LEAVE_QUEUE_LABEL, NewLeaveQueueTask, api.COOKIEAUTH)
+	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
+	api.Register(CANCEL_MATCH_LABEL, NewCancelMatchTask, api.COOKIEAUTH)
+	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
 }

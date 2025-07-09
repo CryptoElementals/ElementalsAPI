@@ -13,7 +13,7 @@ const LEAVE_QUEUE_LABEL = "LeaveQueue"
 // LeaveQueueRequest 请求结构体
 type LeaveQueueRequest struct {
 	api.BaseRequest
-	Model string `mapstructure:"Model" validate:"required"`
+	Mode string `mapstructure:"Mode" validate:"required"`
 }
 
 // LeaveQueueResponse 响应结构体
@@ -89,7 +89,7 @@ func (task *LeaveQueueTask) Run(c *gin.Context) (api.Response, error) {
 	matchService := services.NewMatchQueueService()
 
 	// 离开匹配队列（传递model和address）
-	err := matchService.LeaveQueue(task.Request.Model, address)
+	err := matchService.LeaveQueue(task.Request.Mode, address)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "离开匹配队列失败: " + err.Error()

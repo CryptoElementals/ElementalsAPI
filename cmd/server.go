@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/cron"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
@@ -89,6 +91,21 @@ func startServer() error {
 		return fmt.Errorf("failed to initialize Redis cache: %w", err)
 	}
 
+	// 注册匹配任务
+	cron.RegisterMatchmakingTask()
+
+	// 创建并启动调度器
+	scheduler := cron.NewScheduler()
+	scheduler.RegisterAllTasks()
+
+	// 创建上下文用于优雅关闭
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 启动调度器
+	scheduler.Start(ctx)
+	log.Info("匹配任务调度器已启动")
+
 	// Create and start server
 	log.Infof("Starting BeastRoyale backend server on port: %d", cfg.ServerCfg.Port)
 	svr := server.New(&cfg.ServerCfg, sessionStore, redisCache)
@@ -100,6 +117,9 @@ func startServer() error {
 	<-sigs
 
 	log.Info("Received shutdown signal, closing server...")
+
+	// 取消上下文，停止调度器
+	cancel()
 
 	// Gracefully shutdown server
 	if err := svr.Stop(); err != nil {

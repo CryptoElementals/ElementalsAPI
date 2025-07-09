@@ -1,6 +1,7 @@
 package match
 
 import (
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
@@ -13,14 +14,16 @@ const CHECK_MATCH_STATUS_LABEL = "CheckMatchStatus"
 // CheckMatchStatusRequest 请求结构体
 type CheckMatchStatusRequest struct {
 	api.BaseRequest
-	Model string `mapstructure:"Model" validate:"required"`
+	Mode string `mapstructure:"Mode" validate:"required"`
 }
 
 // CheckMatchStatusResponse 响应结构体
 type CheckMatchStatusResponse struct {
 	api.BaseResponse
-	Status     string `json:"status"`      // waiting, not_in_queue
+	Status     string `json:"status"`      // waiting, matched, confirmed, not_in_queue
 	QueueCount int    `json:"queue_count"` // 当前队列中的玩家数量
+	MatchID    string `json:"match_id"`    // 匹配ID（如果有匹配）
+	RoomID     string `json:"room_id"`     // 房间ID（如果已确认）
 }
 
 type CheckMatchStatusTask struct {
@@ -88,7 +91,7 @@ func (task *CheckMatchStatusTask) Run(c *gin.Context) (api.Response, error) {
 	matchService := services.NewMatchQueueService()
 
 	// 获取当前队列
-	players, err := matchService.GetQueue(task.Request.Model)
+	players, err := matchService.GetQueue(task.Request.Mode)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "获取队列状态失败: " + err.Error()
@@ -108,7 +111,28 @@ func (task *CheckMatchStatusTask) Run(c *gin.Context) (api.Response, error) {
 	if inQueue {
 		task.Response.Status = "waiting"
 		task.Response.BaseResponse.Message = "玩家在匹配队列中等待"
+		task.Response.BaseResponse.RetCode = 0
+		return task.Response, nil
+	}
+
+	// 如果不在队列中，检查是否有匹配记录
+	activeMatch, err := db.GetActiveMatchByAddress(address)
+	if err == nil && activeMatch != nil {
+		// 有活跃的匹配记录
+		task.Response.Status = activeMatch.Status
+		task.Response.MatchID = activeMatch.MatchID
+		task.Response.RoomID = activeMatch.RoomID
+
+		switch activeMatch.Status {
+		case "matched":
+			task.Response.BaseResponse.Message = "玩家已匹配成功，等待确认"
+		case "confirmed":
+			task.Response.BaseResponse.Message = "玩家已确认战斗，房间已创建"
+		default:
+			task.Response.BaseResponse.Message = "玩家有匹配记录"
+		}
 	} else {
+		// 没有匹配记录
 		task.Response.Status = "not_in_queue"
 		task.Response.BaseResponse.Message = "玩家不在匹配队列中"
 	}

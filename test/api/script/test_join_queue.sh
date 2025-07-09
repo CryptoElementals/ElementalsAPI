@@ -23,7 +23,7 @@ join_queue_response=$(curl -s -X POST $SERVER_URL/ \
   -H "Content-Type: application/json" \
   -d "{
     \"Action\": \"JoinQueue\",
-    \"Model\": \"test_model\",
+    \"Mode\": \"PvP\",
     \"PublicKey\": \"test_public_key\"
   }")
 

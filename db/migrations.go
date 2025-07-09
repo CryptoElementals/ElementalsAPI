@@ -8,6 +8,7 @@ func Migrate() error {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
+		&dao.Match{},
 		// 以后有新表直接加在这里
 	}
 	// 可选：设置表引擎
