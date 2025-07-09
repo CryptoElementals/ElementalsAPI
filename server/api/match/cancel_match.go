@@ -2,6 +2,7 @@ package match
 
 import (
 	"github.com/CryptoElementals/common/db"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -92,9 +93,11 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
+	var currentPlayerMatch dao.Match
 	for _, match := range matches {
 		if match.Address == address {
 			found = true
+			currentPlayerMatch = match
 			break
 		}
 	}
@@ -105,10 +108,21 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 验证匹配状态，只能取消未确认的匹配
-	if len(matches) > 0 && matches[0].Status != "matched" {
+	// 检查当前玩家的状态，只有未确认的玩家才能取消
+	switch currentPlayerMatch.Status {
+	case "confirmed":
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = "只能取消未确认的匹配"
+		task.Response.BaseResponse.Message = "您已经确认，无法取消匹配"
+		return task.Response, nil
+	case "cancelled":
+		task.Response.BaseResponse.RetCode = 1006
+		task.Response.BaseResponse.Message = "匹配已被取消"
+		return task.Response, nil
+	case "matched":
+		// 可以取消，继续执行
+	default:
+		task.Response.BaseResponse.RetCode = 1007
+		task.Response.BaseResponse.Message = "匹配状态不正确，无法取消"
 		return task.Response, nil
 	}
 
