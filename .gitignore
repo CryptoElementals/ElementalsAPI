@@ -33,8 +33,3 @@ config.yaml*
 *.log
 tj/
 test/
-
-# Test API sensitive files
-test/api/cookie.txt
-test/api/private.key
-test/api/refresh_token.txt
