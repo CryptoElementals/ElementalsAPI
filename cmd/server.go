@@ -91,9 +91,6 @@ func startServer() error {
 		return fmt.Errorf("failed to initialize Redis cache: %w", err)
 	}
 
-	// 注册匹配任务
-	cron.RegisterMatchmakingTask()
-
 	// 创建并启动调度器
 	scheduler := cron.NewScheduler()
 	scheduler.RegisterAllTasks()
@@ -104,7 +101,7 @@ func startServer() error {
 
 	// 启动调度器
 	scheduler.Start(ctx)
-	log.Info("匹配任务调度器已启动")
+	log.Info("任务调度器已启动（包含匹配任务和对战处理任务）")
 
 	// Create and start server
 	log.Infof("Starting BeastRoyale backend server on port: %d", cfg.ServerCfg.Port)

@@ -6,10 +6,12 @@ import "time"
 type UserProfile struct {
 	Address           string     `gorm:"type:varchar(42);primaryKey;not null"`
 	Name              string     `gorm:"type:varchar(42);not null"`
-	AvatarURL         string     `gorm:"type:varchar(50)"`
+	AvatarURL         string     `gorm:"type:varchar(200)"`
+	BackgroundURL     string     `gorm:"type:varchar(200)"`
 	Points            int        `gorm:"default:0"`
 	TokenAmount       int        `gorm:"default:0"`
 	OverallGame       int        `gorm:"default:0"`
+	WinCount          int        `gorm:"default:0"`
 	WinningRate       float64    `gorm:"default:0.0"`
 	CollectedRewardAt *time.Time `gorm:"default:null"` // 记录用户领取每日奖励的时间
 	CreatedAt         time.Time  `gorm:"autoCreateTime"`

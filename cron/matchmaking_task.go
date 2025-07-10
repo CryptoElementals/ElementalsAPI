@@ -24,16 +24,14 @@ func NewMatchmakingTask() *MatchmakingTask {
 
 // Run 执行匹配任务
 func (t *MatchmakingTask) Run(ctx context.Context) {
-	log.Info("开始执行匹配任务...")
-
+	// 静默执行，只在成功匹配时输出日志
 	for _, mode := range t.modes {
 		err := t.matchService.ProcessMatchmaking(mode)
 		if err != nil {
 			log.Errorf("处理模式 %s 的匹配失败: %v", mode, err)
 		}
+		// 注意：成功匹配的日志会在 MatchQueueService 中输出
 	}
-
-	log.Info("匹配任务执行完成")
 }
 
 // RegisterMatchmakingTask 注册匹配任务

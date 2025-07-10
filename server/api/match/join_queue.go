@@ -1,6 +1,9 @@
 package match
 
 import (
+	"strings"
+
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
@@ -83,11 +86,29 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
+	// 将地址转换为小写，确保与数据库中存储的格式一致
+	lowercaseAddress := strings.ToLower(address)
+
+	// 检查用户token数量是否足够
+	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1003
+		task.Response.BaseResponse.Message = "获取用户信息失败"
+		return task.Response, nil
+	}
+
+	// 要求用户至少有1000个token才能加入匹配队列
+	if userProfile.TokenAmount < 1000 {
+		task.Response.BaseResponse.RetCode = 1004
+		task.Response.BaseResponse.Message = "Token数量不足，需要至少1000个token才能加入匹配队列"
+		return task.Response, nil
+	}
+
 	// 创建匹配队列服务
 	matchService := services.NewMatchQueueService()
 
 	// 加入匹配队列（传递model、address和publickey）
-	err := matchService.JoinQueue(task.Request.Mode, address, task.Request.PublicKey)
+	err = matchService.JoinQueue(task.Request.Mode, address, task.Request.PublicKey)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "加入匹配队列失败: " + err.Error()

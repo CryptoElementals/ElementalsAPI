@@ -159,7 +159,25 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 			return task.Response, nil
 		}
 
-		// 房间信息已记录在match表的RoomID字段中，无需额外的房间表
+		// 向room表插入初始数据，后续可以增加道具功能实现新的api更新stage0阶段
+		for _, match := range matches {
+			room := &dao.Room{
+				RoomID:      roomID,
+				Address:     match.Address,
+				Stage:       0,    // 初始阶段为0
+				Cards:       "",   // 初始卡牌为空
+				PlayerHP:    3000, // 初始血量为3000
+				Multiplier:  1.0,  // 初始倍率为1
+				IsStageOver: true, // 初始阶段0已完成
+			}
+
+			err = db.CreateRoom(room)
+			if err != nil {
+				task.Response.BaseResponse.RetCode = 1010
+				task.Response.BaseResponse.Message = "创建房间记录失败"
+				return task.Response, nil
+			}
+		}
 
 		task.Response.BaseResponse.RetCode = 0
 		task.Response.BaseResponse.Message = "战斗确认成功，房间已创建"

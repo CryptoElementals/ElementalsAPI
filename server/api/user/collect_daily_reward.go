@@ -20,7 +20,8 @@ type CollectDailyRewardRequest struct {
 
 type CollectDailyRewardResponse struct {
 	api.BaseResponse
-	Success bool `json:"Success"`
+	Success        bool `json:"Success"`
+	TokensReceived int  `json:"TokensReceived"` // 获得的token数量
 }
 
 type CollectDailyRewardTask struct {
@@ -98,6 +99,24 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, errors.ActionError("今日奖励已领取")
 	}
 
+	// 获取用户档案
+	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
+	if err != nil {
+		log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
+		return nil, errors.GetUserProfileFailed(lowercaseAddress)
+	}
+
+	// 给用户增加每日奖励token
+	dailyRewardTokens := 1000
+	userProfile.TokenAmount += dailyRewardTokens
+
+	// 更新用户档案（包括token数量和领取时间）
+	err = db.UpdateUserProfile(userProfile)
+	if err != nil {
+		log.Errorf("%s, failed to update user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
+		return nil, errors.SaveUserProfileFailed()
+	}
+
 	// 更新用户每日奖励领取时间
 	err = db.UpdateDailyRewardCollection(lowercaseAddress)
 	if err != nil {
@@ -106,6 +125,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	task.Response.Success = true
+	task.Response.TokensReceived = dailyRewardTokens
 	log.Infof("%s, daily reward collected successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
 	return task.Response, nil
 }

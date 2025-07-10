@@ -98,6 +98,7 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 	userProfile.Name = task.Request.Name
 	if task.Request.AvatarURL != "" {
 		userProfile.AvatarURL = task.Request.AvatarURL
+		userProfile.BackgroundURL = task.Request.AvatarURL // 后面改成根据AvatarURL构造BackgroundURL
 	}
 
 	// 保存到数据库
@@ -115,7 +116,8 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 // RegisterUserApis 注册用户相关API
 func RegisterUserApis() {
 	api.Register(SET_USER_PROFILE_LABEL, NewSetUserProfileTask, api.COOKIEAUTH)
-	api.Register("GetUserProfile", NewGetUserProfileTask, api.NOAUTH)
-	api.Register("HasCollectedDailyReward", NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
-	api.Register("CollectDailyReward", NewCollectDailyRewardTask, api.COOKIEAUTH)
+	api.Register(GET_USER_PROFILE_LABEL, NewGetUserProfileTask, api.NOAUTH)
+	api.Register(HAS_COLLECTED_DAILY_REWARD_LABEL, NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
+	api.Register(COLLECT_DAILY_REWARD_LABEL, NewCollectDailyRewardTask, api.COOKIEAUTH)
+	api.Register(LIST_AVATARS_LABEL, NewListAvatarsTask, api.NOAUTH)
 }

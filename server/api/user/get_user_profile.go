@@ -22,14 +22,15 @@ type GetUserProfileRequest struct {
 
 // UserInfo 用户信息结构体
 type UserInfo struct {
-	Address      string            `json:"Address"`
-	Name         string            `json:"Name"`
-	AvatarURL    string            `json:"AvatarURL"`
-	Points       int               `json:"Points"`
-	TokenAmount  int               `json:"TokenAmount"`
-	OverallGame  int               `json:"OverallGame"`
-	WinningRate  float64           `json:"WinningRate"`
-	CardStatInfo []db.CardStatInfo `json:"CardStatInfo"`
+	Address       string            `json:"Address"`
+	Name          string            `json:"Name"`
+	AvatarURL     string            `json:"AvatarURL"`
+	BackgroundURL string            `json:"BackgroundURL"`
+	Points        int               `json:"Points"`
+	TokenAmount   int               `json:"TokenAmount"`
+	OverallGame   int               `json:"OverallGame"`
+	WinningRate   float64           `json:"WinningRate"`
+	CardStatInfo  []db.CardStatInfo `json:"CardStatInfo"`
 }
 
 type GetUserProfileResponse struct {
@@ -112,14 +113,15 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 构建用户信息
 	task.Response.UserInfo = UserInfo{
-		Address:      userProfile.Address,
-		Name:         userProfile.Name,
-		AvatarURL:    userProfile.AvatarURL,
-		Points:       userProfile.Points,
-		TokenAmount:  userProfile.TokenAmount,
-		OverallGame:  userProfile.OverallGame,
-		WinningRate:  userProfile.WinningRate,
-		CardStatInfo: cardStatInfo,
+		Address:       userProfile.Address,
+		Name:          userProfile.Name,
+		AvatarURL:     userProfile.AvatarURL,
+		BackgroundURL: userProfile.BackgroundURL,
+		Points:        userProfile.Points,
+		TokenAmount:   userProfile.TokenAmount,
+		OverallGame:   userProfile.OverallGame,
+		WinningRate:   userProfile.WinningRate,
+		CardStatInfo:  cardStatInfo,
 	}
 
 	log.Infof("%s, user profile retrieved successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
