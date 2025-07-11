@@ -190,9 +190,6 @@ func (t *BattleTask) simulateAndUpdate(roomID string, currentStage uint, current
 		return err
 	}
 
-	// 输出详细的对战过程日志
-	t.logBattleDetails(roomID, currentStage, player1Cards, player2Cards, prevPlayer1.PlayerHP, prevPlayer2.PlayerHP, prevPlayer1.Multiplier, prevPlayer2.Multiplier, result)
-
 	// 更新当前stage的状态为已完成
 	err = t.updateRoomBattleState(roomID, player1.Address, currentStage, result.Player1HP, result.Player1Multiplier, true)
 	if err != nil {
@@ -283,16 +280,25 @@ func (t *BattleTask) createGameOverRecords(roomID, player1Addr, player2Addr stri
 		log.Infof("Updated user game stats for room %s, winner: %s, multiplier: %.2f", roomID, winner, winnerMaxMultiplier)
 	}
 
-	// 更新match状态为ended
-	err = db.UpdateMatchStatusByRoomID(roomID, "ended")
-	if err != nil {
-		log.Errorf("Failed to update match status to ended for room %s: %v", roomID, err)
-		// 不返回错误，避免影响对战逻辑
+	// 更新match状态为具体的胜负结果
+	var matchResult string
+	if winner == "tie" {
+		matchResult = "tie"
+	} else if winner == player1Addr {
+		matchResult = "win" // player1获胜
 	} else {
-		log.Infof("Updated match status to ended for room %s", roomID)
+		matchResult = "lose" // player2获胜
 	}
 
-	log.Infof("Game over records created for room %s, winner: %s, final multiplier: %.2f", roomID, winner, winnerMaxMultiplier)
+	err = db.UpdateMatchStatusByRoomID(roomID, matchResult)
+	if err != nil {
+		log.Errorf("Failed to update match status to %s for room %s: %v", matchResult, roomID, err)
+		// 不返回错误，避免影响对战逻辑
+	} else {
+		log.Infof("Updated match status to %s for room %s", matchResult, roomID)
+	}
+
+	log.Infof("Game over records created for room %s, winner: %s, final multiplier: %.2f, match result: %s", roomID, winner, winnerMaxMultiplier, matchResult)
 	return nil
 }
 
@@ -367,27 +373,6 @@ func (t *BattleTask) parseCardsString(cardsStr string) []string {
 // updateRoomBattleState 更新房间对战状态
 func (t *BattleTask) updateRoomBattleState(roomID, address string, stage uint, hp int, multiplier float64, isStageOver bool) error {
 	return db.UpdateRoomBattleStateByStage(roomID, address, stage, hp, multiplier, isStageOver)
-}
-
-// logBattleDetails 输出详细的对战过程日志
-func (t *BattleTask) logBattleDetails(roomID string, stage uint, player1Cards, player2Cards []string, initialPlayer1HP, initialPlayer2HP int, initialPlayer1Multiplier, initialPlayer2Multiplier float64, result *services.StageBattleResult) {
-	log.Infof("=== Battle Details for Room %s, Stage %d ===", roomID, stage)
-	log.Infof("Player1 Cards: %v, Player2 Cards: %v", player1Cards, player2Cards)
-	log.Infof("Initial HP: Player1=%d, Player2=%d", initialPlayer1HP, initialPlayer2HP)
-	log.Infof("Initial Multipliers: Player1=%.2f, Player2=%.2f", initialPlayer1Multiplier, initialPlayer2Multiplier)
-	log.Infof("Final HP: Player1=%d, Player2=%d", result.Player1HP, result.Player2HP)
-	log.Infof("Multipliers: Player1=%.2f, Player2=%.2f", result.Player1Multiplier, result.Player2Multiplier)
-
-	// 输出每张卡牌的对战结果
-	for i, battleResult := range result.BattleResults {
-		log.Infof("Round %d: %s vs %s", i+1, battleResult.Player1Card.Symbol, battleResult.Player2Card.Symbol)
-		log.Infof("  Result: %s", battleResult.ResultType)
-		log.Infof("  Effect: Player1=%d, Player2=%d", battleResult.EffectValue[0], battleResult.EffectValue[1])
-		log.Infof("  Reason: %s", battleResult.Reason)
-	}
-
-	log.Infof("Game Over: %v", result.IsGameOver)
-	log.Infof("=== End Battle Details ===")
 }
 
 // RegisterBattleTask 注册对战处理任务

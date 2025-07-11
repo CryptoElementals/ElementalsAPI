@@ -89,8 +89,8 @@ func UpdateUserGameStats(player1Address, player2Address, winner string, multipli
 	}
 
 	// 计算积分和代币变化
-	basePoints := 100
-	baseTokens := 100
+	basePoints := 1000
+	baseTokens := 1000
 
 	// 玩家1的统计更新
 	player1Profile.OverallGame++
