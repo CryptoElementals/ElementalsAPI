@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/CryptoElementals/common/pubsub/proto"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
 type PubSubServer struct {
@@ -42,20 +42,22 @@ type Subscriber struct {
 
 func NewPubSubServer() *PubSubServer {
 	server := grpc.NewServer()
-	pb.RegisterPubSubServiceServer(server, NewPubSubServer())
-	return &PubSubServer{
+
+	s := &PubSubServer{
 		topics:      make(map[string]*Topic),
 		subscribers: make(map[string]map[string]*Subscriber),
 		server:      server,
 	}
+	pb.RegisterPubSubServiceServer(server, s)
+	return s
 }
 
 func (s *PubSubServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic is required")
 	}
-	if len(req.Message) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "message is required")
+	if req.Event == nil {
+		return nil, status.Error(codes.InvalidArgument, "event is required")
 	}
 
 	s.mu.Lock()
@@ -72,7 +74,7 @@ func (s *PubSubServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb
 	message := &pb.Message{
 		MessageId:   uuid.New().String(),
 		Topic:       req.Topic,
-		Content:     []byte(req.Message),
+		Event:       req.Event,
 		Metadata:    req.Metadata,
 		Timestamp:   time.Now().Unix(),
 		PublisherId: "server", // 可以从ctx中获取实际的发布者ID

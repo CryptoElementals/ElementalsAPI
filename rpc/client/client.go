@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/CryptoElementals/common/pubsub/proto"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
 type PubSubClient struct {
@@ -46,13 +46,13 @@ func (c *PubSubClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *PubSubClient) Publish(topic, message string, metadata map[string]string) error {
+func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[string]string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	req := &pb.PublishRequest{
 		Topic:    topic,
-		Message:  []byte(message),
+		Event:    event,
 		Metadata: metadata,
 	}
 
@@ -102,7 +102,7 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, filters map[string]
 		fmt.Printf("[%s] %s: %s (ID: %s, Time: %s)\n",
 			msg.Topic,
 			msg.PublisherId,
-			msg.Content,
+			msg.Event,
 			msg.MessageId,
 			time.Unix(msg.Timestamp, 0).Format("2006-01-02 15:04:05"))
 

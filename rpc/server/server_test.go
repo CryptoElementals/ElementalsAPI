@@ -2,11 +2,10 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 
-	pb "github.com/CryptoElementals/common/pubsub/proto"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
 func TestPubSubServer(t *testing.T) {
@@ -15,8 +14,8 @@ func TestPubSubServer(t *testing.T) {
 	// 测试发布消息
 	t.Run("Publish", func(t *testing.T) {
 		req := &pb.PublishRequest{
-			Topic:   "test-topic",
-			Message: []byte("test message"),
+			Topic: "test-topic",
+			Event: &pb.Event{},
 		}
 
 		resp, err := server.Publish(context.Background(), req)
@@ -104,8 +103,8 @@ func TestPubSubServerConcurrency(t *testing.T) {
 				defer wg.Done()
 				for j := 0; j < messagesPerGoroutine; j++ {
 					req := &pb.PublishRequest{
-						Topic:   "concurrent-topic",
-						Message: []byte(fmt.Sprintf("message %d from goroutine %d", j, id)),
+						Topic: "concurrent-topic",
+						Event: &pb.Event{},
 					}
 					_, err := server.Publish(context.Background(), req)
 					if err != nil {
@@ -148,8 +147,8 @@ func TestPubSubServerValidation(t *testing.T) {
 	t.Run("PublishValidation", func(t *testing.T) {
 		// 测试空主题
 		req := &pb.PublishRequest{
-			Topic:   "",
-			Message: []byte("test message"),
+			Topic: "",
+			Event: &pb.Event{},
 		}
 		_, err := server.Publish(context.Background(), req)
 		if err == nil {
@@ -158,8 +157,8 @@ func TestPubSubServerValidation(t *testing.T) {
 
 		// 测试空消息
 		req = &pb.PublishRequest{
-			Topic:   "test-topic",
-			Message: []byte(""),
+			Topic: "test-topic",
+			Event: &pb.Event{},
 		}
 		_, err = server.Publish(context.Background(), req)
 		if err == nil {
