@@ -70,7 +70,7 @@ func (task *ListAvatarsTask) Run(c *gin.Context) (api.Response, error) {
 	address := task.Request.Address
 	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "用户地址不能为空"
+		task.Response.BaseResponse.Message = "User address cannot be empty"
 		return task.Response, nil
 	}
 
@@ -92,7 +92,7 @@ func (task *ListAvatarsTask) Run(c *gin.Context) (api.Response, error) {
 	// 设置响应数据
 	task.Response.AvatarURLs = defaultAvatarURLs
 	task.Response.BaseResponse.RetCode = 0
-	task.Response.BaseResponse.Message = "获取头像列表成功"
+	task.Response.BaseResponse.Message = "Avatar list retrieved successfully"
 
 	return task.Response, nil
 }

@@ -75,49 +75,64 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	params, ok := _params.(*map[string]interface{})
 	if !ok {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "参数解析失败"
+		task.Response.BaseResponse.Message = "Parameter parsing failed"
 		return task.Response, nil
 	}
 
 	address, ok := (*params)["Address"].(string)
 	if !ok || address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "未获取到玩家地址"
+		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	lowercaseAddress := strings.ToLower(address)
 
+	// 验证游戏模式
+	validModes := []string{"PvP", "Tournament"}
+	modeValid := false
+	for _, validMode := range validModes {
+		if task.Request.Mode == validMode {
+			modeValid = true
+			break
+		}
+	}
+	if !modeValid {
+		task.Response.BaseResponse.RetCode = 1005
+		task.Response.BaseResponse.Message = "Invalid game mode. Only PvP and Tournament are supported"
+		return task.Response, nil
+	}
+
 	// 检查用户token数量是否足够
 	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "获取用户信息失败"
+		task.Response.BaseResponse.Message = "Failed to get user information"
 		return task.Response, nil
 	}
 
 	// 要求用户至少有1000个token才能加入匹配队列
 	if userProfile.TokenAmount < 1000 {
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = "Token数量不足，需要至少1000个token才能加入匹配队列"
+		task.Response.BaseResponse.Message = "Insufficient tokens, need at least 1000 tokens to join match queue"
 		return task.Response, nil
 	}
 
 	// 创建匹配队列服务
 	matchService := services.NewMatchQueueService()
 
-	// 加入匹配队列（传递model、address和publickey）
-	err = matchService.JoinQueue(task.Request.Mode, address, task.Request.PublicKey)
+	// 加入匹配队列（传递小写地址）
+	err = matchService.JoinQueue(task.Request.Mode, lowercaseAddress, task.Request.PublicKey)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "加入匹配队列失败: " + err.Error()
+		task.Response.BaseResponse.Message = "Failed to join match queue: " + err.Error()
 		return task.Response, nil
 	}
 
 	// 暂时不进行匹配，只返回成功
 	task.Response.BaseResponse.RetCode = 0
-	task.Response.BaseResponse.Message = "已成功加入匹配队列"
+	task.Response.BaseResponse.Message = "Successfully joined match queue"
 
 	return task.Response, nil
 }
@@ -125,7 +140,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 // RegisterMatchApis 注册匹配相关API
 func RegisterMatchApis() {
 	api.Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, api.COOKIEAUTH)
-	api.Register(CHECK_MATCH_STATUS_LABEL, NewCheckMatchStatusTask, api.COOKIEAUTH)
+	api.Register(GET_MATCH_STATS_LABEL, NewGetMatchStatsTask, api.NOAUTH)
 	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
 	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
 	api.Register(CANCEL_MATCH_LABEL, NewCancelMatchTask, api.COOKIEAUTH)

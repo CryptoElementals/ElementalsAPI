@@ -22,7 +22,7 @@ type PlayerInfo struct {
 
 const (
 	MATCH_QUEUE_PREFIX = "match:queue:" // 匹配队列前缀
-	MATCH_THRESHOLD    = 2              // 匹配阈值（2人）
+	MATCH_THRESHOLD    = 3              // 匹配阈值（3人）
 )
 
 // MatchQueueService 匹配队列服务
@@ -47,13 +47,13 @@ func (s *MatchQueueService) JoinQueue(mode string, address string, publicKey str
 	// 检查是否已在队列
 	players, err := s.GetQueue(mode)
 	if err != nil {
-		log.Errorf("获取匹配队列失败: %v", err)
+		log.Errorf("Failed to get match queue: %v", err)
 		return err
 	}
 
 	for _, player := range players {
 		if player.Address == address {
-			return fmt.Errorf("玩家已在匹配队列中")
+			return fmt.Errorf("Player is already in match queue")
 		}
 	}
 
@@ -66,17 +66,17 @@ func (s *MatchQueueService) JoinQueue(mode string, address string, publicKey str
 	// 序列化为JSON
 	playerData, err := json.Marshal(playerInfo)
 	if err != nil {
-		log.Errorf("序列化玩家信息失败: %v", err)
+		log.Errorf("Failed to serialize player info: %v", err)
 		return err
 	}
 
 	// 加入队列（队尾）
 	_, err = conn.Do("RPUSH", queueKey, playerData)
 	if err != nil {
-		log.Errorf("加入匹配队列失败: %v", err)
+		log.Errorf("Failed to join match queue: %v", err)
 		return err
 	}
-	log.Infof("玩家 %s (mode: %s) 成功加入匹配队列", address, mode)
+	log.Infof("Player %s (mode: %s) successfully joined match queue", address, mode)
 	return nil
 }
 
@@ -90,21 +90,21 @@ func (s *MatchQueueService) LeaveQueue(mode string, address string) error {
 	// 检查用户是否已经匹配
 	matches, err := db.GetMatchesByAddress(address)
 	if err != nil {
-		log.Errorf("查询用户匹配记录失败: %v", err)
-		return fmt.Errorf("查询匹配状态失败")
+		log.Errorf("Failed to query user match records: %v", err)
+		return fmt.Errorf("Failed to query match status")
 	}
 
 	// 检查是否有未完成的匹配
 	for _, match := range matches {
 		if match.Mode == mode && (match.Status == "matched" || match.Status == "confirmed") {
-			return fmt.Errorf("您已经匹配成功，无法离开队列。请先确认或取消匹配")
+			return fmt.Errorf("You have been matched successfully and cannot leave the queue. Please confirm or cancel the match first")
 		}
 	}
 
 	// 获取队列中的所有玩家
 	players, err := s.GetQueue(mode)
 	if err != nil {
-		log.Errorf("获取匹配队列失败: %v", err)
+		log.Errorf("Failed to get match queue: %v", err)
 		return err
 	}
 
@@ -118,13 +118,13 @@ func (s *MatchQueueService) LeaveQueue(mode string, address string) error {
 	}
 
 	if !found {
-		return fmt.Errorf("玩家不在匹配队列中")
+		return fmt.Errorf("Player is not in match queue")
 	}
 
 	// 重新构建队列，排除要移除的玩家
 	_, err = conn.Do("DEL", queueKey)
 	if err != nil {
-		log.Errorf("清空队列失败: %v", err)
+		log.Errorf("Failed to clear queue: %v", err)
 		return err
 	}
 
@@ -133,17 +133,17 @@ func (s *MatchQueueService) LeaveQueue(mode string, address string) error {
 		if player.Address != address {
 			playerData, err := json.Marshal(player)
 			if err != nil {
-				log.Errorf("序列化玩家信息失败: %v", err)
+				log.Errorf("Failed to serialize player info: %v", err)
 				continue
 			}
 			_, err = conn.Do("RPUSH", queueKey, playerData)
 			if err != nil {
-				log.Errorf("重新添加玩家到队列失败: %v", err)
+				log.Errorf("Failed to re-add player to queue: %v", err)
 			}
 		}
 	}
 
-	log.Infof("玩家 %s (mode: %s) 已离开匹配队列", address, mode)
+	log.Infof("Player %s (mode: %s) has left match queue", address, mode)
 	return nil
 }
 
@@ -166,7 +166,7 @@ func (s *MatchQueueService) GetQueue(mode string) ([]PlayerInfo, error) {
 		var player PlayerInfo
 		err := json.Unmarshal([]byte(playerData), &player)
 		if err != nil {
-			log.Errorf("反序列化玩家信息失败: %v", err)
+			log.Errorf("Failed to deserialize player info: %v", err)
 			continue
 		}
 		players = append(players, player)
@@ -195,14 +195,25 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 	// 获取当前队列
 	players, err := s.GetQueue(mode)
 	if err != nil {
-		log.Errorf("获取匹配队列失败: %v", err)
+		log.Errorf("Failed to get match queue: %v", err)
 		return err
 	}
 
+	// 添加队列状态日志
+	log.Infof("Matchmaking task running for mode: %s, current queue size: %d", mode, len(players))
+
 	// 检查是否达到匹配阈值
 	if len(players) < MATCH_THRESHOLD {
+		log.Debugf("Queue size %d is less than threshold %d, no matching needed for mode: %s", len(players), MATCH_THRESHOLD, mode)
 		return nil // 人数不足，不进行匹配
 	}
+
+	// 记录队列中的玩家信息
+	playerAddresses := make([]string, len(players))
+	for i, player := range players {
+		playerAddresses[i] = player.Address
+	}
+	log.Infof("Found %d players in queue for mode %s: %v", len(players), mode, playerAddresses)
 
 	// 选择队列中第一个玩家
 	player1 := players[0]
@@ -211,6 +222,9 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 	rand.Seed(time.Now().UnixNano())
 	player2Index := rand.Intn(len(players)-1) + 1 // 从索引1开始，排除第一个玩家
 	player2 := players[player2Index]
+
+	log.Infof("Attempting to match players: %s (index 0) and %s (index %d) for mode: %s",
+		player1.Address, player2.Address, player2Index, mode)
 
 	// 创建匹配记录
 	matchID := uuid.New().String()
@@ -238,25 +252,42 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 	// 保存到数据库
 	err = db.CreateMatch(match1)
 	if err != nil {
-		log.Errorf("创建玩家1匹配记录失败: %v", err)
+		log.Errorf("Failed to create match record for player1: %v", err)
 		return err
 	}
+	log.Infof("Created match record for player1: %s (MatchID: %s)", player1.Address, matchID)
 
 	err = db.CreateMatch(match2)
 	if err != nil {
-		log.Errorf("创建玩家2匹配记录失败: %v", err)
+		log.Errorf("Failed to create match record for player2: %v", err)
 		return err
 	}
+	log.Infof("Created match record for player2: %s (MatchID: %s)", player2.Address, matchID)
 
 	// 从队列中移除这两个玩家
 	err = s.removePlayersFromQueue(mode, []string{player1.Address, player2.Address})
 	if err != nil {
-		log.Errorf("从队列移除匹配玩家失败: %v", err)
+		log.Errorf("Failed to remove matched players from queue: %v", err)
 		return err
 	}
 
-	log.Infof("成功匹配玩家 %s 和 %s (MatchID: %s, Mode: %s)",
+	log.Infof("Successfully matched players %s and %s (MatchID: %s, Mode: %s)",
 		player1.Address, player2.Address, matchID, mode)
+
+	// 记录匹配后的队列状态
+	remainingPlayers, err := s.GetQueue(mode)
+	if err != nil {
+		log.Errorf("Failed to get remaining queue after matching: %v", err)
+	} else {
+		log.Infof("Remaining players in queue for mode %s: %d", mode, len(remainingPlayers))
+		if len(remainingPlayers) > 0 {
+			remainingAddresses := make([]string, len(remainingPlayers))
+			for i, player := range remainingPlayers {
+				remainingAddresses[i] = player.Address
+			}
+			log.Infof("Remaining player addresses: %v", remainingAddresses)
+		}
+	}
 
 	return nil
 }
@@ -291,12 +322,12 @@ func (s *MatchQueueService) removePlayersFromQueue(mode string, addresses []stri
 		if !removeSet[player.Address] {
 			playerData, err := json.Marshal(player)
 			if err != nil {
-				log.Errorf("序列化玩家信息失败: %v", err)
+				log.Errorf("Failed to serialize player info: %v", err)
 				continue
 			}
 			_, err = conn.Do("RPUSH", queueKey, playerData)
 			if err != nil {
-				log.Errorf("重新添加玩家到队列失败: %v", err)
+				log.Errorf("Failed to re-add player to queue: %v", err)
 			}
 		}
 	}

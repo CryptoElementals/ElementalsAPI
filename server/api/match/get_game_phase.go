@@ -1,6 +1,8 @@
 package match
 
 import (
+	"strings"
+
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/server/api"
@@ -84,16 +86,19 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	params, ok := _params.(*map[string]interface{})
 	if !ok {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "参数解析失败"
+		task.Response.BaseResponse.Message = "Parameter parsing failed"
 		return task.Response, nil
 	}
 
 	address, ok := (*params)["Address"].(string)
 	if !ok || address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "未获取到玩家地址"
+		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil
 	}
+
+	// 将地址转换为小写，确保与数据库中存储的格式一致
+	lowercaseAddress := strings.ToLower(address)
 
 	// 创建匹配队列服务
 	matchService := services.NewMatchQueueService()
@@ -110,7 +115,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		}
 
 		for _, player := range players {
-			if player.Address == address {
+			if strings.ToLower(player.Address) == lowercaseAddress {
 				inQueue = true
 				currentMode = mode
 				break
@@ -125,16 +130,16 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		// 用户在队列中，阶段为Queueing
 		task.Response.Mode = currentMode
 		task.Response.PvPInfo.Phase = "Queueing"
-		task.Response.BaseResponse.Message = "玩家在匹配队列中"
+		task.Response.BaseResponse.Message = "Player is in match queue"
 		task.Response.BaseResponse.RetCode = 0
 		return task.Response, nil
 	}
 
 	// 检查用户是否有匹配记录
-	matches, err := db.GetMatchesByAddress(address)
+	matches, err := db.GetMatchesByAddress(lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "查询匹配记录失败"
+		task.Response.BaseResponse.Message = "Failed to query match records"
 		return task.Response, nil
 	}
 
@@ -154,26 +159,26 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		if activeMatch.Status == "matched" {
 			// 用户已匹配，等待确认
 			task.Response.PvPInfo.Phase = "Matching"
-			task.Response.BaseResponse.Message = "玩家已匹配，等待确认"
+			task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
 		} else if activeMatch.Status == "confirmed" && activeMatch.RoomID != "" {
 			// 双方已确认，进入战斗
 			task.Response.PvPInfo.Phase = "InBattle"
 			task.Response.PvPInfo.RoomId = activeMatch.RoomID
-			task.Response.BaseResponse.Message = "玩家已进入战斗"
+			task.Response.BaseResponse.Message = "Player has entered battle"
 		} else if activeMatch.Status == "confirmed" && activeMatch.RoomID == "" {
 			// 已确认但房间ID为空，可能是确认过程中
 			task.Response.PvPInfo.Phase = "Matching"
-			task.Response.BaseResponse.Message = "玩家已确认，等待对方确认"
+			task.Response.BaseResponse.Message = "Player confirmed, waiting for opponent confirmation"
 		} else {
 			// 其他状态（如cancelled等）
 			task.Response.PvPInfo.Phase = "None"
-			task.Response.BaseResponse.Message = "玩家无活跃游戏"
+			task.Response.BaseResponse.Message = "Player has no active game"
 		}
 	} else {
 		// 用户没有活跃的匹配记录
 		task.Response.Mode = "None"
 		task.Response.PvPInfo.Phase = "None"
-		task.Response.BaseResponse.Message = "玩家未参与游戏"
+		task.Response.BaseResponse.Message = "Player is not participating in any game"
 	}
 
 	task.Response.BaseResponse.RetCode = 0
