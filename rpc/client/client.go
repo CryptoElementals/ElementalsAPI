@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/CryptoElementals/common/log"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
@@ -66,7 +67,7 @@ func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[strin
 	return nil
 }
 
-func (c *PubSubClient) Subscribe(topic, subscriberID string, filters map[string]string) error {
+func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Event) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c.mu.Lock()
@@ -76,7 +77,6 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, filters map[string]
 	req := &pb.SubscribeRequest{
 		Topic:        topic,
 		SubscriberId: subscriberID,
-		Filters:      filters,
 	}
 
 	stream, err := c.client.Subscribe(ctx, req)
@@ -85,34 +85,21 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, filters map[string]
 		return fmt.Errorf("failed to subscribe: %v", err)
 	}
 
-	fmt.Printf("Subscribed to topic %s with ID %s\n", topic, subscriberID)
-
-	// 接收消息
+	log.Infof("Subscribed to topic %s with ID %s\n", topic, subscriberID)
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
-			fmt.Printf("Subscription to topic %s ended\n", topic)
-			break
+			return nil
 		}
 		if err != nil {
-			fmt.Printf("Error receiving message from topic %s: %v\n", topic, err)
-			break
+			return err
 		}
-
-		fmt.Printf("[%s] %s: %s (ID: %s, Time: %s)\n",
-			msg.Topic,
-			msg.PublisherId,
-			msg.Event,
-			msg.MessageId,
-			time.Unix(msg.Timestamp, 0).Format("2006-01-02 15:04:05"))
-
-		// 打印元数据
-		if len(msg.Metadata) > 0 {
-			fmt.Printf("  Metadata: %v\n", msg.Metadata)
+		select {
+		case <-ctx.Done():
+			return nil
+		case evtChan <- msg.Event:
 		}
 	}
-
-	return nil
 }
 
 func (c *PubSubClient) Unsubscribe(topic, subscriberID string) error {

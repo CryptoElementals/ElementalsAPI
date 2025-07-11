@@ -78,13 +78,31 @@ enum GameStatus {
     GAME_END = 3;
 }
 
+enum ResultPlayerStatus {
+    RESULT_PLAYER_KNOWN = 0;
+    RESULT_PLAYER_WIN = 1;
+    RESULT_PLAYER_LOSE = 2;
+    RESULT_PLAYER_TIE = 3;
+}
+
+message ResultPlayer{
+    PlayerAddress address = 1;
+    int32 token_delta = 2;
+    int32 points = 3;
+    ResultPlayerStatus status = 4;
+}
+
+message GameResult {
+    repeated ResultPlayer players = 1;
+}
+
 message GameInfo {
     string room_id = 1;
     string room_contract_address = 2;
     GameStatus status = 3;
     repeated string players = 4;
     repeated Round rounds = 5;
-    optional PlayerAddress winner_address = 6;
+    optional GameResult result = 6;
 }
 
 message Transaction {

@@ -46,7 +46,6 @@ message PublishResponse {
 message SubscribeRequest {
   string topic = 1;
   string subscriber_id = 2;
-  map<string, string> filters = 3;
 }
 
 // 消息
