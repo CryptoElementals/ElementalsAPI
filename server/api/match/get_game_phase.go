@@ -139,7 +139,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 查找用户当前活跃的匹配记录
-	var activeMatch *dao.Match
+	var activeMatch *dao.MatchPlayer
 	for _, match := range matches {
 		if match.Status == "matched" || match.Status == "confirmed" {
 			activeMatch = &match

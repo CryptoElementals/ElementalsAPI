@@ -55,14 +55,15 @@ message Card {
 
 message RoundPlayer {
     PlayerAddress playerAddress = 1;
-    repeated uint32 health = 2;
-    repeated uint32 multipliers = 3; 
-    optional RoundCards cards = 4;
+    repeated RoundCard cards = 2;
 }
 
-message RoundCards {
-    optional bytes submitted_commitment = 3;
-    repeated Card submitted_cards = 4;
+message RoundCard {
+    uint32 begin_health = 1;
+    uint32 end_health = 2;
+    uint32 multiplier = 3; 
+    bytes submitted_commitment = 4;
+    Card submitted_card = 5;
 }
 
 message Round {

@@ -93,7 +93,7 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
-	var currentPlayerMatch dao.Match
+	var currentPlayerMatch dao.MatchPlayer
 	for _, match := range matches {
 		if match.Address == address {
 			found = true

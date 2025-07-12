@@ -94,7 +94,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
-	var playerMatch dao.Match
+	var playerMatch dao.MatchPlayer
 	for _, match := range matches {
 		if match.Address == address {
 			found = true
