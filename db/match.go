@@ -4,28 +4,48 @@ import (
 	"fmt"
 
 	dao "github.com/CryptoElementals/common/models"
+	"gorm.io/gorm"
 )
+
+func preload(d *gorm.DB) *gorm.DB {
+	return d.Preload("Children", preload)
+}
 
 // CreateMatch 创建匹配记录（为单个用户创建）
 func CreateMatch(match *dao.Match) error {
 	return Get().Create(match).Error
 }
 
-// GetMatchesByMatchID 根据MatchID获取所有匹配记录（两个用户的记录）
-func GetMatchesByMatchID(matchID string) (dao.Match, error) {
-	var match dao.Match
-	err := Get().Where("id = ?", matchID).First(&match).Error
-	return match, err
-}
-
 // GetMatchByMatchID 根据MatchID获取匹配记录（返回第一个，用于兼容旧接口）
 func GetMatchByMatchID(matchID string) (*dao.MatchPlayer, error) {
 	var match dao.MatchPlayer
-	err := Get().Where("match_id = ?", matchID).First(&match).Error
+	err := Get().Where("id = ?", matchID).First(&match).Error
 	if err != nil {
 		return nil, err
 	}
 	return &match, nil
+}
+
+func LoadFullMatchByMatchID(matchID string) (*dao.Match, error) {
+	var match dao.Match
+	err := Get().Where("id = ?", matchID).
+		Preload("Players").
+		Preload("Players.Player").
+		Preload("Rounds").
+		Preload("Rounds.RoundPlayers").
+		Preload("Rounds.RoundPlayers.RoundCards").
+		Preload("Rounds.RoundPlayers.RoundCards.Card").
+		Preload("Rounds.RoundPlayers.RoundCards.Items").
+		Preload("Rounds.RoundPlayers.RoundCards.Items.Effects").
+		First(&match).Error
+	if err != nil {
+		return nil, err
+	}
+	return &match, nil
+}
+
+func SaveMatch(match *dao.Match) error {
+	return Get().Save(match).Error
 }
 
 // UpdateMatchRoomID 更新匹配记录的RoomID（更新所有相关记录）
