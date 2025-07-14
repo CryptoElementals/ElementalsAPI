@@ -6,10 +6,10 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-func GameInfoProtoToModel(gameInfoProto *proto.GameInfo) *dao.Match {
-	var players []dao.MatchPlayer
+func GameInfoProtoToModel(gameInfoProto *proto.GameInfo) *dao.GameInfo {
+	var players []dao.GamePlayer
 	for _, player := range gameInfoProto.Players {
-		players = append(players, dao.MatchPlayer{
+		players = append(players, dao.GamePlayer{
 			MatchID:       uint(gameInfoProto.RoomId),
 			WalletAddress: player.WalletAddress,
 			TempAddress:   player.TemporaryAddress,
@@ -23,11 +23,11 @@ func GameInfoProtoToModel(gameInfoProto *proto.GameInfo) *dao.Match {
 			Status:      round.Status.String(),
 		}
 		for _, roundPlayer := range round.Players {
-			daoRoundPlayer := dao.RoundPlayer{
+			daoRoundPlayer := dao.PlayerRoundInfo{
 				RoundID: uint(gameInfoProto.RoomId),
 			}
 			for _, roundCard := range roundPlayer.Cards {
-				daoRoundCards := dao.RoundCard{
+				daoRoundCards := dao.RoundSubmittedCard{
 					CardCommtiment: hexutil.Encode(roundCard.SubmittedCommitment),
 					Card: dao.Card{
 						BaseModel: dao.BaseModel{
@@ -52,9 +52,9 @@ func GameInfoProtoToModel(gameInfoProto *proto.GameInfo) *dao.Match {
 		rounds = append(rounds, daoRound)
 	}
 
-	return &dao.Match{
+	return &dao.GameInfo{
 		RoomContract: gameInfoProto.RoomContractAddress,
-		Mode:         gameInfoProto.GameType.String(),
+		Type:         gameInfoProto.GameType.String(),
 		Status:       uint(gameInfoProto.Status),
 		Players:      players,
 		Rounds:       rounds,
