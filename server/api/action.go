@@ -1,6 +1,11 @@
 package api
 
-import "github.com/gin-gonic/gin"
+import (
+	"context"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
 
 type AuthType uint8
 
@@ -13,6 +18,12 @@ const (
 
 type Task interface {
 	Run(c *gin.Context) (Response, error)
+}
+
+// SSETask interface used for Server-Sent Events
+type SSETask interface {
+	Task
+	RunSSE(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error
 }
 
 type creator func(data *map[string]interface{}) (Task, error)
