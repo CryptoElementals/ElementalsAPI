@@ -77,3 +77,8 @@ func GetActiveMatchByAddress(address string) (*dao.MatchPlayer, error) {
 	}
 	return &match, nil
 }
+
+// UpdateMatchStatusByRoomID 根据RoomID更新匹配记录状态
+func UpdateMatchStatusByRoomID(roomID string, status string) error {
+	return Get().Model(&dao.Match{}).Where("room_id = ?", roomID).Update("status", status).Error
+}

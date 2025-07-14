@@ -202,3 +202,16 @@ func validateServerConfig(cfg *server.Config) error {
 
 	return nil
 }
+
+// 全局配置变量
+var globalConfig *AppConfig
+
+// SetGlobalConfig 设置全局配置
+func SetGlobalConfig(cfg *AppConfig) {
+	globalConfig = cfg
+}
+
+// GetGlobalConfig 获取全局配置
+func GetGlobalConfig() *AppConfig {
+	return globalConfig
+}

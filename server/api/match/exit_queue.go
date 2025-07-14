@@ -1,6 +1,8 @@
 package match
 
 import (
+	"strings"
+
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
@@ -71,30 +73,48 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	params, ok := _params.(*map[string]interface{})
 	if !ok {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "参数解析失败"
+		task.Response.BaseResponse.Message = "Parameter parsing failed"
 		return task.Response, nil
 	}
 
 	address, ok := (*params)["Address"].(string)
 	if !ok || address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "未获取到玩家地址"
+		task.Response.BaseResponse.Message = "Failed to get player address"
+		return task.Response, nil
+	}
+
+	// 将地址转换为小写，确保与数据库中存储的格式一致
+	lowercaseAddress := strings.ToLower(address)
+
+	// 验证游戏模式
+	validModes := []string{"PvP", "Tournament"}
+	modeValid := false
+	for _, validMode := range validModes {
+		if task.Request.Mode == validMode {
+			modeValid = true
+			break
+		}
+	}
+	if !modeValid {
+		task.Response.BaseResponse.RetCode = 1005
+		task.Response.BaseResponse.Message = "Invalid game mode. Only PvP and Tournament are supported"
 		return task.Response, nil
 	}
 
 	// 创建匹配队列服务
 	matchService := services.NewMatchQueueService()
 
-	// 离开匹配队列（传递model和address）
-	err := matchService.LeaveQueue(task.Request.Mode, address)
+	// 离开匹配队列（传递小写地址）
+	err := matchService.LeaveQueue(task.Request.Mode, lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "离开匹配队列失败: " + err.Error()
+		task.Response.BaseResponse.Message = "Failed to leave match queue: " + err.Error()
 		return task.Response, nil
 	}
 
 	task.Response.BaseResponse.RetCode = 0
-	task.Response.BaseResponse.Message = "已成功离开匹配队列"
+	task.Response.BaseResponse.Message = "Successfully left match queue"
 
 	return task.Response, nil
 }

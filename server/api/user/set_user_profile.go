@@ -17,12 +17,11 @@ const SET_USER_PROFILE_LABEL = "SetUserProfile"
 type SetUserProfileRequest struct {
 	api.BaseRequest
 	Name      string `mapstructure:"Name" validate:"required,max=42"`
-	AvatarURL string `mapstructure:"AvatarURL" validate:"max=50"`
+	AvatarURL string `mapstructure:"AvatarURL" validate:"max=200"`
 }
 
 type SetUserProfileResponse struct {
 	api.BaseResponse
-	Success bool `json:"Success"`
 }
 
 type SetUserProfileTask struct {
@@ -98,6 +97,7 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 	userProfile.Name = task.Request.Name
 	if task.Request.AvatarURL != "" {
 		userProfile.AvatarURL = task.Request.AvatarURL
+		userProfile.BackgroundURL = task.Request.AvatarURL // 后面改成根据AvatarURL构造BackgroundURL
 	}
 
 	// 保存到数据库
@@ -108,14 +108,14 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	log.Infof("%s, user profile updated successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
-	task.Response.Success = true
 	return task.Response, nil
 }
 
 // RegisterUserApis 注册用户相关API
 func RegisterUserApis() {
 	api.Register(SET_USER_PROFILE_LABEL, NewSetUserProfileTask, api.COOKIEAUTH)
-	api.Register("GetUserProfile", NewGetUserProfileTask, api.NOAUTH)
-	api.Register("HasCollectedDailyReward", NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
-	api.Register("CollectDailyReward", NewCollectDailyRewardTask, api.COOKIEAUTH)
+	api.Register(GET_USER_PROFILE_LABEL, NewGetUserProfileTask, api.NOAUTH)
+	api.Register(HAS_COLLECTED_DAILY_REWARD_LABEL, NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
+	api.Register(COLLECT_DAILY_REWARD_LABEL, NewCollectDailyRewardTask, api.COOKIEAUTH)
+	api.Register(LIST_AVATARS_LABEL, NewListAvatarsTask, api.NOAUTH)
 }
