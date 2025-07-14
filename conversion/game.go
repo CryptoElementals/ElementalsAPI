@@ -10,11 +10,9 @@ func GameInfoProtoToModel(gameInfoProto *proto.GameInfo) *dao.Match {
 	var players []dao.MatchPlayer
 	for _, player := range gameInfoProto.Players {
 		players = append(players, dao.MatchPlayer{
-			MatchID: uint(gameInfoProto.RoomId),
-			Player: dao.Player{
-				WalletAddress: player.WalletAddress,
-				TempAddress:   player.TemporaryAddress,
-			},
+			MatchID:       uint(gameInfoProto.RoomId),
+			WalletAddress: player.WalletAddress,
+			TempAddress:   player.TemporaryAddress,
 		})
 	}
 	var rounds []dao.Round

@@ -52,14 +52,15 @@ enum RoundStatus {
 message PlayerRoundInfo {
     PlayerAddress playerAddress = 1;
     repeated RoundSubmittedCard cards = 2;
+    bytes salt = 3;
+    bytes submitted_commitment = 4;
 }
 
 message RoundSubmittedCard {
-    uint32 health_before = 1;
-    uint32 health_end = 2;
+    uint32 player_health_before = 1;
+    uint32 player_health_end = 2;
     uint32 multiplier = 3; 
-    bytes submitted_commitment = 4;
-    uint32 submitted_card_id = 5;
+    uint32 submitted_card_id = 4;
 }
 
 message Round {
