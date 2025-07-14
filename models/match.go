@@ -1,21 +1,55 @@
 package dao
 
-import "time"
-
-// Match 匹配记录表
 type Match struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`               // 自增主键ID
-	MatchID   string    `gorm:"not null;index;size:64" json:"match_id"`           // 匹配唯一ID (UUID长度为36，预留一些空间)
-	Address   string    `gorm:"not null;index;size:42" json:"address"`            // 玩家地址 (以太坊地址长度为42)
-	PublicKey string    `gorm:"not null;size:130" json:"public_key"`              // 玩家公钥 (ECDSA公钥长度为130字符)
-	Mode      string    `gorm:"not null;index;size:20" json:"mode"`               // 游戏模式
-	Status    string    `gorm:"not null;default:'waiting';size:20" json:"status"` // 状态: waiting, matched, confirmed, cancelled
-	RoomID    string    `gorm:"default:'';index;size:64" json:"room_id"`          // 房间ID (UUID长度为36，预留一些空间)
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	BaseModel
+	RoomContract string        `gorm:"index" json:"room_contract"` // 房间合约地址
+	Mode         string        `gorm:"not null" json:"mode"`       // 游戏模式
+	Status       uint          `gorm:"not null" json:"status"`
+	Players      []MatchPlayer `gorm:"not null;default:''" json:"players"`
+	Rounds       []Round       `json:"rounds"`
+}
+
+func (Match) TableName() string {
+	return "matches"
+}
+
+// MatchPlayer 匹配记录表
+type MatchPlayer struct {
+	BaseModel
+	MatchID       uint   `gorm:"not null;" json:"match_id"` // 匹配唯一ID（两个用户共享）
+	WalletAddress string `gorm:"not null;index:address" json:"wallet_address"`
+	TempAddress   string `gorm:"not null;index:address" json:"temp_address"`
 }
 
 // TableName 指定表名
-func (Match) TableName() string {
-	return "matches"
+func (MatchPlayer) TableName() string {
+	return "matche_players"
+}
+
+// Round 回合记录
+type Round struct {
+	BaseModel
+	MatchID      uint          `gorm:"not null;index" json:"match_id"`           // 匹配唯一ID
+	RoundNumber  int           `gorm:"not null;index" json:"round_number"`       // 回合数
+	Status       string        `gorm:"not null;default:'waiting'" json:"status"` // 状态: waiting, matched, confirmed, cancelled
+	RoundPlayers []RoundPlayer `gorm:"not null;default:''" json:"round_players"` // 回合玩家记录
+}
+
+// RoundPlayer 回合玩家记录
+type RoundPlayer struct {
+	BaseModel
+	RoundID       uint        `gorm:"not null;index" json:"round_id"`         // 回合唯一ID
+	MatchPlayerID uint        `gorm:"not null;index" json:"player_id"`        // 匹配玩家唯一ID
+	RoundCards    []RoundCard `gorm:"not null;default:''" json:"round_cards"` // 回合牌面记录
+}
+
+// RoundCard 回合牌面记录
+type RoundCard struct {
+	BaseModel
+	RoundID        uint   `gorm:"not null;index" json:"round_id"`             // 回合唯一ID
+	CardCommtiment string `gorm:"not null;default:''" json:"card_commtiment"` // 牌面哈希值
+	Card           Card   `gorm:"not null;index" json:"card"`                 // 使用过的卡牌
+	HealthBefore   uint32 `gorm:"not null;default:0" json:"health_before"`
+	HealthAfter    uint32 `gorm:"not null;default:0" json:"health_after"`
+	Multiplier     uint32 `gorm:"not null;default:0" json:"multiplier"`
 }

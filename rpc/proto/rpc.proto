@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package rpc;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+service RpcService {
+    // game related api
+    rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
+    rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
+    rpc GetPlayerInfo(PlayerAddress) returns (PlayerInfo);
+    rpc GetGameInfo(GetGameInfoRequest) returns (GameInfo);
+
+    // chain related api
+    rpc NewTransactions(TransactionBatch) returns (google.protobuf.Empty);
+}
+
+message PlayerAddress {
+    string wallet_address = 1;
+    string temporary_address = 2;
+}
+
+enum PlayerStatus {
+    PLAYER_KNOWN = 0;
+    PLAYER_IN_QUEUE = 1;
+    PLAYER_MATCHED = 2;
+    PLAYER_IN_GAME = 3;
+}
+
+message PlayerInfo {
+    PlayerAddress address = 1;
+    PlayerStatus status = 2;
+    optional uint32 room_id = 3;
+}
+
+message GetGameInfoRequest {
+    uint32 room_id = 1;
+}
+
+enum RoundStatus {
+    ROUND_UNKNOWN = 0;
+    ROUND_WAITTING_COMMITMENTS = 1;
+    ROUND_COMMITMENT_SUBMITTED = 2;
+    ROUND_WAITTING_CARDS = 3;
+    ROUND_CARD_SUBMITTED = 4;
+    ROUND_COMPLETED = 5;
+}
+
+
+message PlayerRoundInfo {
+    PlayerAddress playerAddress = 1;
+    repeated RoundSubmittedCard cards = 2;
+    bytes salt = 3;
+    bytes submitted_commitment = 4;
+}
+
+message RoundSubmittedCard {
+    uint32 player_health_before = 1;
+    uint32 player_health_end = 2;
+    uint32 multiplier = 3; 
+    uint32 submitted_card_id = 4;
+}
+
+message Round {
+    int32 number = 1; // start from 1
+    RoundStatus status = 2;
+    repeated PlayerRoundInfo players = 3;
+}
+
+enum GameStatus {
+    GAME_UNKNOWN = 0;
+    GAME_WAITTING_CONTRACT = 1;
+    GAME_RUNNING = 2;
+    GAME_END = 3;
+}
+
+enum GameResultPlayerStatus {
+    GAME_RESULT_PLAYER_KNOWN = 0;
+    GAME_RESULT_PLAYER_WIN = 1;
+    GAME_RESULT_PLAYER_LOSE = 2;
+    GAME_RESULT_PLAYER_TIE = 3;
+}
+
+message GameResultPlayerInfo{
+    PlayerAddress address = 1;
+    int32 token_delta = 2;
+    int32 points = 3;
+    GameResultPlayerStatus status = 4;
+}
+
+message GameResult {
+    repeated GameResultPlayerInfo players = 1;
+}
+
+enum GameType {
+    GAME_TYPE_UNKNOWN = 0;
+    PVP = 1;
+}
+
+message GameInfo {
+    uint32 room_id = 1;
+    string room_contract_address = 2;
+    GameType game_type = 3;
+    GameStatus status = 4;
+    repeated PlayerAddress players = 5;
+    repeated Round rounds = 6;
+    optional GameResult result = 7;
+}
+
+message Transaction {
+    bytes block_hash = 1;
+    bytes content = 2;
+}
+
+message TransactionBatch {
+    repeated Transaction txs = 1;
+}
+
