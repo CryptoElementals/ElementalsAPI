@@ -144,7 +144,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 查找用户当前活跃的匹配记录
-	var activeMatch *dao.Match
+	var activeMatch *dao.MatchPlayer
 	for _, match := range matches {
 		// 检查用户是玩家1还是玩家2，以及对应的状态
 		userAddress := strings.ToLower(match.Player1Address)

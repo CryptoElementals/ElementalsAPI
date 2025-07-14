@@ -138,6 +138,8 @@ func newRouter(wg *sync.WaitGroup, serverMode, serviceName string, store session
 	r.Use(sessions.Sessions(serviceName+"_session", store))
 	// register apis here
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.Handle)
+	// SSE API
+	r.POST("/sse", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.HandleSSE)
 	return r
 }
 

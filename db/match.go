@@ -15,7 +15,16 @@ func CreateMatch(match *dao.Match) error {
 // GetMatchByMatchID 根据MatchID获取匹配记录（返回单行记录）
 func GetMatchByMatchID(matchID string) (*dao.Match, error) {
 	var match dao.Match
-	err := Get().Where("match_id = ?", matchID).First(&match).Error
+	err := Get().Where("id = ?", matchID).
+		Preload("Players").
+		Preload("Players.Player").
+		Preload("Rounds").
+		Preload("Rounds.RoundPlayers").
+		Preload("Rounds.RoundPlayers.RoundCards").
+		Preload("Rounds.RoundPlayers.RoundCards.Card").
+		Preload("Rounds.RoundPlayers.RoundCards.Items").
+		Preload("Rounds.RoundPlayers.RoundCards.Items.Effects").
+		First(&match).Error
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +33,7 @@ func GetMatchByMatchID(matchID string) (*dao.Match, error) {
 
 // UpdateMatchRoomID 更新匹配记录的RoomID
 func UpdateMatchRoomID(matchID string, roomID string) error {
-	return Get().Model(&dao.Match{}).Where("match_id = ?", matchID).Update("room_id", roomID).Error
+	return Get().Model(&dao.MatchPlayer{}).Where("match_id = ?", matchID).Update("room_id", roomID).Error
 }
 
 // UpdatePlayerStatus 更新指定玩家的确认状态
