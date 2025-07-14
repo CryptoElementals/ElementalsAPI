@@ -5,7 +5,6 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -91,9 +90,9 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 	log.Infof("[CancelMatch] Processing request for address: %s, matchId: %s", address, task.Request.MatchID)
 
 	// 根据MatchID获取匹配记录
-	matches, err := db.GetMatchesByMatchID(task.Request.MatchID)
+	match, err := db.GetMatchByMatchID(task.Request.MatchID)
 	if err != nil {
-		log.Infof("[CancelMatch] Error getting matches by matchId %s: %v", task.Request.MatchID, err)
+		log.Infof("[CancelMatch] Error getting match by matchId %s: %v", task.Request.MatchID, err)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Match record does not exist"
 		return task.Response, nil
@@ -101,15 +100,17 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
-	var currentPlayerMatch dao.Match
-	for _, match := range matches {
-		// 将数据库中的地址也转为小写进行比较
-		matchAddress := strings.ToLower(match.Address)
-		if matchAddress == address {
-			found = true
-			currentPlayerMatch = match
-			break
-		}
+	var playerStatus string
+	// 将数据库中的地址也转为小写进行比较
+	player1Address := strings.ToLower(match.Player1Address)
+	player2Address := strings.ToLower(match.Player2Address)
+
+	if address == player1Address {
+		found = true
+		playerStatus = match.Player1Status
+	} else if address == player2Address {
+		found = true
+		playerStatus = match.Player2Status
 	}
 
 	if !found {
@@ -120,7 +121,7 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 检查当前玩家的状态，只有未确认的玩家才能取消
-	switch currentPlayerMatch.Status {
+	switch playerStatus {
 	case "confirmed":
 		log.Infof("[CancelMatch] Address %s has already confirmed, cannot cancel match %s", address, task.Request.MatchID)
 		task.Response.BaseResponse.RetCode = 1004
@@ -135,16 +136,24 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 		// 可以取消，继续执行
 		log.Infof("[CancelMatch] Address %s can cancel match %s", address, task.Request.MatchID)
 	default:
-		log.Infof("[CancelMatch] Invalid match status for address %s in match %s: %s", address, task.Request.MatchID, currentPlayerMatch.Status)
+		log.Infof("[CancelMatch] Invalid match status for address %s in match %s: %s", address, task.Request.MatchID, playerStatus)
 		task.Response.BaseResponse.RetCode = 1007
 		task.Response.BaseResponse.Message = "Invalid match status, cannot cancel"
 		return task.Response, nil
 	}
 
-	// 将匹配状态设置为已取消
-	err = db.UpdateMatchStatus(task.Request.MatchID, "cancelled")
+	// 将匹配状态设置为已取消（更新两个玩家的状态）
+	err = db.UpdatePlayerStatus(task.Request.MatchID, player1Address, "cancelled")
 	if err != nil {
-		log.Infof("[CancelMatch] Failed to cancel match %s: %v", task.Request.MatchID, err)
+		log.Infof("[CancelMatch] Failed to cancel match for player1 %s: %v", player1Address, err)
+		task.Response.BaseResponse.RetCode = 1005
+		task.Response.BaseResponse.Message = "Failed to cancel match"
+		return task.Response, nil
+	}
+
+	err = db.UpdatePlayerStatus(task.Request.MatchID, player2Address, "cancelled")
+	if err != nil {
+		log.Infof("[CancelMatch] Failed to cancel match for player2 %s: %v", player2Address, err)
 		task.Response.BaseResponse.RetCode = 1005
 		task.Response.BaseResponse.Message = "Failed to cancel match"
 		return task.Response, nil

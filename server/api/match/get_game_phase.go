@@ -146,9 +146,21 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	// 查找用户当前活跃的匹配记录
 	var activeMatch *dao.Match
 	for _, match := range matches {
-		if match.Status == "matched" || match.Status == "confirmed" {
-			activeMatch = &match
-			break
+		// 检查用户是玩家1还是玩家2，以及对应的状态
+		userAddress := strings.ToLower(match.Player1Address)
+		if userAddress == lowercaseAddress {
+			if match.Player1Status == "matched" || match.Player1Status == "confirmed" {
+				activeMatch = &match
+				break
+			}
+		} else {
+			userAddress = strings.ToLower(match.Player2Address)
+			if userAddress == lowercaseAddress {
+				if match.Player2Status == "matched" || match.Player2Status == "confirmed" {
+					activeMatch = &match
+					break
+				}
+			}
 		}
 	}
 
@@ -156,16 +168,24 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.Mode = activeMatch.Mode
 		task.Response.PvPInfo.MatchId = activeMatch.MatchID
 
-		if activeMatch.Status == "matched" {
+		// 检查用户的状态
+		userAddress := strings.ToLower(activeMatch.Player1Address)
+		userStatus := activeMatch.Player1Status
+		if userAddress != lowercaseAddress {
+			userAddress = strings.ToLower(activeMatch.Player2Address)
+			userStatus = activeMatch.Player2Status
+		}
+
+		if userStatus == "matched" {
 			// 用户已匹配，等待确认
 			task.Response.PvPInfo.Phase = "Matching"
 			task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
-		} else if activeMatch.Status == "confirmed" && activeMatch.RoomID != "" {
+		} else if userStatus == "confirmed" && activeMatch.RoomID != "" {
 			// 双方已确认，进入战斗
 			task.Response.PvPInfo.Phase = "InBattle"
 			task.Response.PvPInfo.RoomId = activeMatch.RoomID
 			task.Response.BaseResponse.Message = "Player has entered battle"
-		} else if activeMatch.Status == "confirmed" && activeMatch.RoomID == "" {
+		} else if userStatus == "confirmed" && activeMatch.RoomID == "" {
 			// 已确认但房间ID为空，可能是确认过程中
 			task.Response.PvPInfo.Phase = "Matching"
 			task.Response.BaseResponse.Message = "Player confirmed, waiting for opponent confirmation"

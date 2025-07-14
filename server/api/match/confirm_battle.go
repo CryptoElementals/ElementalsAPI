@@ -92,9 +92,9 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	log.Infof("[ConfirmBattle] Processing request for address: %s, matchId: %s", address, task.Request.MatchID)
 
 	// 根据MatchID获取匹配记录
-	matches, err := db.GetMatchesByMatchID(task.Request.MatchID)
+	match, err := db.GetMatchByMatchID(task.Request.MatchID)
 	if err != nil {
-		log.Infof("[ConfirmBattle] Error getting matches by matchId %s: %v", task.Request.MatchID, err)
+		log.Infof("[ConfirmBattle] Error getting match by matchId %s: %v", task.Request.MatchID, err)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Match record does not exist"
 		return task.Response, nil
@@ -102,15 +102,17 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
-	var playerMatch dao.Match
-	for _, match := range matches {
-		// 将数据库中的地址也转为小写进行比较
-		matchAddress := strings.ToLower(match.Address)
-		if matchAddress == address {
-			found = true
-			playerMatch = match
-			break
-		}
+	var playerStatus string
+	// 将数据库中的地址也转为小写进行比较
+	player1Address := strings.ToLower(match.Player1Address)
+	player2Address := strings.ToLower(match.Player2Address)
+
+	if address == player1Address {
+		found = true
+		playerStatus = match.Player1Status
+	} else if address == player2Address {
+		found = true
+		playerStatus = match.Player2Status
 	}
 
 	if !found {
@@ -121,38 +123,38 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 检查玩家是否已经确认过
-	if playerMatch.Status == "confirmed" {
-		log.Infof("[ConfirmBattle] Address %s has already confirmed battle in match %s", address, task.Request.MatchID)
-		task.Response.BaseResponse.RetCode = 1006
-		task.Response.BaseResponse.Message = "You have already confirmed the battle"
-		return task.Response, nil
-	}
-
-	// 验证匹配状态
-	if playerMatch.Status != "matched" {
-		log.Infof("[ConfirmBattle] Invalid match status for address %s in match %s: %s", address, task.Request.MatchID, playerMatch.Status)
+	if playerStatus == "confirmed" {
+		log.Infof("[ConfirmBattle] Address %s has already confirmed match %s", address, task.Request.MatchID)
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = "Invalid match status, cannot confirm battle"
+		task.Response.BaseResponse.Message = "You have already confirmed this match"
 		return task.Response, nil
 	}
 
-	// 更新玩家确认状态
+	// 检查匹配状态是否正确
+	if playerStatus != "matched" {
+		log.Infof("[ConfirmBattle] Address %s match status is %s, cannot confirm", address, playerStatus)
+		task.Response.BaseResponse.RetCode = 1005
+		task.Response.BaseResponse.Message = "Match status is not valid for confirmation"
+		return task.Response, nil
+	}
+
+	// 更新玩家状态为confirmed
 	err = db.UpdatePlayerStatus(task.Request.MatchID, address, "confirmed")
 	if err != nil {
 		log.Infof("[ConfirmBattle] Failed to update player status for address %s in match %s: %v", address, task.Request.MatchID, err)
-		task.Response.BaseResponse.RetCode = 1005
-		task.Response.BaseResponse.Message = "Failed to update confirmation status"
+		task.Response.BaseResponse.RetCode = 1006
+		task.Response.BaseResponse.Message = "Failed to update match status"
 		return task.Response, nil
 	}
 
-	log.Infof("[ConfirmBattle] Player %s confirmed battle in match %s", address, task.Request.MatchID)
+	log.Infof("[ConfirmBattle] Address %s confirmed match %s", address, task.Request.MatchID)
 
 	// 检查双方是否都已确认
 	bothConfirmed, err := db.CheckBothPlayersConfirmed(task.Request.MatchID)
 	if err != nil {
-		log.Infof("[ConfirmBattle] Error checking both players confirmed for match %s: %v", task.Request.MatchID, err)
+		log.Infof("[ConfirmBattle] Failed to check both players confirmed for match %s: %v", task.Request.MatchID, err)
 		task.Response.BaseResponse.RetCode = 1007
-		task.Response.BaseResponse.Message = "Failed to check confirmation status"
+		task.Response.BaseResponse.Message = "Failed to check match confirmation status"
 		return task.Response, nil
 	}
 
@@ -170,44 +172,46 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 			return task.Response, nil
 		}
 
-		// 更新整体状态为confirmed
-		err = db.UpdateMatchStatus(task.Request.MatchID, "confirmed")
+		// 向room表插入初始数据，后续可以增加道具功能实现新的api更新stage0阶段
+		// 为玩家1创建房间记录
+		room1 := &dao.Room{
+			RoomID:      roomID,
+			Address:     player1Address, // 统一使用小写地址
+			Stage:       0,              // 初始阶段为0
+			Cards:       "",             // 初始卡牌为空
+			PlayerHP:    3000,           // 初始血量为3000
+			Multiplier:  1.0,            // 初始倍率为1
+			IsStageOver: true,           // 初始阶段0已完成
+		}
+
+		err = db.CreateRoom(room1)
 		if err != nil {
-			log.Infof("[ConfirmBattle] Failed to update match status for match %s: %v", task.Request.MatchID, err)
-			task.Response.BaseResponse.RetCode = 1009
-			task.Response.BaseResponse.Message = "Failed to update match status"
+			log.Infof("[ConfirmBattle] Failed to create room record for address %s in room %s: %v", room1.Address, roomID, err)
+			task.Response.BaseResponse.RetCode = 1010
+			task.Response.BaseResponse.Message = "Failed to create room record"
 			return task.Response, nil
 		}
 
-		// 向room表插入初始数据，后续可以增加道具功能实现新的api更新stage0阶段
-		for _, match := range matches {
-			room := &dao.Room{
-				RoomID:      roomID,
-				Address:     strings.ToLower(match.Address), // 统一使用小写地址
-				Stage:       0,                              // 初始阶段为0
-				Cards:       "",                             // 初始卡牌为空
-				PlayerHP:    3000,                           // 初始血量为3000
-				Multiplier:  1.0,                            // 初始倍率为1
-				IsStageOver: true,                           // 初始阶段0已完成
-			}
+		// 为玩家2创建房间记录
+		room2 := &dao.Room{
+			RoomID:      roomID,
+			Address:     player2Address, // 统一使用小写地址
+			Stage:       0,              // 初始阶段为0
+			Cards:       "",             // 初始卡牌为空
+			PlayerHP:    3000,           // 初始血量为3000
+			Multiplier:  1.0,            // 初始倍率为1
+			IsStageOver: true,           // 初始阶段0已完成
+		}
 
-			err = db.CreateRoom(room)
-			if err != nil {
-				log.Infof("[ConfirmBattle] Failed to create room record for address %s in room %s: %v", room.Address, roomID, err)
-				task.Response.BaseResponse.RetCode = 1010
-				task.Response.BaseResponse.Message = "Failed to create room record"
-				return task.Response, nil
-			}
+		err = db.CreateRoom(room2)
+		if err != nil {
+			log.Infof("[ConfirmBattle] Failed to create room record for address %s in room %s: %v", room2.Address, roomID, err)
+			task.Response.BaseResponse.RetCode = 1010
+			task.Response.BaseResponse.Message = "Failed to create room record"
+			return task.Response, nil
 		}
 
 		log.Infof("[ConfirmBattle] Successfully created room %s for match %s", roomID, task.Request.MatchID)
-		task.Response.BaseResponse.RetCode = 0
-		task.Response.BaseResponse.Message = "Battle confirmed successfully, room created"
-	} else {
-		// 只有一方确认
-		log.Infof("[ConfirmBattle] Player %s confirmed, waiting for opponent in match %s", address, task.Request.MatchID)
-		task.Response.BaseResponse.RetCode = 0
-		task.Response.BaseResponse.Message = "Battle confirmed successfully, waiting for opponent confirmation"
 	}
 
 	return task.Response, nil

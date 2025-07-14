@@ -30,9 +30,6 @@ func (s *Scheduler) RegisterAllTasks() {
 	// 注册匹配任务
 	RegisterMatchmakingTask()
 
-	// 注册对战处理任务
-	RegisterBattleTask()
-
 	// 从全局工厂获取所有已注册的任务
 	s.tasks = append(s.tasks, GetAllTasks()...)
 }

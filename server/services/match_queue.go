@@ -96,7 +96,8 @@ func (s *MatchQueueService) LeaveQueue(mode string, address string) error {
 
 	// 检查是否有未完成的匹配
 	for _, match := range matches {
-		if match.Mode == mode && (match.Status == "matched" || match.Status == "confirmed") {
+		if match.Mode == mode && ((match.Player1Status == "matched" || match.Player1Status == "confirmed") ||
+			(match.Player2Status == "matched" || match.Player2Status == "confirmed")) {
 			return fmt.Errorf("You have been matched successfully and cannot leave the queue. Please confirm or cancel the match first")
 		}
 	}
@@ -226,43 +227,32 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 	log.Infof("Attempting to match players: %s (index 0) and %s (index %d) for mode: %s",
 		player1.Address, player2.Address, player2Index, mode)
 
-	// 创建匹配记录
+	// 创建匹配记录（一行记录包含两个玩家）
 	matchID := uuid.New().String()
 
-	// 为玩家1创建匹配记录
-	match1 := &dao.Match{
-		MatchID:   matchID,
-		Address:   player1.Address,
-		PublicKey: player1.PublicKey,
-		Mode:      mode,
-		Status:    "matched",
-		RoomID:    "", // 初始化为空
-	}
+	match := &dao.Match{
+		MatchID: matchID,
+		Mode:    mode,
+		RoomID:  "", // 初始化为空
 
-	// 为玩家2创建匹配记录
-	match2 := &dao.Match{
-		MatchID:   matchID,
-		Address:   player2.Address,
-		PublicKey: player2.PublicKey,
-		Mode:      mode,
-		Status:    "matched",
-		RoomID:    "", // 初始化为空
+		// 玩家1信息
+		Player1Address:     player1.Address,
+		Player1TempAddress: player1.Address, // 临时地址暂时使用原地址
+		Player1Status:      "matched",
+
+		// 玩家2信息
+		Player2Address:     player2.Address,
+		Player2TempAddress: player2.Address, // 临时地址暂时使用原地址
+		Player2Status:      "matched",
 	}
 
 	// 保存到数据库
-	err = db.CreateMatch(match1)
+	err = db.CreateMatch(match)
 	if err != nil {
-		log.Errorf("Failed to create match record for player1: %v", err)
+		log.Errorf("Failed to create match record: %v", err)
 		return err
 	}
-	log.Infof("Created match record for player1: %s (MatchID: %s)", player1.Address, matchID)
-
-	err = db.CreateMatch(match2)
-	if err != nil {
-		log.Errorf("Failed to create match record for player2: %v", err)
-		return err
-	}
-	log.Infof("Created match record for player2: %s (MatchID: %s)", player2.Address, matchID)
+	log.Infof("Created match record for players: %s and %s (MatchID: %s)", player1.Address, player2.Address, matchID)
 
 	// 从队列中移除这两个玩家
 	err = s.removePlayersFromQueue(mode, []string{player1.Address, player2.Address})

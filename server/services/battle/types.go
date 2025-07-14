@@ -1,104 +1,104 @@
 package battle
 
-// Card 卡牌结构
+// Card card structure
 type Card struct {
-	Symbol    string `json:"symbol"`     // 卡牌符号 (J, M, S, H, T)
-	SubType   int    `json:"sub_type"`   // 小型号 (0, 1, 2, 3)
-	Level     string `json:"level"`      // 卡牌等级 (legendary, epic, rare, normal)
-	LifeForce int    `json:"life_force"` // 生命力
-	Attack    int    `json:"attack"`     // 攻击力
-	Defense   int    `json:"defense"`    // 防御力
+	ID          int    `json:"id"`           // Card ID
+	ElementType string `json:"element_type"` // Element type (Metal, Wood, Water, Fire, Earth)
+	Level       string `json:"level"`        // Card level (legendary, epic, rare, normal)
+	LifeForce   int    `json:"life_force"`   // Life force
+	Attack      int    `json:"attack"`       // Attack power
+	Defense     int    `json:"defense"`      // Defense power
+	Name        string `json:"name"`         // Card name
+	Description string `json:"description"`  // Card description
+	ImageURL    string `json:"image_url"`    // Card image URL
 }
 
-// Player 玩家结构
+// Player player structure
 type Player struct {
-	Address    string  `json:"address"`    // 玩家地址
-	Cards      []Card  `json:"cards"`      // 玩家的卡牌
-	HP         int     `json:"hp"`         // 血量
-	Multiplier float64 `json:"multiplier"` // 积分倍率
-	IsMyself   bool    `json:"is_myself"`  // 是否是我自己
+	Address    string  `json:"address"`    // Player address
+	Cards      []Card  `json:"cards"`      // Player's cards
+	HP         int     `json:"hp"`         // Health points
+	Multiplier float64 `json:"multiplier"` // Score multiplier
 }
 
-// StageResult 阶段结果
-type StageResult struct {
-	Stage             int                `json:"stage"`              // 阶段编号 (0, 1, 2)
-	Player1Cards      []Card             `json:"player1_cards"`      // 玩家1的卡牌
-	Player2Cards      []Card             `json:"player2_cards"`      // 玩家2的卡牌
-	Player1HP         int                `json:"player1_hp"`         // 玩家1血量
-	Player2HP         int                `json:"player2_hp"`         // 玩家2血量
-	Player1Multiplier float64            `json:"player1_multiplier"` // 玩家1积分倍率
-	Player2Multiplier float64            `json:"player2_multiplier"` // 玩家2积分倍率
-	BattleResults     []CardBattleResult `json:"battle_results"`     // 卡牌对战结果
-	IsGameOver        bool               `json:"is_game_over"`       // 游戏是否结束
-	Winner            string             `json:"winner"`             // 获胜者地址
+// BattleInput battle input parameters
+type BattleInput struct {
+	Player1Address    string  `json:"player1_address"`    // Player 1 address
+	Player2Address    string  `json:"player2_address"`    // Player 2 address
+	Player1HP         int     `json:"player1_hp"`         // Player 1 initial health
+	Player2HP         int     `json:"player2_hp"`         // Player 2 initial health
+	Player1Multiplier float64 `json:"player1_multiplier"` // Player 1 score multiplier
+	Player2Multiplier float64 `json:"player2_multiplier"` // Player 2 score multiplier
+	Player1Cards      []int   `json:"player1_cards"`      // Player 1 card ID list
+	Player2Cards      []int   `json:"player2_cards"`      // Player 2 card ID list
+	Player1LostHP     int     `json:"player1_lost_hp"`    // Player 1 accumulated lost health
+	Player2LostHP     int     `json:"player2_lost_hp"`    // Player 2 accumulated lost health
 }
 
-// CardBattleResult 单张卡牌对战结果
-type CardBattleResult struct {
-	Player1Card Card   `json:"player1_card"` // 玩家1的卡牌
-	Player2Card Card   `json:"player2_card"` // 玩家2的卡牌
-	ResultType  string `json:"result_type"`  // 对战结果类型 ("sheng", "beisheng", "ke", "beike", "ping")
-	EffectValue []int  `json:"effect_value"` // 对战效果值数组 [玩家1受影响值, 玩家2受影响值]（正数表示回血，负数表示伤害）
-	Reason      string `json:"reason"`       // 对战原因描述
+// BattleResult battle result
+type BattleResult struct {
+	Player1Address         string        `json:"player1_address"`          // Player 1 address
+	Player2Address         string        `json:"player2_address"`          // Player 2 address
+	Stage                  int           `json:"stage"`                    // Stage number
+	Rounds                 []RoundResult `json:"rounds"`                   // Round results
+	Player1FinalHP         int           `json:"player1_final_hp"`         // Player 1 final health
+	Player2FinalHP         int           `json:"player2_final_hp"`         // Player 2 final health
+	Player1LostHP          int           `json:"player1_lost_hp"`          // Player 1 accumulated lost health
+	Player2LostHP          int           `json:"player2_lost_hp"`          // Player 2 accumulated lost health
+	Player1FinalMultiplier float64       `json:"player1_final_multiplier"` // Player 1 final multiplier
+	Player2FinalMultiplier float64       `json:"player2_final_multiplier"` // Player 2 final multiplier
+	GameFinalMultiplier    float64       `json:"game_final_multiplier"`    // Game final multiplier (take loser's multiplier, tie is 1)
+	Winner                 string        `json:"winner"`                   // Winner address
+	IsGameOver             bool          `json:"is_game_over"`             // Whether game is over
+	GameResultType         string        `json:"game_result_type"`         // Game result type
+	Reward                 *BattleReward `json:"reward"`                   // Battle reward
 }
 
-// StageBattleInput 阶段对战输入
-type StageBattleInput struct {
-	Player1Address    string   `json:"player1_address"`    // 玩家1地址
-	Player2Address    string   `json:"player2_address"`    // 玩家2地址
-	Player1HP         int      `json:"player1_hp"`         // 玩家1初始血量
-	Player2HP         int      `json:"player2_hp"`         // 玩家2初始血量
-	Player1Multiplier float64  `json:"player1_multiplier"` // 玩家1积分倍率
-	Player2Multiplier float64  `json:"player2_multiplier"` // 玩家2积分倍率
-	Player1Cards      []string `json:"player1_cards"`      // 玩家1的3张卡牌
-	Player2Cards      []string `json:"player2_cards"`      // 玩家2的3张卡牌
+// RoundResult round result
+type RoundResult struct {
+	RoundNumber            int            `json:"round_number"`             // Round number
+	Player1CardID          int            `json:"player1_card_id"`          // Player 1 used card ID
+	Player2CardID          int            `json:"player2_card_id"`          // Player 2 used card ID
+	RelationType           string         `json:"relation_type"`            // Elemental relation type
+	Actions                []BattleAction `json:"actions"`                  // Executed action list
+	Player1Damage          int            `json:"player1_damage"`           // Player 1 damage taken (negative) or healing (positive)
+	Player2Damage          int            `json:"player2_damage"`           // Player 2 damage taken (negative) or healing (positive)
+	Player1HPAfter         int            `json:"player1_hp_after"`         // Player 1 health after round
+	Player2HPAfter         int            `json:"player2_hp_after"`         // Player 2 health after round
+	Player1MultiplierAfter float64        `json:"player1_multiplier_after"` // Player 1 multiplier after round
+	Player2MultiplierAfter float64        `json:"player2_multiplier_after"` // Player 2 multiplier after round
+	Description            string         `json:"description"`              // Round description
 }
 
-// StageBattleResult 阶段对战结果
-type StageBattleResult struct {
-	Stage             int                `json:"stage"`              // 阶段编号 (0, 1, 2)
-	Player1Address    string             `json:"player1_address"`    // 玩家1地址
-	Player2Address    string             `json:"player2_address"`    // 玩家2地址
-	Player1HP         int                `json:"player1_hp"`         // 玩家1最终血量
-	Player2HP         int                `json:"player2_hp"`         // 玩家2最终血量
-	Player1Multiplier float64            `json:"player1_multiplier"` // 玩家1积分倍率
-	Player2Multiplier float64            `json:"player2_multiplier"` // 玩家2积分倍率
-	BattleResults     []CardBattleResult `json:"battle_results"`     // 3轮对战结果
-	DetailedActions   []BattleAction     `json:"detailed_actions"`   // 详细动作数据
-	IsGameOver        bool               `json:"is_game_over"`       // 游戏是否结束
-	Winner            string             `json:"winner"`             // 获胜者地址（如果游戏结束）
+// ElementalRelation elemental relation
+type ElementalRelation struct {
+	Type        string `json:"type"`        // Relation type: "overpower"(overpower), "overpowered"(overpowered), "nurture"(nurture), "nurtured"(nurtured), "even"(even)
+	Description string `json:"description"` // Relation description
 }
 
-// BattleSimulation 完整对战模拟结果
-type BattleSimulation struct {
-	RoomID           string         `json:"room_id"`           // 房间ID
-	Stage            int            `json:"stage"`             // 当前阶段
-	Player1          Player         `json:"player1"`           // 玩家1信息
-	Player2          Player         `json:"player2"`           // 玩家2信息
-	Actions          []BattleAction `json:"actions"`           // 当前阶段的动作信息
-	IsGameOver       bool           `json:"is_game_over"`      // 游戏是否结束
-	GameResult       string         `json:"game_result"`       // 游戏结果：win/lose/tie
-	WinnerMultiplier float64        `json:"winner_multiplier"` // 赢家的最终倍率
-}
-
-// BattleAction 单次对战动作
+// BattleAction battle action
 type BattleAction struct {
-	Round      int          `json:"round"`       // 回合数
-	ActionType string       `json:"action_type"` // 动作类型：attack, heal
-	Source     ActionActor  `json:"source"`      // 动作发起者
-	Target     ActionActor  `json:"target"`      // 动作接收者
-	Effect     ActionEffect `json:"effect"`      // 动作效果
-	Message    string       `json:"message"`     // 描述信息
+	Type        string `json:"type"`        // Action type: "attack", "heal"
+	Target      string `json:"target"`      // Target: "player1", "player2"
+	Value       int    `json:"value"`       // Action value
+	Description string `json:"description"` // Action description
 }
 
-// ActionActor 动作参与者
-type ActionActor struct {
-	Address string `json:"address"` // 玩家地址
-	Card    Card   `json:"card"`    // 卡牌信息
+// TokenReward token reward
+type TokenReward struct {
+	Player1TokenChange int `json:"player1_token_change"` // Player 1 token change (positive for gain, negative for deduction)
+	Player2TokenChange int `json:"player2_token_change"` // Player 2 token change (positive for gain, negative for deduction)
+	SystemFee          int `json:"system_fee"`           // System fee
 }
 
-// ActionEffect 动作效果
-type ActionEffect struct {
-	Type  string `json:"type"`  // 效果类型：damage, heal
-	Value int    `json:"value"` // 效果数值
+// ScoreReward score reward
+type ScoreReward struct {
+	Player1ScoreChange int `json:"player1_score_change"` // Player 1 score change
+	Player2ScoreChange int `json:"player2_score_change"` // Player 2 score change
+}
+
+// BattleReward battle reward
+type BattleReward struct {
+	TokenReward TokenReward `json:"token_reward"` // Token reward
+	ScoreReward ScoreReward `json:"score_reward"` // Score reward
 }

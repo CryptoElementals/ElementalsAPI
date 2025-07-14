@@ -10,9 +10,8 @@ func Migrate() error {
 		&dao.CardStat{},
 		&dao.Match{},
 		&dao.Room{},
-		// 以后有新表直接加在这里
+		&dao.Card{},
 	}
-	// 可选：设置表引擎
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
 		return err

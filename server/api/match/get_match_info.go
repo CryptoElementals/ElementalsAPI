@@ -101,17 +101,9 @@ func (task *GetMatchInfoTask) Run(c *gin.Context) (api.Response, error) {
 	log.Infof("[GetMatchInfo] Processing request for address: %s, matchId: %s", address, task.Request.MatchID)
 
 	// 根据MatchID获取匹配记录
-	matches, err := db.GetMatchesByMatchID(task.Request.MatchID)
+	match, err := db.GetMatchByMatchID(task.Request.MatchID)
 	if err != nil {
-		log.Infof("[GetMatchInfo] Error getting matches by matchId %s: %v", task.Request.MatchID, err)
-		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Match record does not exist"
-		return task.Response, nil
-	}
-
-	// 检查是否找到匹配记录
-	if len(matches) == 0 {
-		log.Infof("[GetMatchInfo] No matches found for matchId: %s", task.Request.MatchID)
+		log.Infof("[GetMatchInfo] Error getting match by matchId %s: %v", task.Request.MatchID, err)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Match record does not exist"
 		return task.Response, nil
@@ -119,13 +111,12 @@ func (task *GetMatchInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
-	for _, match := range matches {
-		// 将数据库中的地址也转为小写进行比较
-		matchAddress := strings.ToLower(match.Address)
-		if matchAddress == address {
-			found = true
-			break
-		}
+	// 将数据库中的地址也转为小写进行比较
+	player1Address := strings.ToLower(match.Player1Address)
+	player2Address := strings.ToLower(match.Player2Address)
+
+	if address == player1Address || address == player2Address {
+		found = true
 	}
 
 	if !found {
@@ -137,37 +128,46 @@ func (task *GetMatchInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 构建玩家信息列表
 	var players []MatchPlayer
-	for _, match := range matches {
-		// 统一使用小写地址
-		matchAddress := strings.ToLower(match.Address)
 
-		// 获取用户档案信息
-		userProfile, err := db.GetUserProfileByAddress(matchAddress)
-		if err != nil {
-			log.Infof("[GetMatchInfo] Failed to get user profile for address %s: %v", matchAddress, err)
-			// 如果获取用户档案失败，使用默认值
-			userProfile = nil
-		}
-
-		// 构建玩家信息
-		player := MatchPlayer{
-			Address:   matchAddress,
-			IsMyself:  matchAddress == address,
-			Confirmed: match.Status == "confirmed",
-		}
-
-		// 设置用户名和头像URL
-		if userProfile != nil {
-			player.Name = userProfile.Name
-			player.AvatarURL = userProfile.AvatarURL
-		} else {
-			// 如果获取用户档案失败，使用地址作为默认用户名
-			player.Name = matchAddress
-			player.AvatarURL = ""
-		}
-
-		players = append(players, player)
+	// 玩家1信息
+	player1 := MatchPlayer{
+		Address:   player1Address,
+		IsMyself:  player1Address == address,
+		Confirmed: match.Player1Status == "confirmed",
 	}
+
+	// 获取玩家1的用户档案信息
+	userProfile1, err := db.GetUserProfileByAddress(player1Address)
+	if err != nil {
+		log.Infof("[GetMatchInfo] Failed to get user profile for address %s: %v", player1Address, err)
+		// 如果获取用户档案失败，使用默认值
+		player1.Name = player1Address
+		player1.AvatarURL = ""
+	} else {
+		player1.Name = userProfile1.Name
+		player1.AvatarURL = userProfile1.AvatarURL
+	}
+	players = append(players, player1)
+
+	// 玩家2信息
+	player2 := MatchPlayer{
+		Address:   player2Address,
+		IsMyself:  player2Address == address,
+		Confirmed: match.Player2Status == "confirmed",
+	}
+
+	// 获取玩家2的用户档案信息
+	userProfile2, err := db.GetUserProfileByAddress(player2Address)
+	if err != nil {
+		log.Infof("[GetMatchInfo] Failed to get user profile for address %s: %v", player2Address, err)
+		// 如果获取用户档案失败，使用默认值
+		player2.Name = player2Address
+		player2.AvatarURL = ""
+	} else {
+		player2.Name = userProfile2.Name
+		player2.AvatarURL = userProfile2.AvatarURL
+	}
+	players = append(players, player2)
 
 	task.Response.Players = players
 	task.Response.BaseResponse.RetCode = 0

@@ -1,71 +1,99 @@
 package battle
 
-// GameLogic 游戏逻辑系统
+import "fmt"
+
+// GameLogic game logic
 type GameLogic struct{}
 
-// NewGameLogic 创建新的游戏逻辑系统
+// NewGameLogic create a new game logic
 func NewGameLogic() *GameLogic {
 	return &GameLogic{}
 }
 
-// CheckGameOver 检查游戏是否结束
-func (gl *GameLogic) CheckGameOver(player1HP, player2HP int, player1Addr, player2Addr string, stage int) (bool, string) {
-	// 如果有一方血量为0或负数，游戏结束
-	if player1HP <= 0 || player2HP <= 0 {
-		if player1HP <= 0 {
-			return true, player2Addr
-		} else {
-			return true, player1Addr
-		}
+// CheckGameOver check if game is over
+func (gl *GameLogic) CheckGameOver(player1HP, player2HP int, player1Address, player2Address string) (bool, string) {
+	if player1HP <= 0 {
+		return true, player2Address
 	}
-
-	// stage 3和stage 10的特殊判断：如果双方血量都大于0，比较血量决定胜负
-	if stage == 3 || stage == 10 {
-		if player1HP > player2HP {
-			return true, player1Addr
-		} else if player2HP > player1HP {
-			return true, player2Addr
-		} else {
-			// 血量相同，平局
-			return true, "tie"
-		}
+	if player2HP <= 0 {
+		return true, player1Address
 	}
-
 	return false, ""
 }
 
-// SettleGameResult 清点胜负（stage 10）
-func (gl *GameLogic) SettleGameResult(player1Address, player2Address string, player1HP, player2HP int, finalMultiplier float64) (*StageBattleResult, error) {
-	// stage 10不需要实际的卡牌对战，只是应用最终倍率
-	// 创建stage 10结果
-	result := &StageBattleResult{
-		Stage:             10,
-		Player1Address:    player1Address,
-		Player2Address:    player2Address,
-		Player1HP:         player1HP,
-		Player2HP:         player2HP,
-		Player1Multiplier: finalMultiplier,             // 双方都使用赢家的最高倍率
-		Player2Multiplier: finalMultiplier,             // 双方都使用赢家的最高倍率
-		BattleResults:     make([]CardBattleResult, 0), // stage 10没有卡牌对战
-		IsGameOver:        true,                        // stage 10肯定游戏结束
+// ValidateBattleInput validate battle input
+func (gl *GameLogic) ValidateBattleInput(input *BattleInput) error {
+	if input.Player1Address == "" || input.Player2Address == "" {
+		return fmt.Errorf("player address cannot be empty")
 	}
 
-	// stage 10直接比较血量决定胜负
-	if player1HP > player2HP {
-		result.Winner = player1Address
-	} else if player2HP > player1HP {
-		result.Winner = player2Address
-	} else {
-		result.Winner = "tie" // 平局
+	if input.Player1HP <= 0 || input.Player2HP <= 0 {
+		return fmt.Errorf("player HP must be greater than 0")
 	}
 
-	return result, nil
+	if len(input.Player1Cards) != 3 || len(input.Player2Cards) != 3 {
+		return fmt.Errorf("each player must have 3 cards")
+	}
+
+	if err := gl.validateCardElements(input.Player1Cards, "Player 1"); err != nil {
+		return err
+	}
+	if err := gl.validateCardElements(input.Player2Cards, "Player 2"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// abs 绝对值函数
-func abs(x int) int {
-	if x < 0 {
-		return -x
+// validateCardElements validate card element types
+func (gl *GameLogic) validateCardElements(cardIDs []int, playerName string) error {
+	cardFactory := NewCardFactory()
+	elementTypes := make(map[string]bool)
+	cardIDSet := make(map[int]bool)
+	validElements := map[string]bool{
+		"Metal": true,
+		"Wood":  true,
+		"Water": true,
+		"Fire":  true,
+		"Earth": true,
 	}
-	return x
+
+	for i, cardID := range cardIDs {
+		if cardIDSet[cardID] {
+			return fmt.Errorf("%s card ID duplicated: %d", playerName, cardID)
+		}
+		cardIDSet[cardID] = true
+
+		card, err := cardFactory.GetCard(cardID)
+		if err != nil {
+			return fmt.Errorf("%s %dth card failed to get: %v", playerName, i+1, err)
+		}
+
+		if !validElements[card.ElementType] {
+			return fmt.Errorf("%s %dth card element type invalid: %s", playerName, i+1, card.ElementType)
+		}
+
+		if elementTypes[card.ElementType] {
+			return fmt.Errorf("%s card element type duplicated: %s", playerName, card.ElementType)
+		}
+
+		elementTypes[card.ElementType] = true
+	}
+
+	if len(elementTypes) != 3 {
+		return fmt.Errorf("%s cards must contain 3 different element types", playerName)
+	}
+
+	return nil
+}
+
+// GetWinner determine winner based on health
+func (gl *GameLogic) GetWinner(player1HP, player2HP int, player1Address, player2Address string) string {
+	if player1HP > player2HP {
+		return player1Address
+	} else if player2HP > player1HP {
+		return player2Address
+	} else {
+		return "tie"
+	}
 }
