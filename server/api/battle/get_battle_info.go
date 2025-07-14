@@ -538,5 +538,5 @@ func (task *GetBattleInfoTask) parseCardsString(cardsStr string) []string {
 // RegisterBattleApis 注册对战相关API
 func RegisterBattleApis() {
 	api.Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, api.COOKIEAUTH)
-	api.Register(SSE_EXAMPLE_LABEL, NewGetBattleInfoTask, api.NOAUTH)
+	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
 }
