@@ -32,11 +32,11 @@ enum PlayerStatus {
 message PlayerInfo {
     PlayerAddress address = 1;
     PlayerStatus status = 2;
-    optional string room_id = 3;
+    optional uint32 room_id = 3;
 }
 
 message GetGameInfoRequest {
-    string room_id = 1;
+    uint32 room_id = 1;
 }
 
 enum RoundStatus {
@@ -48,28 +48,24 @@ enum RoundStatus {
     ROUND_COMPLETED = 5;
 }
 
-message Card {
-    string card_id = 1;
-    repeated uint32 items = 2;
-}
 
-message RoundPlayer {
+message PlayerRoundInfo {
     PlayerAddress playerAddress = 1;
-    repeated RoundCard cards = 2;
+    repeated RoundSubmittedCard cards = 2;
 }
 
-message RoundCard {
-    uint32 begin_health = 1;
-    uint32 end_health = 2;
+message RoundSubmittedCard {
+    uint32 health_before = 1;
+    uint32 health_end = 2;
     uint32 multiplier = 3; 
     bytes submitted_commitment = 4;
-    Card submitted_card = 5;
+    uint32 submitted_card_id = 5;
 }
 
 message Round {
     int32 number = 1; // start from 1
     RoundStatus status = 2;
-    repeated RoundPlayer players = 3;
+    repeated PlayerRoundInfo players = 3;
 }
 
 enum GameStatus {
@@ -79,31 +75,37 @@ enum GameStatus {
     GAME_END = 3;
 }
 
-enum ResultPlayerStatus {
-    RESULT_PLAYER_KNOWN = 0;
-    RESULT_PLAYER_WIN = 1;
-    RESULT_PLAYER_LOSE = 2;
-    RESULT_PLAYER_TIE = 3;
+enum GameResultPlayerStatus {
+    GAME_RESULT_PLAYER_KNOWN = 0;
+    GAME_RESULT_PLAYER_WIN = 1;
+    GAME_RESULT_PLAYER_LOSE = 2;
+    GAME_RESULT_PLAYER_TIE = 3;
 }
 
-message ResultPlayer{
+message GameResultPlayerInfo{
     PlayerAddress address = 1;
     int32 token_delta = 2;
     int32 points = 3;
-    ResultPlayerStatus status = 4;
+    GameResultPlayerStatus status = 4;
 }
 
 message GameResult {
-    repeated ResultPlayer players = 1;
+    repeated GameResultPlayerInfo players = 1;
+}
+
+enum GameType {
+    GAME_TYPE_UNKNOWN = 0;
+    PVP = 1;
 }
 
 message GameInfo {
-    string room_id = 1;
+    uint32 room_id = 1;
     string room_contract_address = 2;
-    GameStatus status = 3;
-    repeated string players = 4;
-    repeated Round rounds = 5;
-    optional GameResult result = 6;
+    GameType game_type = 3;
+    GameStatus status = 4;
+    repeated PlayerAddress players = 5;
+    repeated Round rounds = 6;
+    optional GameResult result = 7;
 }
 
 message Transaction {

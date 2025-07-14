@@ -13,8 +13,9 @@ type WorkerManager struct {
 
 func NewWorkerManager(ctx context.Context) *WorkerManager {
 	return &WorkerManager{
-		ctx:     ctx,
-		workers: make(map[string]*Worker),
+		ctx:           ctx,
+		workers:       make(map[string]*Worker),
+		workerFactory: make(map[WorkerType]func(ctx context.Context, id string, t WorkerType) *Worker),
 	}
 }
 

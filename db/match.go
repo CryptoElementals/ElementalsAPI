@@ -1,8 +1,6 @@
 package db
 
 import (
-	"fmt"
-
 	dao "github.com/CryptoElementals/common/models"
 	"gorm.io/gorm"
 )
@@ -61,30 +59,6 @@ func UpdateMatchStatus(matchID string, status string) error {
 // UpdatePlayerStatus 更新指定玩家的确认状态
 func UpdatePlayerStatus(matchID string, playerAddress string, status string) error {
 	return Get().Model(&dao.MatchPlayer{}).Where("match_id = ? AND address = ?", matchID, playerAddress).Update("status", status).Error
-}
-
-// CheckBothPlayersConfirmed 检查双方是否都已确认
-func CheckBothPlayersConfirmed(matchID string) (bool, error) {
-	var matches []dao.MatchPlayer
-	err := Get().Where("match_id = ?", matchID).Find(&matches).Error
-	if err != nil {
-		return false, err
-	}
-
-	if len(matches) != 2 {
-		return false, fmt.Errorf("匹配记录数量不正确")
-	}
-
-	// 检查两个玩家是否都已确认
-	bothConfirmed := true
-	for _, match := range matches {
-		if match.Status != "confirmed" {
-			bothConfirmed = false
-			break
-		}
-	}
-
-	return bothConfirmed, nil
 }
 
 // GetMatchesByAddress 根据地址获取用户的匹配记录
