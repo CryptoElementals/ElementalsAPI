@@ -8,7 +8,7 @@ func Migrate() error {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
-		&dao.Match{},
+		&dao.GameInfo{},
 		&dao.Room{},
 		// 以后有新表直接加在这里
 	}

@@ -4,8 +4,6 @@ package pubsub;
 
 import "rpc/proto/rpc.proto";
 
-import "google/protobuf/empty.proto";
-
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 // PubSub服务定义
@@ -101,15 +99,36 @@ message GetSubscriberCountResponse {
   string error = 4;
 } 
 
-message GamePlayers {
-  repeated rpc.PlayerAddress players = 1;
+message GameCreated {
+  uint32 game_id = 1;
+  repeated rpc.PlayerAddress players = 2; 
+}
+
+message RoundReady {
+  uint32 game_id = 1;
+  uint32 round_num = 2;
+}
+
+message CommitmentsOnChain {
+  uint32 game_id = 1;
+  uint32 round_num = 2;
+}
+
+message CardsOnChain {
+  uint32 game_id = 1;
+  uint32 round_num = 2;
+}
+
+message RoundCompleted {
+  uint32 game_id = 1;
+  rpc.Round round_info = 2;
 }
 
 enum EventType {
   TYPE_KNOWN = 0;
   SYNC_INFO = 1;
-  MATCH_CREATED = 2;
-  MATCH_READY = 3;
+  GAME_CREATED = 2;
+  ROUND_READY = 3;
   COMMITMENTS_ON_CHAIN = 4;
   CARDS_ON_CHAIN = 5;
   ROUND_COMPLETE = 6;
@@ -120,9 +139,10 @@ message Event {
   EventType type = 1;
   oneof data {
     rpc.GameInfo game_info = 2; // SYNC_INFO, GAME_COMPLETE
-    GamePlayers players = 3; // MATCH_CREATED
-    uint32 round_num = 4; // MATCH_READY
-    google.protobuf.Empty empty = 5; // COMMITMENTS_ON_CHAIN, CARDS_ON_CHAIN
-    rpc.Round round_info = 6; // ROUND_COMPLETE
+    GameCreated game_created = 3; // GAME_CREATED
+    RoundReady round_ready = 4; // ROUND_READY
+    CommitmentsOnChain commitments_on_chain = 5; // COMMITMENTS_ON_CHAIN
+    CardsOnChain cards_on_chain = 6; // CARDS_ON_CHAIN
+    RoundCompleted round_completed = 7; // ROUND_COMPLETE
   };
 }

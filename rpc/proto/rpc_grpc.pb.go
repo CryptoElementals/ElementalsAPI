@@ -20,11 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RpcService_JoinQueue_FullMethodName       = "/rpc.RpcService/JoinQueue"
-	RpcService_ExitQueue_FullMethodName       = "/rpc.RpcService/ExitQueue"
-	RpcService_GetPlayerInfo_FullMethodName   = "/rpc.RpcService/GetPlayerInfo"
-	RpcService_GetGameInfo_FullMethodName     = "/rpc.RpcService/GetGameInfo"
-	RpcService_NewTransactions_FullMethodName = "/rpc.RpcService/NewTransactions"
+	RpcService_JoinQueue_FullMethodName          = "/rpc.RpcService/JoinQueue"
+	RpcService_ExitQueue_FullMethodName          = "/rpc.RpcService/ExitQueue"
+	RpcService_GetPlayerInfo_FullMethodName      = "/rpc.RpcService/GetPlayerInfo"
+	RpcService_GetGameInfo_FullMethodName        = "/rpc.RpcService/GetGameInfo"
+	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
+	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
 )
 
 // RpcServiceClient is the client API for RpcService service.
@@ -36,8 +37,9 @@ type RpcServiceClient interface {
 	ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetPlayerInfo(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*PlayerInfo, error)
 	GetGameInfo(ctx context.Context, in *GetGameInfoRequest, opts ...grpc.CallOption) (*GameInfo, error)
+	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// chain related api
-	NewTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type rpcServiceClient struct {
@@ -88,10 +90,20 @@ func (c *rpcServiceClient) GetGameInfo(ctx context.Context, in *GetGameInfoReque
 	return out, nil
 }
 
-func (c *rpcServiceClient) NewTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *rpcServiceClient) ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_NewTransactions_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RpcService_ConfirmBattle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcServiceClient) SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_SubmitTransactions_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +119,9 @@ type RpcServiceServer interface {
 	ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	GetPlayerInfo(context.Context, *PlayerAddress) (*PlayerInfo, error)
 	GetGameInfo(context.Context, *GetGameInfoRequest) (*GameInfo, error)
+	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	// chain related api
-	NewTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error)
+	SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRpcServiceServer()
 }
 
@@ -131,8 +144,11 @@ func (UnimplementedRpcServiceServer) GetPlayerInfo(context.Context, *PlayerAddre
 func (UnimplementedRpcServiceServer) GetGameInfo(context.Context, *GetGameInfoRequest) (*GameInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGameInfo not implemented")
 }
-func (UnimplementedRpcServiceServer) NewTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method NewTransactions not implemented")
+func (UnimplementedRpcServiceServer) ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfirmBattle not implemented")
+}
+func (UnimplementedRpcServiceServer) SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubmitTransactions not implemented")
 }
 func (UnimplementedRpcServiceServer) mustEmbedUnimplementedRpcServiceServer() {}
 func (UnimplementedRpcServiceServer) testEmbeddedByValue()                    {}
@@ -227,20 +243,38 @@ func _RpcService_GetGameInfo_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_NewTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RpcService_ConfirmBattle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmBattleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).ConfirmBattle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_ConfirmBattle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).ConfirmBattle(ctx, req.(*ConfirmBattleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RpcService_SubmitTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TransactionBatch)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).NewTransactions(ctx, in)
+		return srv.(RpcServiceServer).SubmitTransactions(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_NewTransactions_FullMethodName,
+		FullMethod: RpcService_SubmitTransactions_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).NewTransactions(ctx, req.(*TransactionBatch))
+		return srv.(RpcServiceServer).SubmitTransactions(ctx, req.(*TransactionBatch))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -269,8 +303,12 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RpcService_GetGameInfo_Handler,
 		},
 		{
-			MethodName: "NewTransactions",
-			Handler:    _RpcService_NewTransactions_Handler,
+			MethodName: "ConfirmBattle",
+			Handler:    _RpcService_ConfirmBattle_Handler,
+		},
+		{
+			MethodName: "SubmitTransactions",
+			Handler:    _RpcService_SubmitTransactions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

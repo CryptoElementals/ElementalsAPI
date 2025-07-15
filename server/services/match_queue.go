@@ -230,7 +230,7 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 	matchID := uuid.New().String()
 
 	// 为玩家1创建匹配记录
-	match1 := &dao.MatchPlayer{
+	match1 := &dao.GamePlayer{
 		MatchID:   matchID,
 		Address:   player1.Address,
 		PublicKey: player1.PublicKey,
@@ -240,7 +240,7 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 	}
 
 	// 为玩家2创建匹配记录
-	match2 := &dao.MatchPlayer{
+	match2 := &dao.GamePlayer{
 		MatchID:   matchID,
 		Address:   player2.Address,
 		PublicKey: player2.PublicKey,
