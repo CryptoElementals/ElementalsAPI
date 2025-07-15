@@ -90,7 +90,11 @@ func (g *Game) recoverGame(gameInfo *dao.GameInfo) error {
 			player: g.gameInfo.Players[i],
 		}
 	}
+	if len(g.gameInfo.Rounds) != 0 {
+		g.currentRound = g.gameInfo.Rounds[len(g.gameInfo.Rounds)-1]
+	}
 	// recover player status, too
+	
 	return nil
 }
 
