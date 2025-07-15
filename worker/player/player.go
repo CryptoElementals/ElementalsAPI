@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/worker"
 	"github.com/CryptoElementals/common/worker/types"
@@ -55,7 +56,20 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		p.handleGameReadyEvent(p.ctx, evt)
 	case types.EVENT_TYPE_ROUND_READY:
 		evt := event.Data.(*types.RoundReadyEvent)
-		p.sendRoundReadyEvent(p.ctx, evt.GameID, evt.RoundNumber)
+		p.handleRoundReadyEvent(p.ctx, evt)
+	case types.EVENT_TYPE_COMMITMENTS_ON_CHAIN:
+		evt := event.Data.(*types.CommitmentsOnChainEvent)
+		p.handleCommitmentsOnChainEvent(p.ctx, evt)
+	case types.EVENT_TYPE_CARDS_ON_CHAIN:
+		evt := event.Data.(*types.CardsOnChainEvent)
+		p.handleCardsOnChainEvent(p.ctx, evt)
+	case types.EVENT_TYPE_ROUND_COMPLETED:
+		evt := event.Data.(*types.RoundCompletedEvent)
+		p.handleRoundCompletedEvent(p.ctx, evt)
+	case types.EVENT_TYPE_GAME_COMPLETED:
+		evt := event.Data.(*types.GameCompletedEvent)
+		p.handleGameCompletedEvent(p.ctx, evt)
+		p.status = proto.PlayerStatus_PLAYER_KNOWN
 	}
 	return nil
 }
@@ -138,31 +152,90 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 	})
 }
 
-func (p *Player) sendGameReadyEvent(ctx context.Context, gameID uint, contractAddress string) {
+func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_GAME_READY,
 			Data: &proto.Event_GameReady{
 				GameReady: &proto.GameReady{
-					GameId:   uint32(gameID),
-					RoundNum: uint32(roundNumber),
+					GameId:          uint32(evt.GameID),
+					ContractAddress: evt.ContractAddress,
 				},
 			},
 		},
 	})
 }
 
-func (p *Player) sendRoundReadyEvent(ctx context.Context, gameID uint, roundNumber int) {
+func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_ROUND_READY,
 			Data: &proto.Event_RoundReady{
 				RoundReady: &proto.RoundReady{
-					GameId:   uint32(gameID),
-					RoundNum: uint32(roundNumber),
+					GameId:   uint32(evt.GameID),
+					RoundNum: uint32(evt.RoundNumber),
 				},
+			},
+		},
+	})
+}
+
+func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) {
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_COMMITMENTS_ON_CHAIN,
+			Data: &proto.Event_CommitmentsOnChain{
+				CommitmentsOnChain: &proto.CommitmentsOnChain{
+					GameId:   uint32(evt.GameID),
+					RoundNum: uint32(evt.RoundNumber),
+				},
+			},
+		},
+	})
+}
+
+func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) {
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_CARDS_ON_CHAIN,
+			Data: &proto.Event_CardsOnChain{
+				CardsOnChain: &proto.CardsOnChain{
+					GameId:   uint32(evt.GameID),
+					RoundNum: uint32(evt.RoundNumber),
+				},
+			},
+		},
+	})
+}
+
+func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.RoundCompletedEvent) {
+	protoRound := conversion.DbGameRoundToProtoGameRound(evt.RoundInfo)
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_ROUND_COMPLETED,
+			Data: &proto.Event_RoundCompleted{
+				RoundCompleted: &proto.RoundCompleted{
+					GameId:    uint32(evt.GameID),
+					RoundInfo: protoRound,
+				},
+			},
+		},
+	})
+}
+
+func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCompletedEvent) {
+	protoGameInfo := conversion.DbGameInfoToProtoGameInfo(evt.GameInfo)
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_GAME_COMPLETED,
+			Data: &proto.Event_GameInfo{
+				GameInfo: protoGameInfo,
 			},
 		},
 	})

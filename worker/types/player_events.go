@@ -1,5 +1,7 @@
 package types
 
+import dao "github.com/CryptoElementals/common/models"
+
 type GameCreatedEvent struct {
 	GameID  uint
 	Players []PlayerAddress
@@ -15,12 +17,24 @@ type RoundReadyEvent struct {
 	RoundNumber int
 }
 
-type CommitmentsObservedEvent struct{}
+type CommitmentsOnChainEvent struct {
+	GameID      uint
+	RoundNumber int
+}
 
-type CardsSubmittedEvent struct{}
+type CardsOnChainEvent struct {
+	GameID      uint
+	RoundNumber int
+}
 
-type RoundCompleteEvent struct{}
+type RoundCompletedEvent struct {
+	GameID    uint
+	RoundInfo *dao.Round
+}
 
-type GameCompleteEvent struct{}
+type GameCompletedEvent struct {
+	GameID   uint
+	GameInfo *dao.GameInfo
+}
 
-type SyncEvent GameCompleteEvent
+type SyncEvent GameCompletedEvent

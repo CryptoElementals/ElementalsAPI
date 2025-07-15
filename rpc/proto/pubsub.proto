@@ -137,8 +137,8 @@ enum EventType {
   ROUND_READY = 4;
   COMMITMENTS_ON_CHAIN = 5;
   CARDS_ON_CHAIN = 6;
-  ROUND_COMPLETE = 7;
-  GAME_COMPLETE = 8;
+  ROUND_COMPLETED = 7;
+  GAME_COMPLETED = 8;
 }
 
 message Event {
