@@ -146,7 +146,7 @@ message Event {
   oneof data {
     rpc.GameInfo game_info = 2; // SYNC_INFO, GAME_COMPLETE
     GameCreated game_created = 3; // GAME_CREATED
-    GameReady game_read = 4; // GAME_READY
+    GameReady game_ready = 4; // GAME_READY
     RoundReady round_ready = 5; // ROUND_READY
     CommitmentsOnChain commitments_on_chain = 6; // COMMITMENTS_ON_CHAIN
     CardsOnChain cards_on_chain = 7; // CARDS_ON_CHAIN
