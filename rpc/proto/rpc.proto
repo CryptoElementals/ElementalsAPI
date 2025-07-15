@@ -42,6 +42,7 @@ message GetGameInfoRequest {
 
 message ConfirmBattleRequest {
     uint32 game_id = 1;
+    uint32 round_num = 2;
 }
 
 enum RoundStatus {

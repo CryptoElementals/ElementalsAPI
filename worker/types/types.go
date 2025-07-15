@@ -22,6 +22,7 @@ const GameTypePVP = 1
 const (
 	GAME_MANAGER_ID  = "game_manager"
 	QUEUE_MANAGER_ID = "queue_manager"
+	CHAIN_MANAGER_ID = "chain_manager"
 )
 
 type PlayerAddress struct {

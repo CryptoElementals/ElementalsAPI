@@ -11,11 +11,13 @@ import (
 )
 
 type Service struct {
-	ctx           context.Context
-	lock          sync.RWMutex
-	players       map[types.PlayerAddress]*Player
-	pub           *server.PubSubServer
-	workerManager *worker.WorkerManager
+	ctx             context.Context
+	lock            sync.RWMutex
+	players         map[types.PlayerAddress]*Player
+	pub             *server.PubSubServer
+	workerManager   *worker.WorkerManager
+	gameInfoGetter  GameInfoGetter
+	queueInfoGetter QueueInfoGetter
 }
 
 func NewService(ctx context.Context) *Service {
@@ -32,7 +34,7 @@ func (s *Service) AddPlayer(address types.PlayerAddress) error {
 		return errors.New("player already exists")
 	}
 
-	player := NewPlayer(s.ctx, address, s.pub, s.workerManager)
+	player := NewPlayer(s.ctx, address, s.pub, s.gameInfoGetter, s.queueInfoGetter, s.workerManager)
 	s.players[address] = player
 	return nil
 }
@@ -52,8 +54,13 @@ func (s *Service) GetOrCreatePlayer(address types.PlayerAddress) *Player {
 	defer s.lock.Unlock()
 	player, ok := s.players[address]
 	if !ok {
-		player = NewPlayer(s.ctx, address, s.pub, s.workerManager)
+		player = NewPlayer(s.ctx, address, s.pub, s.gameInfoGetter, s.queueInfoGetter, s.workerManager)
 		s.players[address] = player
 	}
 	return player
+}
+
+func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
+	player := s.GetOrCreatePlayer(address)
+	return player.sync()
 }

@@ -34,23 +34,42 @@ type Player struct {
 	queueInfoGetter QueueInfoGetter
 }
 
-func NewPlayer(ctx context.Context, address types.PlayerAddress, publisher Publisher, workerManger *worker.WorkerManager) *Player {
+func NewPlayer(ctx context.Context,
+	address types.PlayerAddress,
+	publisher Publisher,
+	gameInfoGetter GameInfoGetter,
+	queueInfoGetter QueueInfoGetter,
+	workerManger *worker.WorkerManager) *Player {
 	p := &Player{
-		ctx:          ctx,
-		address:      address,
-		publisher:    publisher,
-		workerManger: workerManger,
+		ctx:             ctx,
+		address:         address,
+		gameInfoGetter:  gameInfoGetter,
+		queueInfoGetter: queueInfoGetter,
+		publisher:       publisher,
+		workerManger:    workerManger,
 	}
 	p.createSelf()
 	return p
 }
 
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
+		if event.EventType == types.EVENT_TYPE_GAME_CREATED {
+			evt := event.Data.(*types.GameCreatedEvent)
+			p.handleNewGameEvent(p.ctx, evt)
+			p.status = proto.PlayerStatus_PLAYER_IN_GAME
+		} else {
+			return fmt.Errorf("player in queue, but got event type %d", event.EventType)
+		}
+	}
+
+	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return fmt.Errorf("player not in game, but got event type %d", event.EventType)
+	}
+
 	switch event.EventType {
-	case types.EVENT_TYPE_GAME_CREATED:
-		evt := event.Data.(*types.GameCreatedEvent)
-		p.handleNewGameEvent(p.ctx, evt)
-		p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	case types.EVENT_TYPE_GAME_READY:
 		evt := event.Data.(*types.GameReadyEvent)
 		p.handleGameReadyEvent(p.ctx, evt)
