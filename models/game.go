@@ -7,8 +7,8 @@ type GameInfo struct {
 	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus `gorm:"not null" json:"status"`
-	Players      []GamePlayer     `gorm:"not null;default:''" json:"players"`
-	Rounds       []Round          `json:"rounds"`
+	Players      []*GamePlayer    `gorm:"not null;default:''" json:"players"`
+	Rounds       []*Round         `json:"rounds"`
 	GameResult   *GameResult
 }
 
@@ -23,21 +23,21 @@ type GamePlayer struct {
 // Round 回合记录
 type Round struct {
 	BaseModel
-	MatchID          uint              `gorm:"not null;index" json:"match_id"`                // 匹配唯一ID
-	RoundNumber      int               `gorm:"not null;index" json:"round_number"`            // 回合数
-	Status           proto.RoundStatus `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
-	PlayerRoundInfos []PlayerRoundInfo `gorm:"not null;default:''" json:"player_round_infos"` // 回合玩家记录
+	MatchID          uint               `gorm:"not null;index" json:"match_id"`                // 匹配唯一ID
+	RoundNumber      int                `gorm:"not null;index" json:"round_number"`            // 回合数
+	Status           proto.RoundStatus  `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
+	PlayerRoundInfos []*PlayerRoundInfo `gorm:"not null;default:''" json:"player_round_infos"` // 回合玩家记录
 }
 
 // PlayerRoundInfo 回合玩家记录
 type PlayerRoundInfo struct {
 	BaseModel
-	RoundID             uint                 `gorm:"not null;index" json:"round_id"`
-	GamePlayerID        uint                 `gorm:"not null;" json:"game_player_id"`
-	GamePlayer          GamePlayer           `gorm:"not null;index" json:"game_player"`                // 匹配玩家唯一ID
-	RoundSubmittedCards []RoundSubmittedCard `gorm:"not null;default:''" json:"round_submitted_cards"` // 回合牌面记录
-	SubmittedCommitment []byte               `gorm:"not null;default:''" json:"submitted_commitment"`  // 牌面哈希值
-	Salt                []byte               `gorm:"not null;default:''" json:"salt"`
+	RoundID             uint                  `gorm:"not null;index" json:"round_id"`
+	GamePlayerID        uint                  `gorm:"not null;" json:"game_player_id"`
+	GamePlayer          GamePlayer            `gorm:"not null;index" json:"game_player"`                // 匹配玩家唯一ID
+	RoundSubmittedCards []*RoundSubmittedCard `gorm:"not null;default:''" json:"round_submitted_cards"` // 回合牌面记录
+	SubmittedCommitment []byte                `gorm:"not null;default:''" json:"submitted_commitment"`  // 牌面哈希值
+	Salt                []byte                `gorm:"not null;default:''" json:"salt"`
 }
 
 // RoundSubmittedCard 回合牌面记录
@@ -53,7 +53,7 @@ type RoundSubmittedCard struct {
 type GameResult struct {
 	BaseModel
 	MatchID               uint `gorm:"not null;index" json:"match_id"`
-	GameResultPlayerInfos []GameResultPlayerInfo
+	GameResultPlayerInfos []*GameResultPlayerInfo
 }
 
 type GameResultPlayerInfo struct {

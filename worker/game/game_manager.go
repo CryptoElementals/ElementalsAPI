@@ -91,6 +91,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 	}
 	game.id = game.gameInfo.ID
 	r.gamesMap[game.id] = game
+	game.createSelf()
 	return game.id, nil
 }
 
@@ -107,11 +108,12 @@ func (r *GameManager) recoverGames() error {
 		}
 		players := game.gamePlayers
 		for _, player := range players {
-			if _, ok := r.playerToGameMap[player.PlayerAddress]; ok {
-				log.Fatalf("player %s already in game, game id: %s", player.PlayerAddress.String(), game.id)
+			if _, ok := r.playerToGameMap[player.PlayerAddress()]; ok {
+				log.Fatalf("player %s already in game, game id: %s", player.PlayerAddress(), game.id)
 			}
-			r.playerToGameMap[player.PlayerAddress] = game
+			r.playerToGameMap[player.PlayerAddress()] = game
 		}
+		game.createSelf()
 	}
 	return nil
 }

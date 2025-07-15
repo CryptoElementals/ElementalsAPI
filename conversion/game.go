@@ -14,11 +14,11 @@ func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
 	}
 	// convert players
 	for _, player := range info.Players {
-		gameInfo.Players = append(gameInfo.Players, DbGamePlayerToProtoPlayerAddress(&player))
+		gameInfo.Players = append(gameInfo.Players, DbGamePlayerToProtoPlayerAddress(player))
 	}
 	// convert rounds
 	for _, round := range info.Rounds {
-		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(&round))
+		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round))
 	}
 	// conver results
 	return gameInfo
@@ -39,10 +39,10 @@ func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
 	}
 }
 
-func DbPlayerRoundInfosToProto(playerRoundInfos []dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
+func DbPlayerRoundInfosToProto(playerRoundInfos []*dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
 	var playerRoundInfosProto []*proto.PlayerRoundInfo
 	for _, playerRoundInfo := range playerRoundInfos {
-		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(&playerRoundInfo))
+		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(playerRoundInfo))
 	}
 	return playerRoundInfosProto
 }
@@ -56,10 +56,10 @@ func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.Playe
 	}
 }
 
-func DbRoundSubmittedCardsToProto(cards []dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
+func DbRoundSubmittedCardsToProto(cards []*dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
 	var cardsProto []*proto.RoundSubmittedCard
 	for _, card := range cards {
-		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(&card))
+		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(card))
 	}
 	return cardsProto
 }

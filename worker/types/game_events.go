@@ -6,12 +6,25 @@ type NewGameEvent struct {
 	Players   []PlayerAddress
 }
 
-// EventType implements Event.
-func (e *NewGameEvent) EventType() uint32 {
-	return EVENT_TYPE_NEW_GAME
+type PlayerReadyEvent struct {
+	GameId        uint
+	PlayerAddress PlayerAddress
 }
 
-// Sender implements Event.
-func (e *NewGameEvent) Sender() string {
-	return e.MsgSender
+type RoomContractCreated struct {
+	RoomID              uint
+	RoomContractAddress string
+}
+
+type PlayerCommitmentOnChain struct {
+	Address     PlayerAddress
+	RoundNumber int
+	Commitment  []byte
+}
+
+type PlayerCardsOnChain struct {
+	Address     PlayerAddress
+	RoundNumber int
+	Salt        []byte
+	Cards       []uint32
 }
