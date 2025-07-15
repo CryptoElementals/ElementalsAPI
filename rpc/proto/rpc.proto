@@ -15,7 +15,7 @@ service RpcService {
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
 
     // chain related api
-    rpc NewTransactions(TransactionBatch) returns (google.protobuf.Empty);
+    rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
 }
 
 message PlayerAddress {
