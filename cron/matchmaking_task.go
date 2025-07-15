@@ -1,5 +1,6 @@
 package cron
 
+/*
 import (
 	"context"
 	"time"
@@ -41,3 +42,5 @@ func RegisterMatchmakingTask() {
 	// 每2秒执行一次匹配检查
 	Register("matchmaking", task.Run, false, 2*time.Second)
 }
+
+*/
