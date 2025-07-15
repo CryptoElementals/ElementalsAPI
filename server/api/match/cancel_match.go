@@ -159,6 +159,20 @@ func (task *CancelMatchTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
+	// 释放两个玩家的锁定代币
+	player1TempAddress := strings.ToLower(match.Player1TempAddress)
+	player2TempAddress := strings.ToLower(match.Player2TempAddress)
+
+	err = db.SoftDeleteLockTokenByAddressAndTempAddress(player1Address, player1TempAddress)
+	if err != nil {
+		log.Infof("[CancelMatch] Failed to release lock tokens for player1 %s: %v", player1Address, err)
+	}
+
+	err = db.SoftDeleteLockTokenByAddressAndTempAddress(player2Address, player2TempAddress)
+	if err != nil {
+		log.Infof("[CancelMatch] Failed to release lock tokens for player2 %s: %v", player2Address, err)
+	}
+
 	log.Infof("[CancelMatch] Successfully cancelled match %s by address %s", task.Request.MatchID, address)
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Match cancelled successfully"

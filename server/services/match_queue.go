@@ -16,8 +16,8 @@ import (
 
 // PlayerInfo 玩家信息
 type PlayerInfo struct {
-	Address   string `json:"address"`
-	PublicKey string `json:"public_key"`
+	Address     string `json:"address"`
+	TempAddress string `json:"temp_address"`
 }
 
 const (
@@ -38,7 +38,7 @@ func (s *MatchQueueService) getQueueKey(mode string) string {
 }
 
 // JoinQueue 加入匹配队列，存储address和publickey
-func (s *MatchQueueService) JoinQueue(mode string, address string, publicKey string) error {
+func (s *MatchQueueService) JoinQueue(mode string, address string, tempAddress string) error {
 	conn := redis.GetGlobalPool().Get()
 	defer conn.Close()
 
@@ -59,8 +59,8 @@ func (s *MatchQueueService) JoinQueue(mode string, address string, publicKey str
 
 	// 创建玩家信息
 	playerInfo := PlayerInfo{
-		Address:   address,
-		PublicKey: publicKey,
+		Address:     address,
+		TempAddress: tempAddress,
 	}
 
 	// 序列化为JSON
@@ -237,12 +237,12 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 
 		// 玩家1信息
 		Player1Address:     player1.Address,
-		Player1TempAddress: player1.Address, // 临时地址暂时使用原地址
+		Player1TempAddress: player1.TempAddress, // 使用正确的临时地址
 		Player1Status:      "matched",
 
 		// 玩家2信息
 		Player2Address:     player2.Address,
-		Player2TempAddress: player2.Address, // 临时地址暂时使用原地址
+		Player2TempAddress: player2.TempAddress, // 使用正确的临时地址
 		Player2Status:      "matched",
 	}
 

@@ -11,6 +11,7 @@ func Migrate() error {
 		&dao.Match{},
 		&dao.Room{},
 		&dao.Card{},
+		&dao.LockToken{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {

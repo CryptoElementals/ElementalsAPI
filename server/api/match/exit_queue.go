@@ -3,6 +3,7 @@ package match
 import (
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
@@ -15,7 +16,8 @@ const EXIT_QUEUE_LABEL = "ExitQueue"
 // ExitQueueRequest 请求结构体
 type ExitQueueRequest struct {
 	api.BaseRequest
-	Mode string `mapstructure:"Mode" validate:"required"`
+	Mode        string `mapstructure:"Mode" validate:"required"`
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 }
 
 // ExitQueueResponse 响应结构体
@@ -85,7 +87,8 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	address = strings.ToLower(address)
+	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 验证游戏模式
 	validModes := []string{"PvP", "Tournament"}
@@ -106,11 +109,19 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	matchService := services.NewMatchQueueService()
 
 	// 离开匹配队列（传递小写地址）
-	err := matchService.LeaveQueue(task.Request.Mode, lowercaseAddress)
+	err := matchService.LeaveQueue(task.Request.Mode, address)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to leave match queue: " + err.Error()
 		return task.Response, nil
+	}
+
+	// 释放该用户对应特定tempaddress的锁定代币
+	err = db.SoftDeleteLockTokenByAddressAndTempAddress(address, tempAddress)
+	if err != nil {
+		// 记录错误但不影响退出队列的成功
+		// 因为主要目标是退出队列，释放代币是次要的
+		// 可以记录日志但不返回错误
 	}
 
 	task.Response.BaseResponse.RetCode = 0

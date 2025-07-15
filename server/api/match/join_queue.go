@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
@@ -16,8 +17,8 @@ const JOIN_QUEUE_LABEL = "JoinQueue"
 // JoinQueueRequest 请求结构体
 type JoinQueueRequest struct {
 	api.BaseRequest
-	Mode      string `mapstructure:"Mode" validate:"required"`
-	PublicKey string `mapstructure:"PublicKey" validate:"required"`
+	Mode        string `mapstructure:"Mode" validate:"required"`
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 }
 
 // JoinQueueResponse 响应结构体
@@ -87,7 +88,8 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	address = strings.ToLower(address)
+	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 验证游戏模式
 	validModes := []string{"PvP", "Tournament"}
@@ -105,17 +107,43 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 检查用户token数量是否足够
-	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
+	userProfile, err := db.GetUserProfileByAddress(address)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user information"
 		return task.Response, nil
 	}
 
-	// 要求用户至少有1000个token才能加入匹配队列
-	if userProfile.TokenAmount < 1000 {
+	// 获取用户已锁定的代币总数
+	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(address)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1003
+		task.Response.BaseResponse.Message = "Failed to get locked token information"
+		return task.Response, nil
+	}
+
+	// 计算可用代币数量：用户数据库里的token减去lock_token表里该address对应记录的token总和
+	availableTokens := userProfile.TokenAmount - totalLockedTokens
+
+	// 要求用户至少有10000个可用代币才能加入匹配队列
+	if availableTokens < 10000 {
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = "Insufficient tokens, need at least 1000 tokens to join match queue"
+		task.Response.BaseResponse.Message = "Insufficient available tokens, need at least 10000 tokens to join match queue"
+		return task.Response, nil
+	}
+
+	// 创建锁定代币记录
+	lockToken := &dao.LockToken{
+		Address:     address,
+		TempAddress: tempAddress,
+		Token:       10000, // 默认锁定10000个代币
+	}
+
+	// 保存锁定代币记录
+	err = db.CreateLockToken(lockToken)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1002
+		task.Response.BaseResponse.Message = "Failed to create lock token record: " + err.Error()
 		return task.Response, nil
 	}
 
@@ -123,8 +151,11 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	matchService := services.NewMatchQueueService()
 
 	// 加入匹配队列（传递小写地址）
-	err = matchService.JoinQueue(task.Request.Mode, lowercaseAddress, task.Request.PublicKey)
+	err = matchService.JoinQueue(task.Request.Mode, address, tempAddress)
 	if err != nil {
+		// 如果加入队列失败，需要删除刚创建的锁定代币记录
+		_ = db.SoftDeleteLockToken(lockToken.ID)
+
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to join match queue: " + err.Error()
 		return task.Response, nil
