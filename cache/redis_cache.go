@@ -41,3 +41,8 @@ func (*RedisCache) Exist(key string) (bool, error) {
 func (*RedisCache) Delete(key string) error {
 	return redis.Delete(key)
 }
+
+// List implements Cache.
+func (r *RedisCache) List(prefix string) ([]string, error) {
+	return redis.Scan(prefix)
+}

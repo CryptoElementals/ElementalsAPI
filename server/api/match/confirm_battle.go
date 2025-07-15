@@ -105,17 +105,15 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 验证玩家是否是该匹配的参与者
 	found := false
-	var playerStatus string
-	// 将数据库中的地址也转为小写进行比较
-	player1Address := strings.ToLower(match.Player1Address)
-	player2Address := strings.ToLower(match.Player2Address)
-
-	if address == player1Address {
-		found = true
-		playerStatus = match.Player1Status
-	} else if address == player2Address {
-		found = true
-		playerStatus = match.Player2Status
+	var playerMatch dao.GamePlayer
+	for _, match := range matches {
+		// 将数据库中的地址也转为小写进行比较
+		matchAddress := strings.ToLower(match.Address)
+		if matchAddress == address {
+			found = true
+			playerMatch = match
+			break
+		}
 	}
 
 	if !found {

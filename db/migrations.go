@@ -8,7 +8,7 @@ func Migrate() error {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
-		&dao.Match{},
+		&dao.GameInfo{},
 		&dao.Room{},
 		&dao.Card{},
 		&dao.LockToken{},

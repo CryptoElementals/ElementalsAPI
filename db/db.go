@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
@@ -36,6 +37,15 @@ func Init(cfg *Config) error {
 		return err
 	}
 	db = ldb
+
+	// set connection pool parameters
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	sqlDB.SetMaxIdleConns(50)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	return nil
 }

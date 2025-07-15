@@ -102,7 +102,7 @@ func (task *GetMatchStatsTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.QueueCount = len(players)
 
 	// 2. 获取该模式等待确认的人数（从match表里roomid为空的记录条数）
-	var waitingMatches []dao.Match
+	var waitingMatches []dao.GameInfo
 	err = db.Get().Where("mode = ? AND room_id = '' AND status = 'matched'", task.Request.Mode).Find(&waitingMatches).Error
 	if err != nil {
 		log.Infof("[GetMatchStats] Error getting waiting matches for mode %s: %v", task.Request.Mode, err)
@@ -112,7 +112,7 @@ func (task *GetMatchStatsTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 3. 获取该模式正在对战的人数（从match表里status为confirmed的记录条数）
-	var confirmedMatches []dao.Match
+	var confirmedMatches []dao.GameInfo
 	err = db.Get().Where("mode = ? AND status = 'confirmed'", task.Request.Mode).Find(&confirmedMatches).Error
 	if err != nil {
 		log.Infof("[GetMatchStats] Error getting confirmed matches for mode %s: %v", task.Request.Mode, err)
