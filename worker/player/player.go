@@ -50,9 +50,12 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		evt := event.Data.(*types.GameCreatedEvent)
 		p.handleNewGameEvent(p.ctx, evt)
 		p.status = proto.PlayerStatus_PLAYER_IN_GAME
+	case types.EVENT_TYPE_GAME_READY:
+		evt := event.Data.(*types.GameReadyEvent)
+		p.handleGameReadyEvent(p.ctx, evt)
 	case types.EVENT_TYPE_ROUND_READY:
 		evt := event.Data.(*types.RoundReadyEvent)
-		p.handleRoundReadyEvent(p.ctx, evt)
+		p.sendRoundReadyEvent(p.ctx, evt.GameID, evt.RoundNumber)
 	}
 	return nil
 }
@@ -135,15 +138,30 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 	})
 }
 
-func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) {
+func (p *Player) sendGameReadyEvent(ctx context.Context, gameID uint, contractAddress string) {
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_GAME_READY,
+			Data: &proto.Event_GameReady{
+				GameReady: &proto.GameReady{
+					GameId:   uint32(gameID),
+					RoundNum: uint32(roundNumber),
+				},
+			},
+		},
+	})
+}
+
+func (p *Player) sendRoundReadyEvent(ctx context.Context, gameID uint, roundNumber int) {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_ROUND_READY,
 			Data: &proto.Event_RoundReady{
 				RoundReady: &proto.RoundReady{
-					GameId:   uint32(evt.GameID),
-					RoundNum: uint32(evt.RoundNumber),
+					GameId:   uint32(gameID),
+					RoundNum: uint32(roundNumber),
 				},
 			},
 		},
