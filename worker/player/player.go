@@ -46,11 +46,13 @@ func NewPlayer(ctx context.Context, address types.PlayerAddress, publisher Publi
 
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	switch event.EventType {
-	case types.EVENT_TYPE_NEW_GAME:
-		evt := event.Data.(*types.NewGameEvent)
+	case types.EVENT_TYPE_GAME_CREATED:
+		evt := event.Data.(*types.GameCreatedEvent)
 		p.handleNewGameEvent(p.ctx, evt)
 		p.status = proto.PlayerStatus_PLAYER_IN_GAME
-	case types.EVENT_TYPE_GAME_READY:
+	case types.EVENT_TYPE_ROUND_READY:
+		evt := event.Data.(*types.RoundReadyEvent)
+		p.handleRoundReadyEvent(p.ctx, evt)
 	}
 	return nil
 }
@@ -114,7 +116,7 @@ func (p *Player) sync() error {
 	return nil
 }
 
-func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.NewGameEvent) {
+func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedEvent) {
 	protoPlayers := make([]*proto.PlayerAddress, 0)
 	for _, player := range evt.Players {
 		protoPlayers = append(protoPlayers, player.ToProto())
@@ -125,7 +127,7 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.NewGameEvent
 			Type: proto.EventType_GAME_CREATED,
 			Data: &proto.Event_GameCreated{
 				GameCreated: &proto.GameCreated{
-					GameId:  uint32(evt.GameId),
+					GameId:  uint32(evt.GameID),
 					Players: protoPlayers,
 				},
 			},
@@ -133,7 +135,7 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.NewGameEvent
 	})
 }
 
-func (p *Player) handleGameContractCreatedEvent(ctx context.Context, evt *types.RoundReadyEvent) {
+func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{

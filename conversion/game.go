@@ -7,7 +7,7 @@ import (
 
 func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
 	gameInfo := &proto.GameInfo{
-		RoomId:              uint32(info.ID),
+		GameId:              uint32(info.ID),
 		RoomContractAddress: info.RoomContract,
 		GameType:            proto.GameType(info.Type),
 		Status:              proto.GameStatus(info.Status),

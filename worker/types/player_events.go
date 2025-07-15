@@ -1,8 +1,8 @@
 package types
 
 type GameCreatedEvent struct {
-	GameID      uint
-	GamePlayers []PlayerAddress
+	GameID  uint
+	Players []PlayerAddress
 }
 
 type RoundReadyEvent struct {

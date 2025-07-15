@@ -56,8 +56,8 @@ func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 		// also notify players
 		for _, player := range evt.Players {
 			r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, types.EVENT_TYPE_NEW_GAME, &types.GameCreatedEvent{
-				GameID:      gameID,
-				GamePlayers: evt.Players,
+				GameID:  gameID,
+				Players: evt.Players,
 			}))
 		}
 		return nil
