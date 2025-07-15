@@ -12,14 +12,14 @@ type GameManager struct {
 	rooms map[string]*worker.Worker
 }
 
-func NewGameManager(ctx context.Context) *RoomManager {
-	return &RoomManager{
+func NewGameManager(ctx context.Context) *GameManager {
+	return &GameManager{
 		ctx:   ctx,
 		rooms: make(map[string]*worker.Worker),
 	}
 }
 
-func (r *RoomManager) CreateGame(id string, players []*proto.PlayerAddress) *Game {
+func (r *GameManager) CreateGame(id string, players []*proto.PlayerAddress) *Game {
 	room := &Game{
 		id:      id,
 		players: players,
