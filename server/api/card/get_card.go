@@ -1,9 +1,11 @@
 package card
 
 import (
+	"fmt"
+
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/services/battle"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -17,13 +19,30 @@ const (
 // 请求结构体
 type GetCardByIDRequest struct {
 	api.BaseRequest
-	CardID int `mapstructure:"CardID" validate:"required"`
+	CardIDs []int `mapstructure:"CardIDs" validate:"required,dive,required"`
+}
+
+// 响应用卡牌结构体
+// 只包含业务需要的字段
+type CardInfo struct {
+	CardID             int    `json:"card_id"`
+	ElementType        string `json:"element_type"`
+	Level              string `json:"level"`
+	LifeForce          int    `json:"life_force"`
+	Attack             int    `json:"attack"`
+	Defense            int    `json:"defense"`
+	NormalImageURL     string `json:"normal_image_url"`
+	ActiveImageURL     string `json:"active_image_url"`
+	BackgroundImageURL string `json:"background_image_url"`
+	IconURL            string `json:"icon_url"`
+	Description        string `json:"description"`
+	Name               string `json:"name"`
 }
 
 // 响应结构体
 type GetCardByIDResponse struct {
 	api.BaseResponse
-	Card *battle.Card `json:"Card"`
+	Cards []CardInfo `json:"Cards"`
 }
 
 // 任务结构体
@@ -60,23 +79,28 @@ func NewGetCardByIDTask(data *map[string]interface{}) (api.Task, error) {
 
 // 任务执行函数
 func (t *GetCardByIDTask) Run(c *gin.Context) (api.Response, error) {
-	cardFactory := battle.NewCardFactory()
-	card, err := cardFactory.GetCard(t.Request.CardID)
-	if err != nil {
-		return nil, errors.UserNotFound("卡牌不存在")
+	var cards []CardInfo
+	for _, id := range t.Request.CardIDs {
+		card, err := db.GetCardByID(int(id))
+		if err != nil {
+			return nil, errors.UserNotFound(fmt.Sprintf("卡牌ID %d 不存在", id))
+		}
+		cards = append(cards, CardInfo{
+			CardID:             card.CardID,
+			ElementType:        card.ElementType,
+			Level:              card.Level,
+			LifeForce:          card.LifeForce,
+			Attack:             card.Attack,
+			Defense:            card.Defense,
+			NormalImageURL:     card.NormalImageURL,
+			ActiveImageURL:     card.ActiveImageURL,
+			BackgroundImageURL: card.BackgroundImageURL,
+			IconURL:            card.IconURL,
+			Description:        card.Description,
+			Name:               card.Name,
+		})
 	}
-
-	// 转换为battle.Card格式
-	battleCard := battle.Card{
-		ID:          card.ID,
-		ElementType: card.ElementType,
-		Level:       card.Level,
-		LifeForce:   card.LifeForce,
-		Attack:      card.Attack,
-		Defense:     card.Defense,
-	}
-
-	t.Response.Card = &battleCard
+	t.Response.Cards = cards
 	return t.Response, nil
 }
 

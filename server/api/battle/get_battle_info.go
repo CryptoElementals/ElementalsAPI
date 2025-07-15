@@ -112,7 +112,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.BaseResponse.Message = "Invalid RoomID format"
 		return task.Response, nil
 	}
-	gameInfoReq := &proto.GetGameInfoRequest{RoomId: uint32(roomIdUint)}
+	gameInfoReq := &proto.GetGameInfoRequest{GameId: uint32(roomIdUint)}
 	gameInfo, err := client.GetGameInfo(context.Background(), gameInfoReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1004

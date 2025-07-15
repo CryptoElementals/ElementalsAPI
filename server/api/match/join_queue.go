@@ -184,10 +184,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 // RegisterMatchApis 注册匹配相关API
 func RegisterMatchApis() {
 	api.Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, api.COOKIEAUTH)
-	api.Register(GET_MATCH_STATS_LABEL, NewGetMatchStatsTask, api.NOAUTH)
 	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
 	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
-	api.Register(CANCEL_MATCH_LABEL, NewCancelMatchTask, api.COOKIEAUTH)
 	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
-	api.Register(GET_MATCH_INFO_LABEL, NewGetMatchInfoTask, api.COOKIEAUTH)
 }

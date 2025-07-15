@@ -78,3 +78,13 @@ func GetActiveMatchByAddress(address string) (*dao.GamePlayer, error) {
 func UpdateMatchStatusByRoomID(roomID string, status string) error {
 	return Get().Model(&dao.GameInfo{}).Where("room_id = ?", roomID).Update("status", status).Error
 }
+
+// 通过 MatchID 查询匹配记录
+func GetMatchByMatchID(matchID string) (*dao.GameInfo, error) {
+	var game dao.GameInfo
+	err := Get().Where("match_id = ?", matchID).First(&game).Error
+	if err != nil {
+		return nil, err
+	}
+	return &game, nil
+}

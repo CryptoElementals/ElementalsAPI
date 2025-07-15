@@ -10,7 +10,6 @@ type Card struct {
 	Defense     int    `json:"Defense"`     // Defense power
 	Name        string `json:"Name"`        // Card name
 	Description string `json:"Description"` // Card description
-	ImageURL    string `json:"ImageURL"`    // Card image URL
 }
 
 // Player player structure

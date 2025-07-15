@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
@@ -30,8 +31,9 @@ type PvPInfo struct {
 // GetGamePhaseResponse 响应结构体
 type GetGamePhaseResponse struct {
 	api.BaseResponse
-	Mode    string   `json:"Mode"`    // None, PvP
-	PvPInfo *PvPInfo `json:"PvPInfo"` // PvP对战信息
+	Mode    string        `json:"Mode"`              // None, PvP
+	PvPInfo *PvPInfo      `json:"PvPInfo"`           // PvP对战信息
+	Players []MatchPlayer `json:"Players,omitempty"` // 新增，集成对战玩家信息
 }
 
 type GetGamePhaseTask struct {
@@ -143,6 +145,40 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.BaseResponse.Message = "Player is not participating in any game"
 	}
 
+	// 集成getmatchinfo功能：如果MatchId非空，查找并组装玩家信息
+	if task.Response.PvPInfo.MatchId != "" {
+		match, err := db.GetMatchByMatchID(task.Response.PvPInfo.MatchId)
+		if err == nil {
+			var players []MatchPlayer
+			for _, p := range match.Players {
+				addr := strings.ToLower(p.WalletAddress)
+				player := MatchPlayer{
+					Address:   addr,
+					IsMyself:  addr == lowercaseAddress,
+					Confirmed: false, // 如有状态字段可补充
+				}
+				userProfile, err := db.GetUserProfileByAddress(addr)
+				if err == nil {
+					player.Name = userProfile.Name
+					player.AvatarURL = userProfile.AvatarURL
+				} else {
+					player.Name = addr
+					player.AvatarURL = ""
+				}
+				players = append(players, player)
+			}
+			task.Response.Players = players
+		}
+	}
+
 	task.Response.BaseResponse.RetCode = 0
 	return task.Response, nil
+}
+
+type MatchPlayer struct {
+	Address   string `json:"Address"`
+	Name      string `json:"Name"`
+	AvatarURL string `json:"AvatarURL"`
+	IsMyself  bool   `json:"IsMyself"`
+	Confirmed bool   `json:"Confirmed"`
 }

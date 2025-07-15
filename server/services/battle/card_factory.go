@@ -52,6 +52,5 @@ func (cf *CardFactory) convertToBattleCard(dbCard *dao.Card) *Card {
 		Defense:     dbCard.Defense,
 		Name:        dbCard.Name,
 		Description: dbCard.Description,
-		ImageURL:    dbCard.ImageURL,
 	}
 }
