@@ -15,38 +15,26 @@ type Publisher interface {
 	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
 }
 
-type GameInfoGetter interface {
-	GetActiveGameInfo(playerAddress *types.PlayerAddress) (*proto.GameInfo, error)
-}
-
-type QueueInfoGetter interface {
-	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
-}
-
 type Player struct {
-	ctx             context.Context
-	lock            sync.RWMutex
-	address         types.PlayerAddress
-	publisher       Publisher
-	workerManger    *worker.WorkerManager
-	status          proto.PlayerStatus
-	gameInfoGetter  GameInfoGetter
-	queueInfoGetter QueueInfoGetter
+	ctx          context.Context
+	lock         sync.RWMutex
+	address      types.PlayerAddress
+	currentGame  uint
+	currentRound uint
+	publisher    Publisher
+	workerManger *worker.WorkerManager
+	status       proto.PlayerStatus
 }
 
 func NewPlayer(ctx context.Context,
 	address types.PlayerAddress,
 	publisher Publisher,
-	gameInfoGetter GameInfoGetter,
-	queueInfoGetter QueueInfoGetter,
 	workerManger *worker.WorkerManager) *Player {
 	p := &Player{
-		ctx:             ctx,
-		address:         address,
-		gameInfoGetter:  gameInfoGetter,
-		queueInfoGetter: queueInfoGetter,
-		publisher:       publisher,
-		workerManger:    workerManger,
+		ctx:          ctx,
+		address:      address,
+		publisher:    publisher,
+		workerManger: workerManger,
 	}
 	p.createSelf()
 	return p
@@ -97,14 +85,12 @@ func (p *Player) createSelf() {
 	p.workerManger.SpwanWorker(p.address.String(), types.WORKER_TYPE_PLAYER, p)
 }
 
+// join queue should be idempotent
 func (p *Player) joinQueue() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.status != proto.PlayerStatus_PLAYER_KNOWN {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
-	}
-	if p.queueInfoGetter.IsPlayerInQueue(p.address) {
-		return fmt.Errorf("player already in queue")
 	}
 
 	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), types.EVENT_TYPE_JOIN_QUEUE, &types.JoinQueueEvent{
@@ -114,6 +100,7 @@ func (p *Player) joinQueue() error {
 	return nil
 }
 
+// join queue should be idempotent
 func (p *Player) exitQueue() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -127,15 +114,9 @@ func (p *Player) exitQueue() error {
 	return nil
 }
 
-func (p *Player) sync() error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+func (p *Player) sync(gameInfo *proto.GameInfo) error {
 	if p.status != proto.PlayerStatus_PLAYER_KNOWN {
 		return fmt.Errorf("sync failed, player status %s", p.status)
-	}
-	gameInfo, err := p.gameInfoGetter.GetActiveGameInfo(&p.address)
-	if err != nil {
-		return err
 	}
 	if gameInfo == nil {
 		gameInfo = &proto.GameInfo{}
@@ -169,6 +150,7 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 			},
 		},
 	})
+	p.currentGame = uint(evt.GameID)
 }
 
 func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) {
@@ -199,6 +181,7 @@ func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundRead
 			},
 		},
 	})
+	p.currentRound = uint(evt.RoundNumber)
 }
 
 func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) {

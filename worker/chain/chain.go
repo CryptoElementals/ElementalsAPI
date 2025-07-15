@@ -20,6 +20,10 @@ func (c *Chain) createRoomContract(players []types.PlayerAddress) error {
 	return nil
 }
 
+func (c *Chain) setRoomReady(roomContract string) error {
+	return nil
+}
+
 func (c *Chain) createSelf() {
 	c.workerManager.RegisterWorkerFactory(types.WORKER_TYPE_CHAIN, func(id string, t worker.WorkerType) *worker.Worker {
 		return worker.NewWorker(c.ctx, id, types.WORKER_TYPE_CHAIN)

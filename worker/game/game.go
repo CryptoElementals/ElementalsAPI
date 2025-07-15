@@ -20,8 +20,6 @@ type gamePlayer struct {
 type Game struct {
 	ctx                 context.Context
 	id                  uint
-	contractAddress     string
-	roomWorker          *worker.Worker
 	gameInfo            *dao.GameInfo
 	gamePlayers         []gamePlayer
 	workerMangerService *worker.WorkerManager
@@ -74,15 +72,9 @@ func (g *Game) Handle(ctx context.Context, event types.Event) error {
 	case proto.GameStatus_GAME_UNKNOWN:
 		return g.handleGameStateMatched(event)
 	case proto.GameStatus_GAME_WAITTING_CONTRACT:
-		return g.handleGameStateWaittingReady(event)
+		return g.handleGameStatusContractReady(event)
 	case proto.GameStatus_GAME_RUNNING:
-		currentRound := g.gameInfo.Rounds[len(g.gameInfo.Rounds)-1]
-		switch currentRound.Status {
-		case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
-			return g.handleGameStateCommitmentsSubmitted(event)
-		case proto.RoundStatus_ROUND_WAITTING_CARDS:
-			return g.handleGameStateCardSubmitted(event)
-		}
+		return g.handleRound(event)
 	case proto.GameStatus_GAME_END:
 		return g.handleGameEnd(event)
 	}
@@ -93,11 +85,34 @@ func (g *Game) handleGameStateMatched(event types.Event) error {
 	return nil
 }
 
-func (g *Game) handleGameStateWaittingReady(event types.Event) error {
+func (g *Game) handleGameStatusContractReady(event types.Event) error {
+	if event.EventType != types.EVENT_TYPE_ROOM_CONTRACT_CREATED {
+		return fmt.Errorf("invalid event type: %d", event.EventType)
+	}
+	evt := event.Data.(*types.RoomContractCreated)
+	g.gameInfo.RoomContract = evt.RoomContractAddress
+	g.gameInfo.Rounds = append(g.gameInfo.Rounds, dao.Round{
+		MatchID:     g.gameInfo.ID,
+		RoundNumber: 1,
+		Status:      proto.RoundStatus_ROUND_WAITTING_COMMITMENTS,
+		PlayerRoundInfos: []dao.PlayerRoundInfo{
+			dao.PlayerRoundInfo{
+				GamePlayerID: g.gameInfo.Players[0].ID,
+			},
+			dao.PlayerRoundInfo{
+				GamePlayerID: g.gameInfo.Players[1].ID,
+			},
+		},
+	})
 	return nil
 }
 
 func (g *Game) handleGameStateCommitmentsSubmitted(event types.Event) error {
+	if event.EventType != types.EVENT_TYPE_PLAYER_COMMITMENT_ON_CHAIN {
+		return fmt.Errorf("invalid event type: %d", event.EventType)
+	}
+	//evt := event.Data.(*types.PlayerCommitmentOnChain)
+
 	return nil
 }
 
@@ -106,5 +121,16 @@ func (g *Game) handleGameStateCardSubmitted(event types.Event) error {
 }
 
 func (g *Game) handleGameEnd(event types.Event) error {
+	return nil
+}
+
+func (g *Game) handleRound(event types.Event) error {
+	currentRound := g.gameInfo.Rounds[len(g.gameInfo.Rounds)-1]
+	switch currentRound.Status {
+	case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
+		return g.handleGameStateCommitmentsSubmitted(event)
+	case proto.RoundStatus_ROUND_WAITTING_CARDS:
+		return g.handleGameStateCardSubmitted(event)
+	}
 	return nil
 }

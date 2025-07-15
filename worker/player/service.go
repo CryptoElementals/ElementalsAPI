@@ -5,10 +5,19 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/worker"
 	"github.com/CryptoElementals/common/worker/types"
 )
+
+type GameInfoGetter interface {
+	GetActiveGameInfo(playerAddress *types.PlayerAddress) (*proto.GameInfo, error)
+}
+
+type QueueInfoGetter interface {
+	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
+}
 
 type Service struct {
 	ctx             context.Context
@@ -34,7 +43,7 @@ func (s *Service) AddPlayer(address types.PlayerAddress) error {
 		return errors.New("player already exists")
 	}
 
-	player := NewPlayer(s.ctx, address, s.pub, s.gameInfoGetter, s.queueInfoGetter, s.workerManager)
+	player := NewPlayer(s.ctx, address, s.pub, s.workerManager)
 	s.players[address] = player
 	return nil
 }
@@ -54,7 +63,7 @@ func (s *Service) GetOrCreatePlayer(address types.PlayerAddress) *Player {
 	defer s.lock.Unlock()
 	player, ok := s.players[address]
 	if !ok {
-		player = NewPlayer(s.ctx, address, s.pub, s.gameInfoGetter, s.queueInfoGetter, s.workerManager)
+		player = NewPlayer(s.ctx, address, s.pub, s.workerManager)
 		s.players[address] = player
 	}
 	return player
@@ -62,5 +71,13 @@ func (s *Service) GetOrCreatePlayer(address types.PlayerAddress) *Player {
 
 func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
 	player := s.GetOrCreatePlayer(address)
-	return player.sync()
+
+	// we need to lock player here for better consistency
+	player.lock.Lock()
+	defer player.lock.Unlock()
+	gameInfo, err := s.gameInfoGetter.GetActiveGameInfo(&player.address)
+	if err != nil {
+		return err
+	}
+	return player.sync(gameInfo)
 }

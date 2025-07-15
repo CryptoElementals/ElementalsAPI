@@ -28,10 +28,10 @@ func (s *Scheduler) RegisterAllTasks() {
 	defer s.mu.Unlock()
 
 	// 注册匹配任务
-	RegisterMatchmakingTask()
+	//RegisterMatchmakingTask()
 
 	// 注册对战处理任务
-	RegisterBattleTask()
+	//RegisterBattleTask()
 
 	// 从全局工厂获取所有已注册的任务
 	s.tasks = append(s.tasks, GetAllTasks()...)
