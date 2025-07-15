@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -64,4 +65,16 @@ func (m *MemCache) Delete(key string) error {
 	defer m.Unlock()
 	delete(m.c, key)
 	return nil
+}
+
+// List implements Cache.
+func (m *MemCache) List(prefix string) ([]string, error) {
+	var keys []string
+	for key := range m.c {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }

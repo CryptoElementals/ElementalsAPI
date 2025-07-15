@@ -27,7 +27,7 @@ func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
 func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayer) *proto.PlayerAddress {
 	return &proto.PlayerAddress{
 		WalletAddress:    player.WalletAddress,
-		TemporaryAddress: player.TempAddress,
+		TemporaryAddress: player.TemporaryAddress,
 	}
 }
 

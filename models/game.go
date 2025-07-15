@@ -1,21 +1,23 @@
 package dao
 
+import "github.com/CryptoElementals/common/rpc/proto"
+
 type GameInfo struct {
 	BaseModel
-	RoomContract string       `gorm:"index" json:"room_contract"` // 房间合约地址
-	Type         uint         `gorm:"not null" json:"type"`       // 游戏模式
-	Status       uint         `gorm:"not null" json:"status"`
-	Players      []GamePlayer `gorm:"not null;default:''" json:"players"`
-	Rounds       []Round      `json:"rounds"`
+	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
+	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
+	Status       proto.GameStatus `gorm:"not null" json:"status"`
+	Players      []GamePlayer     `gorm:"not null;default:''" json:"players"`
+	Rounds       []Round          `json:"rounds"`
 	GameResult   *GameResult
 }
 
 // GamePlayer 匹配记录表
 type GamePlayer struct {
 	BaseModel
-	MatchID       uint   `gorm:"not null;" json:"match_id"` // 匹配唯一ID（两个用户共享）
-	WalletAddress string `gorm:"not null;index:address" json:"wallet_address"`
-	TempAddress   string `gorm:"not null;index:address" json:"temp_address"`
+	MatchID          uint   `gorm:"not null;" json:"match_id"` // 匹配唯一ID（两个用户共享）
+	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
+	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
 
 // Round 回合记录
@@ -23,7 +25,7 @@ type Round struct {
 	BaseModel
 	MatchID          uint              `gorm:"not null;index" json:"match_id"`                // 匹配唯一ID
 	RoundNumber      int               `gorm:"not null;index" json:"round_number"`            // 回合数
-	Status           uint              `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
+	Status           proto.RoundStatus `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
 	PlayerRoundInfos []PlayerRoundInfo `gorm:"not null;default:''" json:"player_round_infos"` // 回合玩家记录
 }
 
@@ -61,5 +63,5 @@ type GameResultPlayerInfo struct {
 	TempAddress   string `gorm:"not null;index:address" json:"temp_address"`
 	TokenDelta    int32  `gorm:"not null;default:0" json:"token_delta"`
 	Points        int32
-	Status        uint
+	Status        proto.GameResultPlayerStatus
 }

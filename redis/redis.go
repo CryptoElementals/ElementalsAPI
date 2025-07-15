@@ -31,6 +31,9 @@ const (
 	EXPIRE_COMMAND = "EX"
 	EXISTS_COMMAND = "EXISTS"
 	DELETE_COMMAND = "DEL"
+	SCAN_COMMAND   = "SCAN"
+	MATCH_COMMAND  = "match"
+	COUNT_COMMAND  = "count"
 )
 
 var globalPool RedisPool
@@ -167,4 +170,40 @@ func GetSessionExpire() int {
 		return 43200 // 默认12小时
 	}
 	return globalConfig.SessionExpire
+}
+
+func Scan(prefix string) ([]string, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	var keys []string
+	cursor := 0
+	for {
+		var scanCursor int
+		var scanKeys []string
+		res, err := redis.Values(conn.Do(SCAN_COMMAND, cursor, MATCH_COMMAND, prefix+"*", COUNT_COMMAND, 10000))
+		if err != nil {
+			return nil, err
+		}
+		rest, err := redis.Scan(res, &scanCursor, &scanKeys)
+		if err != nil {
+			return nil, err
+		}
+		if len(rest) != 0 {
+			return nil, errors.New("scan error: unexpected result number")
+		}
+		if len(scanKeys) != 0 {
+			keys = append(keys, scanKeys...)
+		}
+		cursor = scanCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return keys, nil
 }

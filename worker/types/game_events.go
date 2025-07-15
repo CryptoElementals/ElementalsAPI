@@ -2,6 +2,7 @@ package types
 
 type NewGameEvent struct {
 	MsgSender string
+	GameId    uint
 	Players   []PlayerAddress
 }
 

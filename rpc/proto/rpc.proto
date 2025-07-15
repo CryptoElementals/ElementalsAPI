@@ -12,6 +12,7 @@ service RpcService {
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc GetPlayerInfo(PlayerAddress) returns (PlayerInfo);
     rpc GetGameInfo(GetGameInfoRequest) returns (GameInfo);
+    rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
 
     // chain related api
     rpc NewTransactions(TransactionBatch) returns (google.protobuf.Empty);
@@ -32,11 +33,15 @@ enum PlayerStatus {
 message PlayerInfo {
     PlayerAddress address = 1;
     PlayerStatus status = 2;
-    optional uint32 room_id = 3;
+    optional uint32 game_id = 3;
 }
 
 message GetGameInfoRequest {
-    uint32 room_id = 1;
+    uint32 game_id = 1;
+}
+
+message ConfirmBattleRequest {
+    uint32 game_id = 1;
 }
 
 enum RoundStatus {
@@ -100,7 +105,7 @@ enum GameType {
 }
 
 message GameInfo {
-    uint32 room_id = 1;
+    uint32 game_id = 1;
     string room_contract_address = 2;
     GameType game_type = 3;
     GameStatus status = 4;

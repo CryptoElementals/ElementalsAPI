@@ -7,38 +7,19 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/worker"
 	"github.com/CryptoElementals/common/worker/types"
 )
 
-type GameStatus uint16
-
-const (
-	GAME_STATE_MATCHED GameStatus = iota
-	GAME_STATE_WAITTING_READY
-	GAME_STATE_COMMITMENTS_SUBMITTED
-	GAME_STATE_CARD_SUBMITTED
-	GAME_END
-)
-
-type playerStatus uint16
-
-const (
-	PLAYER_STATUS_MATCHED = iota
-	PLAYER_STATUS_READY
-	PLAYER_STATUS_COMMITMENTS_SUBMITTED
-	PLAYER_STATUS_CARD_SUBMITTED
-)
-
 type gamePlayer struct {
-	dao.GamePlayer
-	status playerStatus
+	types.PlayerAddress
+	status proto.PlayerStatus
 }
 
 type Game struct {
 	ctx                 context.Context
 	id                  uint
-	status              GameStatus
 	contractAddress     string
 	roomWorker          *worker.Worker
 	gameInfo            *dao.GameInfo
@@ -46,18 +27,20 @@ type Game struct {
 	workerMangerService *worker.WorkerManager
 }
 
-func NewGame(ctx context.Context, players []dao.GamePlayer, workerMangerService *worker.WorkerManager) *Game {
+func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager) *Game {
+	daoPlayers := make([]dao.GamePlayer, 0)
 	gamePlayers := make([]gamePlayer, 0)
 	for _, player := range players {
 		gamePlayers = append(gamePlayers, gamePlayer{
-			GamePlayer: player,
-			status:     PLAYER_STATUS_MATCHED,
+			PlayerAddress: player,
+			status:        proto.PlayerStatus_PLAYER_MATCHED,
 		})
+		daoPlayers = append(daoPlayers, player.ToDao())
 	}
 	game := &Game{
 		ctx: ctx,
 		gameInfo: &dao.GameInfo{
-			Players: players,
+			Players: daoPlayers,
 			Type:    types.GameTypePVP,
 		},
 		gamePlayers:         gamePlayers,
@@ -79,28 +62,31 @@ func (g *Game) recoverGame(gameInfo *dao.GameInfo) error {
 	g.id = gameInfo.ID
 	g.gameInfo = gameInfo
 	for _, player := range g.gameInfo.Players {
-		gp := gamePlayer{
-			GamePlayer: player,
-		}
+		gp := gamePlayer{}
+		gp.PlayerAddress.FromDao(player)
 		g.gamePlayers = append(g.gamePlayers, gp)
 	}
 	return nil
 }
 
 func (g *Game) Handle(ctx context.Context, event types.Event) error {
-	switch g.status {
-	case GAME_STATE_MATCHED:
+	switch g.gameInfo.Status {
+	case proto.GameStatus_GAME_UNKNOWN:
 		return g.handleGameStateMatched(event)
-	case GAME_STATE_WAITTING_READY:
+	case proto.GameStatus_GAME_WAITTING_CONTRACT:
 		return g.handleGameStateWaittingReady(event)
-	case GAME_STATE_COMMITMENTS_SUBMITTED:
-		return g.handleGameStateCommitmentsSubmitted(event)
-	case GAME_STATE_CARD_SUBMITTED:
-		return g.handleGameStateCardSubmitted(event)
-	case GAME_END:
+	case proto.GameStatus_GAME_RUNNING:
+		currentRound := g.gameInfo.Rounds[len(g.gameInfo.Rounds)-1]
+		switch currentRound.Status {
+		case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
+			return g.handleGameStateCommitmentsSubmitted(event)
+		case proto.RoundStatus_ROUND_WAITTING_CARDS:
+			return g.handleGameStateCardSubmitted(event)
+		}
+	case proto.GameStatus_GAME_END:
 		return g.handleGameEnd(event)
 	}
-	return fmt.Errorf("invalid game status: %d", g.status)
+	return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 }
 
 func (g *Game) handleGameStateMatched(event types.Event) error {

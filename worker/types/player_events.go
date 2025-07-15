@@ -5,7 +5,9 @@ type GameCreatedEvent struct {
 	GamePlayers []PlayerAddress
 }
 
-type GameContractCreatedEvent struct {
+type RoundReadyEvent struct {
+	GameID      uint
+	RoundNumber int
 }
 
 type CommitmentsObservedEvent struct{}

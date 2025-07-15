@@ -11,4 +11,5 @@ type Cache interface {
 	Set(key string, val string, expire int) error
 	Exist(key string) (bool, error)
 	Delete(key string) error
+	List(prefix string) ([]string, error)
 }

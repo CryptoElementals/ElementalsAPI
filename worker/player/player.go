@@ -14,17 +14,28 @@ type Publisher interface {
 	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
 }
 
+type GameInfoGetter interface {
+	GetActiveGameInfo(playerAddress *types.PlayerAddress) (*proto.GameInfo, error)
+}
+
+type QueueInfoGetter interface {
+	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
+}
+
 type Player struct {
-	ctx          context.Context
-	address      types.PlayerAddress
-	publisher    Publisher
-	workerManger *worker.WorkerManager
-	status       proto.PlayerStatus
-	lock         sync.RWMutex
+	ctx             context.Context
+	lock            sync.RWMutex
+	address         types.PlayerAddress
+	publisher       Publisher
+	workerManger    *worker.WorkerManager
+	status          proto.PlayerStatus
+	gameInfoGetter  GameInfoGetter
+	queueInfoGetter QueueInfoGetter
 }
 
 func NewPlayer(ctx context.Context, address types.PlayerAddress, publisher Publisher, workerManger *worker.WorkerManager) *Player {
 	p := &Player{
+		ctx:          ctx,
 		address:      address,
 		publisher:    publisher,
 		workerManger: workerManger,
@@ -36,11 +47,10 @@ func NewPlayer(ctx context.Context, address types.PlayerAddress, publisher Publi
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	switch event.EventType {
 	case types.EVENT_TYPE_NEW_GAME:
-		p.publisher.Publish(ctx, &proto.PublishRequest{
-			Topic: p.address.String(),
-			Event: &proto.Event{},
-		})
+		evt := event.Data.(*types.NewGameEvent)
+		p.handleNewGameEvent(p.ctx, evt)
 		p.status = proto.PlayerStatus_PLAYER_IN_GAME
+	case types.EVENT_TYPE_GAME_READY:
 	}
 	return nil
 }
@@ -55,6 +65,10 @@ func (p *Player) joinQueue() error {
 	if p.status != proto.PlayerStatus_PLAYER_KNOWN {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
+	if p.queueInfoGetter.IsPlayerInQueue(p.address) {
+		return fmt.Errorf("player already in queue")
+	}
+
 	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), types.EVENT_TYPE_JOIN_QUEUE, &types.JoinQueueEvent{
 		PlayerAddress: p.address,
 	}))
@@ -73,4 +87,63 @@ func (p *Player) exitQueue() error {
 	}))
 	p.status = proto.PlayerStatus_PLAYER_KNOWN
 	return nil
+}
+
+func (p *Player) sync() error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.status != proto.PlayerStatus_PLAYER_KNOWN {
+		return fmt.Errorf("sync failed, player status %s", p.status)
+	}
+	gameInfo, err := p.gameInfoGetter.GetActiveGameInfo(&p.address)
+	if err != nil {
+		return err
+	}
+	if gameInfo == nil {
+		gameInfo = &proto.GameInfo{}
+	}
+	p.publisher.Publish(p.ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_SYNC_INFO,
+			Data: &proto.Event_GameInfo{
+				GameInfo: gameInfo,
+			},
+		},
+	})
+	return nil
+}
+
+func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.NewGameEvent) {
+	protoPlayers := make([]*proto.PlayerAddress, 0)
+	for _, player := range evt.Players {
+		protoPlayers = append(protoPlayers, player.ToProto())
+	}
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_GAME_CREATED,
+			Data: &proto.Event_GameCreated{
+				GameCreated: &proto.GameCreated{
+					GameId:  uint32(evt.GameId),
+					Players: protoPlayers,
+				},
+			},
+		},
+	})
+}
+
+func (p *Player) handleGameContractCreatedEvent(ctx context.Context, evt *types.RoundReadyEvent) {
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_ROUND_READY,
+			Data: &proto.Event_RoundReady{
+				RoundReady: &proto.RoundReady{
+					GameId:   uint32(evt.GameID),
+					RoundNum: uint32(evt.RoundNumber),
+				},
+			},
+		},
+	})
 }

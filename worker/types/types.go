@@ -1,6 +1,12 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
+)
 
 const (
 	WORKER_TYPE_GAME         = 1
@@ -27,6 +33,35 @@ func (a *PlayerAddress) String() string {
 	return fmt.Sprintf("%s_%s", a.WalletAddress, a.TemporaryAddress)
 }
 
+func (a *PlayerAddress) Parse(str string) error {
+	parts := strings.Split(str, "_")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid player address")
+	}
+	a.WalletAddress = parts[0]
+	a.TemporaryAddress = parts[1]
+	return nil
+}
+
+func (a *PlayerAddress) ToDao() dao.GamePlayer {
+	return dao.GamePlayer{
+		WalletAddress:    a.WalletAddress,
+		TemporaryAddress: a.TemporaryAddress,
+	}
+}
+
+func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
+	return &proto.PlayerAddress{
+		WalletAddress:    a.WalletAddress,
+		TemporaryAddress: a.TemporaryAddress,
+	}
+}
+
+func (a *PlayerAddress) FromDao(player dao.GamePlayer) {
+	a.WalletAddress = player.WalletAddress
+	a.TemporaryAddress = player.TemporaryAddress
+}
+
 type Event struct {
 	EventType uint32
 	Sender    string
@@ -36,6 +71,9 @@ type Event struct {
 const (
 	EVENT_TYPE_ERR = iota
 	EVENT_TYPE_NEW_GAME
+	EVENT_TYPE_GAME_READY
+	EVENT_TYPE_COMMITMENTS_ON_CHAIN
+	EVENT_TYPE_CARDS_ON_CHAIN
 
 	EVENT_TYPE_JOIN_QUEUE
 	EVENT_TYPE_EXIT_QUEUE
