@@ -14,80 +14,55 @@ func NewRewardCalculator() *RewardCalculator {
 
 // CalculateRewards calculate battle rewards
 func (rc *RewardCalculator) CalculateRewards(result *BattleResult) *BattleReward {
-	tokenReward := rc.calculateTokenReward(result, result.GameResultType)
-	scoreReward := rc.calculateScoreReward(result, result.GameResultType)
-
-	return &BattleReward{
-		TokenReward: *tokenReward,
-		ScoreReward: *scoreReward,
-	}
-}
-
-// calculateTokenReward calculate token rewards
-func (rc *RewardCalculator) calculateTokenReward(result *BattleResult, gameResult string) *TokenReward {
 	baseStake := rc.BaseStake
 	systemFeeRate := 0.016 // 1.6% system fee
 
 	systemFee := int(float64(baseStake) * result.GameFinalMultiplier * systemFeeRate)
 
 	var player1TokenChange, player2TokenChange int
+	var player1PointChange, player2PointChange int
 
-	switch gameResult {
-	case "win", "ko":
+	switch result.GameResultType {
+	case "normal", "ko":
 		if result.Winner == result.Player1Address {
-			player1Reward := int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate))
-			player1TokenChange = player1Reward
+			player1TokenChange = int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate))
 			player2TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier)
 		} else {
-			player2Reward := int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate))
-			player2TokenChange = player2Reward
+			player2TokenChange = int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate))
 			player1TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier)
 		}
-
 	case "tie":
 		player1TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier * 0.8)
 		player2TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier * 0.8)
 	}
 
-	return &TokenReward{
+	switch result.GameResultType {
+	case "normal":
+		if result.Winner == result.Player1Address {
+			player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.012) // 1.2%
+			player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.004) // 0.4%
+		} else {
+			player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.004) // 0.4%
+			player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.012) // 1.2%
+		}
+	case "ko":
+		if result.Winner == result.Player1Address {
+			player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
+			player2PointChange = 0
+		} else {
+			player1PointChange = 0
+			player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
+		}
+	case "tie":
+		player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.008) // 0.8%
+		player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.008) // 0.8%
+	}
+
+	return &BattleReward{
 		Player1TokenChange: player1TokenChange,
 		Player2TokenChange: player2TokenChange,
 		SystemFee:          systemFee,
-	}
-}
-
-// calculateScoreReward calculate score rewards
-func (rc *RewardCalculator) calculateScoreReward(result *BattleResult, gameResult string) *ScoreReward {
-	baseStake := rc.BaseStake
-
-	var player1ScoreChange, player2ScoreChange int
-
-	switch gameResult {
-	case "win":
-		if result.Winner == result.Player1Address {
-			player1ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.012) // 1.2%
-			player2ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.004) // 0.4%
-		} else {
-			player1ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.004) // 0.4%
-			player2ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.012) // 1.2%
-		}
-
-	case "ko":
-		if result.Winner == result.Player1Address {
-			player1ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
-			player2ScoreChange = 0
-		} else {
-			player1ScoreChange = 0
-			player2ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
-		}
-
-	case "tie":
-		player1ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.008) // 0.8%
-		player2ScoreChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.008) // 0.8%
-	}
-
-	return &ScoreReward{
-		Player1ScoreChange: player1ScoreChange,
-		Player2ScoreChange: player2ScoreChange,
+		Player1PointChange: player1PointChange,
+		Player2PointChange: player2PointChange,
 	}
 }

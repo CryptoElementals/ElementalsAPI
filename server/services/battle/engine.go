@@ -86,8 +86,8 @@ func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleRes
 			Player2CardID:          player2Card.ID,
 			RelationType:           relation.Type,
 			Actions:                actions,
-			Player1Damage:          player1Damage,
-			Player2Damage:          player2Damage,
+			Player1HPDelta:         player1Damage,
+			Player2HPDelta:         player2Damage,
 			Player1HPAfter:         currentPlayer1HP,
 			Player2HPAfter:         currentPlayer2HP,
 			Player1MultiplierAfter: currentPlayer1Multiplier,
@@ -160,6 +160,6 @@ func (be *BattleEngine) determineGameResultType(player1HP, player2HP int) string
 	} else if player1HP <= 0 || player2HP <= 0 {
 		return "ko"
 	} else {
-		return "win"
+		return "normal"
 	}
 }

@@ -76,6 +76,10 @@ func (s *MatchQueueService) JoinQueue(mode string, address string, tempAddress s
 		log.Errorf("Failed to join match queue: %v", err)
 		return err
 	}
+
+	// 发布队列变化事件
+	s.publishQueueEvent(mode, "JOIN", address, tempAddress)
+
 	log.Infof("Player %s (mode: %s) successfully joined match queue", address, mode)
 	return nil
 }
@@ -145,6 +149,10 @@ func (s *MatchQueueService) LeaveQueue(mode string, address string) error {
 	}
 
 	log.Infof("Player %s (mode: %s) has left match queue", address, mode)
+
+	// 发布队列变化事件
+	s.publishQueueEvent(mode, "LEAVE", address, "")
+
 	return nil
 }
 
@@ -252,6 +260,10 @@ func (s *MatchQueueService) ProcessMatchmaking(mode string) error {
 		log.Errorf("Failed to create match record: %v", err)
 		return err
 	}
+
+	// 发布匹配创建事件
+	s.publishMatchEvent(matchID, "CREATE", match)
+
 	log.Infof("Created match record for players: %s and %s (MatchID: %s)", player1.Address, player2.Address, matchID)
 
 	// 从队列中移除这两个玩家
@@ -323,4 +335,82 @@ func (s *MatchQueueService) removePlayersFromQueue(mode string, addresses []stri
 	}
 
 	return nil
+}
+
+// publishQueueEvent 发布队列变化事件到Redis
+func (s *MatchQueueService) publishQueueEvent(mode string, operation string, address string, tempAddress string) {
+	// 创建Redis连接
+	conn := redis.GetGlobalPool().Get()
+	defer conn.Close()
+
+	// 创建事件数据
+	eventData := map[string]interface{}{
+		"table":     "match_queue",
+		"operation": operation,
+		"record_id": fmt.Sprintf("%s_%s", address, tempAddress),
+		"data": map[string]interface{}{
+			"mode":         mode,
+			"address":      address,
+			"temp_address": tempAddress,
+		},
+		"timestamp": time.Now().Unix(),
+	}
+
+	// 序列化事件
+	jsonData, err := json.Marshal(eventData)
+	if err != nil {
+		log.Errorf("Failed to marshal queue event: %v", err)
+		return
+	}
+
+	// 发布到Redis频道
+	channel := fmt.Sprintf("match:queue:%s", mode)
+	_, err = conn.Do("PUBLISH", channel, string(jsonData))
+	if err != nil {
+		log.Errorf("Failed to publish queue event: %v", err)
+		return
+	}
+
+	log.Infof("Published queue event to channel %s: %s", channel, string(jsonData))
+}
+
+// publishMatchEvent 发布匹配事件到Redis
+func (s *MatchQueueService) publishMatchEvent(matchID string, operation string, match *dao.Match) {
+	// 创建Redis连接
+	conn := redis.GetGlobalPool().Get()
+	defer conn.Close()
+
+	// 创建事件数据
+	eventData := map[string]interface{}{
+		"table":     "matches",
+		"operation": operation,
+		"record_id": matchID,
+		"data": map[string]interface{}{
+			"match_id":             match.MatchID,
+			"mode":                 match.Mode,
+			"player1_address":      match.Player1Address,
+			"player1_temp_address": match.Player1TempAddress,
+			"player1_status":       match.Player1Status,
+			"player2_address":      match.Player2Address,
+			"player2_temp_address": match.Player2TempAddress,
+			"player2_status":       match.Player2Status,
+		},
+		"timestamp": time.Now().Unix(),
+	}
+
+	// 序列化事件
+	jsonData, err := json.Marshal(eventData)
+	if err != nil {
+		log.Errorf("Failed to marshal match event: %v", err)
+		return
+	}
+
+	// 发布到Redis频道
+	_, err = conn.Do("PUBLISH", "db:matches:changes", string(jsonData))
+	if err != nil {
+		log.Errorf("Failed to publish match event: %v", err)
+		return
+	}
+
+	log.Infof("Published match event: %s", string(jsonData))
 }

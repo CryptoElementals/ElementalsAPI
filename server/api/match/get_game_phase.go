@@ -1,15 +1,15 @@
 package match
 
 import (
+	"context"
 	"strings"
 
-	"github.com/CryptoElementals/common/db"
-	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
+	"google.golang.org/grpc"
 )
 
 const GET_GAME_PHASE_LABEL = "GetGamePhase"
@@ -17,6 +17,7 @@ const GET_GAME_PHASE_LABEL = "GetGamePhase"
 // GetGamePhaseRequest 请求结构体
 type GetGamePhaseRequest struct {
 	api.BaseRequest
+	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
 }
 
 // PvPInfo PvP对战信息
@@ -99,103 +100,44 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	lowercaseAddress := strings.ToLower(address)
+	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 创建匹配队列服务
-	matchService := services.NewMatchQueueService()
-
-	// 检查用户是否在匹配队列中（检查所有游戏模式）
-	modes := []string{"PvP", "Tournament"} // 游戏模式列表
-	inQueue := false
-	var currentMode string
-
-	for _, mode := range modes {
-		players, err := matchService.GetQueue(mode)
-		if err != nil {
-			continue // 忽略错误，继续检查其他模式
-		}
-
-		for _, player := range players {
-			if strings.ToLower(player.Address) == lowercaseAddress {
-				inQueue = true
-				currentMode = mode
-				break
-			}
-		}
-		if inQueue {
-			break
-		}
-	}
-
-	if inQueue {
-		// 用户在队列中，阶段为Queueing
-		task.Response.Mode = currentMode
-		task.Response.PvPInfo.Phase = "Queueing"
-		task.Response.BaseResponse.Message = "Player is in match queue"
-		task.Response.BaseResponse.RetCode = 0
-		return task.Response, nil
-	}
-
-	// 检查用户是否有匹配记录
-	matches, err := db.GetMatchesByAddress(lowercaseAddress)
+	// 通过gRPC调用RoomServer的GetPlayerInfo
+	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to query match records"
+		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		return task.Response, nil
+	}
+	defer conn.Close()
+	client := proto.NewRpcServiceClient(conn)
+
+	playerAddr := &proto.PlayerAddress{
+		WalletAddress:    lowercaseAddress,
+		TemporaryAddress: tempAddress,
+	}
+
+	playerInfo, err := client.GetPlayerInfo(context.Background(), playerAddr)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1003
+		task.Response.BaseResponse.Message = "RoomServer GetPlayerInfo failed: " + err.Error()
 		return task.Response, nil
 	}
 
-	// 查找用户当前活跃的匹配记录
-	var activeMatch *dao.Match
-	for _, match := range matches {
-		// 检查用户是玩家1还是玩家2，以及对应的状态
-		userAddress := strings.ToLower(match.Player1Address)
-		if userAddress == lowercaseAddress {
-			if match.Player1Status == "matched" || match.Player1Status == "confirmed" {
-				activeMatch = &match
-				break
-			}
-		} else {
-			userAddress = strings.ToLower(match.Player2Address)
-			if userAddress == lowercaseAddress {
-				if match.Player2Status == "matched" || match.Player2Status == "confirmed" {
-					activeMatch = &match
-					break
-				}
-			}
-		}
-	}
-
-	if activeMatch != nil {
-		task.Response.Mode = activeMatch.Mode
-		task.Response.PvPInfo.MatchId = activeMatch.MatchID
-
-		// 检查用户的状态
-		userAddress := strings.ToLower(activeMatch.Player1Address)
-		userStatus := activeMatch.Player1Status
-		if userAddress != lowercaseAddress {
-			userAddress = strings.ToLower(activeMatch.Player2Address)
-			userStatus = activeMatch.Player2Status
-		}
-
-		if userStatus == "matched" {
-			// 用户已匹配，等待确认
-			task.Response.PvPInfo.Phase = "Matching"
-			task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
-		} else if userStatus == "confirmed" && activeMatch.RoomID != "" {
-			// 双方已确认，进入战斗
-			task.Response.PvPInfo.Phase = "InBattle"
-			task.Response.PvPInfo.RoomId = activeMatch.RoomID
-			task.Response.BaseResponse.Message = "Player has entered battle"
-		} else if userStatus == "confirmed" && activeMatch.RoomID == "" {
-			// 已确认但房间ID为空，可能是确认过程中
-			task.Response.PvPInfo.Phase = "Matching"
-			task.Response.BaseResponse.Message = "Player confirmed, waiting for opponent confirmation"
-		} else {
-			// 其他状态（如cancelled等）
-			task.Response.PvPInfo.Phase = "None"
-			task.Response.BaseResponse.Message = "Player has no active game"
-		}
-	} else {
-		// 用户没有活跃的匹配记录
+	switch playerInfo.Status {
+	case proto.PlayerStatus_PLAYER_IN_QUEUE:
+		task.Response.Mode = "PvP"
+		task.Response.PvPInfo.Phase = "Queueing"
+		task.Response.BaseResponse.Message = "Player is in match queue"
+	case proto.PlayerStatus_PLAYER_MATCHED:
+		task.Response.Mode = "PvP"
+		task.Response.PvPInfo.Phase = "Matching"
+		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
+	case proto.PlayerStatus_PLAYER_IN_GAME:
+		task.Response.Mode = "PvP"
+		task.Response.PvPInfo.Phase = "InBattle"
+		task.Response.BaseResponse.Message = "Player has entered battle"
+	default:
 		task.Response.Mode = "None"
 		task.Response.PvPInfo.Phase = "None"
 		task.Response.BaseResponse.Message = "Player is not participating in any game"

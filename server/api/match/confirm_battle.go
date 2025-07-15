@@ -1,11 +1,14 @@
 package match
 
 import (
+	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -172,6 +175,9 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 			return task.Response, nil
 		}
 
+		// 发布匹配状态变化事件到Redis
+		task.publishMatchStatusChange(task.Request.MatchID, "confirmed", roomID)
+
 		// 向room表插入初始数据，后续可以增加道具功能实现新的api更新stage0阶段
 		// 为玩家1创建房间记录
 		room1 := &dao.Room{
@@ -215,4 +221,40 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	return task.Response, nil
+}
+
+// publishMatchStatusChange 发布匹配状态变化事件到Redis
+func (task *ConfirmBattleTask) publishMatchStatusChange(matchID string, status string, roomID string) {
+	// 创建Redis连接
+	conn := redis.GetGlobalPool().Get()
+	defer conn.Close()
+
+	// 创建事件数据
+	eventData := map[string]interface{}{
+		"table":     "matches",
+		"operation": "UPDATE",
+		"record_id": matchID,
+		"data": map[string]interface{}{
+			"match_id": matchID,
+			"status":   status,
+			"room_id":  roomID,
+		},
+		"timestamp": time.Now().Unix(),
+	}
+
+	// 序列化事件
+	jsonData, err := json.Marshal(eventData)
+	if err != nil {
+		log.Errorf("Failed to marshal match status change event: %v", err)
+		return
+	}
+
+	// 发布到Redis频道
+	_, err = conn.Do("PUBLISH", "db:matches:changes", string(jsonData))
+	if err != nil {
+		log.Errorf("Failed to publish match status change event: %v", err)
+		return
+	}
+
+	log.Infof("Published match status change event for match %s: %s", matchID, string(jsonData))
 }

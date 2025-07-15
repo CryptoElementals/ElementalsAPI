@@ -44,7 +44,7 @@ func TestExecuteBattle(t *testing.T) {
 		Player2LostHP:     0,
 	}
 
-	stage := 2
+	stage := 3
 	result, err := engine.ExecuteBattle(input, stage)
 
 	if err != nil {
@@ -66,3 +66,5 @@ func TestExecuteBattle(t *testing.T) {
 	t.Logf("Battle Result (JSON):\n%s", string(jsonData))
 	t.Log("Test completed successfully - check the JSON output above for manual verification")
 }
+
+//cd /data/ws_tj/BeastRoyaleBackend && go test -v ./server/services/battle/ -run TestExecuteBattle

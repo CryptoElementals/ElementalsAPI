@@ -84,7 +84,7 @@ func (task *SSEExampleTask) Run(c *gin.Context) (api.Response, error) {
 }
 
 // RunSSE 实现事件驱动的 SSE 流式响应
-func (task *SSEExampleTask) RunSSE(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error {
+func (task *SSEExampleTask) RunSSE(ctx context.Context, c *gin.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error {
 	log.Infof("SSE Example started - EventTypes: %v, Duration: %d, RequestUUID: %s",
 		task.Request.EventTypes, task.Request.Duration, requestUUID)
 

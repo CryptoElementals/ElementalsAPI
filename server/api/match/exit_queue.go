@@ -1,17 +1,22 @@
 package match
 
 import (
+	"context"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
+	"google.golang.org/grpc"
 )
 
-const EXIT_QUEUE_LABEL = "ExitQueue"
+const (
+	EXIT_QUEUE_LABEL = "ExitQueue"
+)
 
 // ExitQueueRequest 请求结构体
 type ExitQueueRequest struct {
@@ -105,23 +110,32 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 创建匹配队列服务
-	matchService := services.NewMatchQueueService()
-
-	// 离开匹配队列（传递小写地址）
-	err := matchService.LeaveQueue(task.Request.Mode, address)
+	// 通过gRPC调用RoomServer的ExitQueue
+	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to leave match queue: " + err.Error()
+		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		return task.Response, nil
+	}
+	defer conn.Close()
+	client := proto.NewRpcServiceClient(conn)
+
+	playerAddr := &proto.PlayerAddress{
+		WalletAddress:    address,
+		TemporaryAddress: tempAddress,
+	}
+
+	_, err = client.ExitQueue(context.Background(), playerAddr)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1002
+		task.Response.BaseResponse.Message = "RoomServer ExitQueue failed: " + err.Error()
 		return task.Response, nil
 	}
 
 	// 释放该用户对应特定tempaddress的锁定代币
 	err = db.SoftDeleteLockTokenByAddressAndTempAddress(address, tempAddress)
 	if err != nil {
-		// 记录错误但不影响退出队列的成功
-		// 因为主要目标是退出队列，释放代币是次要的
-		// 可以记录日志但不返回错误
+		log.Errorf("Failed to soft delete lock token: %v", err)
 	}
 
 	task.Response.BaseResponse.RetCode = 0

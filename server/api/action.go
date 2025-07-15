@@ -23,7 +23,7 @@ type Task interface {
 // SSETask interface used for Server-Sent Events
 type SSETask interface {
 	Task
-	RunSSE(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error
+	RunSSE(ctx context.Context, c *gin.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error
 }
 
 type creator func(data *map[string]interface{}) (Task, error)

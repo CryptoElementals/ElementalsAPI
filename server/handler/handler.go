@@ -161,7 +161,7 @@ func HandleSSE(c *gin.Context) {
 
 	// 开始 SSE 流
 	ctx := c.Request.Context()
-	err = sseTask.RunSSE(ctx, c.Writer, flusher, requestUUID)
+	err = sseTask.RunSSE(ctx, c, c.Writer, flusher, requestUUID)
 	if err != nil {
 		log.Errorf("SSE error for action %s: %v", action, err)
 		errorEvent := events.Event{

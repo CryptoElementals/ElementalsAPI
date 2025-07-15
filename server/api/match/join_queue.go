@@ -1,18 +1,21 @@
 package match
 
 import (
+	"context"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/services"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
+	"google.golang.org/grpc"
 )
 
 const JOIN_QUEUE_LABEL = "JoinQueue"
+const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址
 
 // JoinQueueRequest 请求结构体
 type JoinQueueRequest struct {
@@ -147,17 +150,27 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 创建匹配队列服务
-	matchService := services.NewMatchQueueService()
-
-	// 加入匹配队列（传递小写地址）
-	err = matchService.JoinQueue(task.Request.Mode, address, tempAddress)
+	// 通过gRPC调用RoomServer的JoinQueue
+	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
 	if err != nil {
-		// 如果加入队列失败，需要删除刚创建的锁定代币记录
 		_ = db.SoftDeleteLockToken(lockToken.ID)
-
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to join match queue: " + err.Error()
+		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		return task.Response, nil
+	}
+	defer conn.Close()
+	client := proto.NewRpcServiceClient(conn)
+
+	playerAddr := &proto.PlayerAddress{
+		WalletAddress:    address,
+		TemporaryAddress: tempAddress,
+	}
+
+	_, err = client.JoinQueue(context.Background(), playerAddr)
+	if err != nil {
+		_ = db.SoftDeleteLockToken(lockToken.ID)
+		task.Response.BaseResponse.RetCode = 1002
+		task.Response.BaseResponse.Message = "RoomServer JoinQueue failed: " + err.Error()
 		return task.Response, nil
 	}
 
