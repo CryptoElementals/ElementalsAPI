@@ -3,60 +3,71 @@ package conversion
 import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-func GameInfoProtoToModel(gameInfoProto *proto.GameInfo) *dao.GameInfo {
-	var players []dao.GamePlayer
-	for _, player := range gameInfoProto.Players {
-		players = append(players, dao.GamePlayer{
-			MatchID:       uint(gameInfoProto.RoomId),
-			WalletAddress: player.WalletAddress,
-			TempAddress:   player.TemporaryAddress,
-		})
+func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
+	gameInfo := &proto.GameInfo{
+		RoomId:              uint32(info.ID),
+		RoomContractAddress: info.RoomContract,
+		GameType:            proto.GameType(info.Type),
+		Status:              proto.GameStatus(info.Status),
 	}
-	var rounds []dao.Round
-	for _, round := range gameInfoProto.Rounds {
-		daoRound := dao.Round{
-			MatchID:     uint(gameInfoProto.RoomId),
-			RoundNumber: int(round.Number),
-			Status:      round.Status.String(),
-		}
-		for _, roundPlayer := range round.Players {
-			daoRoundPlayer := dao.PlayerRoundInfo{
-				RoundID: uint(gameInfoProto.RoomId),
-			}
-			for _, roundCard := range roundPlayer.Cards {
-				daoRoundCards := dao.RoundSubmittedCard{
-					CardCommtiment: hexutil.Encode(roundCard.SubmittedCommitment),
-					Card: dao.Card{
-						BaseModel: dao.BaseModel{
-							ID: uint(roundCard.SubmittedCard.CardId),
-						},
-					},
-					HealthBefore: uint32(roundCard.HealthBefore),
-					HealthAfter:  uint32(roundCard.HealthEnd),
-					Multiplier:   uint32(roundCard.Multiplier),
-				}
-				for _, item := range roundCard.SubmittedCard.Items {
-					daoRoundCards.Items = append(daoRoundCards.Items, dao.Item{
-						BaseModel: dao.BaseModel{
-							ID: uint(item),
-						},
-					})
-				}
-				daoRoundPlayer.RoundCards = append(daoRoundPlayer.RoundCards, daoRoundCards)
-			}
-			daoRound.RoundPlayers = append(daoRound.RoundPlayers, daoRoundPlayer)
-		}
-		rounds = append(rounds, daoRound)
+	// convert players
+	for _, player := range info.Players {
+		gameInfo.Players = append(gameInfo.Players, DbGamePlayerToProtoPlayerAddress(&player))
 	}
+	// convert rounds
+	for _, round := range info.Rounds {
+		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(&round))
+	}
+	// conver results
+	return gameInfo
+}
 
-	return &dao.GameInfo{
-		RoomContract: gameInfoProto.RoomContractAddress,
-		Type:         gameInfoProto.GameType.String(),
-		Status:       uint(gameInfoProto.Status),
-		Players:      players,
-		Rounds:       rounds,
+func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayer) *proto.PlayerAddress {
+	return &proto.PlayerAddress{
+		WalletAddress:    player.WalletAddress,
+		TemporaryAddress: player.TempAddress,
+	}
+}
+
+func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
+	return &proto.Round{
+		Number:  int32(round.RoundNumber),
+		Status:  proto.RoundStatus(round.Status),
+		Players: DbPlayerRoundInfosToProto(round.PlayerRoundInfos),
+	}
+}
+
+func DbPlayerRoundInfosToProto(playerRoundInfos []dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
+	var playerRoundInfosProto []*proto.PlayerRoundInfo
+	for _, playerRoundInfo := range playerRoundInfos {
+		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(&playerRoundInfo))
+	}
+	return playerRoundInfosProto
+}
+
+func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundInfo {
+	return &proto.PlayerRoundInfo{
+		PlayerAddress:       DbGamePlayerToProtoPlayerAddress(&playerRoundInfo.GamePlayer),
+		Cards:               DbRoundSubmittedCardsToProto(playerRoundInfo.RoundSubmittedCards),
+		Salt:                playerRoundInfo.Salt,
+		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
+	}
+}
+
+func DbRoundSubmittedCardsToProto(cards []dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
+	var cardsProto []*proto.RoundSubmittedCard
+	for _, card := range cards {
+		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(&card))
+	}
+	return cardsProto
+}
+func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmittedCard {
+	return &proto.RoundSubmittedCard{
+		PlayerHealthBefore: card.HealthBefore,
+		PlayerHealthEnd:    card.HealthAfter,
+		Multiplier:         card.Multiplier,
+		SubmittedCardId:    card.CardID,
 	}
 }

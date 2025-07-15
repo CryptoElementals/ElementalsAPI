@@ -2,47 +2,43 @@ package db
 
 import (
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
 
-func preload(d *gorm.DB) *gorm.DB {
-	return d.Preload("Children", preload)
-}
-
 // CreateMatch 创建匹配记录（为单个用户创建）
-func CreateMatch(match *dao.GameInfo) error {
-	return Get().Create(match).Error
+func CreateGame(game *dao.GameInfo) error {
+	return Get().Create(game).Error
 }
 
-// GetMatchByMatchID 根据MatchID获取匹配记录（返回第一个，用于兼容旧接口）
-func GetMatchByMatchID(matchID string) (*dao.GamePlayer, error) {
-	var match dao.GamePlayer
-	err := Get().Where("id = ?", matchID).First(&match).Error
+func LoadGameByGameID(gameID uint) (*dao.GameInfo, error) {
+	var game dao.GameInfo
+	tx := Get().Where("id = ?", gameID)
+	err := preloadGameInfo(tx).First(&game).Error
 	if err != nil {
 		return nil, err
 	}
-	return &match, nil
+	return &game, nil
 }
 
-func LoadFullMatchByMatchID(matchID string) (*dao.GameInfo, error) {
-	var match dao.GameInfo
-	err := Get().Where("id = ?", matchID).
-		Preload("Players").
-		Preload("Players.Player").
+func GetAllActiveGames() ([]*dao.GameInfo, error) {
+	var games []*dao.GameInfo
+	tx := Get().Where("status = ? or status = ?", proto.GameStatus_GAME_RUNNING, proto.GameStatus_GAME_WAITTING_CONTRACT)
+	err := preloadGameInfo(tx).Find(&games).Error
+	if err != nil {
+		return nil, err
+	}
+	return games, nil
+}
+
+func preloadGameInfo(tx *gorm.DB) *gorm.DB {
+	return tx.Preload("Players").
 		Preload("Rounds").
-		Preload("Rounds.RoundPlayers").
-		Preload("Rounds.RoundPlayers.RoundCards").
-		Preload("Rounds.RoundPlayers.RoundCards.Card").
-		Preload("Rounds.RoundPlayers.RoundCards.Items").
-		Preload("Rounds.RoundPlayers.RoundCards.Items.Effects").
-		First(&match).Error
-	if err != nil {
-		return nil, err
-	}
-	return &match, nil
+		Preload("Rounds.PlayerRoundInfos").
+		Preload("Rounds.PlayerRoundInfos.RoundSubmittedCards")
 }
 
-func SaveMatch(match *dao.GameInfo) error {
+func SaveGame(match *dao.GameInfo) error {
 	return Get().Save(match).Error
 }
 

@@ -3,10 +3,11 @@ package dao
 type GameInfo struct {
 	BaseModel
 	RoomContract string       `gorm:"index" json:"room_contract"` // 房间合约地址
-	Type         string       `gorm:"not null" json:"type"`       // 游戏模式
+	Type         uint         `gorm:"not null" json:"type"`       // 游戏模式
 	Status       uint         `gorm:"not null" json:"status"`
 	Players      []GamePlayer `gorm:"not null;default:''" json:"players"`
 	Rounds       []Round      `json:"rounds"`
+	GameResult   *GameResult
 }
 
 // GamePlayer 匹配记录表
@@ -22,7 +23,7 @@ type Round struct {
 	BaseModel
 	MatchID          uint              `gorm:"not null;index" json:"match_id"`                // 匹配唯一ID
 	RoundNumber      int               `gorm:"not null;index" json:"round_number"`            // 回合数
-	Status           string            `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
+	Status           uint              `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
 	PlayerRoundInfos []PlayerRoundInfo `gorm:"not null;default:''" json:"player_round_infos"` // 回合玩家记录
 }
 
@@ -45,4 +46,20 @@ type RoundSubmittedCard struct {
 	HealthAfter  uint32 `gorm:"not null;default:0" json:"health_after"`
 	Multiplier   uint32 `gorm:"not null;default:0" json:"multiplier"`
 	CardID       uint32 `gorm:"not null;index" json:"card"` // 使用过的卡牌
+}
+
+type GameResult struct {
+	BaseModel
+	MatchID               uint `gorm:"not null;index" json:"match_id"`
+	GameResultPlayerInfos []GameResultPlayerInfo
+}
+
+type GameResultPlayerInfo struct {
+	BaseModel
+	GameResultID  uint
+	WalletAddress string `gorm:"not null;index:address" json:"wallet_address"`
+	TempAddress   string `gorm:"not null;index:address" json:"temp_address"`
+	TokenDelta    int32  `gorm:"not null;default:0" json:"token_delta"`
+	Points        int32
+	Status        uint
 }
