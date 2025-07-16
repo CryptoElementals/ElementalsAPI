@@ -115,6 +115,10 @@ func (g *Game) handleGameStateMatched(event *types.Event) error {
 	if err != nil {
 		return err
 	}
+	// stale event
+	if int(evt.RoundNum) != g.currentRound.RoundNumber {
+		return nil
+	}
 	player := g.gamePlayers[evt.PlayerAddress]
 	player.status = player_ready
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))

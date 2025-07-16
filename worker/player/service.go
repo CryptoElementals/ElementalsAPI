@@ -116,6 +116,7 @@ func (s *Service) SendPlayerReady(address types.PlayerAddress, gameID uint, roun
 	}
 	s.workerManager.SendEvent(fmt.Sprint(gameID), types.NewEvent(player.address.String(), &types.PlayerReadyEvent{
 		GameId:        gameID,
+		RoundNum:      roundNum,
 		PlayerAddress: address,
 	}))
 }

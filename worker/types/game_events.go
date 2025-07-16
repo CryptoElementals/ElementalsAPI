@@ -8,6 +8,7 @@ type NewGameEvent struct {
 
 type PlayerReadyEvent struct {
 	GameId        uint
+	RoundNum      uint32
 	PlayerAddress PlayerAddress
 }
 
