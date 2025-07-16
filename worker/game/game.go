@@ -94,7 +94,7 @@ func (g *Game) recoverGame(gameInfo *dao.GameInfo) error {
 		g.currentRound = g.gameInfo.Rounds[len(g.gameInfo.Rounds)-1]
 	}
 	// recover player status, too
-	
+
 	return nil
 }
 
@@ -166,6 +166,10 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		return fmt.Errorf("invalid event type: %d", event.EventType)
 	}
 	evt := event.Data.(*types.PlayerCommitmentOnChain)
+	// stale events
+	if evt.RoundNumber != g.currentRound.RoundNumber {
+		return nil
+	}
 	player := g.gamePlayers[evt.Address]
 	player.status = player_commitment_on_chain
 	player.roundPlayer.SubmittedCommitment = evt.Commitment
@@ -192,6 +196,10 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	}
 	// set player cards and player status
 	evt := event.Data.(*types.PlayerCardsOnChain)
+	// stale events
+	if evt.RoundNumber != g.currentRound.RoundNumber {
+		return nil
+	}
 	player := g.gamePlayers[evt.Address]
 	player.status = player_cards_on_chain
 	for _, card := range evt.Cards {
