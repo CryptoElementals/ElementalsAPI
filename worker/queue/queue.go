@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/CryptoElementals/common/cache"
@@ -49,18 +50,18 @@ func (q *Queue) start() error {
 	return nil
 }
 
-func (q *Queue) Handle(ctx context.Context, event *types.Event) error {
+func (q *Queue) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	switch event.EventType {
-	case types.EVENT_TYPE_JOIN_QUEUE:
-		q.handleJoinQueueEvent(event.Data.(*types.JoinQueueEvent))
-	case types.EVENT_TYPE_EXIT_QUEUE:
-		q.handleExitQueueEvent(event.Data.(*types.ExitQueueEvent))
-	case types.EVENT_TYPE_ERR:
-		q.handleErrEvent(event.Data.(*types.ErrorEvent))
+	switch evt := event.Data.(type) {
+	case *types.JoinQueueEvent:
+		q.handleJoinQueueEvent(evt)
+	case *types.ExitQueueEvent:
+		q.handleExitQueueEvent(evt)
+	case *types.ErrorEvent:
+		q.handleErrEvent(evt)
 	default:
-		return fmt.Errorf("queue worker handle event type %d not supported", event.EventType)
+		return fmt.Errorf("queue worker handle event type %d not supported", reflect.TypeOf(evt))
 	}
 	return nil
 }
@@ -80,7 +81,7 @@ func (q *Queue) handleJoinQueueEvent(event *types.JoinQueueEvent) {
 			MsgSender: types.QUEUE_MANAGER_ID,
 			Players:   []types.PlayerAddress{player, event.PlayerAddress},
 		}
-		q.workerManager.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(types.QUEUE_MANAGER_ID, types.EVENT_TYPE_NEW_GAME, evt))
+		q.workerManager.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(types.QUEUE_MANAGER_ID, evt))
 		delete(q.queue, player)
 
 		// might have some corner case here if failed
@@ -111,7 +112,7 @@ func (w *Queue) handleErrEvent(eventErr *types.ErrorEvent) {
 	}
 	// otherwise we notify the players in events
 	for _, player := range eventErr.OriginalEvent.Data.(*types.NewGameEvent).Players {
-		w.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, types.EVENT_TYPE_ERR, &types.ErrorEvent{
+		w.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ErrorEvent{
 			OriginalEvent:    eventErr.OriginalEvent,
 			OriginalReceiver: types.GAME_MANAGER_ID,
 			Err:              fmt.Errorf("%w: %s", types.MatchFailedError, eventErr.Err.Error()),
@@ -120,10 +121,7 @@ func (w *Queue) handleErrEvent(eventErr *types.ErrorEvent) {
 }
 
 func (q *Queue) createSelf() {
-	q.workerManager.RegisterWorkerFactory(types.WORKER_TYPE_QUEUE, func(id string, t worker.WorkerType) *worker.Worker {
-		return worker.NewWorker(q.ctx, id, types.WORKER_TYPE_QUEUE)
-	})
-	q.workerManager.SpwanWorker(types.QUEUE_MANAGER_ID, types.WORKER_TYPE_QUEUE, q)
+	q.workerManager.SpwanWorker(q.ctx, types.QUEUE_MANAGER_ID, types.WORKER_TYPE_QUEUE, q)
 }
 
 func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {

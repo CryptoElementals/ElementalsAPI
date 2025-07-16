@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/CryptoElementals/common/db"
@@ -32,37 +33,33 @@ func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManag
 		log.Errorf("recover games failed: %s", err.Error())
 	}
 	m.createSelf()
-	m.registerGameWorkerFactory()
 	return m
 }
 
 // Handle implements worker.EventHandler.
-func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
+func (r *GameManager) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-
-	switch event.EventType {
-	case types.EVENT_TYPE_ERR:
-		eventErr := event.Data.(*types.ErrorEvent)
+	switch evt := event.Data.(type) {
+	case *types.ErrorEvent:
 		// just retry
-		r.workerManager.SendEvent(eventErr.OriginalReceiver, eventErr.OriginalEvent)
+		r.workerManager.SendEvent(evt.OriginalReceiver, evt.OriginalEvent)
 		return nil
-	case types.EVENT_TYPE_NEW_GAME:
-		evt := event.Data.(*types.NewGameEvent)
+	case *types.NewGameEvent:
 		gameID, err := r.createGame(evt.Players)
 		if err != nil {
 			return err
 		}
 		// also notify players
 		for _, player := range evt.Players {
-			r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, types.EVENT_TYPE_NEW_GAME, &types.GameCreatedEvent{
+			r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
 				GameID:  gameID,
 				Players: evt.Players,
 			}))
 		}
 		return nil
 	default:
-		return fmt.Errorf("GameManager Handle err: event type not match, %d", event.EventType)
+		return fmt.Errorf("GameManager Handle err: event type not match, %d", reflect.TypeOf(evt))
 	}
 }
 
@@ -119,18 +116,5 @@ func (r *GameManager) recoverGames() error {
 }
 
 func (r *GameManager) createSelf() {
-	r.workerManager.RegisterWorkerFactory(types.WORKER_TYPE_GAME_MANAGER, func(id string, t worker.WorkerType) *worker.Worker {
-		w := worker.NewWorker(r.ctx, id, t)
-		w.SetSender(r.workerManager)
-		return w
-	})
-	r.workerManager.SpwanWorker(types.GAME_MANAGER_ID, types.WORKER_TYPE_GAME_MANAGER, r)
-}
-
-func (r *GameManager) registerGameWorkerFactory() {
-	r.workerManager.RegisterWorkerFactory(types.WORKER_TYPE_GAME, func(id string, t worker.WorkerType) *worker.Worker {
-		w := worker.NewWorker(r.ctx, id, t)
-		w.SetSender(r.workerManager)
-		return w
-	})
+	r.workerManager.SpwanWorker(r.ctx, types.GAME_MANAGER_ID, types.WORKER_TYPE_GAME_MANAGER, r)
 }

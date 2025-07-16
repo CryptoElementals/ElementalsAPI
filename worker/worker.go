@@ -13,22 +13,30 @@ type EventSender interface {
 	SendEvent(to string, event *types.Event)
 }
 
+type WorkerCloser interface {
+	CloseWorker(string)
+}
+
 type EventHandler interface {
-	Handle(ctx context.Context, event *types.Event) error
+	Handle(ctx context.Context, sender EventSender, event *types.Event) error
 }
 
 type Worker struct {
 	ctx      context.Context
+	ccl      context.CancelFunc
 	Id       string
 	Type     WorkerType
 	handler  EventHandler
 	msgQueue chan *types.Event
 	sender   EventSender
+	closer   WorkerCloser
 }
 
-func NewWorker(ctx context.Context, id string, t WorkerType) *Worker {
+func NewWorker(ctx context.Context, id string, t WorkerType, workerCloser WorkerCloser, sender EventSender, handler EventHandler) *Worker {
+	ctx, ccl := context.WithCancel(ctx)
 	return &Worker{
 		ctx:      ctx,
+		ccl:      ccl,
 		Id:       id,
 		Type:     t,
 		msgQueue: make(chan *types.Event, 100),
@@ -39,22 +47,28 @@ func (w *Worker) Run() {
 	for {
 		select {
 		case <-w.ctx.Done():
+			w.closer.CloseWorker(w.Id)
 			return
 		case event := <-w.msgQueue:
-			err := w.handler.Handle(w.ctx, event)
+			sender := event.Sender
+			err := w.handler.Handle(w.ctx, w, event)
 			if err != nil {
-				sender := event.Sender
-				errEvent := types.NewEvent(w.Id, types.EVENT_TYPE_ERR, &types.ErrorEvent{
+				errEvent := types.NewEvent(w.Id, &types.ErrorEvent{
 					OriginalEvent:    event,
 					OriginalReceiver: w.Id,
 					Err:              err,
 				})
-				w.sender.SendEvent(sender, errEvent)
+				w.SendEvent(sender, errEvent)
+			} else if event.NeedAck {
+				ackEvent := types.NewEvent(w.Id, &types.AckEvent{
+					EventID: event.EventID,
+				})
+				w.SendEvent(sender, ackEvent)
 			}
 		}
 	}
 }
 
-func (w *Worker) SetSender(sender EventSender) {
-	w.sender = sender
+func (w *Worker) SendEvent(to string, event *types.Event) {
+	w.sender.SendEvent(to, event)
 }

@@ -2,10 +2,12 @@ package types
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/google/uuid"
 )
 
 const (
@@ -64,33 +66,11 @@ func (a *PlayerAddress) FromDao(player dao.GamePlayer) {
 }
 
 type Event struct {
-	EventType uint32
-	Sender    string
-	Data      any
+	Sender  string
+	EventID string
+	NeedAck bool
+	Data    any
 }
-
-const (
-	EVENT_TYPE_ERR = iota
-	// queue related event
-	EVENT_TYPE_NEW_GAME
-	EVENT_TYPE_JOIN_QUEUE
-	EVENT_TYPE_EXIT_QUEUE
-	// player related events
-	EVENT_TYPE_GAME_CREATED
-	EVENT_TYPE_GAME_READY
-	EVENT_TYPE_ROUND_READY
-	EVENT_TYPE_COMMITMENTS_ON_CHAIN
-	EVENT_TYPE_CARDS_ON_CHAIN
-	EVENT_TYPE_ROUND_COMPLETED
-	EVENT_TYPE_GAME_COMPLETED
-	// game related events
-	EVENT_TYPE_ROOM_CONTRACT_CREATED
-	EVENT_TYPE_PLAYER_COMMITMENT_ON_CHAIN
-	EVENT_TYPE_PLAYER_CARDS_ON_CHAIN
-
-	// chain related event
-	EVENT_TYPE_REQUIRE_CONTRACT_CREATION
-)
 
 type ErrorEvent struct {
 	OriginalEvent    *Event
@@ -98,10 +78,29 @@ type ErrorEvent struct {
 	Err              error
 }
 
-func NewEvent(sender string, eventType uint32, evt any) *Event {
-	return &Event{
-		EventType: EVENT_TYPE_ERR,
-		Sender:    sender,
-		Data:      evt,
+func NewEvent(sender string, evt any, needAck ...bool) *Event {
+	ack := false
+	if len(needAck) != 0 && needAck[0] {
+		ack = true
 	}
+
+	eid := uuid.NewString()
+	return &Event{
+		Sender:  sender,
+		EventID: eid,
+		NeedAck: ack,
+		Data:    evt,
+	}
+}
+
+func AssertInterface[T any](evt *Event) (T, error) {
+	data, ok := evt.Data.(T)
+	if !ok {
+		return *new(T), fmt.Errorf("event data type not match: %s", reflect.TypeOf(evt.Data))
+	}
+	return data, nil
+}
+
+type AckEvent struct {
+	EventID string
 }

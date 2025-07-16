@@ -2,54 +2,53 @@ package worker
 
 import (
 	"context"
-	"errors"
+	"sync"
 
 	"github.com/CryptoElementals/common/worker/types"
 )
 
-type workerFactroy func(id string, t WorkerType) *Worker
-
 type WorkerManager struct {
-	ctx           context.Context
-	workers       map[string]*Worker
-	workerFactory map[WorkerType]workerFactroy
+	ctx     context.Context
+	lock    sync.RWMutex
+	workers map[string]*Worker
 }
 
 func NewWorkerManager(ctx context.Context) *WorkerManager {
 	return &WorkerManager{
-		ctx:           ctx,
-		workers:       make(map[string]*Worker),
-		workerFactory: make(map[WorkerType]workerFactroy),
+		ctx:     ctx,
+		workers: make(map[string]*Worker),
 	}
 }
 
-func (w *WorkerManager) SpwanWorker(id string, t WorkerType, handler EventHandler) error {
-	if factory := w.workerFactory[t]; factory != nil {
-		worker := factory(id, t)
-		worker.handler = handler
-		w.workers[id] = worker
-		worker.Run()
-		return nil
-	}
-	return errors.New("worker type not registered")
-}
-
-func (w *WorkerManager) RegisterWorkerFactory(t WorkerType, factory workerFactroy) {
-	w.workerFactory[t] = factory
-}
-
-func (w *WorkerManager) GetWorker(id string) *Worker {
-	return w.workers[id]
+func (w *WorkerManager) SpwanWorker(ctx context.Context, id string, t WorkerType, handler EventHandler) {
+	w.lock.Lock()
+	defer w.lock.Unlock()
+	worker := NewWorker(ctx, id, t, w, w, handler)
+	w.workers[id] = worker
+	go worker.Run()
 }
 
 func (w *WorkerManager) SendEvent(id string, event *types.Event) {
-	if worker := w.GetWorker(id); worker != nil {
+	w.lock.RLock()
+	defer w.lock.RUnlock()
+	if worker := w.workers[id]; worker != nil {
 		worker.msgQueue <- event
 	}
 }
 
 func (w *WorkerManager) SendEventToAll(event *types.Event) {
+	w.lock.RLock()
+	defer w.lock.RUnlock()
 	for _, worker := range w.workers {
 		worker.msgQueue <- event
+	}
+}
+
+func (w *WorkerManager) CloseWorker(id string) {
+	w.lock.Lock()
+	defer w.lock.Unlock()
+	if worker := w.workers[id]; worker != nil {
+		worker.ccl()
+		delete(w.workers, id)
 	}
 }

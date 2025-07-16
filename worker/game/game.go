@@ -98,7 +98,7 @@ func (g *Game) recoverGame(gameInfo *dao.GameInfo) error {
 	return nil
 }
 
-func (g *Game) Handle(ctx context.Context, event *types.Event) error {
+func (g *Game) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_UNKNOWN:
 		return g.handleGameStateMatched(event)
@@ -111,10 +111,10 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 }
 
 func (g *Game) handleGameStateMatched(event *types.Event) error {
-	if event.EventType != types.EVENT_TYPE_GAME_CREATED {
-		return fmt.Errorf("invalid event type: %d", event.EventType)
+	evt, err := types.AssertInterface[*types.PlayerReadyEvent](event)
+	if err != nil {
+		return err
 	}
-	evt := event.Data.(*types.PlayerReadyEvent)
 	player := g.gamePlayers[evt.PlayerAddress]
 	player.status = player_ready
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
@@ -125,33 +125,34 @@ func (g *Game) handleGameStateMatched(event *types.Event) error {
 		allPlayers = append(allPlayers, player.PlayerAddress())
 	}
 	g.gameInfo.Status = proto.GameStatus_GAME_WAITTING_CONTRACT
-	err := g.saveGame()
+	err = g.saveGame()
 	if err != nil {
 		return err
 	}
-	g.workerMangerService.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(g.workerID(), types.EVENT_TYPE_REQUIRE_CONTRACT_CREATION, &types.RequireContractCreationEvent{
+	g.workerMangerService.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(g.workerID(), &types.RequireContractCreationEvent{
 		Players: allPlayers,
 	}))
 	return nil
 }
 
 func (g *Game) handleGameStatusContractReady(event *types.Event) error {
-	if event.EventType != types.EVENT_TYPE_ROOM_CONTRACT_CREATED {
-		return fmt.Errorf("invalid event type: %d", event.EventType)
-	}
 	startRoundNum := 1
-	evt := event.Data.(*types.RoomContractCreated)
-	g.gameInfo.RoomContract = evt.RoomContractAddress
-	g.setupNewRound()
-	err := db.SaveGame(g.gameInfo)
+	evt, err := types.AssertInterface[*types.RoomContractCreated](event)
 	if err != nil {
 		return err
 	}
-	gameReadyEvt := types.NewEvent(g.workerID(), types.EVENT_TYPE_GAME_READY, &types.GameReadyEvent{
+	g.gameInfo.RoomContract = evt.RoomContractAddress
+	g.setupNewRound()
+	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
+	err = g.saveGame()
+	if err != nil {
+		return err
+	}
+	gameReadyEvt := types.NewEvent(g.workerID(), &types.GameReadyEvent{
 		GameID:          g.gameInfo.ID,
 		ContractAddress: evt.RoomContractAddress,
 	})
-	roundReadyEvt := types.NewEvent(g.workerID(), types.EVENT_TYPE_ROUND_READY, &types.RoundReadyEvent{
+	roundReadyEvt := types.NewEvent(g.workerID(), &types.RoundReadyEvent{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: startRoundNum,
 	})
@@ -162,10 +163,10 @@ func (g *Game) handleGameStatusContractReady(event *types.Event) error {
 	return nil
 }
 func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
-	if event.EventType != types.EVENT_TYPE_PLAYER_COMMITMENT_ON_CHAIN {
-		return fmt.Errorf("invalid event type: %d", event.EventType)
+	evt, err := types.AssertInterface[*types.PlayerCommitmentOnChain](event)
+	if err != nil {
+		return err
 	}
-	evt := event.Data.(*types.PlayerCommitmentOnChain)
 	// stale events
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
@@ -180,7 +181,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		}
 	}
 	// all player commitment on chain, send EVENT_TYPE_COMMITMENTS_ON_CHAIN to players
-	commitmentsOnChainEvt := types.NewEvent(g.workerID(), types.EVENT_TYPE_COMMITMENTS_ON_CHAIN, &types.CommitmentsOnChainEvent{
+	commitmentsOnChainEvt := types.NewEvent(g.workerID(), &types.CommitmentsOnChainEvent{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: evt.RoundNumber,
 	})
@@ -191,11 +192,11 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 }
 
 func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
-	if event.EventType != types.EVENT_TYPE_PLAYER_CARDS_ON_CHAIN {
-		return fmt.Errorf("invalid event type: %d", event.EventType)
-	}
 	// set player cards and player status
-	evt := event.Data.(*types.PlayerCardsOnChain)
+	evt, err := types.AssertInterface[*types.PlayerCardsOnChain](event)
+	if err != nil {
+		return err
+	}
 	// stale events
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
@@ -215,7 +216,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		}
 	}
 	// send CardsOnChainEvent and RoundCompletedEvent to all players
-	cardsOnChainEvt := types.NewEvent(g.workerID(), types.EVENT_TYPE_CARDS_ON_CHAIN, &types.CardsOnChainEvent{
+	cardsOnChainEvt := types.NewEvent(g.workerID(), &types.CardsOnChainEvent{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: evt.RoundNumber,
 	})
@@ -228,7 +229,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	if false {
 		g.handleGameEnd()
 	} else {
-		roundCompletedEvt := types.NewEvent(g.workerID(), types.EVENT_TYPE_ROUND_COMPLETED, &types.RoundCompletedEvent{
+		roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
 			GameID:    g.gameInfo.ID,
 			RoundInfo: g.currentRound,
 		})
@@ -236,7 +237,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 		g.setupNewRound()
 	}
-	err := g.saveGame()
+	err = g.saveGame()
 	if err != nil {
 		return err
 	}
@@ -247,7 +248,7 @@ func (g *Game) handleGameEnd() error {
 	if g.gameInfo.Status != proto.GameStatus_GAME_RUNNING {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
-	gameCompletedEvt := types.NewEvent(g.workerID(), types.EVENT_TYPE_GAME_COMPLETED, &types.GameCompletedEvent{
+	gameCompletedEvt := types.NewEvent(g.workerID(), &types.GameCompletedEvent{
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
 	})
@@ -255,6 +256,7 @@ func (g *Game) handleGameEnd() error {
 	for _, player := range g.gamePlayers {
 		g.workerMangerService.SendEvent(player.String(), gameCompletedEvt)
 	}
+	g.stopWorker()
 	return nil
 }
 
@@ -268,9 +270,12 @@ func (g *Game) handleRound(event *types.Event) error {
 	}
 	return nil
 }
+func (g *Game) stopWorker() {
+	g.workerMangerService.CloseWorker(g.workerID())
+}
 
 func (g *Game) createSelf() {
-	g.workerMangerService.SpwanWorker(g.workerID(), types.WORKER_TYPE_GAME, g)
+	g.workerMangerService.SpwanWorker(g.ctx, g.workerID(), types.WORKER_TYPE_GAME, g)
 }
 
 func (g *Game) workerID() string {
@@ -285,7 +290,7 @@ func (g *Game) setupNewRound() {
 	newRound := &dao.Round{
 		MatchID:     g.gameInfo.ID,
 		RoundNumber: roundNum,
-		Status:      proto.RoundStatus_ROUND_WAITTING_COMMITMENTS,
+		Status:      proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
 	}
 	for _, player := range g.gamePlayers {
 		playerRoundInfo := &dao.PlayerRoundInfo{

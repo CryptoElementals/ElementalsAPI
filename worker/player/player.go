@@ -3,6 +3,7 @@ package player
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/CryptoElementals/common/conversion"
@@ -40,41 +41,31 @@ func NewPlayer(ctx context.Context,
 	return p
 }
 
-func (p *Player) Handle(ctx context.Context, event *types.Event) error {
+func (p *Player) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
-		if event.EventType == types.EVENT_TYPE_GAME_CREATED {
-			evt := event.Data.(*types.GameCreatedEvent)
-			p.handleNewGameEvent(p.ctx, evt)
-			p.status = proto.PlayerStatus_PLAYER_IN_GAME
-		} else {
-			return fmt.Errorf("player in queue, but got event type %d", event.EventType)
-		}
+		evt := event.Data.(*types.GameCreatedEvent)
+		p.handleNewGameEvent(p.ctx, evt)
+		p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	}
 
 	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return fmt.Errorf("player not in game, but got event type %d", event.EventType)
+		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(event.Data))
 	}
 
-	switch event.EventType {
-	case types.EVENT_TYPE_GAME_READY:
-		evt := event.Data.(*types.GameReadyEvent)
+	switch evt := event.Data.(type) {
+	case *types.GameReadyEvent:
 		p.handleGameReadyEvent(p.ctx, evt)
-	case types.EVENT_TYPE_ROUND_READY:
-		evt := event.Data.(*types.RoundReadyEvent)
+	case *types.RoundReadyEvent:
 		p.handleRoundReadyEvent(p.ctx, evt)
-	case types.EVENT_TYPE_COMMITMENTS_ON_CHAIN:
-		evt := event.Data.(*types.CommitmentsOnChainEvent)
+	case *types.CommitmentsOnChainEvent:
 		p.handleCommitmentsOnChainEvent(p.ctx, evt)
-	case types.EVENT_TYPE_CARDS_ON_CHAIN:
-		evt := event.Data.(*types.CardsOnChainEvent)
+	case *types.CardsOnChainEvent:
 		p.handleCardsOnChainEvent(p.ctx, evt)
-	case types.EVENT_TYPE_ROUND_COMPLETED:
-		evt := event.Data.(*types.RoundCompletedEvent)
+	case *types.RoundCompletedEvent:
 		p.handleRoundCompletedEvent(p.ctx, evt)
-	case types.EVENT_TYPE_GAME_COMPLETED:
-		evt := event.Data.(*types.GameCompletedEvent)
+	case *types.GameCompletedEvent:
 		p.handleGameCompletedEvent(p.ctx, evt)
 		p.status = proto.PlayerStatus_PLAYER_KNOWN
 	}
@@ -82,7 +73,7 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 }
 
 func (p *Player) createSelf() {
-	p.workerManger.SpwanWorker(p.address.String(), types.WORKER_TYPE_PLAYER, p)
+	p.workerManger.SpwanWorker(p.ctx, p.address.String(), types.WORKER_TYPE_PLAYER, p)
 }
 
 // join queue should be idempotent
@@ -93,7 +84,7 @@ func (p *Player) joinQueue() error {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
 
-	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), types.EVENT_TYPE_JOIN_QUEUE, &types.JoinQueueEvent{
+	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), &types.JoinQueueEvent{
 		PlayerAddress: p.address,
 	}))
 	p.status = proto.PlayerStatus_PLAYER_IN_QUEUE
@@ -107,7 +98,7 @@ func (p *Player) exitQueue() error {
 	if p.status != proto.PlayerStatus_PLAYER_IN_QUEUE {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
-	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), types.EVENT_TYPE_EXIT_QUEUE, &types.ExitQueueEvent{
+	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), &types.ExitQueueEvent{
 		PlayerAddress: p.address,
 	}))
 	p.status = proto.PlayerStatus_PLAYER_KNOWN
