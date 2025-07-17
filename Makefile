@@ -1,111 +1,59 @@
-# BeastRoyale Backend Makefile
+# ElementalsAPI Makefile
 
-# Variable definitions
-APP_NAME = beast-royale-server
-MAIN_FILE = main.go
-BUILD_DIR = bin
-LOG_DIR = bin/logs
-
-# Go related variables
+# Go相关
 GO = go
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
-GO_VERSION = $(shell go version | awk '{print $$3}')
 
-# Version information
-VERSION ?= 1.0.0
-BUILD_TIME = $(shell date -u '+%Y-%m-%d_%H:%M:%S')
-GIT_COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# 版本信息
+TAG     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BLDTIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
+GOVER   ?= $(shell go version | awk '{print $$3}')
 
-# Build flags
-LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
+# 二进制输出目录
+BIN_DIR = bin
 
-.PHONY: all build clean test run dev deps fmt lint help version
+# 二进制名称和主入口
+APISERVER_BIN = ele-apiserver
+APISERVER_MAIN = ./cmd/ele-apiserver
 
-# 默认目标
-all: clean build
+SCANNER_BIN = ele-scanner
+SCANNER_MAIN = ./cmd/ele-scanner
 
-# Create build directory
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+# LDFLAGS 注入版本信息（全部用 main 包名）
+LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-# Create log directory
-$(LOG_DIR):
-	mkdir -p $(LOG_DIR)
+.PHONY: all build apiserver scanner clean deps lint help
 
-# 编译主程序（排除测试工具）
-build: $(BUILD_DIR) $(LOG_DIR)
-	@echo "Building $(APP_NAME)..."
-	@echo "Go version: $(GO_VERSION)"
-	@echo "Target platform: $(GOOS)/$(GOARCH)"
-	@echo "Version: $(VERSION)"
-	@echo "Build time: $(BUILD_TIME)"
-	@echo "Git commit: $(GIT_COMMIT)"
-	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_FILE)
-	@echo "Build completed: $(BUILD_DIR)/$(APP_NAME)"
+all: build
 
-# Cross compile - Linux
-build-linux:
-	@echo "Building Linux version..."
-	GOOS=linux GOARCH=amd64 $(MAKE) build
+#build: apiserver scanner
+build: apiserver scanner 
 
-# Cross compile - Windows
-build-windows:
-	@echo "Building Windows version..."
-	GOOS=windows GOARCH=amd64 $(MAKE) build
+apiserver: $(BIN_DIR)
+	@echo "Building $(APISERVER_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(APISERVER_BIN) $(APISERVER_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(APISERVER_BIN)"
 
-# Cross compile - macOS
-build-darwin:
-	@echo "Building macOS version..."
-	GOOS=darwin GOARCH=amd64 $(MAKE) build
+scanner: $(BIN_DIR)
+	@echo "Building $(SCANNER_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(SCANNER_BIN) $(SCANNER_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(SCANNER_BIN)"
 
-# 编译并运行
-run: build
-	@echo "Starting $(APP_NAME)..."
-	./$(BUILD_DIR)/$(APP_NAME)
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
 
-# Development mode run (no compilation)
-dev:
-	@echo "Starting $(APP_NAME) in development mode..."
-	$(GO) run $(MAIN_FILE)
-
-# 清理编译产物
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BUILD_DIR)
-	rm -f coverage.out coverage.html
+	rm -rf $(BIN_DIR)
 	@echo "Clean completed"
 
-# 运行测试
-test:
-	@echo "Running tests..."
-	$(GO) test -v ./...
-
-# Test coverage
-test-coverage:
-	@echo "Running tests and generating coverage report..."
-	$(GO) test -v -coverprofile=coverage.out ./...
-	$(GO) tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
-
-# 安装依赖
 deps:
 	@echo "Installing dependencies..."
 	$(GO) mod download
 	$(GO) mod tidy
 
-# Update dependencies
-deps-update:
-	@echo "Updating dependencies..."
-	$(GO) get -u ./...
-	$(GO) mod tidy
-
-# 格式化代码
-fmt:
-	@echo "Formatting code..."
-	$(GO) fmt ./...
-
-# 代码检查
 lint:
 	@echo "Running linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
@@ -114,72 +62,25 @@ lint:
 		echo "golangci-lint not installed, skipping code linting"; \
 	fi
 
-# Install
-install: build
-	@echo "Installing $(APP_NAME)..."
-	cp $(BUILD_DIR)/$(APP_NAME) /usr/local/bin/
-	@echo "Installation completed"
-
-# Uninstall
-uninstall:
-	@echo "Uninstalling $(APP_NAME)..."
-	rm -f /usr/local/bin/$(APP_NAME)
-	@echo "Uninstallation completed"
-
-# Create release package
-release: clean build
-	@echo "Creating release package..."
-	@mkdir -p release
-	@cp $(BUILD_DIR)/$(APP_NAME) release/
-	@cp README.md release/ 2>/dev/null || echo "README.md not found, skipping"
-	@tar -czf release/$(APP_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz -C release .
-	@rm -rf release/$(APP_NAME) release/README.md
-	@echo "Release package created: release/$(APP_NAME)-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz"
-
-# Show version information
-version:
-	@echo "BeastRoyale Backend Server"
-	@echo "Version: $(VERSION)"
-	@echo "Build time: $(BUILD_TIME)"
-	@echo "Git commit: $(GIT_COMMIT)"
-	@echo "Go version: $(GO_VERSION)"
-	@echo "Target platform: $(GOOS)/$(GOARCH)"
-
-# 帮助信息
 help:
-	@echo "BeastRoyale Backend Makefile Usage:"
+	@echo "ElementalsAPI Makefile Usage:"
 	@echo ""
 	@echo "Build related:"
-	@echo "  build          - Build application"
-	@echo "  build-linux    - Build Linux version"
-	@echo "  build-windows  - Build Windows version"
-	@echo "  build-darwin   - Build macOS version"
-	@echo ""
-	@echo "Run related:"
-	@echo "  run            - Build and run application"
-	@echo "  dev            - Run in development mode (no compilation)"
-	@echo ""
-	@echo "Test related:"
-	@echo "  test           - Run tests"
-	@echo "  test-coverage  - Run tests and generate coverage report"
-	@echo ""
-	@echo "Code quality:"
-	@echo "  fmt            - Format code"
-	@echo "  lint           - Lint code"
-	@echo ""
-	@echo "Dependency management:"
-	@echo "  deps           - Download dependencies"
-	@echo "  deps-update    - Update dependencies"
+	@echo "  build         - Build both binaries (default)"
+	@echo "  apiserver     - Build ele-apiserver only"
+	@echo "  scanner       - Build ele-scanner only"
 	@echo ""
 	@echo "Other:"
-	@echo "  clean          - Clean build files"
-	@echo "  install        - Install to system"
-	@echo "  uninstall      - Uninstall from system"
-	@echo "  release        - Create release package"
-	@echo "  version        - Show version information"
-	@echo "  help           - Show this help information"
+	@echo "  clean         - Clean build files"
+	@echo "  deps          - Download dependencies"
+	@echo "  fmt           - Format code"
+	@echo "  lint          - Lint code"
+	@echo "  help          - Show this help information"
 	@echo ""
 	@echo "Environment variables:"
-	@echo "  VERSION        - Application version (default: 1.0.0)"
-	@echo "  GOOS           - Target OS (default: current system)"
-	@echo "  GOARCH         - Target architecture (default: current architecture)" 
+	@echo "  TAG           - Git tag or version (default: git describe)"
+	@echo "  COMMIT        - Git commit short hash (default: git rev-parse)"
+	@echo "  BLDTIME       - Build time (default: now)"
+	@echo "  GOVER         - Go version (default: go version)"
+	@echo "  GOOS          - Target OS (default: current system)"
+	@echo "  GOARCH        - Target architecture (default: current arch)" 
