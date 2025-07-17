@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"os"
@@ -10,6 +10,10 @@ var (
 	configPath string
 	cfgFile    string
 )
+
+func main() {
+	Execute()
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
