@@ -21,15 +21,17 @@ APISERVER_MAIN = ./cmd/ele-apiserver
 SCANNER_BIN = ele-scanner
 SCANNER_MAIN = ./cmd/ele-scanner
 
+ROOMSERVER_BIN = ele-roomserver
+ROOMSERVER_MAIN = ./cmd/ele-roomserver
+
 # LDFLAGS 注入版本信息（全部用 main 包名）
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner clean deps lint help
+.PHONY: all build apiserver scanner roomserver clean deps lint help
 
 all: build
 
-#build: apiserver scanner
-build: apiserver scanner 
+build: apiserver scanner roomserver
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -40,6 +42,11 @@ scanner: $(BIN_DIR)
 	@echo "Building $(SCANNER_BIN)..."
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(SCANNER_BIN) $(SCANNER_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(SCANNER_BIN)"
+
+roomserver: $(BIN_DIR)
+	@echo "Building $(ROOMSERVER_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(ROOMSERVER_BIN) $(ROOMSERVER_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(ROOMSERVER_BIN)"
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
