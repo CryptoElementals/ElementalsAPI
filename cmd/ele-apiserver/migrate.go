@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/cmd/ele-apiserver/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/spf13/cobra"
