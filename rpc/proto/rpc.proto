@@ -47,11 +47,10 @@ message ConfirmBattleRequest {
 
 enum RoundStatus {
     ROUND_WAITTING_BATTLE_CONFIRMATION = 0;
-    ROUND_WAITTING_COMMITMENTS = 1;
-    ROUND_COMMITMENT_SUBMITTED = 2;
+    ROUND_WAITTING_SETUP_ON_CHAIN = 1;
+    ROUND_WAITTING_COMMITMENTS = 2;
     ROUND_WAITTING_CARDS = 3;
-    ROUND_CARD_SUBMITTED = 4;
-    ROUND_COMPLETED = 5;
+    ROUND_COMPLETED = 4;
 }
 
 
@@ -76,10 +75,9 @@ message Round {
 }
 
 enum GameStatus {
-    GAME_UNKNOWN = 0;
-    GAME_WAITTING_CONTRACT = 1;
-    GAME_RUNNING = 2;
-    GAME_END = 3;
+    GAME_INIT = 0;
+    GAME_RUNNING = 1;
+    GAME_END = 2;
 }
 
 enum GameResultPlayerStatus {

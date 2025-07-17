@@ -9,11 +9,34 @@ func Migrate() error {
 		&dao.UserProfile{},
 		&dao.CardStat{},
 		&dao.Game{},
+		&dao.Round{},
+		&dao.PlayerRoundInfo{},
+		&dao.RoundSubmittedCard{},
+		&dao.GamePlayerInfo{},
 		&dao.Room{},
 		// 以后有新表直接加在这里
 	}
 	// 可选：设置表引擎
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func MigrateMemDb() error {
+	migrates := []any{
+		&dao.UserProfile{},
+		&dao.CardStat{},
+		&dao.Game{},
+		&dao.Round{},
+		&dao.PlayerRoundInfo{},
+		&dao.RoundSubmittedCard{},
+		&dao.GamePlayerInfo{},
+		&dao.Room{},
+		// 以后有新表直接加在这里
+	}
+	err := Get().AutoMigrate(migrates...)
 	if err != nil {
 		return err
 	}

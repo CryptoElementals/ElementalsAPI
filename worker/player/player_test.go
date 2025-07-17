@@ -199,21 +199,6 @@ func TestPlayerEventHandler(t *testing.T) {
 		},
 	}, evt)
 
-	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.CardsOnChainEvent{
-		GameID:      uint(gameID),
-		RoundNumber: 0,
-	}))
-	evt = <-player1Chan
-	require.EqualExportedValues(t, &proto.Event{
-		Type: proto.EventType_CARDS_ON_CHAIN,
-		Data: &proto.Event_CardsOnChain{
-			CardsOnChain: &proto.CardsOnChain{
-				GameId:   uint32(gameID),
-				RoundNum: 0,
-			},
-		},
-	}, evt)
-
 	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.RoundCompletedEvent{
 		GameID: uint(gameID),
 		RoundInfo: &dao.Round{

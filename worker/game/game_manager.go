@@ -23,9 +23,10 @@ type GameManager struct {
 
 func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager) *GameManager {
 	m := &GameManager{
-		ctx:           ctx,
-		gamesMap:      make(map[uint]*Game),
-		workerManager: workerMangerService,
+		ctx:             ctx,
+		gamesMap:        make(map[uint]*Game),
+		playerToGameMap: make(map[types.PlayerAddress]*Game),
+		workerManager:   workerMangerService,
 	}
 
 	err := m.recoverGames()
@@ -81,15 +82,22 @@ func (r *GameManager) GetActiveGame(player types.PlayerAddress) *dao.Game {
 }
 
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
+	for _, player := range players {
+		if game, ok := r.playerToGameMap[player]; ok {
+			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
+		}
+	}
 	game := NewGame(r.ctx, players, r.workerManager)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
 	}
-	game.id = game.gameInfo.ID
-	r.gamesMap[game.id] = game
+	r.gamesMap[game.gameInfo.ID] = game
+	for _, player := range players {
+		r.playerToGameMap[player] = game
+	}
 	game.createSelf()
-	return game.id, nil
+	return game.gameInfo.ID, nil
 }
 
 func (r *GameManager) recoverGames() error {
@@ -98,18 +106,16 @@ func (r *GameManager) recoverGames() error {
 		return err
 	}
 	for _, info := range gameInfos {
-		game := NewGame(r.ctx, nil, r.workerManager)
-		err := game.recoverGame(info)
-		if err != nil {
-			return err
-		}
+		game := NewGameFromGameInfo(r.ctx, r.workerManager, info)
 		players := game.gamePlayers
 		for _, player := range players {
-			if _, ok := r.playerToGameMap[player.PlayerAddress()]; ok {
-				log.Fatalf("player %s already in game, game id: %s", player.PlayerAddress(), game.id)
+			addr := player.PlayerAddress()
+			if _, ok := r.playerToGameMap[addr]; ok {
+				log.Fatalf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)
 			}
-			r.playerToGameMap[player.PlayerAddress()] = game
+			r.playerToGameMap[addr] = game
 		}
+		r.gamesMap[game.gameInfo.ID] = game
 		game.createSelf()
 	}
 	return nil

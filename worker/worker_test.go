@@ -34,7 +34,7 @@ func TestWorkerManager_SendEvent(t *testing.T) {
 	// send event to worker1
 	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &types.PlayerReadyEvent{
 		GameId:        1,
-		RoundNum:      1,
+		RoundNumber:      1,
 		PlayerAddress: types.PlayerAddress{WalletAddress: "player1", TemporaryAddress: "temp"},
 	}))
 	time.Sleep(1 * time.Millisecond)
@@ -58,7 +58,7 @@ func TestWorkerManager_CloseWorker(t *testing.T) {
 
 	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &types.PlayerReadyEvent{
 		GameId:        1,
-		RoundNum:      1,
+		RoundNumber:      1,
 		PlayerAddress: types.PlayerAddress{WalletAddress: "player1", TemporaryAddress: "temp"},
 	}))
 	// check if worker1 is closed
@@ -78,7 +78,7 @@ func TestWorkerAckEventReceived(t *testing.T) {
 
 	evt := types.NewEvent("worker1", &types.PlayerReadyEvent{
 		GameId:        1,
-		RoundNum:      1,
+		RoundNumber:      1,
 		PlayerAddress: types.PlayerAddress{WalletAddress: "player1", TemporaryAddress: "temp"},
 	}, true)
 	id := evt.EventID

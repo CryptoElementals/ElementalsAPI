@@ -49,7 +49,7 @@ func (c *Chain) Handle(ctx context.Context, sender worker.EventSender, event *ty
 			return err
 		}
 		log.Debugf("created contract for %s", evt.Players)
-	case *types.SetupNewRoundEvent:
+	case *types.RequireSetupNewRoundEvent:
 		err := c.setRoomReady(evt.ContractAddress)
 		if err != nil {
 			return err
@@ -88,22 +88,47 @@ func (c *Chain) setRoomReady(roomContract string) error {
 	return nil
 }
 
-func (c *Chain) contractCreated(roomID uint, roomContract string) {
+func (c *Chain) contractCreated(gameID uint, roomContract string) {
 	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
-		RoomID:              roomID,
+		GameID:              gameID,
 		RoomContractAddress: roomContract,
 	}, true)
 	evtID := contractCreatedEvt.EventID
 	c.inflightEvents[evtID] = struct{}{}
-	c.workerManager.SendEvent(fmt.Sprint(roomID), contractCreatedEvt)
+	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
 }
 
-func (c *Chain) roundSetupCompleted(roomID uint, roundNumber uint32) {
-	roundSetupCompletedEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoundSetupComplete{
-		RoomID:      roomID,
+func (c *Chain) roundSetupCompleted(gameID uint, roundNumber uint32) {
+	roundSetupCompletedEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewRoundSetupComplete{
+		GameID:      gameID,
 		RoundNumber: roundNumber,
 	}, true)
 	evtID := roundSetupCompletedEvent.EventID
 	c.inflightEvents[evtID] = struct{}{}
-	c.workerManager.SendEvent(fmt.Sprint(roomID), roundSetupCompletedEvent)
+	c.workerManager.SendEvent(fmt.Sprint(gameID), roundSetupCompletedEvent)
+}
+
+func (c *Chain) commitmentOnChain(gameID uint, roundNumber uint32, player types.PlayerAddress, commitment []byte) {
+	commitmentOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
+		GameID:      gameID,
+		Address:     player,
+		RoundNumber: roundNumber,
+		Commitment:  commitment,
+	}, true)
+	evtID := commitmentOnChainEvent.EventID
+	c.inflightEvents[evtID] = struct{}{}
+	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
+}
+
+func (c *Chain) cardsOnChain(gameID uint, roundNumber uint32, player types.PlayerAddress, cards []uint32, salt []byte) {
+	cardsOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardsOnChain{
+		GameID:      gameID,
+		Address:     player,
+		RoundNumber: roundNumber,
+		Salt:        salt,
+		Cards:       cards,
+	}, true)
+	evtID := cardsOnChainEvent.EventID
+	c.inflightEvents[evtID] = struct{}{}
+	c.workerManager.SendEvent(fmt.Sprint(gameID), cardsOnChainEvent)
 }

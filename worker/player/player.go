@@ -61,8 +61,6 @@ func (p *Player) Handle(ctx context.Context, sender worker.EventSender, event *t
 		p.handleRoundReadyEvent(p.ctx, evt)
 	case *types.CommitmentsOnChainEvent:
 		p.handleCommitmentsOnChainEvent(p.ctx, evt)
-	case *types.CardsOnChainEvent:
-		p.handleCardsOnChainEvent(p.ctx, evt)
 	case *types.RoundCompletedEvent:
 		p.handleRoundCompletedEvent(p.ctx, evt)
 	case *types.GameCompletedEvent:
@@ -182,21 +180,6 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 			Type: proto.EventType_COMMITMENTS_ON_CHAIN,
 			Data: &proto.Event_CommitmentsOnChain{
 				CommitmentsOnChain: &proto.CommitmentsOnChain{
-					GameId:   uint32(evt.GameID),
-					RoundNum: uint32(evt.RoundNumber),
-				},
-			},
-		},
-	})
-}
-
-func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) {
-	p.publisher.Publish(ctx, &proto.PublishRequest{
-		Topic: p.address.String(),
-		Event: &proto.Event{
-			Type: proto.EventType_CARDS_ON_CHAIN,
-			Data: &proto.Event_CardsOnChain{
-				CardsOnChain: &proto.CardsOnChain{
 					GameId:   uint32(evt.GameID),
 					RoundNum: uint32(evt.RoundNumber),
 				},

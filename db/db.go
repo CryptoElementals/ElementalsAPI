@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gorm_logger "gorm.io/gorm/logger"
 )
@@ -20,13 +20,21 @@ var MIN_STAKED_AMOUNT uint64 = 100
 var db *gorm.DB
 
 type Config struct {
-	Endpoint string `mapstructure:"endpoint"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	DbName   string `mapstructure:"db-name"`
+	Endpoint    string `mapstructure:"endpoint"`
+	User        string `mapstructure:"user"`
+	Password    string `mapstructure:"password"`
+	DbName      string `mapstructure:"db-name"`
+	Development bool   `mapstructure:"development"`
 }
 
 func Init(cfg *Config) error {
+	if cfg.Development {
+		return initMemDbSqlite()
+	}
+	return initMysql(cfg)
+}
+
+func initMysql(cfg *Config) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s)/%s?multiStatements=true&charset=utf8mb4&parseTime=true", cfg.User,
 		cfg.Password, cfg.Endpoint, cfg.DbName)
 	ldb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
@@ -37,6 +45,17 @@ func Init(cfg *Config) error {
 	}
 	db = ldb
 
+	return nil
+}
+
+func initMemDbSqlite() error {
+	ldb, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: gorm_logger.Default.LogMode(gorm_logger.Info),
+	})
+	if err != nil {
+		return err
+	}
+	db = ldb
 	return nil
 }
 

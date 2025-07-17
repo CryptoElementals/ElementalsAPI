@@ -46,8 +46,8 @@ func (a *PlayerAddress) Parse(str string) error {
 	return nil
 }
 
-func (a *PlayerAddress) ToDao() dao.GamePlayer {
-	return dao.GamePlayer{
+func (a *PlayerAddress) ToDao() *dao.GamePlayerInfo {
+	return &dao.GamePlayerInfo{
 		WalletAddress:    a.WalletAddress,
 		TemporaryAddress: a.TemporaryAddress,
 	}
@@ -60,7 +60,7 @@ func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 	}
 }
 
-func (a *PlayerAddress) FromDao(player dao.GamePlayer) {
+func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
 	a.WalletAddress = player.WalletAddress
 	a.TemporaryAddress = player.TemporaryAddress
 }
@@ -96,7 +96,8 @@ func NewEvent(sender string, evt any, needAck ...bool) *Event {
 func AssertInterface[T any](evt *Event) (T, error) {
 	data, ok := evt.Data.(T)
 	if !ok {
-		return *new(T), fmt.Errorf("event data type not match: %s", reflect.TypeOf(evt.Data))
+		t := *new(T)
+		return *new(T), fmt.Errorf("event data type not match: %s, received: %s", reflect.TypeOf(t), reflect.TypeOf(evt.Data))
 	}
 	return data, nil
 }

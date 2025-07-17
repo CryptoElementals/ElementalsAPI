@@ -6,29 +6,37 @@ type GameMatchedEvent struct {
 
 type PlayerReadyEvent struct {
 	GameId        uint
-	RoundNum      uint32
+	RoundNumber   uint32
 	PlayerAddress PlayerAddress
 }
 
-type RoundSetupComplete struct {
-	RoomID      uint
+type NewRoundSetupComplete struct {
+	GameID      uint
 	RoundNumber uint32
 }
 
 type RoomContractCreated struct {
-	RoomID              uint
+	GameID              uint
 	RoomContractAddress string
 }
 
 type PlayerCommitmentOnChain struct {
+	GameID      uint
 	Address     PlayerAddress
-	RoundNumber int
+	RoundNumber uint32
 	Commitment  []byte
 }
 
 type PlayerCardsOnChain struct {
+	GameID      uint
 	Address     PlayerAddress
-	RoundNumber int
+	RoundNumber uint32
 	Salt        []byte
 	Cards       []uint32
+}
+
+type GameTimeout struct {
+	GameID      uint
+	RoundNumber int
+	Reason      string
 }

@@ -42,7 +42,7 @@ func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.Pla
 	if gameInfo == nil {
 		return proto.PlayerStatus_PLAYER_KNOWN
 	}
-	if gameInfo.Status == proto.GameStatus_GAME_UNKNOWN {
+	if gameInfo.Status == proto.GameStatus_GAME_INIT {
 		return proto.PlayerStatus_PLAYER_MATCHED
 	}
 	return proto.PlayerStatus_PLAYER_IN_GAME

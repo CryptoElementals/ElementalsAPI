@@ -14,17 +14,12 @@ type GameReadyEvent struct {
 
 type RoundReadyEvent struct {
 	GameID      uint
-	RoundNumber int
+	RoundNumber uint32
 }
 
 type CommitmentsOnChainEvent struct {
 	GameID      uint
-	RoundNumber int
-}
-
-type CardsOnChainEvent struct {
-	GameID      uint
-	RoundNumber int
+	RoundNumber uint32
 }
 
 type RoundCompletedEvent struct {

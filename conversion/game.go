@@ -21,10 +21,11 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round))
 	}
 	// conver results
+
 	return gameInfo
 }
 
-func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayer) *proto.PlayerAddress {
+func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerAddress {
 	return &proto.PlayerAddress{
 		WalletAddress:    player.WalletAddress,
 		TemporaryAddress: player.TemporaryAddress,
@@ -48,8 +49,12 @@ func DbPlayerRoundInfosToProto(playerRoundInfos []*dao.PlayerRoundInfo) []*proto
 }
 
 func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundInfo {
+	addr := &proto.PlayerAddress{
+		WalletAddress:    playerRoundInfo.WalletAddress,
+		TemporaryAddress: playerRoundInfo.TemporaryAddress,
+	}
 	return &proto.PlayerRoundInfo{
-		PlayerAddress:       DbGamePlayerToProtoPlayerAddress(&playerRoundInfo.GamePlayer),
+		PlayerAddress:       addr,
 		Cards:               DbRoundSubmittedCardsToProto(playerRoundInfo.RoundSubmittedCards),
 		Salt:                playerRoundInfo.Salt,
 		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
