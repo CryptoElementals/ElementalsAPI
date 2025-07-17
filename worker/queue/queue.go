@@ -77,9 +77,8 @@ func (q *Queue) handleJoinQueueEvent(event *types.JoinQueueEvent) {
 		if player.WalletAddress == event.PlayerAddress.WalletAddress {
 			continue
 		}
-		evt := &types.NewGameEvent{
-			MsgSender: types.QUEUE_MANAGER_ID,
-			Players:   []types.PlayerAddress{player, event.PlayerAddress},
+		evt := &types.GameMatchedEvent{
+			Players: []types.PlayerAddress{player, event.PlayerAddress},
 		}
 		q.workerManager.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(types.QUEUE_MANAGER_ID, evt))
 		delete(q.queue, player)
@@ -111,7 +110,7 @@ func (w *Queue) handleErrEvent(eventErr *types.ErrorEvent) {
 		return
 	}
 	// otherwise we notify the players in events
-	for _, player := range eventErr.OriginalEvent.Data.(*types.NewGameEvent).Players {
+	for _, player := range eventErr.OriginalEvent.Data.(*types.GameMatchedEvent).Players {
 		w.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ErrorEvent{
 			OriginalEvent:    eventErr.OriginalEvent,
 			OriginalReceiver: types.GAME_MANAGER_ID,

@@ -7,12 +7,12 @@ import (
 )
 
 // CreateMatch 创建匹配记录（为单个用户创建）
-func CreateGame(game *dao.GameInfo) error {
+func CreateGame(game *dao.Game) error {
 	return Get().Create(game).Error
 }
 
-func LoadGameByGameID(gameID uint) (*dao.GameInfo, error) {
-	var game dao.GameInfo
+func LoadGameByGameID(gameID uint) (*dao.Game, error) {
+	var game dao.Game
 	tx := Get().Where("id = ?", gameID)
 	err := preloadGameInfo(tx).First(&game).Error
 	if err != nil {
@@ -21,8 +21,8 @@ func LoadGameByGameID(gameID uint) (*dao.GameInfo, error) {
 	return &game, nil
 }
 
-func GetAllActiveGames() ([]*dao.GameInfo, error) {
-	var games []*dao.GameInfo
+func GetAllActiveGames() ([]*dao.Game, error) {
+	var games []*dao.Game
 	tx := Get().Where("status = ? or status = ?", proto.GameStatus_GAME_RUNNING, proto.GameStatus_GAME_WAITTING_CONTRACT)
 	err := preloadGameInfo(tx).Find(&games).Error
 	if err != nil {
@@ -38,7 +38,7 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 		Preload("Rounds.PlayerRoundInfos.RoundSubmittedCards")
 }
 
-func SaveGame(match *dao.GameInfo) error {
+func SaveGame(match *dao.Game) error {
 	return Get().Save(match).Error
 }
 
@@ -76,5 +76,5 @@ func GetActiveMatchByAddress(address string) (*dao.GamePlayer, error) {
 
 // UpdateMatchStatusByRoomID 根据RoomID更新匹配记录状态
 func UpdateMatchStatusByRoomID(roomID string, status string) error {
-	return Get().Model(&dao.GameInfo{}).Where("room_id = ?", roomID).Update("status", status).Error
+	return Get().Model(&dao.Game{}).Where("room_id = ?", roomID).Update("status", status).Error
 }

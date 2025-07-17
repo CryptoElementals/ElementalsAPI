@@ -39,6 +39,9 @@ func NewWorker(ctx context.Context, id string, t WorkerType, workerCloser Worker
 		ccl:      ccl,
 		Id:       id,
 		Type:     t,
+		closer:   workerCloser,
+		handler:  handler,
+		sender:   sender,
 		msgQueue: make(chan *types.Event, 100),
 	}
 }

@@ -36,14 +36,6 @@ func (w *WorkerManager) SendEvent(id string, event *types.Event) {
 	}
 }
 
-func (w *WorkerManager) SendEventToAll(event *types.Event) {
-	w.lock.RLock()
-	defer w.lock.RUnlock()
-	for _, worker := range w.workers {
-		worker.msgQueue <- event
-	}
-}
-
 func (w *WorkerManager) CloseWorker(id string) {
 	w.lock.Lock()
 	defer w.lock.Unlock()

@@ -5,7 +5,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
+func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 	gameInfo := &proto.GameInfo{
 		GameId:              uint32(info.ID),
 		RoomContractAddress: info.RoomContract,

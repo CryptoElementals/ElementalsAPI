@@ -40,7 +40,7 @@ func (p *gamePlayer) String() string {
 type Game struct {
 	ctx                 context.Context
 	id                  uint
-	gameInfo            *dao.GameInfo
+	gameInfo            *dao.Game
 	gamePlayers         map[types.PlayerAddress]*gamePlayer
 	currentRound        *dao.Round
 	workerMangerService *worker.WorkerManager
@@ -59,7 +59,7 @@ func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerSer
 	}
 	game := &Game{
 		ctx: ctx,
-		gameInfo: &dao.GameInfo{
+		gameInfo: &dao.Game{
 			Players: daoPlayers,
 			Type:    types.GameTypePVP,
 		},
@@ -78,7 +78,7 @@ func (g *Game) saveGame() error {
 	return nil
 }
 
-func (g *Game) recoverGame(gameInfo *dao.GameInfo) error {
+func (g *Game) recoverGame(gameInfo *dao.Game) error {
 	g.id = gameInfo.ID
 	g.gameInfo = gameInfo
 	for i := range g.gameInfo.Players {
@@ -292,7 +292,7 @@ func (g *Game) setupNewRound() {
 		roundNum = g.currentRound.RoundNumber + 1
 	}
 	newRound := &dao.Round{
-		MatchID:     g.gameInfo.ID,
+		GameID:      g.gameInfo.ID,
 		RoundNumber: roundNum,
 		Status:      proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
 	}

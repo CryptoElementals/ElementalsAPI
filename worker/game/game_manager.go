@@ -45,7 +45,7 @@ func (r *GameManager) Handle(ctx context.Context, sender worker.EventSender, eve
 		// just retry
 		r.workerManager.SendEvent(evt.OriginalReceiver, evt.OriginalEvent)
 		return nil
-	case *types.NewGameEvent:
+	case *types.GameMatchedEvent:
 		gameID, err := r.createGame(evt.Players)
 		if err != nil {
 			return err
@@ -70,7 +70,7 @@ func (r *GameManager) IsPlayerInGame(player types.PlayerAddress) bool {
 	return ok
 }
 
-func (r *GameManager) GetActiveGame(player types.PlayerAddress) *dao.GameInfo {
+func (r *GameManager) GetActiveGame(player types.PlayerAddress) *dao.Game {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	game, ok := r.playerToGameMap[player]

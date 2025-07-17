@@ -34,7 +34,7 @@ type RoundCompletedEvent struct {
 
 type GameCompletedEvent struct {
 	GameID   uint
-	GameInfo *dao.GameInfo
+	GameInfo *dao.Game
 }
 
 type SyncEvent GameCompletedEvent

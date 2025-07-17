@@ -2,7 +2,7 @@ package dao
 
 import "github.com/CryptoElementals/common/rpc/proto"
 
-type GameInfo struct {
+type Game struct {
 	BaseModel
 	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
@@ -15,7 +15,7 @@ type GameInfo struct {
 // GamePlayer 匹配记录表
 type GamePlayer struct {
 	BaseModel
-	MatchID          uint   `gorm:"not null;" json:"match_id"` // 匹配唯一ID（两个用户共享）
+	GameID           uint   `gorm:"not null;" json:"match_id"` // 匹配唯一ID（两个用户共享）
 	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
@@ -23,7 +23,7 @@ type GamePlayer struct {
 // Round 回合记录
 type Round struct {
 	BaseModel
-	MatchID          uint               `gorm:"not null;index" json:"match_id"`                // 匹配唯一ID
+	GameID           uint               `gorm:"not null;index" json:"match_id"`                // 匹配唯一ID
 	RoundNumber      int                `gorm:"not null;index" json:"round_number"`            // 回合数
 	Status           proto.RoundStatus  `gorm:"not null;default:'waiting'" json:"status"`      // 状态: waiting, matched, confirmed, cancelled
 	PlayerRoundInfos []*PlayerRoundInfo `gorm:"not null;default:''" json:"player_round_infos"` // 回合玩家记录
