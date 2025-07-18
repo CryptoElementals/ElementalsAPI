@@ -1,17 +1,42 @@
 package types
 
-type NewGameEvent struct {
-	MsgSender string
-	GameId    uint
-	Players   []PlayerAddress
+type GameMatchedEvent struct {
+	Players []PlayerAddress
 }
 
-// EventType implements Event.
-func (e *NewGameEvent) EventType() uint32 {
-	return EVENT_TYPE_NEW_GAME
+type PlayerReadyEvent struct {
+	GameId        uint
+	RoundNumber   uint32
+	PlayerAddress PlayerAddress
 }
 
-// Sender implements Event.
-func (e *NewGameEvent) Sender() string {
-	return e.MsgSender
+type NewRoundSetupComplete struct {
+	GameID      uint
+	RoundNumber uint32
+}
+
+type RoomContractCreated struct {
+	GameID              uint
+	RoomContractAddress string
+}
+
+type PlayerCommitmentOnChain struct {
+	GameID      uint
+	Address     PlayerAddress
+	RoundNumber uint32
+	Commitment  []byte
+}
+
+type PlayerCardsOnChain struct {
+	GameID      uint
+	Address     PlayerAddress
+	RoundNumber uint32
+	Salt        []byte
+	Cards       []uint32
+}
+
+type GameTimeout struct {
+	GameID      uint
+	RoundNumber int
+	Reason      string
 }

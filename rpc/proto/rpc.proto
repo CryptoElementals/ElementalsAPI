@@ -42,15 +42,15 @@ message GetGameInfoRequest {
 
 message ConfirmBattleRequest {
     uint32 game_id = 1;
+    uint32 round_num = 2;
 }
 
 enum RoundStatus {
-    ROUND_UNKNOWN = 0;
-    ROUND_WAITTING_COMMITMENTS = 1;
-    ROUND_COMMITMENT_SUBMITTED = 2;
+    ROUND_WAITTING_BATTLE_CONFIRMATION = 0;
+    ROUND_WAITTING_SETUP_ON_CHAIN = 1;
+    ROUND_WAITTING_COMMITMENTS = 2;
     ROUND_WAITTING_CARDS = 3;
-    ROUND_CARD_SUBMITTED = 4;
-    ROUND_COMPLETED = 5;
+    ROUND_COMPLETED = 4;
 }
 
 
@@ -75,10 +75,9 @@ message Round {
 }
 
 enum GameStatus {
-    GAME_UNKNOWN = 0;
-    GAME_WAITTING_CONTRACT = 1;
-    GAME_RUNNING = 2;
-    GAME_END = 3;
+    GAME_INIT = 0;
+    GAME_RUNNING = 1;
+    GAME_END = 2;
 }
 
 enum GameResultPlayerStatus {
@@ -115,11 +114,41 @@ message GameInfo {
 }
 
 message Transaction {
-    bytes block_hash = 1;
-    bytes content = 2;
+    bytes tx_hash = 1;
+    oneof tx {
+        TxRoomContractCreated room_contract_created = 2;
+        TxRoomContractRoundSetupReady room_contract_setup_ready = 3;
+        TxCommitmentsOnChain commitments_on_chain = 4;
+        TxCardsOnChain cards_on_chain = 5;
+    };
 }
 
 message TransactionBatch {
-    repeated Transaction txs = 1;
+    bytes block_hash = 1;
+    uint64 timestamp = 2;
+    repeated Transaction transactions = 3;
 }
 
+message TxRoomContractCreated {
+    string room_contract_address = 1;
+}
+
+message TxRoomContractRoundSetupReady {
+    string room_contract_address = 1;
+    uint32 round_number = 2;
+}
+
+message TxCommitmentsOnChain {
+    string room_contract_address = 1;
+    PlayerAddress address = 2;
+    uint32 round_number = 3;
+    bytes commitment = 4;
+}
+
+message TxCardsOnChain {
+    string room_contract_address = 1;
+    PlayerAddress address = 2;
+    uint32 round_number = 3;
+    bytes salt = 4;
+    repeated uint32 cards = 5;
+}
