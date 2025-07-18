@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/CryptoElementals/common/cmd/ele-apiserver/config"
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/spf13/cobra"
@@ -38,13 +38,13 @@ func initApp() error {
 	fmt.Printf("Config path: '%s'\n", configPath)
 
 	// Load configuration
-	cfg, err := config.LoadAppConfig(configPath)
+	cfg, err := config.LoadApiServerConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration file: %w", err)
 	}
 
 	// Validate configuration
-	if err := config.ValidateAppConfig(cfg); err != nil {
+	if err := config.ValidateApiServerConfig(cfg); err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
