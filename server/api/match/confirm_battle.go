@@ -15,6 +15,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const CONFIRM_BATTLE_LABEL = "ConfirmBattle"
@@ -94,7 +95,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	// 统一将地址转为小写
 	address = strings.ToLower(address)
 
-	// 假设MatchID就是game_id的字符串表示，需要转为uint32
+	// MatchID就是game_id的字符串表示，需要转为uint32
 	var gameID uint32
 	_, err := fmt.Sscanf(task.Request.MatchID, "%d", &gameID)
 	if err != nil {
@@ -104,7 +105,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
-	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()

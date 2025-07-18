@@ -12,10 +12,11 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const JOIN_QUEUE_LABEL = "JoinQueue"
-const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址
+const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址/写到配置文件中
 
 // JoinQueueRequest 请求结构体
 type JoinQueueRequest struct {
@@ -151,7 +152,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的JoinQueue
-	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		_ = db.SoftDeleteLockToken(lockToken.ID)
 		task.Response.BaseResponse.RetCode = 1002

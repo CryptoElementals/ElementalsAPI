@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -111,7 +112,7 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的ExitQueue
-	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()

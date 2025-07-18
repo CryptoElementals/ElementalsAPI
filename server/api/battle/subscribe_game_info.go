@@ -17,6 +17,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
@@ -24,8 +25,8 @@ const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
 // SubscribeGameInfoRequest 请求结构体
 type SubscribeGameInfoRequest struct {
 	api.BaseRequest
-	GameID   string `mapstructure:"GameId" validate:"required"`        // 游戏ID
-	Duration int    `mapstructure:"Duration" validate:"min=1,max=360"` // 连接持续时间（秒）
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`   // 临时地址
+	Duration    int    `mapstructure:"Duration" validate:"min=1,max=360"` // 连接持续时间（秒）
 }
 
 // SubscribeGameInfoResponse 响应结构体
@@ -87,7 +88,7 @@ func NewSubscribeGameInfoTask(data *map[string]interface{}) (api.Task, error) {
 
 // Run 实现普通的 HTTP 响应
 func (task *SubscribeGameInfoTask) Run(c *gin.Context) (api.Response, error) {
-	task.Response.Message = fmt.Sprintf("SubscribeGameInfo Task - GameId: %s, Duration: %d", task.Request.GameID, task.Request.Duration)
+	task.Response.Message = fmt.Sprintf("SubscribeGameInfo Task - TempAddress: %s, Duration: %d", task.Request.TempAddress, task.Request.Duration)
 	return task.Response, nil
 }
 
@@ -108,12 +109,15 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	lowercaseAddress := strings.ToLower(address)
 
+	// 组装 gameID: address_tempaddress 格式
+	gameID := fmt.Sprintf("%s_%s", lowercaseAddress, task.Request.TempAddress)
+
 	// 发送开始事件
 	startEvent := events.Event{
 		Type: events.EventTypeStatusUpdate,
 		Data: map[string]interface{}{
 			"status":   "started",
-			"gameId":   task.Request.GameID,
+			"gameId":   gameID,
 			"address":  lowercaseAddress,
 			"duration": task.Request.Duration,
 		},
@@ -125,7 +129,7 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 
 	// 启动游戏事件监听器
 	done := make(chan struct{})
-	task.startGameEventListener(ctx, writer, flusher, requestUUID, lowercaseAddress, task.Request.GameID, done)
+	task.startGameEventListener(ctx, writer, flusher, requestUUID, lowercaseAddress, gameID, done)
 
 	// 等待连接结束
 	select {
@@ -159,7 +163,7 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string, address string, gameID string, done chan struct{}) {
 	go func() {
 		// 连接RoomServer
-		conn, err := grpc.Dial("127.0.0.1:1270", grpc.WithInsecure())
+		conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Errorf("连接RoomServer失败: %v", err)
 			errorEvent := events.Event{
@@ -177,9 +181,7 @@ func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, w
 
 		// 订阅游戏相关主题
 		topics := []string{
-			fmt.Sprintf("game:%s", gameID),                    // 游戏状态变化
-			fmt.Sprintf("game:%s:round", gameID),              // 回合相关事件
-			fmt.Sprintf("game:%s:player:%s", gameID, address), // 玩家特定事件
+			fmt.Sprintf("%s_%s", address, task.Request.TempAddress), // 使用 address_tempaddress 格式作为 topic
 		}
 
 		// 为每个主题创建订阅
@@ -254,6 +256,15 @@ func (task *SubscribeGameInfoTask) subscribeToTopic(ctx context.Context, client 
 func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
 	// 根据事件类型进行转换
 	switch msg.Event.Type {
+	case proto.EventType_SYNC_INFO:
+		return events.Event{
+			Type: events.EventTypeDataChange,
+			Data: map[string]interface{}{
+				"eventType": "sync_info",
+				"gameInfo":  msg.Event.GetGameInfo(),
+			},
+			RequestUUID: requestUUID,
+		}
 	case proto.EventType_GAME_CREATED:
 		return events.Event{
 			Type: events.EventTypeDataChange,
@@ -271,6 +282,26 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 				"eventType": "round_ready",
 				"gameId":    msg.Event.GetRoundReady().GameId,
 				"roundNum":  msg.Event.GetRoundReady().RoundNum,
+			},
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_COMMITMENTS_ON_CHAIN:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"eventType": "commitments_on_chain",
+				"gameId":    msg.Event.GetCommitmentsOnChain().GameId,
+				"roundNum":  msg.Event.GetCommitmentsOnChain().RoundNum,
+			},
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_CARDS_ON_CHAIN:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"eventType": "cards_on_chain",
+				"gameId":    msg.Event.GetCardsOnChain().GameId,
+				"roundNum":  msg.Event.GetCardsOnChain().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
@@ -293,6 +324,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			},
 			RequestUUID: requestUUID,
 		}
+	case proto.EventType_TYPE_KNOWN:
+		fallthrough
 	default:
 		// 对于未知事件类型，直接转发原始数据
 		jsonData, _ := json.Marshal(msg)
