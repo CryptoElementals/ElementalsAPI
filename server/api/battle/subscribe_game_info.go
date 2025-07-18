@@ -117,7 +117,6 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 		Type: events.EventTypeStatusUpdate,
 		Data: map[string]interface{}{
 			"Status": "started",
-			"GameId": gameID,
 		},
 		RequestUUID: requestUUID,
 	}
@@ -198,7 +197,6 @@ func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, w
 					Type: events.EventTypeHeartbeat,
 					Data: map[string]interface{}{
 						"Timestamp": time.Now().Unix(),
-						"GameId":    gameID,
 					},
 					RequestUUID: requestUUID,
 				}
