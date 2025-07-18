@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/CryptoElementals/common/cache"
-	"github.com/CryptoElementals/common/server/api/battle"
 	"github.com/CryptoElementals/common/server/api/card"
 	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/CryptoElementals/common/server/api/user"
@@ -162,7 +161,7 @@ func registerAllApis() {
 	// 注册匹配相关API
 	//match.RegisterMatchApis()
 	// 注册对战相关API
-	battle.RegisterBattleApis()
+	// battle.RegisterBattleApis()
 	// 注册卡牌相关API
 	card.RegisterCardApis()
 }

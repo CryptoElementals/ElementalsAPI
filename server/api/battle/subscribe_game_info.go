@@ -21,6 +21,7 @@ import (
 )
 
 const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
+const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址
 
 // SubscribeGameInfoRequest 请求结构体
 type SubscribeGameInfoRequest struct {
