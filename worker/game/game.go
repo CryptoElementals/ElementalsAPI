@@ -143,10 +143,14 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 	player := g.gamePlayers[evt.PlayerAddress]
 	player.roundPlayer.PlayerReady = true
 	// check if all players ready
+	allPlayersReady := true
 	for _, player := range g.gamePlayers {
 		if !player.roundPlayer.PlayerReady {
-			return nil
+			allPlayersReady = false
 		}
+	}
+	if !allPlayersReady {
+		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
 	for _, player := range g.gamePlayers {
@@ -224,7 +228,7 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 		return nil
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
-	err = g.saveGame()
+	err = db.SaveRound(g.currentRound)
 	if err != nil {
 		return err
 	}
@@ -255,10 +259,10 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		}
 	}
 	if !allCommitmentsOnChain {
-		return g.saveGame()
+		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
-	err = g.saveGame()
+	err = db.SaveRound(g.currentRound)
 	if err != nil {
 		return err
 	}
@@ -296,7 +300,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		}
 	}
 	if !allCardsOnChain {
-		return g.saveGame()
+		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
 	// TODO: calculate round info
 	// TODO: check and calculate game info

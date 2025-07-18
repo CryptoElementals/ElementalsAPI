@@ -42,36 +42,20 @@ func SaveGame(game *dao.Game) error {
 	return Get().Save(game).Error
 }
 
-// UpdateMatchRoomID 更新匹配记录的RoomID（更新所有相关记录）
-func UpdateMatchRoomID(matchID string, roomID string) error {
-	return Get().Model(&dao.GamePlayerInfo{}).Where("match_id = ?", matchID).Update("room_id", roomID).Error
+func SaveRound(round *dao.Round) error {
+	return Get().Save(round).Error
 }
 
-// UpdateMatchStatus 更新匹配记录状态（更新所有相关记录）
-func UpdateMatchStatus(matchID string, status string) error {
-	return Get().Model(&dao.GamePlayerInfo{}).Where("match_id = ?", matchID).Update("status", status).Error
+func SavePlayerRoundInfo(playerRoundInfo *dao.PlayerRoundInfo) error {
+	return Get().Save(playerRoundInfo).Error
 }
 
-// UpdatePlayerStatus 更新指定玩家的确认状态
-func UpdatePlayerStatus(matchID string, playerAddress string, status string) error {
-	return Get().Model(&dao.GamePlayerInfo{}).Where("match_id = ? AND address = ?", matchID, playerAddress).Update("status", status).Error
+func SaveRoundSubmittedCard(card *dao.RoundSubmittedCard) error {
+	return Get().Save(card).Error
 }
 
-// GetMatchesByAddress 根据地址获取用户的匹配记录
-func GetMatchesByAddress(address string) ([]dao.GamePlayerInfo, error) {
-	var matches []dao.GamePlayerInfo
-	err := Get().Where("address = ?", address).Find(&matches).Error
-	return matches, err
-}
-
-// GetActiveMatchByAddress 根据地址获取用户当前活跃的匹配记录
-func GetActiveMatchByAddress(address string) (*dao.GamePlayerInfo, error) {
-	var match dao.GamePlayerInfo
-	err := Get().Where("address = ? AND status IN (?)", address, []string{"matched", "confirmed"}).First(&match).Error
-	if err != nil {
-		return nil, err
-	}
-	return &match, nil
+func SaveGamePlayerInfo(gamePlayerInfo *dao.GamePlayerInfo) error {
+	return Get().Save(gamePlayerInfo).Error
 }
 
 // UpdateMatchStatusByRoomID 根据RoomID更新匹配记录状态
