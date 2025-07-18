@@ -146,7 +146,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 组装 Rounds
-	var rounds []battle.RoundResult
+	var rounds []battle.FightResult
 	var player1FinalHP, player2FinalHP int
 	var player1FinalMultiplier, player2FinalMultiplier float64
 	for _, round := range gameInfo.Rounds {
@@ -167,7 +167,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 			p2Card = p2.Cards[len(p2.Cards)-1]
 		}
 		// 组装回合结果
-		rr := battle.RoundResult{
+		rr := battle.FightResult{
 			RoundNumber:    int(round.Number),
 			Player1CardID:  int(p1Card.GetSubmittedCardId()),
 			Player2CardID:  int(p2Card.GetSubmittedCardId()),

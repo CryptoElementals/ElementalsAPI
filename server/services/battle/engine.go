@@ -23,13 +23,13 @@ func NewBattleEngine() *BattleEngine {
 }
 
 // ExecuteBattle execute battle
-func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleResult, error) {
+func (be *BattleEngine) ExecuteBattle(input *BattleInput, round uint) (*BattleResult, error) {
 	if err := be.gameLogic.ValidateBattleInput(input); err != nil {
 		return nil, err
 	}
 
-	if stage < 1 || stage > 3 {
-		return nil, fmt.Errorf("stage parameter must be between 1 and 3")
+	if round < 1 || round > 3 {
+		return nil, fmt.Errorf("round parameter must be between 1 and 3")
 	}
 
 	player1Cards, err := be.cardFactory.GetCards(input.Player1Cards)
@@ -44,8 +44,8 @@ func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleRes
 	result := &BattleResult{
 		Player1Address: input.Player1Address,
 		Player2Address: input.Player2Address,
-		Stage:          stage,
-		Rounds:         make([]RoundResult, 0),
+		Round:          round,
+		Fights:         make([]FightResult, 0),
 	}
 
 	currentPlayer1HP := input.Player1HP
@@ -56,9 +56,9 @@ func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleRes
 	player1LostHP := input.Player1LostHP
 	player2LostHP := input.Player2LostHP
 
-	for round := 0; round < 3; round++ {
-		player1Card := player1Cards[round]
-		player2Card := player2Cards[round]
+	for fight := 0; fight < 3; fight++ {
+		player1Card := player1Cards[fight]
+		player2Card := player2Cards[fight]
 
 		relation := be.elementalSystem.GetElementalRelation(player1Card, player2Card)
 		actions := be.elementalSystem.BuildActions(player1Card, player2Card, relation)
@@ -80,8 +80,8 @@ func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleRes
 		currentPlayer1Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(player1LostHP)
 		currentPlayer2Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(player2LostHP)
 
-		roundResult := RoundResult{
-			RoundNumber:            round + 1,
+		FightResult := FightResult{
+			FightNumber:            fight + 1,
 			Player1CardID:          player1Card.ID,
 			Player2CardID:          player2Card.ID,
 			RelationType:           relation.Type,
@@ -95,7 +95,7 @@ func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleRes
 			Description:            relation.Description,
 		}
 
-		result.Rounds = append(result.Rounds, roundResult)
+		result.Fights = append(result.Fights, FightResult)
 
 		if isGameOver, winner := be.gameLogic.CheckGameOver(currentPlayer1HP, currentPlayer2HP, input.Player1Address, input.Player2Address); isGameOver {
 			result.IsGameOver = true
@@ -129,7 +129,7 @@ func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleRes
 	result.Player1FinalMultiplier = currentPlayer1Multiplier
 	result.Player2FinalMultiplier = currentPlayer2Multiplier
 
-	if stage == 3 {
+	if round == 3 {
 		result.IsGameOver = true
 		result.Winner = be.gameLogic.GetWinner(currentPlayer1HP, currentPlayer2HP, input.Player1Address, input.Player2Address)
 		result.GameResultType = be.determineGameResultType(currentPlayer1HP, currentPlayer2HP)

@@ -38,8 +38,8 @@ type BattleInput struct {
 type BattleResult struct {
 	Player1Address         string        `json:"Player1Address"`         // Player 1 address
 	Player2Address         string        `json:"Player2Address"`         // Player 2 address
-	Stage                  int           `json:"Stage"`                  // Stage number
-	Rounds                 []RoundResult `json:"Rounds"`                 // Round results
+	Round                  uint          `json:"Round"`                  // Round number
+	Fights                 []FightResult `json:"Fights"`                 // Fight results
 	Player1FinalHP         int           `json:"Player1FinalHP"`         // Player 1 final health
 	Player2FinalHP         int           `json:"Player2FinalHP"`         // Player 2 final health
 	Player1LostHP          int           `json:"Player1LostHP"`          // Player 1 accumulated lost health
@@ -53,20 +53,19 @@ type BattleResult struct {
 	Reward                 *BattleReward `json:"Reward"`                 // Battle reward (token and point)
 }
 
-// RoundResult round result
-type RoundResult struct {
-	RoundNumber            int            `json:"RoundNumber"`            // Round number
+type FightResult struct {
+	FightNumber            int            `json:"FightNumber"`            // Fight number
 	Player1CardID          int            `json:"Player1CardID"`          // Player 1 used card ID
 	Player2CardID          int            `json:"Player2CardID"`          // Player 2 used card ID
 	RelationType           string         `json:"RelationType"`           // Elemental relation type
 	Actions                []BattleAction `json:"Actions"`                // Executed action list
 	Player1HPDelta         int            `json:"Player1HPDelta"`         // Player 1 HP change (负值为受伤，正值为治疗)
 	Player2HPDelta         int            `json:"Player2HPDelta"`         // Player 2 HP change (负值为受伤，正值为治疗)
-	Player1HPAfter         int            `json:"Player1HPAfter"`         // Player 1 health after round
-	Player2HPAfter         int            `json:"Player2HPAfter"`         // Player 2 health after round
-	Player1MultiplierAfter float64        `json:"Player1MultiplierAfter"` // Player 1 multiplier after round
-	Player2MultiplierAfter float64        `json:"Player2MultiplierAfter"` // Player 2 multiplier after round
-	Description            string         `json:"Description"`            // Round description
+	Player1HPAfter         int            `json:"Player1HPAfter"`         // Player 1 health after fight
+	Player2HPAfter         int            `json:"Player2HPAfter"`         // Player 2 health after fight
+	Player1MultiplierAfter float64        `json:"Player1MultiplierAfter"` // Player 1 multiplier after fight
+	Player2MultiplierAfter float64        `json:"Player2MultiplierAfter"` // Player 2 multiplier after fight
+	Description            string         `json:"Description"`            // Fight description
 }
 
 // ElementalRelation elemental relation

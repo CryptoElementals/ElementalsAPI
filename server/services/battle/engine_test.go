@@ -44,8 +44,8 @@ func TestExecuteBattle(t *testing.T) {
 		Player2LostHP:     0,
 	}
 
-	stage := 3
-	result, err := engine.ExecuteBattle(input, stage)
+	round := uint(3)
+	result, err := engine.ExecuteBattle(input, round)
 
 	if err != nil {
 		t.Errorf("ExecuteBattle failed with error: %v", err)
