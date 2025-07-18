@@ -67,7 +67,7 @@ func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[strin
 	return nil
 }
 
-func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Event) error {
+func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Event, errChan chan error) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c.mu.Lock()
@@ -86,20 +86,25 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Ev
 	}
 
 	log.Infof("Subscribed to topic %s with ID %s\n", topic, subscriberID)
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			return nil
+	go func() {
+		defer close(evtChan)
+		defer close(errChan)
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF || ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				errChan <- err
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case evtChan <- msg.Event:
+			}
 		}
-		if err != nil {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case evtChan <- msg.Event:
-		}
-	}
+	}()
+	return nil
 }
 
 func (c *PubSubClient) Unsubscribe(topic, subscriberID string) error {
