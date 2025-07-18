@@ -96,7 +96,7 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 验证游戏模式
+	// 	// 验证游戏模式
 	validModes := []string{"PvP", "Tournament"}
 	modeValid := false
 	for _, validMode := range validModes {

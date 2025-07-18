@@ -3,16 +3,18 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
+
 	"net"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/CryptoElementals/common/log"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
@@ -40,8 +42,8 @@ type Subscriber struct {
 	mu     sync.Mutex
 }
 
-func NewPubSubServer() *PubSubServer {
-	server := grpc.NewServer()
+func NewPubSubServer(opt ...grpc.ServerOption) *PubSubServer {
+	server := grpc.NewServer(opt...)
 
 	s := &PubSubServer{
 		topics:      make(map[string]*Topic),
@@ -97,7 +99,7 @@ func (s *PubSubServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb
 		if subscriber.stream != nil {
 			err := subscriber.stream.Send(message)
 			if err != nil {
-				log.Printf("Failed to send message to subscriber %s: %v", subscriber.id, err)
+				log.Errorf("Failed to send message to subscriber %s: %v", subscriber.id, err)
 				subscriber.cancel()
 			} else {
 				subscriberCount++
@@ -154,7 +156,7 @@ func (s *PubSubServer) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubServi
 	s.subscribers[req.Topic][req.SubscriberId] = subscriber
 	s.mu.Unlock()
 
-	log.Printf("Subscriber %s subscribed to topic %s", req.SubscriberId, req.Topic)
+	log.Infof("Subscriber %s subscribed to topic %s", req.SubscriberId, req.Topic)
 
 	// 等待连接关闭
 	<-ctx.Done()
@@ -165,7 +167,7 @@ func (s *PubSubServer) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubServi
 		SubscriberId: req.SubscriberId,
 	})
 
-	log.Printf("Subscriber %s unsubscribed from topic %s", req.SubscriberId, req.Topic)
+	log.Infof("Subscriber %s unsubscribed from topic %s", req.SubscriberId, req.Topic)
 	return nil
 }
 
@@ -255,8 +257,11 @@ func (s *PubSubServer) Run(port int) error {
 	if err != nil {
 		return err
 	}
-	if err := s.server.Serve(lis); err != nil {
-		return err
-	}
+	go func() {
+		if err := s.server.Serve(lis); err != nil {
+			log.Fatalf("server start failed: %v", err)
+		}
+	}()
+
 	return nil
 }

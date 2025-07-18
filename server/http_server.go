@@ -11,7 +11,6 @@ import (
 	"github.com/CryptoElementals/common/server/api/battle"
 	"github.com/CryptoElementals/common/server/api/card"
 	"github.com/CryptoElementals/common/server/api/login"
-	"github.com/CryptoElementals/common/server/api/match"
 	"github.com/CryptoElementals/common/server/api/user"
 	"github.com/CryptoElementals/common/server/middlewares"
 	"github.com/gin-contrib/sessions"
@@ -161,7 +160,7 @@ func registerAllApis() {
 	// 注册用户相关API
 	user.RegisterUserApis()
 	// 注册匹配相关API
-	match.RegisterMatchApis()
+	//match.RegisterMatchApis()
 	// 注册对战相关API
 	battle.RegisterBattleApis()
 	// 注册卡牌相关API
