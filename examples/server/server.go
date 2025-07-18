@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	"github.com/CryptoElementals/common/cache"
-	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/cmd/ele-apiserver/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/server"
