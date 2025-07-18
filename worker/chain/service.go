@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/worker"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -19,14 +20,14 @@ func NewService(ctx context.Context, workerManager *worker.WorkerManager, client
 	return &Service{ctx: ctx, chain: chain}
 }
 
-func (s *Service) ReceiveTransactions(tx [][]byte, blockNum uint64, blockHash []byte) error {
+func (s *Service) ReceiveTransactions(blockNum uint64, blockHash []byte, txs *proto.TransactionBatch) error {
 	done := make(chan struct{})
 	errChan := make(chan error, 1)
 	evt := &batchTxEvent{
-		txs:      tx,
-		blockNum: blockNum,
-		blockTx:  blockHash,
-		done:     done,
+		txs:       txs,
+		blockNum:  blockNum,
+		blockHash: blockHash,
+		done:      done,
 	}
 	s.chain.batchSendTxs(evt)
 	<-done
