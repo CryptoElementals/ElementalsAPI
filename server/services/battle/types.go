@@ -20,37 +20,30 @@ type Player struct {
 	Multiplier float64 `json:"Multiplier"` // Score multiplier
 }
 
-// BattleInput battle input parameters
-type BattleInput struct {
-	Player1Address    string  `json:"Player1Address"`    // Player 1 address
-	Player2Address    string  `json:"Player2Address"`    // Player 2 address
-	Player1HP         int     `json:"Player1HP"`         // Player 1 initial health
-	Player2HP         int     `json:"Player2HP"`         // Player 2 initial health
-	Player1Multiplier float64 `json:"Player1Multiplier"` // Player 1 score multiplier
-	Player2Multiplier float64 `json:"Player2Multiplier"` // Player 2 score multiplier
-	Player1Cards      []int   `json:"Player1Cards"`      // Player 1 card ID list
-	Player2Cards      []int   `json:"Player2Cards"`      // Player 2 card ID list
-	Player1LostHP     int     `json:"Player1LostHP"`     // Player 1 accumulated lost health
-	Player2LostHP     int     `json:"Player2LostHP"`     // Player 2 accumulated lost health
+// RoundInput battle input parameters
+// 支持多玩家
+// PlayerRoundInput 表示每个玩家的输入
+type PlayerRoundInput struct {
+	Address    string  `json:"Address"`
+	Cards      []int   `json:"Cards"`
+	HP         int     `json:"HP"`
+	Multiplier float64 `json:"Multiplier"`
+	LostHP     int     `json:"LostHP"`
+}
+
+type RoundInput struct {
+	Players []PlayerRoundInput `json:"Players"`
 }
 
 // BattleResult battle result
-type BattleResult struct {
-	Player1Address         string        `json:"Player1Address"`         // Player 1 address
-	Player2Address         string        `json:"Player2Address"`         // Player 2 address
-	Round                  uint          `json:"Round"`                  // Round number
-	Fights                 []FightResult `json:"Fights"`                 // Fight results
-	Player1FinalHP         int           `json:"Player1FinalHP"`         // Player 1 final health
-	Player2FinalHP         int           `json:"Player2FinalHP"`         // Player 2 final health
-	Player1LostHP          int           `json:"Player1LostHP"`          // Player 1 accumulated lost health
-	Player2LostHP          int           `json:"Player2LostHP"`          // Player 2 accumulated lost health
-	Player1FinalMultiplier float64       `json:"Player1FinalMultiplier"` // Player 1 final multiplier
-	Player2FinalMultiplier float64       `json:"Player2FinalMultiplier"` // Player 2 final multiplier
-	GameFinalMultiplier    float64       `json:"GameFinalMultiplier"`    // Game final multiplier (take loser's multiplier, tie is 1)
-	Winner                 string        `json:"Winner"`                 // Winner address
-	IsGameOver             bool          `json:"IsGameOver"`             // Whether game is over
-	GameResultType         string        `json:"GameResultType"`         // Game result type
-	Reward                 *BattleReward `json:"Reward"`                 // Battle reward (token and point)
+type RoundResult struct {
+	Players             []PlayerRoundStat `json:"Players"`             // 所有玩家的回合数据
+	Round               uint              `json:"Round"`               // Round number
+	GameFinalMultiplier float64           `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
+	Winner              string            `json:"Winner"`              // Winner address
+	IsGameOver          bool              `json:"IsGameOver"`          // Whether game is over
+	GameResultType      string            `json:"GameResultType"`      // Game result type
+	Reward              *BattleReward     `json:"Reward"`              // Battle reward (token and point)
 }
 
 type FightResult struct {
@@ -58,7 +51,7 @@ type FightResult struct {
 	Player1CardID          int            `json:"Player1CardID"`          // Player 1 used card ID
 	Player2CardID          int            `json:"Player2CardID"`          // Player 2 used card ID
 	RelationType           string         `json:"RelationType"`           // Elemental relation type
-	Actions                []BattleAction `json:"Actions"`                // Executed action list
+	Actions                []BattleEffect `json:"Actions"`                // Executed action list
 	Player1HPDelta         int            `json:"Player1HPDelta"`         // Player 1 HP change (负值为受伤，正值为治疗)
 	Player2HPDelta         int            `json:"Player2HPDelta"`         // Player 2 HP change (负值为受伤，正值为治疗)
 	Player1HPAfter         int            `json:"Player1HPAfter"`         // Player 1 health after fight
@@ -74,19 +67,43 @@ type ElementalRelation struct {
 	Description string `json:"Description"` // Relation description
 }
 
-// BattleAction battle action
-type BattleAction struct {
-	Type        string `json:"Type"`        // Action type: "attack", "heal"
-	Target      string `json:"Target"`      // Target: "player1", "player2"
-	Value       int    `json:"Value"`       // Action value
-	Description string `json:"Description"` // Action description
+// BattleEffect battle effect
+// 代表对自身产生的效果
+type BattleEffect struct {
+	Type        string `json:"Type"`
+	Value       int    `json:"Value"`
+	Description string `json:"Description"`
+	Target      string `json:"Target"`
 }
 
 // BattleReward battle reward
 type BattleReward struct {
-	Player1TokenChange int `json:"Player1TokenChange"`
-	Player2TokenChange int `json:"Player2TokenChange"`
-	SystemFee          int `json:"SystemFee"`
-	Player1PointChange int `json:"Player1PointChange"`
-	Player2PointChange int `json:"Player2PointChange"`
+	PlayerRewards map[string]PlayerReward `json:"PlayerRewards"` // 每个玩家的奖励变化
+	SystemFee     int                     `json:"SystemFee"`     // 系统手续费
+}
+
+// PlayerReward 单个玩家的奖励
+type PlayerReward struct {
+	TokenChange int `json:"TokenChange"` // Token变化
+	PointChange int `json:"PointChange"` // 积分变化
+}
+
+// 单个玩家每张卡的详细数据
+type PlayerCardStat struct {
+	CardNumber       int            `json:"CardNumber"`
+	CardID           int            `json:"CardID"`
+	HPBefore         int            `json:"HPBefore"`
+	HPAfter          int            `json:"HPAfter"`
+	MultiplierBefore float64        `json:"MultiplierBefore"`
+	MultiplierAfter  float64        `json:"MultiplierAfter"`
+	Effects          []BattleEffect `json:"Effects"`
+	Description      string         `json:"Description"`
+	ElementRelation  string         `json:"elementRelation"` // 新增字段
+}
+
+// 单个玩家的所有卡数据
+// PlayerRoundStat 表示每个玩家本轮的所有卡片数据
+type PlayerRoundStat struct {
+	Player string           `json:"Player"`
+	Cards  []PlayerCardStat `json:"Cards"`
 }

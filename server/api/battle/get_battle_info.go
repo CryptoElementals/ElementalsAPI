@@ -21,14 +21,14 @@ package battle
 // type GetBattleInfoRequest struct {
 // 	api.BaseRequest
 // 	RoomID string `mapstructure:"RoomId" validate:"required"`
-// 	Stage  *uint  `mapstructure:"Stage"` // 可选的stage参数，如果指定则查询对应stage的数据
+// 	Round  *uint  `mapstructure:"Round"` // 可选的Round参数，如果指定则查询对应Round的数据
 // }
 
 // // GetBattleInfoResponse 响应结构体
 // type GetBattleInfoResponse struct {
 // 	api.BaseResponse
-// 	StageResult *battle.BattleResult `json:"StageResult"`
-// 	Identity    int                  `json:"Identity"` // 当前请求者身份，1为player1，2为player2
+// 	RoundResult *battle.RoundResult `json:"RoundResult"`
+// 	Identity    int                 `json:"Identity"` // 当前请求者身份，1为player1，2为player2
 // }
 
 // type GetBattleInfoTask struct {
@@ -131,15 +131,15 @@ package battle
 // 		return task.Response, nil
 // 	}
 
-// 	// 选定要展示的stage（回合）
-// 	var targetStage int
-// 	if task.Request.Stage != nil {
-// 		targetStage = int(*task.Request.Stage)
+// 	// 选定要展示的Round（回合）
+// 	var targetRound int
+// 	if task.Request.Round != nil {
+// 		targetRound = int(*task.Request.Round)
 // 	} else {
 // 		// 默认取最大回合号
 // 		for _, round := range gameInfo.Rounds {
-// 			if int(round.Number) > targetStage {
-// 				targetStage = int(round.Number)
+// 			if int(round.Number) > targetRound {
+// 				targetRound = int(round.Number)
 // 			}
 // 		}
 // 	}
@@ -149,7 +149,7 @@ package battle
 // 	var player1FinalHP, player2FinalHP int
 // 	var player1FinalMultiplier, player2FinalMultiplier float64
 // 	for _, round := range gameInfo.Rounds {
-// 		if int(round.Number) != targetStage {
+// 		if int(round.Number) != targetRound {
 // 			continue
 // 		}
 // 		if len(round.Players) != 2 {
@@ -167,7 +167,7 @@ package battle
 // 		}
 // 		// 组装回合结果
 // 		rr := battle.FightResult{
-// 			RoundNumber:    int(round.Number),
+// 			FightNumber:    int(round.Number),
 // 			Player1CardID:  int(p1Card.GetSubmittedCardId()),
 // 			Player2CardID:  int(p2Card.GetSubmittedCardId()),
 // 			Player1HPAfter: int(p1Card.GetPlayerHealthEnd()),
@@ -183,12 +183,12 @@ package battle
 // 		rounds = append(rounds, rr)
 // 	}
 
-// 	// 组装 BattleResult
-// 	stageResult := &battle.BattleResult{
+// 	// 组装 RoundResult
+// 	RoundResult := &battle.RoundResult{
 // 		Player1Address:         strings.ToLower(gameInfo.Players[0].WalletAddress),
 // 		Player2Address:         strings.ToLower(gameInfo.Players[1].WalletAddress),
-// 		Stage:                  targetStage,
-// 		Rounds:                 rounds,
+// 		Round:                  uint(targetRound),
+// 		Fights:                 rounds,
 // 		Player1FinalHP:         player1FinalHP,
 // 		Player2FinalHP:         player2FinalHP,
 // 		Player1FinalMultiplier: player1FinalMultiplier,
@@ -197,19 +197,19 @@ package battle
 
 // 	// 结算 Winner、IsGameOver、GameResultType、Reward
 // 	if gameInfo.Status == proto.GameStatus_GAME_END && gameInfo.Result != nil && len(gameInfo.Result.Players) == 2 {
-// 		stageResult.IsGameOver = true
+// 		RoundResult.IsGameOver = true
 // 		// 判断胜负
 // 		if gameInfo.Result.Players[0].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
-// 			stageResult.Winner = strings.ToLower(gameInfo.Result.Players[0].Address.WalletAddress)
-// 			stageResult.GameResultType = "win"
+// 			RoundResult.Winner = strings.ToLower(gameInfo.Result.Players[0].Address.WalletAddress)
+// 			RoundResult.GameResultType = "win"
 // 		} else if gameInfo.Result.Players[1].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
-// 			stageResult.Winner = strings.ToLower(gameInfo.Result.Players[1].Address.WalletAddress)
-// 			stageResult.GameResultType = "win"
+// 			RoundResult.Winner = strings.ToLower(gameInfo.Result.Players[1].Address.WalletAddress)
+// 			RoundResult.GameResultType = "win"
 // 		} else if gameInfo.Result.Players[0].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE || gameInfo.Result.Players[1].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE {
-// 			stageResult.GameResultType = "tie"
+// 			RoundResult.GameResultType = "tie"
 // 		}
 // 		// 组装奖励
-// 		stageResult.Reward = &battle.BattleReward{
+// 		RoundResult.Reward = &battle.BattleReward{
 // 			Player1TokenChange: int(gameInfo.Result.Players[0].TokenDelta),
 // 			Player2TokenChange: int(gameInfo.Result.Players[1].TokenDelta),
 // 			Player1PointChange: int(gameInfo.Result.Players[0].Points),
@@ -217,10 +217,10 @@ package battle
 // 		}
 // 	}
 
-// 	task.Response.StageResult = stageResult
+// 	task.Response.RoundResult = RoundResult
 // 	task.Response.Identity = identity
 // 	task.Response.BaseResponse.RetCode = 0
-// 	task.Response.BaseResponse.Message = "Stage battle info retrieved successfully"
+// 	task.Response.BaseResponse.Message = "Round battle info retrieved successfully"
 // 	return task.Response, nil
 // }
 

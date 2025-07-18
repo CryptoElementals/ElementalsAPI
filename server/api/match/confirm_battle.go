@@ -24,6 +24,7 @@ const CONFIRM_BATTLE_LABEL = "ConfirmBattle"
 type ConfirmBattleRequest struct {
 	api.BaseRequest
 	MatchID string `mapstructure:"MatchId" validate:"required"`
+	Round   uint   `mapstructure:"Round" validate:"required"`
 }
 
 // ConfirmBattleResponse 响应结构体
@@ -115,7 +116,8 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	client := proto.NewRpcServiceClient(conn)
 
 	req := &proto.ConfirmBattleRequest{
-		GameId: gameID,
+		GameId:   gameID,
+		RoundNum: uint32(task.Request.Round),
 	}
 
 	_, err = client.ConfirmBattle(context.Background(), req)

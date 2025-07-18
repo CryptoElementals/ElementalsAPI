@@ -11,37 +11,45 @@ func NewGameLogic() *GameLogic {
 }
 
 // CheckGameOver check if game is over
-func (gl *GameLogic) CheckGameOver(player1HP, player2HP int, player1Address, player2Address string) (bool, string) {
-	if player1HP <= 0 {
-		return true, player2Address
+// 改为支持任意数量玩家，返回是否结束和胜者地址（或空/"tie"）
+func (gl *GameLogic) CheckGameOver(hps []int, addresses []string) (bool, string) {
+	alive := 0
+	winner := ""
+	for i, hp := range hps {
+		if hp > 0 {
+			alive++
+			winner = addresses[i]
+		}
 	}
-	if player2HP <= 0 {
-		return true, player1Address
+	if alive == 1 {
+		return true, winner
+	}
+	if alive == 0 {
+		return true, "tie"
 	}
 	return false, ""
 }
 
-// ValidateBattleInput validate battle input
-func (gl *GameLogic) ValidateBattleInput(input *BattleInput) error {
-	if input.Player1Address == "" || input.Player2Address == "" {
-		return fmt.Errorf("player address cannot be empty")
+// ValidateRoundInput validate battle input
+// 改为校验Players列表
+func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
+	if len(input.Players) < 2 {
+		return fmt.Errorf("at least 2 players required")
 	}
-
-	if input.Player1HP <= 0 || input.Player2HP <= 0 {
-		return fmt.Errorf("player HP must be greater than 0")
+	for idx, p := range input.Players {
+		if p.Address == "" {
+			return fmt.Errorf("player %d address cannot be empty", idx+1)
+		}
+		if p.HP <= 0 {
+			return fmt.Errorf("player %d HP must be greater than 0", idx+1)
+		}
+		if len(p.Cards) != 3 {
+			return fmt.Errorf("player %d must have 3 cards", idx+1)
+		}
+		if err := gl.validateCardElements(p.Cards, fmt.Sprintf("Player %d", idx+1)); err != nil {
+			return err
+		}
 	}
-
-	if len(input.Player1Cards) != 3 || len(input.Player2Cards) != 3 {
-		return fmt.Errorf("each player must have 3 cards")
-	}
-
-	if err := gl.validateCardElements(input.Player1Cards, "Player 1"); err != nil {
-		return err
-	}
-	if err := gl.validateCardElements(input.Player2Cards, "Player 2"); err != nil {
-		return err
-	}
-
 	return nil
 }
 

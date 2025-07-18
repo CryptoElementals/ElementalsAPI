@@ -13,56 +13,66 @@ func NewRewardCalculator() *RewardCalculator {
 }
 
 // CalculateRewards calculate battle rewards
-func (rc *RewardCalculator) CalculateRewards(result *BattleResult) *BattleReward {
+func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward {
 	baseStake := rc.BaseStake
 	systemFeeRate := 0.016 // 1.6% system fee
 
 	systemFee := int(float64(baseStake) * result.GameFinalMultiplier * systemFeeRate)
 
-	var player1TokenChange, player2TokenChange int
-	var player1PointChange, player2PointChange int
+	playerRewards := make(map[string]PlayerReward)
 
 	switch result.GameResultType {
 	case "normal", "ko":
-		if result.Winner == result.Player1Address {
-			player1TokenChange = int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate))
-			player2TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier)
-		} else {
-			player2TokenChange = int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate))
-			player1TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier)
+		if result.Winner != "" && result.Winner != "tie" {
+			// 胜者获得奖励
+			winnerReward := PlayerReward{
+				TokenChange: int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate)),
+				PointChange: int(float64(baseStake) * result.GameFinalMultiplier * 0.012), // 1.2%
+			}
+			playerRewards[result.Winner] = winnerReward
+
+			// 败者扣除赌注
+			for _, player := range result.Players {
+				if player.Player != result.Winner {
+					loserReward := PlayerReward{
+						TokenChange: -int(float64(baseStake) * result.GameFinalMultiplier),
+						PointChange: int(float64(baseStake) * result.GameFinalMultiplier * 0.004), // 0.4%
+					}
+					playerRewards[player.Player] = loserReward
+					break
+				}
+			}
 		}
 	case "tie":
-		player1TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier * 0.8)
-		player2TokenChange = -int(float64(baseStake) * result.GameFinalMultiplier * 0.8)
+		// 平局时所有玩家都扣除部分赌注
+		for _, player := range result.Players {
+			playerRewards[player.Player] = PlayerReward{
+				TokenChange: -int(float64(baseStake) * result.GameFinalMultiplier * 0.8),
+				PointChange: int(float64(baseStake) * result.GameFinalMultiplier * 0.008), // 0.8%
+			}
+		}
 	}
 
-	switch result.GameResultType {
-	case "normal":
-		if result.Winner == result.Player1Address {
-			player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.012) // 1.2%
-			player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.004) // 0.4%
-		} else {
-			player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.004) // 0.4%
-			player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.012) // 1.2%
+	// KO 特殊处理积分
+	if result.GameResultType == "ko" && result.Winner != "" && result.Winner != "tie" {
+		if winnerReward, exists := playerRewards[result.Winner]; exists {
+			winnerReward.PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
+			playerRewards[result.Winner] = winnerReward
 		}
-	case "ko":
-		if result.Winner == result.Player1Address {
-			player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
-			player2PointChange = 0
-		} else {
-			player1PointChange = 0
-			player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
+		// 败者积分为0
+		for _, player := range result.Players {
+			if player.Player != result.Winner {
+				if loserReward, exists := playerRewards[player.Player]; exists {
+					loserReward.PointChange = 0
+					playerRewards[player.Player] = loserReward
+				}
+				break
+			}
 		}
-	case "tie":
-		player1PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.008) // 0.8%
-		player2PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.008) // 0.8%
 	}
 
 	return &BattleReward{
-		Player1TokenChange: player1TokenChange,
-		Player2TokenChange: player2TokenChange,
-		SystemFee:          systemFee,
-		Player1PointChange: player1PointChange,
-		Player2PointChange: player2PointChange,
+		PlayerRewards: playerRewards,
+		SystemFee:     systemFee,
 	}
 }
