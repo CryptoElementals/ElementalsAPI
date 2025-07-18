@@ -339,4 +339,5 @@ func (task *GetBattleInfoTask) convertCardsToIDs(cardStrings []string) []int {
 func RegisterBattleApis() {
 	api.Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, api.COOKIEAUTH)
 	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
+	api.Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, api.COOKIEAUTH)
 }
