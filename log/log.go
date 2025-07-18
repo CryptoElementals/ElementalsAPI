@@ -18,6 +18,17 @@ var (
 	globalLogger *Logger
 )
 
+// init a development logger if no config have
+func init() {
+	l, err := NewLogger(&Config{
+		Development: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	globalLogger = l
+}
+
 type Config struct {
 	Dir          string `mapstructure:"dir"`
 	Prefix       string `mapstructure:"prefix"`

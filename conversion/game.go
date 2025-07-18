@@ -5,7 +5,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
+func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 	gameInfo := &proto.GameInfo{
 		GameId:              uint32(info.ID),
 		RoomContractAddress: info.RoomContract,
@@ -14,17 +14,18 @@ func DbGameInfoToProtoGameInfo(info *dao.GameInfo) *proto.GameInfo {
 	}
 	// convert players
 	for _, player := range info.Players {
-		gameInfo.Players = append(gameInfo.Players, DbGamePlayerToProtoPlayerAddress(&player))
+		gameInfo.Players = append(gameInfo.Players, DbGamePlayerToProtoPlayerAddress(player))
 	}
 	// convert rounds
 	for _, round := range info.Rounds {
-		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(&round))
+		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round))
 	}
 	// conver results
+
 	return gameInfo
 }
 
-func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayer) *proto.PlayerAddress {
+func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerAddress {
 	return &proto.PlayerAddress{
 		WalletAddress:    player.WalletAddress,
 		TemporaryAddress: player.TemporaryAddress,
@@ -39,27 +40,31 @@ func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
 	}
 }
 
-func DbPlayerRoundInfosToProto(playerRoundInfos []dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
+func DbPlayerRoundInfosToProto(playerRoundInfos []*dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
 	var playerRoundInfosProto []*proto.PlayerRoundInfo
 	for _, playerRoundInfo := range playerRoundInfos {
-		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(&playerRoundInfo))
+		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(playerRoundInfo))
 	}
 	return playerRoundInfosProto
 }
 
 func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundInfo {
+	addr := &proto.PlayerAddress{
+		WalletAddress:    playerRoundInfo.WalletAddress,
+		TemporaryAddress: playerRoundInfo.TemporaryAddress,
+	}
 	return &proto.PlayerRoundInfo{
-		PlayerAddress:       DbGamePlayerToProtoPlayerAddress(&playerRoundInfo.GamePlayer),
+		PlayerAddress:       addr,
 		Cards:               DbRoundSubmittedCardsToProto(playerRoundInfo.RoundSubmittedCards),
 		Salt:                playerRoundInfo.Salt,
 		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
 	}
 }
 
-func DbRoundSubmittedCardsToProto(cards []dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
+func DbRoundSubmittedCardsToProto(cards []*dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
 	var cardsProto []*proto.RoundSubmittedCard
 	for _, card := range cards {
-		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(&card))
+		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(card))
 	}
 	return cardsProto
 }
