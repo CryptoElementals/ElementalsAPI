@@ -36,12 +36,11 @@ func (m *MockGameInfoGetter) EXPECT() *MockGameInfoGetterMockRecorder {
 }
 
 // GetActiveGameInfo mocks base method.
-func (m *MockGameInfoGetter) GetActiveGameInfo(arg0 *types.PlayerAddress) (*proto.GameInfo, error) {
+func (m *MockGameInfoGetter) GetActiveGameInfo(arg0 *types.PlayerAddress) *proto.GameInfo {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetActiveGameInfo", arg0)
 	ret0, _ := ret[0].(*proto.GameInfo)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return ret0
 }
 
 // GetActiveGameInfo indicates an expected call of GetActiveGameInfo.

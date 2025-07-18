@@ -13,7 +13,7 @@ import (
 )
 
 type GameInfoGetter interface {
-	GetActiveGameInfo(playerAddress *types.PlayerAddress) (*proto.GameInfo, error)
+	GetActiveGameInfo(playerAddress *types.PlayerAddress) *proto.GameInfo
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 }
 
@@ -96,9 +96,9 @@ func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
 	// we need to lock player here for better consistency
 	player.lock.Lock()
 	defer player.lock.Unlock()
-	gameInfo, err := s.gameInfoGetter.GetActiveGameInfo(&player.address)
-	if err != nil {
-		return err
+	gameInfo := s.gameInfoGetter.GetActiveGameInfo(&player.address)
+	if gameInfo == nil {
+		return nil
 	}
 	return player.sync(gameInfo)
 }
