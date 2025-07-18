@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/CryptoElementals/common/worker"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type Service struct {
@@ -11,8 +12,9 @@ type Service struct {
 	chain *Chain
 }
 
-func NewService(ctx context.Context, workerManager *worker.WorkerManager) *Service {
-	chain := NewChain(ctx, workerManager)
+func NewService(ctx context.Context, workerManager *worker.WorkerManager, client *ethclient.Client,
+	roomManagerContractAddress string, roundTimeout int64, maxRounds int64) *Service {
+	chain := NewChain(ctx, workerManager, client, roomManagerContractAddress, roundTimeout, maxRounds)
 	chain.createSelf()
 	return &Service{ctx: ctx, chain: chain}
 }

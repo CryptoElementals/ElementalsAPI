@@ -114,11 +114,41 @@ message GameInfo {
 }
 
 message Transaction {
-    bytes block_hash = 1;
-    bytes content = 2;
+    bytes tx_hash = 1;
+    oneof tx {
+        TxRoomContractCreated room_contract_created = 2;
+        TxRoomContractRoundSetupReady room_contract_setup_ready = 3;
+        TxCommitmentsOnChain commitments_on_chain = 4;
+        TxCardsOnChain cards_on_chain = 5;
+    };
 }
 
 message TransactionBatch {
-    repeated Transaction txs = 1;
+    bytes block_hash = 1;
+    uint64 timestamp = 2;
+    repeated Transaction transactions = 3;
 }
 
+message TxRoomContractCreated {
+    string room_contract_address = 1;
+}
+
+message TxRoomContractRoundSetupReady {
+    string room_contract_address = 1;
+    uint32 round_number = 2;
+}
+
+message TxCommitmentsOnChain {
+    string room_contract_address = 1;
+    PlayerAddress address = 2;
+    uint32 round_number = 3;
+    bytes commitment = 4;
+}
+
+message TxCardsOnChain {
+    string room_contract_address = 1;
+    PlayerAddress address = 2;
+    uint32 round_number = 3;
+    bytes salt = 4;
+    repeated uint32 cards = 5;
+}
