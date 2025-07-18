@@ -4,10 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 
+	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/worker"
 	"github.com/CryptoElementals/common/worker/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type batchTxEvent struct {
@@ -19,17 +24,32 @@ type batchTxEvent struct {
 }
 
 type Chain struct {
-	ctx            context.Context
-	workerManager  *worker.WorkerManager
-	sentTxs        map[string]string
-	inflightEvents map[string]struct{}
-	currentBatchTx *batchTxEvent
+	ctx                        context.Context
+	workerManager              *worker.WorkerManager
+	sentTxs                    map[string]string
+	inflightEvents             map[string]struct{}
+	currentBatchTx             *batchTxEvent
+	client                     *ethclient.Client
+	roomManagerContractAddress common.Address
+	roundTimeout               *big.Int
+	maxRounds                  *big.Int
 }
 
-func NewChain(ctx context.Context, workerManager *worker.WorkerManager) *Chain {
+func NewChain(ctx context.Context, workerManager *worker.WorkerManager,
+	client *ethclient.Client, roomManagerContractAddressHex string,
+	roundTimeout int64, maxRounds int64) *Chain {
+	roomManagerContractAddress := common.HexToAddress(roomManagerContractAddressHex)
+	roundTimeoutBigInt := big.NewInt(roundTimeout)
+	maxRoundsBigInt := big.NewInt(maxRounds)
 	return &Chain{
-		ctx:           ctx,
-		workerManager: workerManager,
+		ctx:                        ctx,
+		workerManager:              workerManager,
+		sentTxs:                    map[string]string{},
+		inflightEvents:             map[string]struct{}{},
+		client:                     client,
+		roomManagerContractAddress: roomManagerContractAddress,
+		roundTimeout:               roundTimeoutBigInt,
+		maxRounds:                  maxRoundsBigInt,
 	}
 }
 
@@ -44,13 +64,14 @@ func (c *Chain) Handle(ctx context.Context, sender worker.EventSender, event *ty
 		if err != nil {
 			return err
 		}
-		err = c.createRoomContract(evt.Players)
+
+		err = c.createRoomContract(fmt.Sprintf("%d", evt.GameID), evt.Players)
 		if err != nil {
 			return err
 		}
 		log.Debugf("created contract for %s", evt.Players)
 	case *types.RequireSetupNewRoundEvent:
-		err := c.setRoomReady(evt.ContractAddress)
+		err := c.setRoomReady(fmt.Sprintf("%d", evt.GameID), evt.ContractAddress)
 		if err != nil {
 			return err
 		}
@@ -80,11 +101,39 @@ func (c *Chain) batchSendTxs(evt *batchTxEvent) {
 	c.workerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent("", evt))
 }
 
-func (c *Chain) createRoomContract(players []types.PlayerAddress) error {
+func (c *Chain) createRoomContract(gameID string, players []types.PlayerAddress) error {
+	roomManagerContract, err := contract.NewRoomManagerContract(c.roomManagerContractAddress, c.client)
+	if err != nil {
+		return err
+	}
+	player1WalletAddress := common.HexToAddress(players[0].WalletAddress)
+	player2WalletAddress := common.HexToAddress(players[1].WalletAddress)
+	player1TemporaryAddress := common.HexToAddress(players[0].TemporaryAddress)
+	player2TemporaryAddress := common.HexToAddress(players[1].TemporaryAddress)
+	tx, err := roomManagerContract.CreateRoom(&bind.TransactOpts{
+		Context: c.ctx,
+	}, player1WalletAddress, player2WalletAddress,
+		player1TemporaryAddress, player2TemporaryAddress, c.roundTimeout, c.maxRounds)
+	if err != nil {
+		return err
+	}
+	c.sentTxs[tx.Hash().String()] = gameID
 	return nil
 }
 
-func (c *Chain) setRoomReady(roomContract string) error {
+func (c *Chain) setRoomReady(gameID string, roomContractHex string) error {
+	roomContractAddress := common.HexToAddress(roomContractHex)
+	roomContract, err := contract.NewRoomContract(roomContractAddress, c.client)
+	if err != nil {
+		return err
+	}
+	tx, err := roomContract.StartANewRound(&bind.TransactOpts{
+		Context: c.ctx,
+	})
+	if err != nil {
+		return err
+	}
+	c.sentTxs[tx.Hash().String()] = gameID
 	return nil
 }
 
