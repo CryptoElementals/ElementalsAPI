@@ -3,7 +3,6 @@ package game
 import (
 	"context"
 
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/worker"
 )
 
@@ -19,11 +18,11 @@ func NewGameManager(ctx context.Context) *GameManager {
 	}
 }
 
-func (r *GameManager) CreateGame(id string, players []*proto.PlayerAddress) *Game {
-	room := &Game{
-		id:      id,
-		players: players,
-	}
-	r.rooms[id] = room.roomWorker
-	return room
-}
+// func (r *GameManager) CreateGame(id string, players []*proto.PlayerAddress) *worker.Worker {
+// 	room := &Game{
+// 		id:      id,
+// 		players: players,
+// 	}
+// 	r.rooms[id] = room.roomWorker
+// 	return room
+// }

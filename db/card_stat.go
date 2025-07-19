@@ -6,8 +6,8 @@ import (
 
 // CardStatInfo API响应用的卡牌统计信息结构
 type CardStatInfo struct {
-	Card        string  `json:"Card"`
-	Frequency   int     `json:"Frequency"`
+	CardID      uint    `json:"CardID"`
+	Frequency   float64 `json:"Frequency"`
 	WinningRate float64 `json:"WinningRate"`
 }
 
@@ -63,7 +63,7 @@ func GetCardStatsInfo(cardStats []dao.CardStat) []CardStatInfo {
 	result := make([]CardStatInfo, len(cardStats))
 	for i, stat := range cardStats {
 		result[i] = CardStatInfo{
-			Card:        stat.CardName,
+			CardID:      stat.ID,
 			Frequency:   stat.Frequency,
 			WinningRate: stat.WinningRate,
 		}

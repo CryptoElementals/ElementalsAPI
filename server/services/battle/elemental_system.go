@@ -1,6 +1,9 @@
 package battle
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ElementalSystem elemental system
 type ElementalSystem struct{}
@@ -31,124 +34,122 @@ func (es *ElementalSystem) GetElementalRelation(card1, card2 *Card) *ElementalRe
 	if keRelations[card1.ElementType] == card2.ElementType {
 		return &ElementalRelation{
 			Type:        "overpower",
-			Description: fmt.Sprintf("%s overpowers %s", card1.ElementType, card2.ElementType),
+			Description: "{self} overpowers {opponent}",
 		}
 	}
 	if keRelations[card2.ElementType] == card1.ElementType {
 		return &ElementalRelation{
 			Type:        "overpowered",
-			Description: fmt.Sprintf("%s is overpowered by %s", card1.ElementType, card2.ElementType),
+			Description: "{self} is overpowered by {opponent}",
 		}
 	}
 
 	if shengRelations[card1.ElementType] == card2.ElementType {
 		return &ElementalRelation{
 			Type:        "nurture",
-			Description: fmt.Sprintf("%s nurtures %s", card1.ElementType, card2.ElementType),
+			Description: "{self} is nurtured by {opponent}",
 		}
 	}
 	if shengRelations[card2.ElementType] == card1.ElementType {
 		return &ElementalRelation{
 			Type:        "nurtured",
-			Description: fmt.Sprintf("%s is nurtured by %s", card1.ElementType, card2.ElementType),
+			Description: "{self} nurtures {opponent}",
 		}
 	}
 
 	return &ElementalRelation{
 		Type:        "even",
-		Description: "Same element",
+		Description: "{self} and {opponent} are even",
 	}
 }
 
-// BuildActions build action list based on elemental relations
-func (es *ElementalSystem) BuildActions(card1, card2 *Card, relation *ElementalRelation) []BattleAction {
-	var actions []BattleAction
+// BuildEffects build effect list based on elemental relations
+func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalRelation, addr1, addr2 string) []BattleEffect {
+	var effects []BattleEffect
+
+	// 辅助函数：生成描述（用卡牌名字）
+	desc := func(selfName, oppName, action string) string {
+		if strings.Contains(action, "again") {
+			// 如果action包含again，将其移到句子末尾
+			baseAction := strings.Replace(action, " again", "", 1)
+			return fmt.Sprintf("%s(self) %s %s(opponent) again", selfName, baseAction, oppName)
+		}
+		return fmt.Sprintf("%s(self) %s %s(opponent)", selfName, action, oppName)
+	}
 
 	switch relation.Type {
 	case "overpower":
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "attack",
-			Target:      "player2",
 			Value:       card1.Attack - card2.Defense,
-			Description: fmt.Sprintf("%s(Player1) attacks %s(Player2)", card1.Name, card2.Name),
+			Description: desc(card2.Name, card1.Name, "is attacked by"),
+			Target:      addr2,
 		})
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "attack",
-			Target:      "player2",
 			Value:       card1.Attack - card2.Defense,
-			Description: fmt.Sprintf("%s(Player1) attacks %s(Player2) again", card1.Name, card2.Name),
+			Description: desc(card2.Name, card1.Name, "is attacked by again"),
+			Target:      addr2,
 		})
 	case "overpowered":
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "attack",
-			Target:      "player1",
 			Value:       card2.Attack - card1.Defense,
-			Description: fmt.Sprintf("%s(Player2) attacks %s(Player1)", card2.Name, card1.Name),
+			Description: desc(card1.Name, card2.Name, "is attacked by"),
+			Target:      addr1,
 		})
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "attack",
-			Target:      "player1",
 			Value:       card2.Attack - card1.Defense,
-			Description: fmt.Sprintf("%s(Player2) attacks %s(Player1) again", card2.Name, card1.Name),
+			Description: desc(card1.Name, card2.Name, "is attacked by again"),
+			Target:      addr1,
 		})
 	case "nurture":
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "heal",
-			Target:      "player2",
 			Value:       card1.LifeForce,
-			Description: fmt.Sprintf("%s(Player1) heals %s(Player2)", card1.Name, card2.Name),
+			Description: desc(card1.Name, card2.Name, "is healed by"),
+			Target:      addr1,
 		})
 	case "nurtured":
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "heal",
-			Target:      "player1",
 			Value:       card2.LifeForce,
-			Description: fmt.Sprintf("%s(Player2) heals %s(Player1)", card2.Name, card1.Name),
+			Description: desc(card1.Name, card2.Name, "is healed by"),
+			Target:      addr1,
 		})
 	case "even":
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "attack",
-			Target:      "player2",
 			Value:       card1.Attack - card2.Defense,
-			Description: fmt.Sprintf("%s(Player1) attacks %s(Player2)", card1.Name, card2.Name),
+			Description: desc(card2.Name, card1.Name, "is attacked by"),
+			Target:      addr2,
 		})
-		actions = append(actions, BattleAction{
+		effects = append(effects, BattleEffect{
 			Type:        "attack",
-			Target:      "player1",
 			Value:       card2.Attack - card1.Defense,
-			Description: fmt.Sprintf("%s(Player2) attacks %s(Player1)", card2.Name, card1.Name),
+			Description: desc(card1.Name, card2.Name, "is attacked by"),
+			Target:      addr1,
 		})
 	}
 
-	return actions
+	return effects
 }
 
-// ExecuteActions execute action list and calculate damage
-func (es *ElementalSystem) ExecuteActions(actions []BattleAction) (int, int) {
-	player1Damage := 0
-	player2Damage := 0
-
-	for _, action := range actions {
-		value := action.Value
+// ExecuteEffects execute effect list and calculate HP delta for self
+func (es *ElementalSystem) ExecuteEffects(effects []BattleEffect) int {
+	hpDelta := 0
+	for _, effect := range effects {
+		value := effect.Value
 		if value < 0 {
 			value = 0
 		}
-
-		switch action.Type {
+		switch effect.Type {
 		case "attack":
-			if action.Target == "player1" {
-				player1Damage -= value
-			} else if action.Target == "player2" {
-				player2Damage -= value
-			}
+			hpDelta -= value
 		case "heal":
-			if action.Target == "player1" {
-				player1Damage += value
-			} else if action.Target == "player2" {
-				player2Damage += value
-			}
+			hpDelta += value
 		}
 	}
-
-	return player1Damage, player2Damage
+	return hpDelta
 }

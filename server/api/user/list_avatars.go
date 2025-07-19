@@ -74,8 +74,7 @@ func (task *ListAvatarsTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 这里可以添加用户验证逻辑，如果需要的话
-	// 默认头像URL列表（这些URL应该指向US3存储的头像图片）
+	// 应该改成读取us3，然后返回头像列表
 	defaultAvatarURLs := []string{
 		"https://us3.example.com/avatars/default_avatar_1.png",
 		"https://us3.example.com/avatars/default_avatar_2.png",

@@ -1,6 +1,9 @@
 package battle
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // BattleEngine battle engine
 type BattleEngine struct {
@@ -22,144 +25,237 @@ func NewBattleEngine() *BattleEngine {
 	}
 }
 
-// ExecuteBattle execute battle
-func (be *BattleEngine) ExecuteBattle(input *BattleInput, stage int) (*BattleResult, error) {
-	if err := be.gameLogic.ValidateBattleInput(input); err != nil {
+// ExecuteRound execute round
+// 返回值改为 (RoundResult, error)
+func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResult, error) {
+	if err := be.gameLogic.ValidateRoundInput(input); err != nil {
 		return nil, err
 	}
 
-	if stage < 1 || stage > 3 {
-		return nil, fmt.Errorf("stage parameter must be between 1 and 3")
+	if round < 1 || round > 3 {
+		return nil, fmt.Errorf("round parameter must be between 1 and 3")
 	}
 
-	player1Cards, err := be.cardFactory.GetCards(input.Player1Cards)
-	if err != nil {
-		return nil, err
-	}
-	player2Cards, err := be.cardFactory.GetCards(input.Player2Cards)
-	if err != nil {
-		return nil, err
+	playerCount := len(input.Players)
+	if playerCount < 2 {
+		return nil, fmt.Errorf("at least 2 players required")
 	}
 
-	result := &BattleResult{
-		Player1Address: input.Player1Address,
-		Player2Address: input.Player2Address,
-		Stage:          stage,
-		Rounds:         make([]RoundResult, 0),
-	}
-
-	currentPlayer1HP := input.Player1HP
-	currentPlayer2HP := input.Player2HP
-	currentPlayer1Multiplier := input.Player1Multiplier
-	currentPlayer2Multiplier := input.Player2Multiplier
-
-	player1LostHP := input.Player1LostHP
-	player2LostHP := input.Player2LostHP
-
-	for round := 0; round < 3; round++ {
-		player1Card := player1Cards[round]
-		player2Card := player2Cards[round]
-
-		relation := be.elementalSystem.GetElementalRelation(player1Card, player2Card)
-		actions := be.elementalSystem.BuildActions(player1Card, player2Card, relation)
-		player1Damage, player2Damage := be.elementalSystem.ExecuteActions(actions)
-
-		currentPlayer1HP += player1Damage
-		currentPlayer2HP += player2Damage
-
-		if currentPlayer1HP < 0 {
-			currentPlayer1HP = 0
+	// 获取所有玩家的卡牌
+	playerCards := make([][]*Card, playerCount)
+	for i, p := range input.Players {
+		cards, err := be.cardFactory.GetCards(p.Cards)
+		if err != nil {
+			return nil, err
 		}
-		if currentPlayer2HP < 0 {
-			currentPlayer2HP = 0
+		playerCards[i] = cards
+	}
+
+	// 初始化每个玩家的状态
+	type playerState struct {
+		HP         int
+		Multiplier float64
+		LostHP     int
+		Stats      []PlayerCardStat
+		Address    string
+	}
+	states := make([]*playerState, playerCount)
+	for i, p := range input.Players {
+		states[i] = &playerState{
+			HP:         p.HP,
+			Multiplier: p.Multiplier,
+			LostHP:     p.LostHP,
+			Stats:      make([]PlayerCardStat, 0, 3),
+			Address:    p.Address,
 		}
+	}
 
-		player1LostHP = input.Player1HP - currentPlayer1HP
-		player2LostHP = input.Player2HP - currentPlayer2HP
-
-		currentPlayer1Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(player1LostHP)
-		currentPlayer2Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(player2LostHP)
-
-		roundResult := RoundResult{
-			RoundNumber:            round + 1,
-			Player1CardID:          player1Card.ID,
-			Player2CardID:          player2Card.ID,
-			RelationType:           relation.Type,
-			Actions:                actions,
-			Player1HPDelta:         player1Damage,
-			Player2HPDelta:         player2Damage,
-			Player1HPAfter:         currentPlayer1HP,
-			Player2HPAfter:         currentPlayer2HP,
-			Player1MultiplierAfter: currentPlayer1Multiplier,
-			Player2MultiplierAfter: currentPlayer2Multiplier,
-			Description:            relation.Description,
-		}
-
-		result.Rounds = append(result.Rounds, roundResult)
-
-		if isGameOver, winner := be.gameLogic.CheckGameOver(currentPlayer1HP, currentPlayer2HP, input.Player1Address, input.Player2Address); isGameOver {
-			result.IsGameOver = true
-			result.Winner = winner
-			result.GameResultType = be.determineGameResultType(currentPlayer1HP, currentPlayer2HP)
-
-			result.Player1FinalHP = currentPlayer1HP
-			result.Player2FinalHP = currentPlayer2HP
-			result.Player1LostHP = player1LostHP
-			result.Player2LostHP = player2LostHP
-			result.Player1FinalMultiplier = currentPlayer1Multiplier
-			result.Player2FinalMultiplier = currentPlayer2Multiplier
-
-			if winner == input.Player1Address {
-				result.GameFinalMultiplier = currentPlayer2Multiplier
-			} else if winner == input.Player2Address {
-				result.GameFinalMultiplier = currentPlayer1Multiplier
-			} else {
-				result.GameFinalMultiplier = 1.0
+	// 只保留属于自己的effect
+	filterEffects := func(effects []BattleEffect, target string) []BattleEffect {
+		var filtered []BattleEffect
+		for _, e := range effects {
+			if e.Target == target {
+				filtered = append(filtered, e)
 			}
+		}
+		return filtered
+	}
 
-			result.Reward = be.rewardCalculator.CalculateRewards(result)
-			return result, nil
+	for cardIdx := 0; cardIdx < 3; cardIdx++ {
+		// 两两对战（可扩展为多玩家）
+		for i := 0; i < playerCount; i++ {
+			for j := i + 1; j < playerCount; j++ {
+				p1 := states[i]
+				p2 := states[j]
+				p1Card := playerCards[i][cardIdx]
+				p2Card := playerCards[j][cardIdx]
+				relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card)
+				effects := be.elementalSystem.BuildEffects(p1Card, p2Card, relation, p1.Address, p2.Address)
+				effects1 := filterEffects(effects, p1.Address)
+				effects2 := filterEffects(effects, p2.Address)
+				p1BeforeHP := p1.HP
+				p2BeforeHP := p2.HP
+				p1BeforeMul := p1.Multiplier
+				p2BeforeMul := p2.Multiplier
+				p1.HP += be.elementalSystem.ExecuteEffects(effects1)
+				p2.HP += be.elementalSystem.ExecuteEffects(effects2)
+				if p1.HP < 0 {
+					p1.HP = 0
+				}
+				if p2.HP < 0 {
+					p2.HP = 0
+				}
+				p1.LostHP = input.Players[i].HP - p1.HP
+				p2.LostHP = input.Players[j].HP - p2.HP
+				p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
+				p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
+				// 生成p1和p2视角的描述（元素类型+视角），并根据relation.Type选择正确模板
+				descP1 := relation.Description
+				descP2 := relation.Description
+				switch relation.Type {
+				case "overpower":
+					descP2 = "{self} is overpowered by {opponent}"
+				case "overpowered":
+					descP2 = "{self} overpowers {opponent}"
+				case "nurture":
+					descP2 = "{self} nurtures {opponent}"
+				case "nurtured":
+					descP2 = "{self} is nurtured by {opponent}"
+				case "even":
+					descP2 = "{self} and {opponent} are even"
+				}
+
+				descP1 = strings.ReplaceAll(descP1, "{self}", fmt.Sprintf("%s(self)", p1Card.ElementType))
+				descP1 = strings.ReplaceAll(descP1, "{opponent}", fmt.Sprintf("%s(opponent)", p2Card.ElementType))
+
+				descP2 = strings.ReplaceAll(descP2, "{self}", fmt.Sprintf("%s(self)", p2Card.ElementType))
+				descP2 = strings.ReplaceAll(descP2, "{opponent}", fmt.Sprintf("%s(opponent)", p1Card.ElementType))
+
+				p1.Stats = append(p1.Stats, PlayerCardStat{
+					CardNumber:       cardIdx + 1,
+					CardID:           p1Card.ID,
+					HPBefore:         p1BeforeHP,
+					HPAfter:          p1.HP,
+					MultiplierBefore: p1BeforeMul,
+					MultiplierAfter:  p1.Multiplier,
+					Effects:          effects1,
+					Description:      descP1,
+					ElementRelation:  relation.Type, // p1 视角
+				})
+				p2.Stats = append(p2.Stats, PlayerCardStat{
+					CardNumber:       cardIdx + 1,
+					CardID:           p2Card.ID,
+					HPBefore:         p2BeforeHP,
+					HPAfter:          p2.HP,
+					MultiplierBefore: p2BeforeMul,
+					MultiplierAfter:  p2.Multiplier,
+					Effects:          effects2,
+					Description:      descP2,
+					ElementRelation:  reverseRelationType(relation.Type), // p2 视角
+				})
+
+				// 适配新的CheckGameOver
+				hps := make([]int, playerCount)
+				addrs := make([]string, playerCount)
+				for idx, st := range states {
+					hps[idx] = st.HP
+					addrs[idx] = st.Address
+				}
+				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs); isGameOver {
+					goto END
+				}
+			}
+		}
+	}
+END:
+	// 构建玩家回合数据
+	playerStats := make([]PlayerRoundStat, playerCount)
+	for i, p := range states {
+		playerStats[i] = PlayerRoundStat{
+			Player: p.Address,
+			Cards:  p.Stats,
 		}
 	}
 
-	result.Player1FinalHP = currentPlayer1HP
-	result.Player2FinalHP = currentPlayer2HP
-	result.Player1LostHP = player1LostHP
-	result.Player2LostHP = player2LostHP
-	result.Player1FinalMultiplier = currentPlayer1Multiplier
-	result.Player2FinalMultiplier = currentPlayer2Multiplier
+	// 游戏结束判定
+	hps := make([]int, playerCount)
+	addrs := make([]string, playerCount)
+	for idx, st := range states {
+		hps[idx] = st.HP
+		addrs[idx] = st.Address
+	}
+	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs)
 
-	if stage == 3 {
-		result.IsGameOver = true
-		result.Winner = be.gameLogic.GetWinner(currentPlayer1HP, currentPlayer2HP, input.Player1Address, input.Player2Address)
-		result.GameResultType = be.determineGameResultType(currentPlayer1HP, currentPlayer2HP)
+	// 确定游戏结果类型和最终倍率
+	var gameResultType string
+	var gameFinalMultiplier float64
 
-		if result.Winner == input.Player1Address {
-			result.GameFinalMultiplier = currentPlayer2Multiplier
-		} else if result.Winner == input.Player2Address {
-			result.GameFinalMultiplier = currentPlayer1Multiplier
+	if isGameOver {
+		gameResultType = be.determineGameResultType(hps, addrs)
+		// 计算最终倍率（取败者倍率，平局为1）
+		if winner != "tie" {
+			for _, st := range states {
+				if st.Address != winner {
+					gameFinalMultiplier = st.Multiplier
+					break
+				}
+			}
 		} else {
-			result.GameFinalMultiplier = 1.0
+			gameFinalMultiplier = 1.0
 		}
-
-		result.Reward = be.rewardCalculator.CalculateRewards(result)
 	} else {
-		result.IsGameOver = false
-		result.Winner = ""
-		result.GameResultType = ""
-		result.Reward = nil
+		// 游戏未结束时，GameResultType为空，GameFinalMultiplier为0
+		gameResultType = ""
+		gameFinalMultiplier = 0.0
+	}
+
+	result := &RoundResult{
+		Players:             playerStats,
+		Round:               round,
+		GameFinalMultiplier: gameFinalMultiplier,
+		Winner:              winner,
+		IsGameOver:          isGameOver,
+		GameResultType:      gameResultType,
+		Reward:              nil, // 先设为nil
+	}
+
+	// 计算奖励
+	if isGameOver {
+		result.Reward = be.rewardCalculator.CalculateRewards(result)
 	}
 
 	return result, nil
 }
 
 // determineGameResultType determine game result type
-func (be *BattleEngine) determineGameResultType(player1HP, player2HP int) string {
-	if player1HP == player2HP {
+func (be *BattleEngine) determineGameResultType(hps []int, addresses []string) string {
+	alive := 0
+	for _, hp := range hps {
+		if hp > 0 {
+			alive++
+		}
+	}
+	if alive == 0 {
 		return "tie"
-	} else if player1HP <= 0 || player2HP <= 0 {
+	} else if alive == 1 {
 		return "ko"
 	} else {
 		return "normal"
+	}
+}
+
+// reverseRelationType 用于反转元素关系类型
+func reverseRelationType(t string) string {
+	switch t {
+	case "overpower":
+		return "overpowered"
+	case "overpowered":
+		return "overpower"
+	case "nurture":
+		return "nurtured"
+	case "nurtured":
+		return "nurture"
+	default:
+		return t
 	}
 }

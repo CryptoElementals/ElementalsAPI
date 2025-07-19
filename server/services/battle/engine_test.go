@@ -8,7 +8,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 )
 
-func TestExecuteBattle(t *testing.T) {
+func TestExecuteRound(t *testing.T) {
 	err := log.InitGlobalLogger(&log.Config{
 		Development: true,
 		Level:       "debug",
@@ -31,29 +31,35 @@ func TestExecuteBattle(t *testing.T) {
 
 	engine := NewBattleEngine()
 
-	input := &BattleInput{
-		Player1Address:    "player1_address",
-		Player2Address:    "player2_address",
-		Player1HP:         3000,
-		Player2HP:         3000,
-		Player1Multiplier: 1.0,
-		Player2Multiplier: 1.0,
-		Player1Cards:      []int{1, 2, 3},
-		Player2Cards:      []int{4, 5, 1},
-		Player1LostHP:     0,
-		Player2LostHP:     0,
+	input := &RoundInput{
+		Players: []PlayerRoundInput{
+			{
+				Address:    "player1_address",
+				HP:         3000,
+				Multiplier: 1.0,
+				Cards:      []int{4, 5, 3},
+				LostHP:     0,
+			},
+			{
+				Address:    "player2_address",
+				HP:         3000,
+				Multiplier: 1.0,
+				Cards:      []int{1, 2, 4},
+				LostHP:     0,
+			},
+		},
 	}
 
-	stage := 3
-	result, err := engine.ExecuteBattle(input, stage)
+	round := uint(3)
+	result, err := engine.ExecuteRound(input, round)
 
 	if err != nil {
-		t.Errorf("ExecuteBattle failed with error: %v", err)
+		t.Errorf("ExecuteRound failed with error: %v", err)
 		return
 	}
 
 	if result == nil {
-		t.Error("ExecuteBattle returned nil result")
+		t.Error("ExecuteRound returned nil result")
 		return
 	}
 
@@ -63,8 +69,8 @@ func TestExecuteBattle(t *testing.T) {
 		return
 	}
 
-	t.Logf("Battle Result (JSON):\n%s", string(jsonData))
+	t.Logf("Round Result (JSON):\n%s", string(jsonData))
 	t.Log("Test completed successfully - check the JSON output above for manual verification")
 }
 
-//cd /data/ws_tj/BeastRoyaleBackend && go test -v ./server/services/battle/ -run TestExecuteBattle
+//cd /data/ws_tj/BeastRoyaleBackend && go test -v ./server/services/battle/ -run TestExecuteRound

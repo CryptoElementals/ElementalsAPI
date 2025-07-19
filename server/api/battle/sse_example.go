@@ -239,11 +239,6 @@ func NewEventListener(eventTypes []string, writer http.ResponseWriter, flusher h
 }
 
 func (el *EventListener) Start() {
-	// 在实际应用中，这里会监听特定的事件源
-	// 例如：数据库变化、消息队列、外部API等
-
-	// 这里我们使用全局事件管理器来演示
-	// 在实际应用中，你可能需要实现更具体的事件监听逻辑
 
 	log.Infof("Event listener started for types: %v, RequestUUID: %s", el.eventTypes, el.requestUUID)
 }

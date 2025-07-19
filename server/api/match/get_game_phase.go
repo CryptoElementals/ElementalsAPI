@@ -11,6 +11,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const GET_GAME_PHASE_LABEL = "GetGamePhase"
@@ -105,7 +106,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的GetPlayerInfo
-	conn, err := grpc.Dial(roomServerAddr, grpc.WithInsecure())
+	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
