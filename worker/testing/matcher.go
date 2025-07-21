@@ -15,9 +15,14 @@ func NewEventMatcher(eq func(*types.Event) bool) *EventMatcher {
 	}
 }
 
-func NewEventTypeMatcher(evt any) *EventMatcher {
+func NewEventTypeMatcher(evt ...any) *EventMatcher {
 	return NewEventMatcher(func(e *types.Event) bool {
-		return reflect.TypeOf(e.Data) == reflect.TypeOf(evt)
+		for _, evt := range evt {
+			if reflect.TypeOf(e.Data) == reflect.TypeOf(evt) {
+				return true
+			}
+		}
+		return false
 	})
 }
 
