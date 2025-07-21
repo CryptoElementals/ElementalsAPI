@@ -1,6 +1,8 @@
 package conversion
 
 import (
+	"encoding/json"
+
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -69,10 +71,24 @@ func DbRoundSubmittedCardsToProto(cards []*dao.RoundSubmittedCard) []*proto.Roun
 	return cardsProto
 }
 func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmittedCard {
-	return &proto.RoundSubmittedCard{
+	protoCard := &proto.RoundSubmittedCard{
 		PlayerHealthBefore: card.HealthBefore,
 		PlayerHealthEnd:    card.HealthAfter,
 		Multiplier:         card.Multiplier,
 		SubmittedCardId:    card.CardID,
+		MultiplierBefore:   card.MultiplierBefore,
+		MultiplierAfter:    card.MultiplierAfter,
+		Description:        card.Description,
+		ElementRelation:    card.ElementRelation,
 	}
+
+	// Deserialize Effects from JSON
+	if card.Effects != "" {
+		var effects []*proto.BattleEffect
+		if err := json.Unmarshal([]byte(card.Effects), &effects); err == nil {
+			protoCard.Effects = effects
+		}
+	}
+
+	return protoCard
 }

@@ -172,8 +172,8 @@ END:
 	playerStats := make([]PlayerRoundStat, playerCount)
 	for i, p := range states {
 		playerStats[i] = PlayerRoundStat{
-			Player: p.Address,
-			Cards:  p.Stats,
+			PlayerAddress: p.Address,
+			CardStats:     p.Stats,
 		}
 	}
 

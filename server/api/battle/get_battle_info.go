@@ -239,13 +239,15 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 			}
 
 			// 构建奖励信息
-			playerRewards := make(map[string]battle.PlayerReward)
+			var playerRewards []battle.PlayerReward
 			for _, playerResult := range gameInfo.Result.Players {
 				playerAddr := strings.ToLower(playerResult.Address.WalletAddress)
-				playerRewards[playerAddr] = battle.PlayerReward{
-					TokenChange: int(playerResult.TokenDelta),
-					PointChange: int(playerResult.Points),
+				playerReward := battle.PlayerReward{
+					PlayerAddress: playerAddr,
+					TokenChange:   int(playerResult.TokenDelta),
+					PointChange:   int(playerResult.Points),
 				}
+				playerRewards = append(playerRewards, playerReward)
 			}
 
 			reward = &battle.BattleReward{
