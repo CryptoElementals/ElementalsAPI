@@ -7,7 +7,7 @@ type Game struct {
 	RoomContract string            `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint              `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus  `gorm:"not null" json:"status"`
-	Players      []*GamePlayerInfo `gorm:"not null;default:''" json:"players"`
+	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
 }
 

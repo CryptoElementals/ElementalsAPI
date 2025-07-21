@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package pubsub;
+
+import "rpc/proto/rpc.proto";
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+message PlayerRoundInput {
+    string WalletAddress = 1;
+    string TemporaryAddress = 2;
+    repeated int32 Cards = 3;
+    int32 HP = 4;
+    float Multiplier = 5;
+    int32 LostHP = 6;
+}
+
+message RoundInput {
+    int32 RoundNumber = 1;
+    repeated PlayerRoundInput Players = 2;
+}
+
+
+message PlayerCardStat {
+    int32 CardNumber = 1;
+    int32 CardID = 2;
+    int32 HPBefore = 3;
+    int32 HPAfter = 4;
+    float MultiplierBefore = 5;
+    float MultiplierAfter = 6;
+    repeated rpc.BattleEffect Effects = 7;
+    string Description = 8;
+    string ElementRelation = 9;
+}
+
+message PlayerRoundStat {
+    string WalletAddress = 1;
+    string TemporaryAddress = 2;
+    repeated PlayerCardStat CardStats = 3;
+}
+
+message PlayerReward {
+    string WalletAddress = 1;
+    string TemporaryAddress = 2;
+    int32 TokenChange = 3;
+    int32 PointChange = 4;
+}
+
+message BattleReward {
+    repeated PlayerReward PlayerRewards = 1;
+    int32 SystemFee = 2;
+}
+
+message RoundResult {
+    repeated PlayerRoundStat Players = 1;
+    uint32 RoundNumber = 2;
+    float GameFinalMultiplier = 3;
+    bool IsGameOver = 4;
+    string GameResultType = 5;
+    BattleReward Reward = 6;
+}
