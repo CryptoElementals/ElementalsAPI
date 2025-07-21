@@ -78,14 +78,15 @@ type BattleEffect struct {
 
 // BattleReward battle reward
 type BattleReward struct {
-	PlayerRewards map[string]PlayerReward `json:"PlayerRewards"` // 每个玩家的奖励变化
-	SystemFee     int                     `json:"SystemFee"`     // 系统手续费
+	PlayerRewards []PlayerReward `json:"PlayerRewards"` // 每个玩家的奖励变化
+	SystemFee     int            `json:"SystemFee"`     // 系统手续费
 }
 
 // PlayerReward 单个玩家的奖励
 type PlayerReward struct {
-	TokenChange int `json:"TokenChange"` // Token变化
-	PointChange int `json:"PointChange"` // 积分变化
+	PlayerAddress string `json:"PlayerAddress"` // 玩家地址
+	TokenChange   int    `json:"TokenChange"`   // Token变化
+	PointChange   int    `json:"PointChange"`   // 积分变化
 }
 
 // 单个玩家每张卡的详细数据
@@ -98,12 +99,12 @@ type PlayerCardStat struct {
 	MultiplierAfter  float64        `json:"MultiplierAfter"`
 	Effects          []BattleEffect `json:"Effects"`
 	Description      string         `json:"Description"`
-	ElementRelation  string         `json:"elementRelation"` // 新增字段
+	ElementRelation  string         `json:"elementRelation"`
 }
 
 // 单个玩家的所有卡数据
 // PlayerRoundStat 表示每个玩家本轮的所有卡片数据
 type PlayerRoundStat struct {
-	Player string           `json:"Player"`
-	Cards  []PlayerCardStat `json:"Cards"`
+	PlayerAddress string           `json:"PlayerAddress"`
+	CardStats     []PlayerCardStat `json:"CardStats"`
 }

@@ -154,14 +154,14 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 					ElementRelation:  reverseRelationType(relation.Type), // p2 视角
 				})
 
-				// 适配新的CheckGameOver
+				// 适配新的CheckGameOver - 每张牌对战后检查，此时卡牌未全部打完
 				hps := make([]int, playerCount)
 				addrs := make([]string, playerCount)
 				for idx, st := range states {
 					hps[idx] = st.HP
 					addrs[idx] = st.Address
 				}
-				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs); isGameOver {
+				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs, round, false); isGameOver {
 					goto END
 				}
 			}
@@ -172,19 +172,19 @@ END:
 	playerStats := make([]PlayerRoundStat, playerCount)
 	for i, p := range states {
 		playerStats[i] = PlayerRoundStat{
-			Player: p.Address,
-			Cards:  p.Stats,
+			PlayerAddress: p.Address,
+			CardStats:     p.Stats,
 		}
 	}
 
-	// 游戏结束判定
+	// 游戏结束判定 - 所有卡牌都打完后的最终判定
 	hps := make([]int, playerCount)
 	addrs := make([]string, playerCount)
 	for idx, st := range states {
 		hps[idx] = st.HP
 		addrs[idx] = st.Address
 	}
-	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs)
+	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs, round, true)
 
 	// 确定游戏结果类型和最终倍率
 	var gameResultType string

@@ -1,232 +1,282 @@
 package battle
 
-// import (
-// 	"context"
-// 	"strconv"
-// 	"strings"
+import (
+	"context"
+	"strconv"
+	"strings"
 
-// 	"github.com/CryptoElementals/common/rpc/proto"
-// 	"github.com/CryptoElementals/common/server/api"
-// 	"github.com/CryptoElementals/common/server/services/battle"
-// 	"github.com/gin-gonic/gin"
-// 	"github.com/go-playground/validator/v10"
-// 	"github.com/mitchellh/mapstructure"
-// 	"google.golang.org/grpc"
-// 	"google.golang.org/grpc/credentials/insecure"
-// )
+	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/server/services/battle"
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
+	"github.com/mitchellh/mapstructure"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
 
-// const GET_BATTLE_INFO_LABEL = "GetBattleInfo"
+const GET_BATTLE_INFO_LABEL = "GetBattleInfo"
 
-// // GetBattleInfoRequest 请求结构体
-// type GetBattleInfoRequest struct {
-// 	api.BaseRequest
-// 	RoomID string `mapstructure:"RoomId" validate:"required"`
-// 	Round  *uint  `mapstructure:"Round"` // 可选的Round参数，如果指定则查询对应Round的数据
-// }
+// GetBattleInfoRequest 请求结构体
+type GetBattleInfoRequest struct {
+	api.BaseRequest
+	RoomID string `mapstructure:"RoomId" validate:"required"`
+	Round  *uint  `mapstructure:"Round"` // 可选的Round参数，如果指定则查询对应Round的数据
+}
 
-// // GetBattleInfoResponse 响应结构体
-// type GetBattleInfoResponse struct {
-// 	api.BaseResponse
-// 	RoundResult *battle.RoundResult `json:"RoundResult"`
-// 	Identity    int                 `json:"Identity"` // 当前请求者身份，1为player1，2为player2
-// }
+// API专用的PlayerRoundStat，包含IsSelf字段
+type APIPlayerRoundStat struct {
+	Player string                  `json:"Player"`
+	Cards  []battle.PlayerCardStat `json:"Cards"`
+	IsSelf bool                    `json:"IsSelf"` // 标识当前玩家是否为请求者
+}
 
-// type GetBattleInfoTask struct {
-// 	Request  *GetBattleInfoRequest
-// 	Response *GetBattleInfoResponse
-// }
+// API专用的RoundResult，使用包含IsSelf的PlayerRoundStat
+type APIRoundResult struct {
+	Players             []APIPlayerRoundStat `json:"Players"`             // 所有玩家的回合数据
+	Round               uint                 `json:"Round"`               // Round number
+	GameFinalMultiplier float64              `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
+	Winner              string               `json:"Winner"`              // Winner address
+	IsGameOver          bool                 `json:"IsGameOver"`          // Whether game is over
+	GameResultType      string               `json:"GameResultType"`      // Game result type
+	Reward              *battle.BattleReward `json:"Reward"`              // Battle reward (token and point)
+}
 
-// // 解码请求
-// func NewGetBattleInfoRequest(data *map[string]interface{}) (*GetBattleInfoRequest, error) {
-// 	req := &GetBattleInfoRequest{}
-// 	err := mapstructure.Decode(*data, &req)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
-// 	return req, nil
-// }
+// GetBattleInfoResponse 响应结构体
+type GetBattleInfoResponse struct {
+	api.BaseResponse
+	RoundResult *APIRoundResult `json:"RoundResult"`
+}
 
-// func NewGetBattleInfoResponse(sessionId string) *GetBattleInfoResponse {
-// 	return &GetBattleInfoResponse{
-// 		BaseResponse: api.BaseResponse{
-// 			Action:      GET_BATTLE_INFO_LABEL + "Response",
-// 			RequestUUID: sessionId,
-// 		},
-// 	}
-// }
+type GetBattleInfoTask struct {
+	Request  *GetBattleInfoRequest
+	Response *GetBattleInfoResponse
+}
 
-// func NewGetBattleInfoTask(data *map[string]interface{}) (api.Task, error) {
-// 	req, err := NewGetBattleInfoRequest(data)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	task := &GetBattleInfoTask{
-// 		Request:  req,
-// 		Response: NewGetBattleInfoResponse(req.BaseRequest.RequestUUID),
-// 	}
+// 解码请求
+func NewGetBattleInfoRequest(data *map[string]interface{}) (*GetBattleInfoRequest, error) {
+	req := &GetBattleInfoRequest{}
+	err := mapstructure.Decode(*data, &req)
+	if err != nil {
+		return nil, err
+	}
+	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
+	return req, nil
+}
 
-// 	validate := validator.New()
-// 	err = validate.Struct(task.Request)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func NewGetBattleInfoResponse(sessionId string) *GetBattleInfoResponse {
+	return &GetBattleInfoResponse{
+		BaseResponse: api.BaseResponse{
+			Action:      GET_BATTLE_INFO_LABEL + "Response",
+			RequestUUID: sessionId,
+		},
+	}
+}
 
-// 	return task, nil
-// }
+func NewGetBattleInfoTask(data *map[string]interface{}) (api.Task, error) {
+	req, err := NewGetBattleInfoRequest(data)
+	if err != nil {
+		return nil, err
+	}
+	task := &GetBattleInfoTask{
+		Request:  req,
+		Response: NewGetBattleInfoResponse(req.BaseRequest.RequestUUID),
+	}
 
-// func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
-// 	// 获取玩家地址（从认证中间件设置的params中获取）
-// 	_params, _ := c.Get("params")
-// 	params, ok := _params.(*map[string]interface{})
-// 	if !ok {
-// 		task.Response.BaseResponse.RetCode = 1001
-// 		task.Response.BaseResponse.Message = "Failed to parse parameters"
-// 		return task.Response, nil
-// 	}
+	validate := validator.New()
+	err = validate.Struct(task.Request)
+	if err != nil {
+		return nil, err
+	}
 
-// 	address, ok := (*params)["Address"].(string)
-// 	if !ok || address == "" {
-// 		task.Response.BaseResponse.RetCode = 1001
-// 		task.Response.BaseResponse.Message = "Failed to get player address"
-// 		return task.Response, nil
-// 	}
-// 	address = strings.ToLower(address)
+	return task, nil
+}
 
-// 	// 通过gRPC调用RoomServer的GetGameInfo
-// 	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-// 	if err != nil {
-// 		task.Response.BaseResponse.RetCode = 1002
-// 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
-// 		return task.Response, nil
-// 	}
-// 	defer conn.Close()
-// 	client := proto.NewRpcServiceClient(conn)
+func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
+	// 获取玩家地址（从认证中间件设置的params中获取）
+	_params, _ := c.Get("params")
+	params, ok := _params.(*map[string]interface{})
+	if !ok {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "Failed to parse parameters"
+		return task.Response, nil
+	}
 
-// 	roomIdUint, err := strconv.ParseUint(task.Request.RoomID, 10, 32)
-// 	if err != nil {
-// 		task.Response.BaseResponse.RetCode = 1003
-// 		task.Response.BaseResponse.Message = "Invalid RoomID format"
-// 		return task.Response, nil
-// 	}
-// 	gameInfoReq := &proto.GetGameInfoRequest{GameId: uint32(roomIdUint)}
-// 	gameInfo, err := client.GetGameInfo(context.Background(), gameInfoReq)
-// 	if err != nil {
-// 		task.Response.BaseResponse.RetCode = 1004
-// 		task.Response.BaseResponse.Message = "RoomServer GetGameInfo failed: " + err.Error()
-// 		return task.Response, nil
-// 	}
+	address, ok := (*params)["Address"].(string)
+	if !ok || address == "" {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "Failed to get player address"
+		return task.Response, nil
+	}
+	address = strings.ToLower(address)
 
-// 	// 验证玩家是否是该房间的参与者，并确定身份
-// 	identity := 0
-// 	for i, p := range gameInfo.Players {
-// 		if strings.ToLower(p.WalletAddress) == address {
-// 			identity = i + 1 // 1为player1，2为player2
-// 			break
-// 		}
-// 	}
-// 	if identity == 0 {
-// 		task.Response.BaseResponse.RetCode = 1005
-// 		task.Response.BaseResponse.Message = "You are not a participant in this room"
-// 		return task.Response, nil
-// 	}
+	// 通过gRPC调用RoomServer的GetGameInfo
+	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1002
+		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		return task.Response, nil
+	}
+	defer conn.Close()
+	client := proto.NewRpcServiceClient(conn)
 
-// 	// 选定要展示的Round（回合）
-// 	var targetRound int
-// 	if task.Request.Round != nil {
-// 		targetRound = int(*task.Request.Round)
-// 	} else {
-// 		// 默认取最大回合号
-// 		for _, round := range gameInfo.Rounds {
-// 			if int(round.Number) > targetRound {
-// 				targetRound = int(round.Number)
-// 			}
-// 		}
-// 	}
+	roomIdUint, err := strconv.ParseUint(task.Request.RoomID, 10, 32)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1003
+		task.Response.BaseResponse.Message = "Invalid RoomID format"
+		return task.Response, nil
+	}
+	gameInfoReq := &proto.GetGameInfoRequest{GameId: uint32(roomIdUint)}
+	gameInfo, err := client.GetGameInfo(context.Background(), gameInfoReq)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1004
+		task.Response.BaseResponse.Message = "RoomServer GetGameInfo failed: " + err.Error()
+		return task.Response, nil
+	}
 
-// 	// 组装 Rounds
-// 	var rounds []battle.FightResult
-// 	var player1FinalHP, player2FinalHP int
-// 	var player1FinalMultiplier, player2FinalMultiplier float64
-// 	for _, round := range gameInfo.Rounds {
-// 		if int(round.Number) != targetRound {
-// 			continue
-// 		}
-// 		if len(round.Players) != 2 {
-// 			continue
-// 		}
-// 		p1 := round.Players[0]
-// 		p2 := round.Players[1]
-// 		// 只取每个玩家的最后一张卡
-// 		var p1Card, p2Card *proto.RoundSubmittedCard
-// 		if len(p1.Cards) > 0 {
-// 			p1Card = p1.Cards[len(p1.Cards)-1]
-// 		}
-// 		if len(p2.Cards) > 0 {
-// 			p2Card = p2.Cards[len(p2.Cards)-1]
-// 		}
-// 		// 组装回合结果
-// 		rr := battle.FightResult{
-// 			FightNumber:    int(round.Number),
-// 			Player1CardID:  int(p1Card.GetSubmittedCardId()),
-// 			Player2CardID:  int(p2Card.GetSubmittedCardId()),
-// 			Player1HPAfter: int(p1Card.GetPlayerHealthEnd()),
-// 			Player2HPAfter: int(p2Card.GetPlayerHealthEnd()),
-// 			// 其他字段可根据需要补充
-// 		}
-// 		// 记录最终血量和倍率
-// 		player1FinalHP = int(p1Card.GetPlayerHealthEnd())
-// 		player2FinalHP = int(p2Card.GetPlayerHealthEnd())
-// 		// proto 里 multiplier 是 uint32，转 float64
-// 		player1FinalMultiplier = float64(p1Card.GetMultiplier())
-// 		player2FinalMultiplier = float64(p2Card.GetMultiplier())
-// 		rounds = append(rounds, rr)
-// 	}
+	// 验证玩家是否是该房间的参与者
+	isParticipant := false
+	for _, p := range gameInfo.Players {
+		if strings.ToLower(p.WalletAddress) == address {
+			isParticipant = true
+			break
+		}
+	}
+	if !isParticipant {
+		task.Response.BaseResponse.RetCode = 1005
+		task.Response.BaseResponse.Message = "You are not a participant in this room"
+		return task.Response, nil
+	}
 
-// 	// 组装 RoundResult
-// 	RoundResult := &battle.RoundResult{
-// 		Player1Address:         strings.ToLower(gameInfo.Players[0].WalletAddress),
-// 		Player2Address:         strings.ToLower(gameInfo.Players[1].WalletAddress),
-// 		Round:                  uint(targetRound),
-// 		Fights:                 rounds,
-// 		Player1FinalHP:         player1FinalHP,
-// 		Player2FinalHP:         player2FinalHP,
-// 		Player1FinalMultiplier: player1FinalMultiplier,
-// 		Player2FinalMultiplier: player2FinalMultiplier,
-// 	}
+	// 选定要展示的Round（回合）
+	var targetRound int
+	if task.Request.Round != nil {
+		targetRound = int(*task.Request.Round)
+	} else {
+		// 默认取最大回合号
+		for _, round := range gameInfo.Rounds {
+			if int(round.Number) > targetRound {
+				targetRound = int(round.Number)
+			}
+		}
+	}
 
-// 	// 结算 Winner、IsGameOver、GameResultType、Reward
-// 	if gameInfo.Status == proto.GameStatus_GAME_END && gameInfo.Result != nil && len(gameInfo.Result.Players) == 2 {
-// 		RoundResult.IsGameOver = true
-// 		// 判断胜负
-// 		if gameInfo.Result.Players[0].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
-// 			RoundResult.Winner = strings.ToLower(gameInfo.Result.Players[0].Address.WalletAddress)
-// 			RoundResult.GameResultType = "win"
-// 		} else if gameInfo.Result.Players[1].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
-// 			RoundResult.Winner = strings.ToLower(gameInfo.Result.Players[1].Address.WalletAddress)
-// 			RoundResult.GameResultType = "win"
-// 		} else if gameInfo.Result.Players[0].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE || gameInfo.Result.Players[1].Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE {
-// 			RoundResult.GameResultType = "tie"
-// 		}
-// 		// 组装奖励
-// 		RoundResult.Reward = &battle.BattleReward{
-// 			Player1TokenChange: int(gameInfo.Result.Players[0].TokenDelta),
-// 			Player2TokenChange: int(gameInfo.Result.Players[1].TokenDelta),
-// 			Player1PointChange: int(gameInfo.Result.Players[0].Points),
-// 			Player2PointChange: int(gameInfo.Result.Players[1].Points),
-// 		}
-// 	}
+	// 获取指定回合的数据
+	var targetRoundData *proto.Round
+	for _, round := range gameInfo.Rounds {
+		if int(round.Number) == targetRound {
+			targetRoundData = round
+			break
+		}
+	}
 
-// 	task.Response.RoundResult = RoundResult
-// 	task.Response.Identity = identity
-// 	task.Response.BaseResponse.RetCode = 0
-// 	task.Response.BaseResponse.Message = "Round battle info retrieved successfully"
-// 	return task.Response, nil
-// }
+	if targetRoundData == nil {
+		task.Response.BaseResponse.RetCode = 1006
+		task.Response.BaseResponse.Message = "Target round not found"
+		return task.Response, nil
+	}
 
-// // RegisterBattleApis 注册对战相关API
-// func RegisterBattleApis() {
-// 	api.Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, api.COOKIEAUTH)
-// 	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
-// 	api.Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, api.COOKIEAUTH)
-// }
+	// 构建API专用的玩家统计数据，包含IsSelf字段
+	var apiPlayerStats []APIPlayerRoundStat
+
+	// 为每个玩家构建回合统计数据
+	for _, playerRoundInfo := range targetRoundData.Players {
+		playerAddr := strings.ToLower(playerRoundInfo.PlayerAddress.WalletAddress)
+
+		var cardStats []battle.PlayerCardStat
+		for i, card := range playerRoundInfo.Cards {
+			cardStat := battle.PlayerCardStat{
+				CardNumber:       i + 1,
+				CardID:           int(card.SubmittedCardId),
+				HPBefore:         int(card.PlayerHealthBefore),
+				HPAfter:          int(card.PlayerHealthEnd),
+				MultiplierBefore: float64(card.Multiplier), // 简化处理，before和after相同
+				MultiplierAfter:  float64(card.Multiplier),
+				Effects:          []battle.BattleEffect{}, // 简化处理，暂时为空
+				Description:      "",                      // 可以根据需要添加描述
+				ElementRelation:  "",                      // 可以根据需要添加元素关系
+			}
+			cardStats = append(cardStats, cardStat)
+		}
+
+		// 判断是否为当前请求者
+		isSelf := playerAddr == address
+
+		apiPlayerStat := APIPlayerRoundStat{
+			Player: playerAddr,
+			Cards:  cardStats,
+			IsSelf: isSelf,
+		}
+		apiPlayerStats = append(apiPlayerStats, apiPlayerStat)
+	}
+
+	// 确定游戏是否结束以及胜负结果
+	var isGameOver bool
+	var winner string
+	var gameResultType string
+	var gameFinalMultiplier float64
+	var reward *battle.BattleReward
+
+	if gameInfo.Status == proto.GameStatus_GAME_END && gameInfo.Result != nil {
+		isGameOver = true
+
+		// 判断胜负
+		if len(gameInfo.Result.Players) >= 2 {
+			player1Result := gameInfo.Result.Players[0]
+			player2Result := gameInfo.Result.Players[1]
+
+			if player1Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
+				winner = strings.ToLower(player1Result.Address.WalletAddress)
+				gameResultType = "win"
+			} else if player2Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
+				winner = strings.ToLower(player2Result.Address.WalletAddress)
+				gameResultType = "win"
+			} else if player1Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE ||
+				player2Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE {
+				winner = "tie"
+				gameResultType = "tie"
+				gameFinalMultiplier = 1.0
+			}
+
+			// 构建奖励信息
+			var playerRewards []battle.PlayerReward
+			for _, playerResult := range gameInfo.Result.Players {
+				playerAddr := strings.ToLower(playerResult.Address.WalletAddress)
+				playerReward := battle.PlayerReward{
+					PlayerAddress: playerAddr,
+					TokenChange:   int(playerResult.TokenDelta),
+					PointChange:   int(playerResult.Points),
+				}
+				playerRewards = append(playerRewards, playerReward)
+			}
+
+			reward = &battle.BattleReward{
+				PlayerRewards: playerRewards,
+				SystemFee:     0, // 可以根据需要计算系统手续费
+			}
+		}
+	}
+
+	// 构建API专用的RoundResult
+	roundResult := &APIRoundResult{
+		Players:             apiPlayerStats,
+		Round:               uint(targetRound),
+		GameFinalMultiplier: gameFinalMultiplier,
+		Winner:              winner,
+		IsGameOver:          isGameOver,
+		GameResultType:      gameResultType,
+		Reward:              reward,
+	}
+
+	task.Response.RoundResult = roundResult
+	task.Response.BaseResponse.RetCode = 0
+	task.Response.BaseResponse.Message = "Round battle info retrieved successfully"
+	return task.Response, nil
+}
+
+// RegisterBattleApis 注册对战相关API
+func RegisterBattleApis() {
+	api.Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, api.COOKIEAUTH)
+	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
+	api.Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, api.COOKIEAUTH)
+}
