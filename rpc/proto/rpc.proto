@@ -108,7 +108,7 @@ message GameResultPlayerInfo{
     GameResultPlayerStatus status = 4;
 }
 
-message GameResult {
+message GameResultInfo {
     repeated GameResultPlayerInfo players = 1;
 }
 
@@ -124,7 +124,7 @@ message GameInfo {
     GameStatus status = 4;
     repeated PlayerAddress players = 5;
     repeated Round rounds = 6;
-    optional GameResult result = 7;
+    optional GameResultInfo result = 7;
 }
 
 message Transaction {

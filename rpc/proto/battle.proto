@@ -11,8 +11,7 @@ message PlayerRoundInput {
     string TemporaryAddress = 2;
     repeated int32 Cards = 3;
     int32 HP = 4;
-    float Multiplier = 5;
-    int32 LostHP = 6;
+    int32 LostHP = 5;
 }
 
 message RoundInput {
@@ -33,8 +32,8 @@ message PlayerCardStat {
     int32 CardID = 2;
     int32 HPBefore = 3;
     int32 HPAfter = 4;
-    float MultiplierBefore = 5;
-    float MultiplierAfter = 6;
+    int32 MultiplierBefore = 5;
+    int32 MultiplierAfter = 6;
     repeated rpc.BattleEffect Effects = 7;
     string Description = 8;
     ElementRelation ElementRelation = 9;
@@ -43,7 +42,15 @@ message PlayerCardStat {
 message PlayerRoundStat {
     string WalletAddress = 1;
     string TemporaryAddress = 2;
-    repeated PlayerCardStat CardStats = 3;
+    int32 LostHP = 3;
+    repeated PlayerCardStat CardStats = 4;
+}
+
+message RoundResult {
+    repeated PlayerRoundStat Players = 1;
+    uint32 RoundNumber = 2;
+    bool IsGameOver = 4;
+
 }
 
 message PlayerReward {
@@ -58,11 +65,14 @@ message BattleReward {
     int32 SystemFee = 2;
 }
 
-message RoundResult {
-    repeated PlayerRoundStat Players = 1;
-    uint32 RoundNumber = 2;
-    float GameFinalMultiplier = 3;
-    bool IsGameOver = 4;
-    string GameResultType = 5;
+enum GameResultType {
+    GAME_NORMAL = 0;
+    GAME_KO = 1;
+    GAME_TIE = 2;
+}
+
+message GameResult {
+    int32 Multiplier = 1;
+    GameResultType GameResultType = 5;
     BattleReward Reward = 6;
 }
