@@ -253,22 +253,21 @@ func (task *SubscribeGameInfoTask) subscribeToTopic(ctx context.Context, client 
 func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
 	// 根据事件类型进行转换
 	switch msg.Event.Type {
-	case proto.EventType_SYNC_INFO:
-		return events.Event{
-			Type: events.EventTypeDataChange,
-			Data: map[string]interface{}{
-				"EventType": "syncInfo",
-				"GameInfo":  msg.Event.GetGameInfo(),
-			},
-			RequestUUID: requestUUID,
-		}
+
+	// case proto.EventType_SYNC_INFO:
+	// 	return events.Event{
+	// 		Type: events.EventTypeDataChange,
+	// 		Data: map[string]interface{}{
+	// 			"EventType": "matched",
+	// 		},
+	// 		RequestUUID: requestUUID,
+	// 	}
+	//需要增加matched和partconfirmed的roomserver 消息
 	case proto.EventType_GAME_CREATED:
 		return events.Event{
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
 				"EventType": "gameCreated",
-				"GameId":    msg.Event.GetGameCreated().GameId,
-				"Players":   msg.Event.GetGameCreated().Players,
 			},
 			RequestUUID: requestUUID,
 		}
@@ -277,8 +276,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "roundReady",
-				"GameId":    msg.Event.GetRoundReady().GameId,
-				"RoundNum":  msg.Event.GetRoundReady().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
@@ -287,8 +284,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "commitmentsOnChain",
-				"GameId":    msg.Event.GetCommitmentsOnChain().GameId,
-				"RoundNum":  msg.Event.GetCommitmentsOnChain().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
@@ -297,8 +292,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "cardsOnChain",
-				"GameId":    msg.Event.GetCardsOnChain().GameId,
-				"RoundNum":  msg.Event.GetCardsOnChain().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
@@ -307,8 +300,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
 				"EventType": "roundComplete",
-				"GameId":    msg.Event.GetRoundCompleted().GameId,
-				"RoundInfo": msg.Event.GetRoundCompleted().RoundInfo,
 			},
 			RequestUUID: requestUUID,
 		}
@@ -317,7 +308,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "gameComplete",
-				"GameInfo":  msg.Event.GetGameInfo(),
 			},
 			RequestUUID: requestUUID,
 		}

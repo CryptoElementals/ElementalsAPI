@@ -2,7 +2,9 @@ package match
 
 import (
 	"context"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -16,6 +18,9 @@ import (
 
 const GET_GAME_PHASE_LABEL = "GetGamePhase"
 
+// 回合超时时间（秒）
+const ROUND_TIMEOUT_SECONDS = 10
+
 // GetGamePhaseRequest 请求结构体
 type GetGamePhaseRequest struct {
 	api.BaseRequest
@@ -24,9 +29,11 @@ type GetGamePhaseRequest struct {
 
 // PvPInfo PvP对战信息
 type PvPInfo struct {
-	Phase   string `json:"Phase"`   // None, Queueing, Matching, InBattle
-	MatchId string `json:"MatchId"` // 匹配ID
-	RoomId  string `json:"RoomId"`  // 房间ID
+	Phase           string `json:"Phase"`           // None, Queueing, Matching, InBattle
+	MatchId         string `json:"MatchId"`         // 匹配ID
+	RoomId          string `json:"RoomId"`          // 房间ID
+	CurrentTime     int64  `json:"CurrentTime"`     // 当前时间戳
+	ExpireInSeconds int64  `json:"ExpireInSeconds"` // 距离到期的秒数
 }
 
 // GetGamePhaseResponse 响应结构体
@@ -106,7 +113,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的GetPlayerInfo
-	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient("127.0.0.1:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
@@ -127,6 +134,11 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
+	// 获取当前时间戳
+	currentTime := time.Now().Unix()
+	task.Response.PvPInfo.CurrentTime = currentTime
+	task.Response.PvPInfo.ExpireInSeconds = ROUND_TIMEOUT_SECONDS
+
 	switch playerInfo.Status {
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		task.Response.Mode = "PvP"
@@ -140,6 +152,11 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.Mode = "PvP"
 		task.Response.PvPInfo.Phase = "InBattle"
 		task.Response.BaseResponse.Message = "Player has entered battle"
+
+		// 当玩家在游戏中时，设置RoomId
+		if playerInfo.GameId != nil {
+			task.Response.PvPInfo.RoomId = strconv.Itoa(int(*playerInfo.GameId))
+		}
 	default:
 		task.Response.Mode = "None"
 		task.Response.PvPInfo.Phase = "None"
@@ -177,9 +194,11 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 }
 
 type MatchPlayer struct {
-	Address   string `json:"Address"`
-	Name      string `json:"Name"`
-	AvatarURL string `json:"AvatarURL"`
-	IsMyself  bool   `json:"IsMyself"`
-	Confirmed bool   `json:"Confirmed"`
+	Address          string `json:"Address"`
+	Name             string `json:"Name"`
+	AvatarURL        string `json:"AvatarURL"`
+	IsMyself         bool   `json:"IsMyself"`
+	Confirmed        bool   `json:"Confirmed"`
+	InitialHP        int32  `json:"InitialHP"`
+	InitialMultipler int32  `json:"InitialMultipler"`
 }

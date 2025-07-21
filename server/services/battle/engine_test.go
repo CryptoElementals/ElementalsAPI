@@ -42,7 +42,7 @@ func TestExecuteRound(t *testing.T) {
 			},
 			{
 				Address:    "player2_address",
-				HP:         2000,
+				HP:         3000,
 				Multiplier: 1.0,
 				Cards:      []int{1, 2, 4},
 				LostHP:     0,
@@ -73,4 +73,4 @@ func TestExecuteRound(t *testing.T) {
 	t.Log("Test completed successfully - check the JSON output above for manual verification")
 }
 
-//cd /data/ws_tj/BeastRoyaleBackend && go test -v ./server/services/battle/ -run TestExecuteRound
+// go test -v ./server/services/battle/ -run TestExecuteRound
