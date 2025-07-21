@@ -42,7 +42,7 @@ func TestExecuteRound(t *testing.T) {
 			},
 			{
 				Address:    "player2_address",
-				HP:         3000,
+				HP:         1000,
 				Multiplier: 1.0,
 				Cards:      []int{1, 2, 4},
 				LostHP:     0,
