@@ -13,30 +13,30 @@ const (
 
 type CreateRoomTx struct {
 	BaseModel
-	GameID         uint
-	ContractHash   string
-	BlockHash      string
-	TransacionHash string
-	Status         TxStatus
-	RoundTimeout   time.Duration
-	MaxRounds      uint64
+	GameID          uint
+	ContractAddress string
+	TxHash          string
+	BlockHash       string
+	Status          TxStatus
+	RoundTimeout    time.Duration
+	MaxRounds       uint64
 }
 
 type SetRoundReadyTx struct {
 	BaseModel
-	GameID         uint
-	ContractHash   string
-	TransacionHash string
-	BlockHash      string
-	Status         TxStatus
-	RoundNumber    uint64
+	GameID          uint
+	ContractAddress string
+	TxHash          string
+	BlockHash       string
+	Status          TxStatus
+	RoundNumber     uint64
 }
 
 type CommitmentOnChainTx struct {
 	BaseModel
 	GameID           uint
-	ContractHash     string
-	TransacionHash   string
+	ContractAddress  string
+	TxHash           string
 	BlockHash        string
 	Status           TxStatus
 	RoundNumber      uint64
@@ -47,8 +47,8 @@ type CommitmentOnChainTx struct {
 type CardsOnChainTx struct {
 	BaseModel
 	GameID           uint
-	ContractHash     string
-	TransacionHash   string
+	ContractAddress  string
+	TxHash           string
 	BlockHash        string
 	Status           TxStatus
 	RoundNumber      uint64

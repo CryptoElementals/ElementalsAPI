@@ -20,11 +20,11 @@ func SaveCardsOnChainTx(tx *dao.CardsOnChainTx) error {
 	return db.Save(tx).Error
 }
 
-func UpdateCreateRoomTxBlockHashAndContractByGameID(gameID uint, blockHash string, contractHash string) error {
+func UpdateCreateRoomTxBlockHashAndContractByGameID(gameID uint, blockHash string, contractAddress string) error {
 	return db.Model(&dao.CreateRoomTx{}).Where("game_id = ?", gameID).Updates(map[string]interface{}{
-		"block_hash":    blockHash,
-		"contract_hash": contractHash,
-		"status":        dao.TxStatusSuccess,
+		"block_hash":       blockHash,
+		"contract_address": contractAddress,
+		"status":           dao.TxStatusSuccess,
 	}).Error
 }
 
@@ -53,20 +53,21 @@ func GetSetRoundReadyTx(gameID uint, roundNumber uint32) (*dao.SetRoundReadyTx, 
 	return &tx, nil
 }
 
-func GetCommitmentOnChainTx(gameID uint, roundNumber uint32) (*dao.CommitmentOnChainTx, error) {
-	var tx dao.CommitmentOnChainTx
-	err := db.Where("game_id = ? and round_number = ?", gameID, roundNumber).First(&tx).Error
+func GetCommitmentOnChainTx(gameID uint, roundNumber uint32) ([]*dao.CommitmentOnChainTx, error) {
+	var txs []*dao.CommitmentOnChainTx
+	err := db.Where("game_id = ? and round_number = ?", gameID, roundNumber).Find(&txs).Error
 	if err != nil {
 		return nil, err
 	}
-	return &tx, nil
+	return txs, nil
 }
 
-func GetCardsOnChainTx(gameID uint, roundNumber uint32) (*dao.CardsOnChainTx, error) {
-	var tx dao.CardsOnChainTx
-	err := db.Where("game_id = ? and round_number = ?", gameID, roundNumber).First(&tx).Error
+func GetCardsOnChainTx(gameID uint, roundNumber uint32) ([]*dao.CardsOnChainTx, error) {
+
+	var txs []*dao.CardsOnChainTx
+	err := db.Where("game_id = ? and round_number = ?", gameID, roundNumber).Find(&txs).Error
 	if err != nil {
 		return nil, err
 	}
-	return &tx, nil
+	return txs, nil
 }
