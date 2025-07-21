@@ -32,8 +32,8 @@ type PvPInfo struct {
 	Phase           string `json:"Phase"`           // None, Queueing, Matching, InBattle
 	MatchId         string `json:"MatchId"`         // 匹配ID
 	RoomId          string `json:"RoomId"`          // 房间ID
-	CurrentTime     int64  `json:"CurrentTime"`     // 当前时间戳
-	ExpireInSeconds int64  `json:"ExpireInSeconds"` // 距离到期的秒数
+	BeginAt         int64  `json:"BeginAt"`         // 开始时间
+	TimeoutDuration int64  `json:"TimeoutDuration"` // 超时时间
 }
 
 // GetGamePhaseResponse 响应结构体
@@ -136,8 +136,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 获取当前时间戳
 	currentTime := time.Now().Unix()
-	task.Response.PvPInfo.CurrentTime = currentTime
-	task.Response.PvPInfo.ExpireInSeconds = ROUND_TIMEOUT_SECONDS
+	task.Response.PvPInfo.BeginAt = currentTime
+	task.Response.PvPInfo.TimeoutDuration = ROUND_TIMEOUT_SECONDS
 
 	switch playerInfo.Status {
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
