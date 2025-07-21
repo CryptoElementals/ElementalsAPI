@@ -4,7 +4,7 @@ package rpc;
 
 import "google/protobuf/empty.proto";
 
-import  "rpc/proto/battle.proto";
+import "rpc/proto/battle.proto";
 
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
@@ -58,26 +58,24 @@ enum RoundStatus {
 
 message PlayerRoundInfo {
     PlayerAddress PlayerAddress = 1;
-    repeated RoundSubmittedCard SubmittedCards = 2;
-    bool PlayerRead = 3;
-    bytes Salt = 4;
-    bytes SubmittedCommitment = 5;
+    bool PlayerReady = 2;
+    bytes Salt = 3;
+    bytes SubmittedCommitment = 4;
+    repeated RoundSubmittedCard SubmittedCards = 5;
 }
 
 // Battle Engine related messages
 
 
 message RoundSubmittedCard {
-    uint32 PlayerHealthBefore = 1;
-    uint32 PlayerHealthEnd = 2;
-    uint32 Multiplier = 3; 
-    uint32 SubmittedCardId = 4;
-    // Battle engine extensions
-    double MultiplierBefore = 5;      // multiplier before this card
-    double MultiplierAfter = 6;       // multiplier after this card  
-    repeated battle.BattleEffect Effects = 7; // effects applied to this player
-    string Description = 8;            // battle description
-    battle.ElementRelation ElementRelation = 9;       // element relation type
+    uint32 SubmittedCardId = 1;
+    uint32 PlayerHealthBefore = 2;
+    uint32 PlayerHealthEnd = 3;
+    double MultiplierBefore = 4;      // multiplier before this card
+    double MultiplierAfter = 5;       // multiplier after this card  
+    string Description = 6;            // battle description
+    battle.ElementRelation ElementRelation = 7;       // element relation type
+    repeated battle.BattleEffect Effects = 8; // effects applied to this player
 }
 
 message Round {
@@ -92,23 +90,6 @@ enum GameStatus {
     GAME_END = 2;
 }
 
-enum GameResultPlayerStatus {
-    GAME_RESULT_PLAYER_KNOWN = 0;
-    GAME_RESULT_PLAYER_WIN = 1;
-    GAME_RESULT_PLAYER_LOSE = 2;
-    GAME_RESULT_PLAYER_TIE = 3;
-}
-
-message GameResultPlayerInfo{
-    PlayerAddress address = 1;
-    int32 token_delta = 2;
-    int32 points = 3;
-    GameResultPlayerStatus status = 4;
-}
-
-message GameResultInfo {
-    repeated GameResultPlayerInfo players = 1;
-}
 
 enum GameType {
     GAME_TYPE_UNKNOWN = 0;
@@ -123,7 +104,7 @@ message GameInfo {
     int32 initial_hp = 5;
     repeated PlayerAddress players = 6;
     repeated Round rounds = 7;
-    optional GameResultInfo result = 8;
+    optional battle.GameResult result = 8;
 }
 
 message Transaction {

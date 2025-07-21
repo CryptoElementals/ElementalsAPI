@@ -10,6 +10,7 @@ type Game struct {
 	InitialHP    int32             `json:"initial_hp"`
 	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
+	GameResult   *GameResult
 }
 
 // Round 回合记录
@@ -19,6 +20,7 @@ type Round struct {
 	RoundNumber      uint32             `json:"round_number"`       // 回合数
 	Status           proto.RoundStatus  `json:"status"`             // 状态: waiting, matched, confirmed, cancelled
 	PlayerRoundInfos []*PlayerRoundInfo `json:"player_round_infos"` // 回合玩家记录
+	IsLastRound      bool               `json:"is_last_round"`
 }
 
 // PlayerRoundInfo 回合玩家记录
@@ -28,9 +30,9 @@ type PlayerRoundInfo struct {
 	WalletAddress       string                `json:"wallet_address"`
 	TemporaryAddress    string                `json:"temporary_address"`
 	PlayerReady         bool                  `json:"player_ready"`
-	SubmittedCards      []*RoundSubmittedCard `json:"submitted_cards"`      // 回合牌面记录
-	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
 	Salt                []byte                `json:"salt"`
+	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
+	SubmittedCards      []*RoundSubmittedCard `json:"submitted_cards"`      // 回合牌面记录
 }
 
 // RoundSubmittedCard 回合牌面记录
@@ -62,4 +64,28 @@ type GamePlayerInfo struct {
 	GameID           uint   `json:"game_id"`
 	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
+}
+
+type PlayerReward struct {
+	BaseModel
+	BattleRewardID   uint
+	WalletAddress    string
+	TemporaryAddress string
+	TokenChange      int32
+	PointChange      int32
+}
+
+type BattleReward struct {
+	BaseModel
+	GameResultID  uint
+	SystemFee     int32
+	PlayerRewards []*PlayerReward
+}
+
+type GameResult struct {
+	BaseModel
+	GameID         uint
+	Multiplier     int32
+	GameResultType proto.GameResultType
+	BattleReword   *BattleReward
 }

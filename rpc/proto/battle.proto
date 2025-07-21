@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package pubsub;
+package battle;
 
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
