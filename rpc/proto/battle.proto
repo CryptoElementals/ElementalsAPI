@@ -20,6 +20,13 @@ message RoundInput {
     repeated PlayerRoundInput Players = 2;
 }
 
+enum ElementRelation {
+    OVER_POWER = 0;
+    OVER_POWERED = 1;
+    NURTURE = 2;
+    NURTURED = 3;
+    TIE = 4;
+}
 
 message PlayerCardStat {
     int32 CardNumber = 1;
@@ -30,7 +37,7 @@ message PlayerCardStat {
     float MultiplierAfter = 6;
     repeated rpc.BattleEffect Effects = 7;
     string Description = 8;
-    string ElementRelation = 9;
+    ElementRelation ElementRelation = 9;
 }
 
 message PlayerRoundStat {
