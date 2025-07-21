@@ -7,6 +7,7 @@ type Game struct {
 	RoomContract string            `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint              `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus  `gorm:"not null" json:"status"`
+	InitialHP    int32             `json:"initial_hp"`
 	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
 }
@@ -27,24 +28,33 @@ type PlayerRoundInfo struct {
 	WalletAddress       string                `json:"wallet_address"`
 	TemporaryAddress    string                `json:"temporary_address"`
 	PlayerReady         bool                  `json:"player_ready"`
-	RoundSubmittedCards []*RoundSubmittedCard `json:"round_submitted_cards"` // 回合牌面记录
-	SubmittedCommitment []byte                `json:"submitted_commitment"`  // 牌面哈希值
+	SubmittedCards      []*RoundSubmittedCard `json:"submitted_cards"`      // 回合牌面记录
+	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
 	Salt                []byte                `json:"salt"`
-}
-
-type RoundResult struct {
-	RoundNumber uint32 `json:"round_number"`
-	IsGameOver  bool
 }
 
 // RoundSubmittedCard 回合牌面记录
 type RoundSubmittedCard struct {
 	BaseModel
-	PlayerRoundInfoID uint   `json:"player_round_info_id"` // 回合唯一ID
-	HealthBefore      uint32 `json:"health_before"`
-	HealthAfter       uint32 `json:"health_after"`
-	Multiplier        uint32 `json:"multiplier"`
-	CardID            uint32 `json:"card"` // 使用过的卡牌
+	PlayerRoundInfoID uint                  `json:"player_round_info_id"` // 回合唯一ID
+	CardID            uint                  `json:"card"`                 // 使用过的卡牌
+	HealthBefore      uint32                `json:"health_before"`
+	HealthAfter       uint32                `json:"health_after"`
+	MultiplierBefore  uint32                `json:"multiplier_before"`
+	MultiplierAfter   uint32                `json:"multiplier_after"`
+	Description       string                `json:"description"`
+	ElementRelation   proto.ElementRelation `json:"element_relation"`
+	CardEffects       []*CardEffect         `json:"card_effects"`
+}
+
+type CardEffect struct {
+	BaseModel
+	RoundSubmittedCardID   uint
+	Type                   string
+	Value                  int32
+	Description            string
+	TargetWalletAddress    string
+	TargetTemporaryAddress string
 }
 
 type GamePlayerInfo struct {
@@ -52,5 +62,4 @@ type GamePlayerInfo struct {
 	GameID           uint   `json:"game_id"`
 	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
-	HP               uint32 `json:"hp"`
 }

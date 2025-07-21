@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package pubsub;
 
-import "rpc/proto/rpc.proto";
-
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 message PlayerRoundInput {
@@ -34,7 +32,7 @@ message PlayerCardStat {
     int32 HPAfter = 4;
     int32 MultiplierBefore = 5;
     int32 MultiplierAfter = 6;
-    repeated rpc.BattleEffect Effects = 7;
+    repeated BattleEffect Effects = 7;
     string Description = 8;
     ElementRelation ElementRelation = 9;
 }
@@ -75,4 +73,12 @@ message GameResult {
     int32 Multiplier = 1;
     GameResultType GameResultType = 5;
     BattleReward Reward = 6;
+}
+
+message BattleEffect {
+    string Type = 1;        // "attack" or "heal"
+    int32 Value = 2;        // effect value
+    string TargetWalletAddress = 3;      // target player address
+    string TargetTemporaryAddress = 4;      // target player address
+    string Description = 5; // effect description
 }

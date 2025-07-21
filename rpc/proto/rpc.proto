@@ -4,6 +4,8 @@ package rpc;
 
 import "google/protobuf/empty.proto";
 
+import  "rpc/proto/battle.proto";
+
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 service RpcService {
@@ -55,37 +57,33 @@ enum RoundStatus {
 
 
 message PlayerRoundInfo {
-    PlayerAddress playerAddress = 1;
-    repeated RoundSubmittedCard cards = 2;
-    bytes salt = 3;
-    bytes submitted_commitment = 4;
+    PlayerAddress PlayerAddress = 1;
+    repeated RoundSubmittedCard SubmittedCards = 2;
+    bool PlayerRead = 3;
+    bytes Salt = 4;
+    bytes SubmittedCommitment = 5;
 }
 
 // Battle Engine related messages
-message BattleEffect {
-    string type = 1;        // "attack" or "heal"
-    int32 value = 2;        // effect value
-    string description = 3; // effect description
-    string target = 4;      // target player address
-}
+
 
 message RoundSubmittedCard {
-    uint32 player_health_before = 1;
-    uint32 player_health_end = 2;
-    uint32 multiplier = 3; 
-    uint32 submitted_card_id = 4;
+    uint32 PlayerHealthBefore = 1;
+    uint32 PlayerHealthEnd = 2;
+    uint32 Multiplier = 3; 
+    uint32 SubmittedCardId = 4;
     // Battle engine extensions
-    double multiplier_before = 5;      // multiplier before this card
-    double multiplier_after = 6;       // multiplier after this card  
-    repeated BattleEffect effects = 7; // effects applied to this player
-    string description = 8;            // battle description
-    string element_relation = 9;       // element relation type
+    double MultiplierBefore = 5;      // multiplier before this card
+    double MultiplierAfter = 6;       // multiplier after this card  
+    repeated battle.BattleEffect Effects = 7; // effects applied to this player
+    string Description = 8;            // battle description
+    battle.ElementRelation ElementRelation = 9;       // element relation type
 }
 
 message Round {
     int32 number = 1; // start from 1
     RoundStatus status = 2;
-    repeated PlayerRoundInfo players = 3;
+    repeated PlayerRoundInfo player_round_infos = 3;
 }
 
 enum GameStatus {
@@ -122,9 +120,10 @@ message GameInfo {
     string room_contract_address = 2;
     GameType game_type = 3;
     GameStatus status = 4;
-    repeated PlayerAddress players = 5;
-    repeated Round rounds = 6;
-    optional GameResultInfo result = 7;
+    int32 initial_hp = 5;
+    repeated PlayerAddress players = 6;
+    repeated Round rounds = 7;
+    optional GameResultInfo result = 8;
 }
 
 message Transaction {
