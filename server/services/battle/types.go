@@ -99,7 +99,7 @@ type PlayerCardStat struct {
 	MultiplierAfter  float64        `json:"MultiplierAfter"`
 	Effects          []BattleEffect `json:"Effects"`
 	Description      string         `json:"Description"`
-	ElementRelation  string         `json:"elementRelation"`
+	ElementRelation  string         `json:"ElementRelation"`
 }
 
 // 单个玩家的所有卡数据

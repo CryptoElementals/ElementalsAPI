@@ -26,9 +26,9 @@ type GetBattleInfoRequest struct {
 
 // API专用的PlayerRoundStat，包含IsSelf字段
 type APIPlayerRoundStat struct {
-	Player string                  `json:"Player"`
-	Cards  []battle.PlayerCardStat `json:"Cards"`
-	IsSelf bool                    `json:"IsSelf"` // 标识当前玩家是否为请求者
+	PlayerAddress string                  `json:"PlayerAddress"` // 玩家地址
+	IsSelf        bool                    `json:"IsSelf"`        // 是否是自己
+	CardStats     []battle.PlayerCardStat `json:"CardStats"`     // 每次出牌后的信息
 }
 
 // API专用的RoundResult，使用包含IsSelf的PlayerRoundStat
@@ -185,16 +185,15 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 		var cardStats []battle.PlayerCardStat
 		for i, card := range playerRoundInfo.Cards {
+
 			cardStat := battle.PlayerCardStat{
 				CardNumber:       i + 1,
 				CardID:           int(card.SubmittedCardId),
 				HPBefore:         int(card.PlayerHealthBefore),
 				HPAfter:          int(card.PlayerHealthEnd),
-				MultiplierBefore: float64(card.Multiplier), // 简化处理，before和after相同
-				MultiplierAfter:  float64(card.Multiplier),
-				Effects:          []battle.BattleEffect{}, // 简化处理，暂时为空
-				Description:      "",                      // 可以根据需要添加描述
-				ElementRelation:  "",                      // 可以根据需要添加元素关系
+				MultiplierBefore: card.MultiplierBefore,
+				MultiplierAfter:  card.MultiplierAfter,
+				ElementRelation:  card.ElementRelation,
 			}
 			cardStats = append(cardStats, cardStat)
 		}
@@ -203,9 +202,9 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 		isSelf := playerAddr == address
 
 		apiPlayerStat := APIPlayerRoundStat{
-			Player: playerAddr,
-			Cards:  cardStats,
-			IsSelf: isSelf,
+			PlayerAddress: playerAddr,
+			CardStats:     cardStats,
+			IsSelf:        isSelf,
 		}
 		apiPlayerStats = append(apiPlayerStats, apiPlayerStat)
 	}
@@ -216,6 +215,20 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	var gameResultType string
 	var gameFinalMultiplier float64
 	var reward *battle.BattleReward
+
+	// 预计算输家地址，便于后面计算倍率
+	getLoserAddress := func() string {
+		if winner == "" || gameResultType == "tie" {
+			return ""
+		}
+		for _, p := range gameInfo.Players {
+			addr := strings.ToLower(p.WalletAddress)
+			if addr != winner {
+				return addr
+			}
+		}
+		return ""
+	}
 
 	if gameInfo.Status == proto.GameStatus_GAME_END && gameInfo.Result != nil {
 		isGameOver = true
@@ -252,7 +265,29 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 			reward = &battle.BattleReward{
 				PlayerRewards: playerRewards,
-				SystemFee:     0, // 可以根据需要计算系统手续费
+				SystemFee:     0, // TODO: 计算系统手续费
+			}
+
+			// 计算最终倍率（取输家最后一张牌的 MultiplierAfter，平局为 1）
+			if gameResultType == "tie" {
+				gameFinalMultiplier = 1
+			} else {
+				loserAddr := getLoserAddress()
+				if loserAddr != "" {
+					// 以最后一个 round 为准，遍历找到输家
+					if len(gameInfo.Rounds) > 0 {
+						lastRound := gameInfo.Rounds[len(gameInfo.Rounds)-1]
+						for _, pr := range lastRound.Players {
+							if strings.ToLower(pr.PlayerAddress.WalletAddress) == loserAddr {
+								if len(pr.Cards) > 0 {
+									lastCard := pr.Cards[len(pr.Cards)-1]
+									gameFinalMultiplier = lastCard.MultiplierAfter
+								}
+								break
+							}
+						}
+					}
+				}
 			}
 		}
 	}
