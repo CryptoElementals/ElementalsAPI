@@ -3,6 +3,7 @@ package roomserver
 import (
 	"context"
 
+	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
@@ -15,6 +16,7 @@ import (
 
 type Service struct {
 	ctx          context.Context
+	cfg          *Config
 	mgr          *worker.WorkerManager
 	pubsubServer *server.PubSubServer
 	chainSvc     *chain.Service
@@ -31,11 +33,13 @@ type Config struct {
 	RoundTimeout        int64
 	MaxRounds           int64
 	PubSubServerPort    int64
+	isDevelop           bool
 }
 
 func New(ctx context.Context, cfg *Config) (*Service, error) {
 	s := &Service{
 		ctx:          ctx,
+		cfg:          cfg,
 		mgr:          worker.NewWorkerManager(ctx),
 		pubsubServer: server.NewPubSubServer(),
 	}
@@ -51,9 +55,42 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.roomManagerContract, w, cfg.RoundTimeout, cfg.MaxRounds)
+	var c cache.Cache
+	if cfg.isDevelop {
+		c = cache.NewMemCache()
+	} else {
+		c, err = cache.NewRedisCache()
+		if err != nil {
+			return nil, err
+		}
+	}
+	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.roomManagerContract, w, cfg.RoundTimeout, cfg.MaxRounds, c)
 	s.chainSvc = chainSvc
 	gameSvc := game.NewService(ctx, s.mgr)
 	s.gameSvc = gameSvc
+	playerSvc := player.NewService(ctx, s.pubsubServer, s.mgr, gameSvc, s.queueSvc)
+	s.playerSvc = playerSvc
+	queueSvc := queue.NewService(ctx, s.mgr, c)
+	s.queueSvc = queueSvc
 	return s, nil
+}
+
+func (s *Service) Start() error {
+	err := s.pubsubServer.Run(int(s.cfg.PubSubServerPort))
+	if err != nil {
+		return err
+	}
+	err = s.chainSvc.Start()
+	if err != nil {
+		return err
+	}
+	err = s.gameSvc.Start()
+	if err != nil {
+		return err
+	}
+	err = s.queueSvc.Start()
+	if err != nil {
+		return err
+	}
+	return nil
 }

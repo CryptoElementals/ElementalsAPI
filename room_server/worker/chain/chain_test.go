@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CryptoElementals/common/cache"
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -86,7 +87,7 @@ func TestChainContractInteraction(t *testing.T) {
 		TemporaryAddress: "0xabc",
 	}
 
-	svc := NewService(context.Background(), testWorkerManager, 707, client, roomMamangerAddress, w, 10, 3)
+	svc := NewService(context.Background(), testWorkerManager, 707, client, roomMamangerAddress, w, 10, 3, cache.NewMemCache())
 
 	svc.chain.bindOpts.NoSend = true
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))

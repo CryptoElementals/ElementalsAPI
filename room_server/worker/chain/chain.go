@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"time"
 
+	"github.com/CryptoElementals/common/cache"
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -31,8 +33,8 @@ type batchTxEvent struct {
 type Chain struct {
 	ctx                        context.Context
 	workerManager              *worker.WorkerManager
-	createRoomTxToGameID       map[string]uint
-	gameContractToRoomID       map[string]uint
+	createRoomTxToGameID       cache.Cache
+	gameContractToRoomID       cache.Cache
 	inflightEvents             map[string]struct{}
 	currentBatchTx             *batchTxEvent
 	client                     bind.ContractBackend
@@ -43,9 +45,17 @@ type Chain struct {
 	bindOpts *bind.TransactOpts
 }
 
-func NewChain(ctx context.Context, workerManager *worker.WorkerManager, chainID int64,
-	client bind.ContractBackend, roomManagerContractAddressHex string, w *wallet.Wallet,
-	roundTimeout int64, maxRounds int64) *Chain {
+func NewChain(
+	ctx context.Context,
+	workerManager *worker.WorkerManager,
+	chainID int64,
+	client bind.ContractBackend,
+	roomManagerContractAddressHex string,
+	w *wallet.Wallet,
+	roundTimeout int64,
+	maxRounds int64,
+	dataCache cache.Cache,
+) *Chain {
 	roomManagerContractAddress := common.HexToAddress(roomManagerContractAddressHex)
 	roundTimeoutBigInt := big.NewInt(roundTimeout)
 	maxRoundsBigInt := big.NewInt(maxRounds)
@@ -54,11 +64,12 @@ func NewChain(ctx context.Context, workerManager *worker.WorkerManager, chainID 
 		From:    w.GetAddr(),
 		Signer:  w.BuildTxSinger(big.NewInt(chainID)),
 	}
+
 	return &Chain{
 		ctx:                        ctx,
 		workerManager:              workerManager,
-		createRoomTxToGameID:       map[string]uint{},
-		gameContractToRoomID:       map[string]uint{},
+		createRoomTxToGameID:       cache.WithPrefix("create_room_tx_to_game_id", dataCache),
+		gameContractToRoomID:       cache.WithPrefix("game_contract_to_room_id", dataCache),
 		inflightEvents:             map[string]struct{}{},
 		client:                     client,
 		roomManagerContractAddress: roomManagerContractAddress,
@@ -66,6 +77,21 @@ func NewChain(ctx context.Context, workerManager *worker.WorkerManager, chainID 
 		maxRounds:                  maxRoundsBigInt,
 		bindOpts:                   bindOpts,
 	}
+}
+
+func (c *Chain) Start() error {
+	txs, err := db.ListCreateRoomTxWithNoContractAddr()
+	if err != nil {
+		return err
+	}
+	for _, tx := range txs {
+		err = c.createRoomTxToGameID.Set(tx.TxHash, fmt.Sprint(tx.GameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+		if err != nil {
+			return err
+		}
+	}
+	c.createSelf()
+	return nil
 }
 
 func (c *Chain) createSelf() {
@@ -133,7 +159,7 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress) e
 		return err
 	}
 	txHash := tx.Hash().String()
-	c.createRoomTxToGameID[txHash] = gameID
+	c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
 	createRoomTxModel := &dao.CreateRoomTx{
 		GameID:       gameID,
 		Status:       dao.TxStatusSent,
@@ -172,32 +198,37 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 		hash := hexutil.Encode(protoTx.TxHash)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_RoomContractCreated:
-			gid, ok := c.createRoomTxToGameID[hash]
-			if !ok {
-				log.Errorf("tx with hash %s not found")
+			gidStr, err := c.createRoomTxToGameID.Get(hash)
+			if err != nil {
+				log.Errorf("createRoomTxToGameID: load tx with hash %s from cache failed: %s", hash, err.Error())
 				continue
 			}
-			c.contractCreated(gid, blockHash, tx)
+			gid, err := strconv.Atoi(gidStr)
+			if err != nil {
+				log.Errorf("createRoomTxToGameID: decoded loaded tx with hash %s failed: %s", hash, err.Error())
+				continue
+			}
+			c.contractCreated(uint(gid), blockHash, tx)
 		case *proto.Transaction_RoomContractSetupReady:
-			gid, ok := c.gameContractToRoomID[tx.RoomContractSetupReady.RoomContractAddress]
-			if !ok {
-				log.Errorf("contract with hash %s not found")
+			gid, err := c.getRoomIDByContract(tx.RoomContractSetupReady.RoomContractAddress)
+			if err != nil {
+				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
 				continue
 			}
 			c.roundSetupCompleted(gid, blockHash, tx)
 		case *proto.Transaction_CommitmentsOnChain:
-			gid, ok := c.gameContractToRoomID[tx.CommitmentsOnChain.RoomContractAddress]
-			if !ok {
-				log.Errorf("contract with hash %s not found")
+			gid, err := c.getRoomIDByContract(tx.CommitmentsOnChain.RoomContractAddress)
+			if err != nil {
+				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
 				continue
 			}
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CommitmentsOnChain.Address)
 			c.commitmentOnChain(gid, hash, blockHash, tx)
 		case *proto.Transaction_CardsOnChain:
-			gid, ok := c.gameContractToRoomID[tx.CardsOnChain.RoomContractAddress]
-			if !ok {
-				log.Errorf("contract with hash %s not found")
+			gid, err := c.getRoomIDByContract(tx.CardsOnChain.RoomContractAddress)
+			if err != nil {
+				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
 				continue
 			}
 			address := types.PlayerAddress{}
@@ -205,6 +236,22 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			c.cardsOnChain(gid, hash, blockHash, tx)
 		}
 	}
+}
+
+func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
+	gidStr, err := c.gameContractToRoomID.Get(contractAddress)
+	if err == nil {
+		gid, err := strconv.Atoi(gidStr)
+		if err == nil {
+			return uint(gid), nil
+		}
+	}
+	dbRoom, err := db.GetCreateRoomTxByContract(contractAddress)
+	if err != nil {
+		return 0, err
+	}
+	c.gameContractToRoomID.Set(contractAddress, fmt.Sprint(dbRoom.GameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+	return dbRoom.GameID, nil
 }
 
 func (c *Chain) contractCreated(gameID uint, blockHash string, tx *proto.Transaction_RoomContractCreated) error {
@@ -216,8 +263,11 @@ func (c *Chain) contractCreated(gameID uint, blockHash string, tx *proto.Transac
 	evtID := contractCreatedEvt.EventID
 	c.inflightEvents[evtID] = struct{}{}
 	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
-	c.gameContractToRoomID[roomContract] = gameID
-	delete(c.createRoomTxToGameID, roomContract)
+	c.gameContractToRoomID.Set(roomContract, fmt.Sprint(gameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+	err := c.createRoomTxToGameID.Delete(roomContract)
+	if err != nil {
+		log.Errorf("createRoomTxToGameID: delete tx with hash %s from cache failed: %s", roomContract, err.Error())
+	}
 	return db.UpdateCreateRoomTxBlockHashAndContractByGameID(gameID, blockHash, roomContract)
 }
 
