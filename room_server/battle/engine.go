@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// BattleEngine battle engine
 type BattleEngine struct {
 	cardFactory      *CardFactory
 	elementalSystem  *ElementalSystem
@@ -14,7 +13,6 @@ type BattleEngine struct {
 	rewardCalculator *RewardCalculator
 }
 
-// NewBattleEngine create a new battle engine
 func NewBattleEngine() *BattleEngine {
 	return &BattleEngine{
 		cardFactory:      NewCardFactory(),
@@ -26,13 +24,12 @@ func NewBattleEngine() *BattleEngine {
 }
 
 // ExecuteRound execute round
-// 返回值改为 (RoundResult, error)
-func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResult, error) {
+func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	if err := be.gameLogic.ValidateRoundInput(input); err != nil {
 		return nil, err
 	}
 
-	if round < 1 || round > 3 {
+	if input.Round < 1 || input.Round > 3 {
 		return nil, fmt.Errorf("round parameter must be between 1 and 3")
 	}
 
@@ -160,7 +157,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 					hps[idx] = st.HP
 					addrs[idx] = st.Address
 				}
-				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs, round, false); isGameOver {
+				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs, input.Round, false); isGameOver {
 					goto END
 				}
 			}
@@ -172,6 +169,7 @@ END:
 	for i, p := range states {
 		playerStats[i] = PlayerRoundStat{
 			PlayerAddress: p.Address,
+			LostHP:        p.LostHP,
 			CardStats:     p.Stats,
 		}
 	}
@@ -183,7 +181,7 @@ END:
 		hps[idx] = st.HP
 		addrs[idx] = st.Address
 	}
-	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs, round, true)
+	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs, input.Round, true)
 
 	// 确定游戏结果类型和最终倍率
 	var gameResultType string
@@ -210,7 +208,7 @@ END:
 
 	result := &RoundResult{
 		Players:             playerStats,
-		Round:               round,
+		Round:               input.Round,
 		GameFinalMultiplier: gameFinalMultiplier,
 		Winner:              winner,
 		IsGameOver:          isGameOver,

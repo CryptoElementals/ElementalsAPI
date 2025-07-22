@@ -22,7 +22,6 @@ type Player struct {
 
 // RoundInput battle input parameters
 // 支持多玩家
-// PlayerRoundInput 表示每个玩家的输入
 type PlayerRoundInput struct {
 	Address    string `json:"Address"`
 	Cards      []int  `json:"Cards"`
@@ -32,6 +31,7 @@ type PlayerRoundInput struct {
 }
 
 type RoundInput struct {
+	Round   uint               `json:"Round"`
 	Players []PlayerRoundInput `json:"Players"`
 }
 
@@ -106,5 +106,6 @@ type PlayerCardStat struct {
 // PlayerRoundStat 表示每个玩家本轮的所有卡片数据
 type PlayerRoundStat struct {
 	PlayerAddress string           `json:"PlayerAddress"`
+	LostHP        int              `json:"LostHP"` // 本轮累计掉血
 	CardStats     []PlayerCardStat `json:"CardStats"`
 }
