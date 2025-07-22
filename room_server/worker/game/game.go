@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -149,6 +150,11 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 			allPlayersReady = false
 		}
 	}
+	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
+		GameID:       g.gameInfo.ID,
+		RoundNumber:  uint32(g.currentRound.RoundNumber),
+		ReadyAddress: evt.PlayerAddress,
+	}))
 	if !allPlayersReady {
 		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
@@ -208,8 +214,9 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 		ContractAddress: evt.RoomContractAddress,
 	})
 	roundReadyEvt := types.NewEvent(g.workerID(), &types.RoundReadyEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: g.currentRound.RoundNumber,
+		GameID:         g.gameInfo.ID,
+		RoundNumber:    g.currentRound.RoundNumber,
+		RoundStartedAt: time.Now().Unix(),
 	})
 	g.sendEventsToAllPlayers(gameReadyEvt, roundReadyEvt)
 	return nil
@@ -233,8 +240,9 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 		return err
 	}
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundReadyEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: evt.RoundNumber,
+		GameID:         g.gameInfo.ID,
+		RoundNumber:    evt.RoundNumber,
+		RoundStartedAt: time.Now().Unix(),
 	}))
 	return nil
 }

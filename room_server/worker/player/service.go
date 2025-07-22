@@ -100,7 +100,7 @@ func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
 	if gameInfo == nil {
 		return nil
 	}
-	return player.sync(gameInfo)
+	return nil
 }
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
