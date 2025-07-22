@@ -5,7 +5,7 @@ import (
 
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/CryptoElementals/common/worker"
+	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 )
 

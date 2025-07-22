@@ -8,9 +8,9 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/worker"
-	tt "github.com/CryptoElementals/common/worker/testing"
-	"github.com/CryptoElementals/common/worker/types"
+	"github.com/CryptoElementals/common/room_server/worker"
+	tt "github.com/CryptoElementals/common/room_server/worker/testing"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
