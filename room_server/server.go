@@ -3,13 +3,13 @@ package roomserver
 import (
 	"context"
 
+	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/chain"
+	"github.com/CryptoElementals/common/room_server/worker/game"
+	"github.com/CryptoElementals/common/room_server/worker/player"
+	"github.com/CryptoElementals/common/room_server/worker/queue"
 	"github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/CryptoElementals/common/worker"
-	"github.com/CryptoElementals/common/worker/chain"
-	"github.com/CryptoElementals/common/worker/game"
-	"github.com/CryptoElementals/common/worker/player"
-	"github.com/CryptoElementals/common/worker/queue"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 

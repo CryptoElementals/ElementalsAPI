@@ -8,8 +8,8 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/worker"
-	"github.com/CryptoElementals/common/worker/types"
+	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
 const queueInfoPrefix = "queue_info:"

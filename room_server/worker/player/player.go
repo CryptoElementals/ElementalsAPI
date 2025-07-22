@@ -8,8 +8,8 @@ import (
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/worker"
-	"github.com/CryptoElementals/common/worker/types"
+	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
 type Publisher interface {
