@@ -65,6 +65,11 @@ func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
 	a.TemporaryAddress = player.TemporaryAddress
 }
 
+func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
+	a.WalletAddress = player.WalletAddress
+	a.TemporaryAddress = player.TemporaryAddress
+}
+
 type Event struct {
 	Sender  string
 	EventID string

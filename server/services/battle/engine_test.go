@@ -6,6 +6,8 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExecuteRound(t *testing.T) {
@@ -18,16 +20,88 @@ func TestExecuteRound(t *testing.T) {
 	}
 
 	dbConfig := &db.Config{
-		Endpoint: "localhost:3306",
-		User:     "root",
-		Password: "beastroyale123",
-		DbName:   "beast_royale",
+		Development: true,
 	}
 
 	err = db.Init(dbConfig)
 	if err != nil {
 		t.Fatalf("Failed to initialize database: %v", err)
 	}
+	require.NoError(t, db.MigrateMemDb())
+
+	cards := []dao.Card{
+		{
+			CardID:             1,
+			ElementType:        "Metal",
+			Level:              "normal",
+			LifeForce:          500,
+			Attack:             1000,
+			Defense:            500,
+			NormalImageURL:     "https://example.com/normal_image.png",
+			ActiveImageURL:     "https://example.com/active_image.png",
+			BackgroundImageURL: "https://example.com/background_image.png",
+			IconURL:            "https://example.com/icon.png",
+			Name:               "Metal Element",
+			Description:        "",
+		},
+		{
+			CardID:             2,
+			ElementType:        "Wood",
+			Level:              "normal",
+			LifeForce:          500,
+			Attack:             1000,
+			Defense:            500,
+			NormalImageURL:     "https://example.com/normal_image.png",
+			ActiveImageURL:     "https://example.com/active_image.png",
+			BackgroundImageURL: "https://example.com/background_image.png",
+			IconURL:            "https://example.com/icon.png",
+			Name:               "Metal Element",
+			Description:        "",
+		},
+		{
+			CardID:             3,
+			ElementType:        "Water",
+			Level:              "normal",
+			LifeForce:          500,
+			Attack:             1000,
+			Defense:            500,
+			NormalImageURL:     "https://example.com/normal_image.png",
+			ActiveImageURL:     "https://example.com/active_image.png",
+			BackgroundImageURL: "https://example.com/background_image.png",
+			IconURL:            "https://example.com/icon.png",
+			Name:               "Metal Element",
+			Description:        "",
+		},
+		{
+			CardID:             4,
+			ElementType:        "Fire",
+			Level:              "normal",
+			LifeForce:          500,
+			Attack:             1000,
+			Defense:            500,
+			NormalImageURL:     "https://example.com/normal_image.png",
+			ActiveImageURL:     "https://example.com/active_image.png",
+			BackgroundImageURL: "https://example.com/background_image.png",
+			IconURL:            "https://example.com/icon.png",
+			Name:               "Metal Element",
+			Description:        "",
+		},
+		{
+			CardID:             5,
+			ElementType:        "Earth",
+			Level:              "normal",
+			LifeForce:          500,
+			Attack:             1000,
+			Defense:            500,
+			NormalImageURL:     "https://example.com/normal_image.png",
+			ActiveImageURL:     "https://example.com/active_image.png",
+			BackgroundImageURL: "https://example.com/background_image.png",
+			IconURL:            "https://example.com/icon.png",
+			Name:               "Metal Element",
+			Description:        "",
+		},
+	}
+	require.NoError(t, db.Get().Save(&cards).Error)
 
 	engine := NewBattleEngine()
 

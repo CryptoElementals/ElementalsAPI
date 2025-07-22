@@ -7,7 +7,7 @@ type Game struct {
 	RoomContract string            `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint              `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus  `gorm:"not null" json:"status"`
-	Players      []*GamePlayerInfo `gorm:"not null;default:''" json:"players"`
+	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
 }
 
@@ -32,6 +32,11 @@ type PlayerRoundInfo struct {
 	Salt                []byte                `json:"salt"`
 }
 
+type RoundResult struct {
+	RoundNumber uint32 `json:"round_number"`
+	IsGameOver  bool
+}
+
 // RoundSubmittedCard 回合牌面记录
 type RoundSubmittedCard struct {
 	BaseModel
@@ -47,7 +52,5 @@ type GamePlayerInfo struct {
 	GameID           uint   `json:"game_id"`
 	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
-	TokenDelta       int32  `json:"token_delta"`
-	Points           int32
-	Status           proto.GameResultPlayerStatus
+	HP               uint32 `json:"hp"`
 }
