@@ -180,11 +180,28 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	var apiPlayerStats []APIPlayerRoundStat
 
 	// 为每个玩家构建回合统计数据
-	for _, playerRoundInfo := range targetRoundData.Players {
+	for _, playerRoundInfo := range targetRoundData.PlayerRoundInfos {
 		playerAddr := strings.ToLower(playerRoundInfo.PlayerAddress.WalletAddress)
 
 		var cardStats []battle.PlayerCardStat
-		for i, card := range playerRoundInfo.Cards {
+		for i, card := range playerRoundInfo.SubmittedCards {
+
+			// 将枚举类型 ElementRelation 转换为字符串表示
+			var elemRelation string
+			switch card.ElementRelation {
+			case proto.ElementRelation_OVER_POWER:
+				elemRelation = "overpower"
+			case proto.ElementRelation_OVER_POWERED:
+				elemRelation = "overpowered"
+			case proto.ElementRelation_NURTURE:
+				elemRelation = "nurture"
+			case proto.ElementRelation_NURTURED:
+				elemRelation = "nurtured"
+			case proto.ElementRelation_TIE:
+				elemRelation = "tie"
+			default:
+				elemRelation = "unknown"
+			}
 
 			cardStat := battle.PlayerCardStat{
 				CardNumber:       i + 1,
@@ -193,7 +210,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 				HPAfter:          int(card.PlayerHealthEnd),
 				MultiplierBefore: card.MultiplierBefore,
 				MultiplierAfter:  card.MultiplierAfter,
-				ElementRelation:  card.ElementRelation,
+				ElementRelation:  elemRelation,
 			}
 			cardStats = append(cardStats, cardStat)
 		}
@@ -216,77 +233,53 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	var gameFinalMultiplier float64
 	var reward *battle.BattleReward
 
-	// 预计算输家地址，便于后面计算倍率
-	getLoserAddress := func() string {
-		if winner == "" || gameResultType == "tie" {
-			return ""
-		}
-		for _, p := range gameInfo.Players {
-			addr := strings.ToLower(p.WalletAddress)
-			if addr != winner {
-				return addr
-			}
-		}
-		return ""
-	}
-
 	if gameInfo.Status == proto.GameStatus_GAME_END && gameInfo.Result != nil {
 		isGameOver = true
 
-		// 判断胜负
-		if len(gameInfo.Result.Players) >= 2 {
-			player1Result := gameInfo.Result.Players[0]
-			player2Result := gameInfo.Result.Players[1]
+		// 解析游戏结果类型
+		switch gameInfo.Result.GameResultType {
+		case proto.GameResultType_GAME_NORMAL:
+			gameResultType = "normal"
+		case proto.GameResultType_GAME_KO:
+			gameResultType = "ko"
+		case proto.GameResultType_GAME_TIE:
+			gameResultType = "tie"
+		}
 
-			if player1Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
-				winner = strings.ToLower(player1Result.Address.WalletAddress)
-				gameResultType = "win"
-			} else if player2Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_WIN {
-				winner = strings.ToLower(player2Result.Address.WalletAddress)
-				gameResultType = "win"
-			} else if player1Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE ||
-				player2Result.Status == proto.GameResultPlayerStatus_GAME_RESULT_PLAYER_TIE {
-				winner = "tie"
-				gameResultType = "tie"
-				gameFinalMultiplier = 1.0
-			}
+		// 最终倍率
+		gameFinalMultiplier = float64(gameInfo.Result.Multiplier)
 
-			// 构建奖励信息
+		// 转换奖励数据
+		if gameInfo.Result.Reward != nil {
 			var playerRewards []battle.PlayerReward
-			for _, playerResult := range gameInfo.Result.Players {
-				playerAddr := strings.ToLower(playerResult.Address.WalletAddress)
-				playerReward := battle.PlayerReward{
-					PlayerAddress: playerAddr,
-					TokenChange:   int(playerResult.TokenDelta),
-					PointChange:   int(playerResult.Points),
-				}
-				playerRewards = append(playerRewards, playerReward)
+			for _, pr := range gameInfo.Result.Reward.PlayerRewards {
+				playerRewards = append(playerRewards, battle.PlayerReward{
+					PlayerAddress: strings.ToLower(pr.WalletAddress),
+					TokenChange:   int(pr.TokenChange),
+					PointChange:   int(pr.PointChange),
+				})
 			}
-
 			reward = &battle.BattleReward{
 				PlayerRewards: playerRewards,
-				SystemFee:     0, // TODO: 计算系统手续费
+				SystemFee:     int(gameInfo.Result.Reward.SystemFee),
 			}
 
-			// 计算最终倍率（取输家最后一张牌的 MultiplierAfter，平局为 1）
-			if gameResultType == "tie" {
-				gameFinalMultiplier = 1
-			} else {
-				loserAddr := getLoserAddress()
-				if loserAddr != "" {
-					// 以最后一个 round 为准，遍历找到输家
-					if len(gameInfo.Rounds) > 0 {
-						lastRound := gameInfo.Rounds[len(gameInfo.Rounds)-1]
-						for _, pr := range lastRound.Players {
-							if strings.ToLower(pr.PlayerAddress.WalletAddress) == loserAddr {
-								if len(pr.Cards) > 0 {
-									lastCard := pr.Cards[len(pr.Cards)-1]
-									gameFinalMultiplier = lastCard.MultiplierAfter
-								}
-								break
-							}
-						}
+			// 计算赢家：TokenChange 为正值者视为赢家
+			if gameResultType != "tie" {
+				maxToken := -1 << 31
+				for _, pr := range reward.PlayerRewards {
+					if pr.TokenChange > maxToken {
+						maxToken = pr.TokenChange
+						winner = pr.PlayerAddress
 					}
+				}
+				if winner == "" {
+					winner = "tie"
+				}
+			} else {
+				winner = "tie"
+				if gameFinalMultiplier == 0 {
+					gameFinalMultiplier = 1
 				}
 			}
 		}
