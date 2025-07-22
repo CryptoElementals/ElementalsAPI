@@ -24,6 +24,7 @@ func Migrate() error {
 		&dao.CommitmentOnChainTx{},
 		&dao.CreateRoomTx{},
 		&dao.SetRoundReadyTx{},
+		&dao.BlockSync{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
