@@ -4,6 +4,8 @@ package rpc;
 
 import "google/protobuf/empty.proto";
 
+import "rpc/proto/battle.proto";
+
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 service RpcService {
@@ -55,23 +57,31 @@ enum RoundStatus {
 
 
 message PlayerRoundInfo {
-    PlayerAddress playerAddress = 1;
-    repeated RoundSubmittedCard cards = 2;
-    bytes salt = 3;
-    bytes submitted_commitment = 4;
+    PlayerAddress PlayerAddress = 1;
+    bool PlayerReady = 2;
+    bytes Salt = 3;
+    bytes SubmittedCommitment = 4;
+    repeated RoundSubmittedCard SubmittedCards = 5;
 }
 
+// Battle Engine related messages
+
+
 message RoundSubmittedCard {
-    uint32 player_health_before = 1;
-    uint32 player_health_end = 2;
-    uint32 multiplier = 3; 
-    uint32 submitted_card_id = 4;
+    uint32 SubmittedCardId = 1;
+    uint32 PlayerHealthBefore = 2;
+    uint32 PlayerHealthEnd = 3;
+    uint32 MultiplierBefore = 4;      // multiplier before this card
+    uint32 MultiplierAfter = 5;       // multiplier after this card  
+    string Description = 6;            // battle description
+    battle.ElementRelation ElementRelation = 7;       // element relation type
+    repeated battle.BattleEffect Effects = 8; // effects applied to this player
 }
 
 message Round {
     int32 number = 1; // start from 1
     RoundStatus status = 2;
-    repeated PlayerRoundInfo players = 3;
+    repeated PlayerRoundInfo player_round_infos = 3;
 }
 
 enum GameStatus {
@@ -80,23 +90,6 @@ enum GameStatus {
     GAME_END = 2;
 }
 
-enum GameResultPlayerStatus {
-    GAME_RESULT_PLAYER_KNOWN = 0;
-    GAME_RESULT_PLAYER_WIN = 1;
-    GAME_RESULT_PLAYER_LOSE = 2;
-    GAME_RESULT_PLAYER_TIE = 3;
-}
-
-message GameResultPlayerInfo{
-    PlayerAddress address = 1;
-    int32 token_delta = 2;
-    int32 points = 3;
-    GameResultPlayerStatus status = 4;
-}
-
-message GameResult {
-    repeated GameResultPlayerInfo players = 1;
-}
 
 enum GameType {
     GAME_TYPE_UNKNOWN = 0;
@@ -108,9 +101,10 @@ message GameInfo {
     string room_contract_address = 2;
     GameType game_type = 3;
     GameStatus status = 4;
-    repeated PlayerAddress players = 5;
-    repeated Round rounds = 6;
-    optional GameResult result = 7;
+    int32 initial_hp = 5;
+    repeated PlayerAddress players = 6;
+    repeated Round rounds = 7;
+    optional battle.GameResult result = 8;
 }
 
 message Transaction {

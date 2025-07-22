@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package battle;
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+message PlayerRoundInput {
+    string WalletAddress = 1;
+    string TemporaryAddress = 2;
+    repeated int32 Cards = 3;
+    int32 HP = 4;
+    int32 LostHP = 5;
+}
+
+message RoundInput {
+    int32 RoundNumber = 1;
+    repeated PlayerRoundInput Players = 2;
+}
+
+enum ElementRelation {
+    OVER_POWER = 0;
+    OVER_POWERED = 1;
+    NURTURE = 2;
+    NURTURED = 3;
+    TIE = 4;
+}
+
+message PlayerCardStat {
+    int32 CardNumber = 1;
+    int32 CardID = 2;
+    int32 HPBefore = 3;
+    int32 HPAfter = 4;
+    int32 MultiplierBefore = 5;
+    int32 MultiplierAfter = 6;
+    repeated BattleEffect Effects = 7;
+    string Description = 8;
+    ElementRelation ElementRelation = 9;
+}
+
+message PlayerRoundStat {
+    string WalletAddress = 1;
+    string TemporaryAddress = 2;
+    int32 LostHP = 3;
+    repeated PlayerCardStat CardStats = 4;
+}
+
+message RoundResult {
+    repeated PlayerRoundStat Players = 1;
+    uint32 RoundNumber = 2;
+    bool IsGameOver = 4;
+
+}
+
+message PlayerReward {
+    string WalletAddress = 1;
+    string TemporaryAddress = 2;
+    int32 TokenChange = 3;
+    int32 PointChange = 4;
+}
+
+message BattleReward {
+    repeated PlayerReward PlayerRewards = 1;
+    int32 SystemFee = 2;
+}
+
+enum GameResultType {
+    GAME_NORMAL = 0;
+    GAME_KO = 1;
+    GAME_TIE = 2;
+}
+
+message GameResult {
+    int32 Multiplier = 1;
+    GameResultType GameResultType = 5;
+    BattleReward Reward = 6;
+}
+
+enum BattleEffectType {
+    ATTACK = 0;
+    HEAL = 1;
+}
+
+message BattleEffect {
+    BattleEffectType Type = 1;    // "attack" or "heal"
+    int32 Value = 2;        // effect value
+    string TargetWalletAddress = 3;      // target player address
+    string TargetTemporaryAddress = 4;      // target player address
+    string Description = 5; // effect description
+}

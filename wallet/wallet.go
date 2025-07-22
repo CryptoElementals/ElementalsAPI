@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"fmt"
+	"math/big"
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	eth_type "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -51,6 +53,17 @@ func NewWalletFromAddr(addr common.Address) *Wallet {
 		address: addr,
 	}
 
+	return wallet
+}
+
+func NewWalletFromPrivKey(privateKey *ecdsa.PrivateKey) *Wallet {
+	wallet := &Wallet{
+		privateKey: privateKey,
+	}
+	publicKey := privateKey.Public()
+	publicKeyECDSA := publicKey.(*ecdsa.PublicKey)
+	address := crypto.PubkeyToAddress(*publicKeyECDSA)
+	wallet.address = address
 	return wallet
 }
 
@@ -169,4 +182,18 @@ func (wallet *Wallet) GetAddr() common.Address {
 func (wallet *Wallet) GetPrivateKeyHex() string {
 	privateKeyBytes := crypto.FromECDSA(wallet.privateKey)
 	return hexutil.Encode(privateKeyBytes)[2:]
+}
+
+func (wallet *Wallet) GetPrivateKey() *ecdsa.PrivateKey {
+	return wallet.privateKey
+}
+
+func (wallet *Wallet) SignTx(tx *eth_type.Transaction, chainId *big.Int) (*eth_type.Transaction, error) {
+	return eth_type.SignTx(tx, eth_type.NewLondonSigner(chainId), wallet.privateKey)
+}
+
+func (w *Wallet) BuildTxSinger(chainId *big.Int) func(a common.Address, t *eth_type.Transaction) (*eth_type.Transaction, error) {
+	return func(a common.Address, t *eth_type.Transaction) (*eth_type.Transaction, error) {
+		return w.SignTx(t, chainId)
+	}
 }

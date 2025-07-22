@@ -34,9 +34,9 @@ func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerA
 
 func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
 	return &proto.Round{
-		Number:  int32(round.RoundNumber),
-		Status:  proto.RoundStatus(round.Status),
-		Players: DbPlayerRoundInfosToProto(round.PlayerRoundInfos),
+		Number:           int32(round.RoundNumber),
+		Status:           proto.RoundStatus(round.Status),
+		PlayerRoundInfos: DbPlayerRoundInfosToProto(round.PlayerRoundInfos),
 	}
 }
 
@@ -55,7 +55,8 @@ func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.Playe
 	}
 	return &proto.PlayerRoundInfo{
 		PlayerAddress:       addr,
-		Cards:               DbRoundSubmittedCardsToProto(playerRoundInfo.RoundSubmittedCards),
+		PlayerReady:         playerRoundInfo.PlayerReady,
+		SubmittedCards:      DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
 		Salt:                playerRoundInfo.Salt,
 		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
 	}
@@ -72,7 +73,29 @@ func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmi
 	return &proto.RoundSubmittedCard{
 		PlayerHealthBefore: card.HealthBefore,
 		PlayerHealthEnd:    card.HealthAfter,
-		Multiplier:         card.Multiplier,
-		SubmittedCardId:    card.CardID,
+		MultiplierBefore:   card.MultiplierBefore,
+		MultiplierAfter:    card.MultiplierAfter,
+		Description:        card.Description,
+		ElementRelation:    card.ElementRelation,
+		Effects:            DbCardEffectsToProto(card.CardEffects),
+		SubmittedCardId:    uint32(card.CardID),
+	}
+}
+
+func DbCardEffectsToProto(effects []*dao.CardEffect) []*proto.BattleEffect {
+	var effectsProto []*proto.BattleEffect
+	for _, effect := range effects {
+		effectsProto = append(effectsProto, DbCardEffectToProto(effect))
+	}
+	return effectsProto
+}
+
+func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
+	return &proto.BattleEffect{
+		Type:                   effect.Type,
+		Value:                  effect.Value,
+		Description:            effect.Description,
+		TargetWalletAddress:    effect.TargetWalletAddress,
+		TargetTemporaryAddress: effect.TargetTemporaryAddress,
 	}
 }

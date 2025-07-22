@@ -35,6 +35,12 @@ func MigrateMemDb() error {
 		&dao.RoundSubmittedCard{},
 		&dao.GamePlayerInfo{},
 		&dao.Room{},
+		&dao.Card{},
+		&dao.LockToken{},
+		&dao.CardsOnChainTx{},
+		&dao.CommitmentOnChainTx{},
+		&dao.CreateRoomTx{},
+		&dao.SetRoundReadyTx{},
 		// 以后有新表直接加在这里
 	}
 	err := Get().AutoMigrate(migrates...)
