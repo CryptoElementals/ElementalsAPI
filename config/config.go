@@ -12,7 +12,7 @@ import (
 
 type NodeConfig struct {
 	HttpRpc string `mapstructure:"http-rpc"` //https://mainnet.optimism.io
-	WssRpc  string `mapstructure:"wss-rpc"`
+	WsRpc   string `mapstructure:"ws-rpc"`
 }
 
 type ContractConfig struct {

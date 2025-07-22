@@ -1,0 +1,49 @@
+package db
+
+import (
+	"errors"
+
+	dao "github.com/CryptoElementals/common/models"
+	"gorm.io/gorm"
+)
+
+func FindBlockSyncs() ([]dao.BlockSync, error) {
+	var blockSync []dao.BlockSync
+	err := db.Table("block_sync").Find(&blockSync).Error
+	return blockSync, err
+}
+
+func SaveBlockSyncs(blockSyncs []dao.BlockSync) error {
+	// Use Save method: if the record exists, update it; if not, insert it
+	if err := db.Save(&blockSyncs).Error; err != nil {
+		return err // Return error if save fails
+	}
+
+	return nil // Return after update or insert
+}
+
+func SaveBlockSync(blockSync dao.BlockSync) error {
+	// Check if a record with the same Type exists
+	var existingSync dao.BlockSync
+	err := db.Where("type = ?", blockSync.Type).First(&existingSync).Error
+
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err // Return error if query fails
+	}
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// If not found, insert a new record
+		if err := db.Create(&blockSync).Error; err != nil {
+			return err // Return error if insert fails
+		}
+	} else {
+		// If found, update the existing record
+		existingSync.BlockHeight = blockSync.BlockHeight // Update Slot value
+		existingSync.Type = blockSync.Type               // Update Type value (if needed)
+		if err := db.Save(&existingSync).Error; err != nil {
+			return err // Return error if update fails
+		}
+	}
+
+	return nil // Return success
+}
