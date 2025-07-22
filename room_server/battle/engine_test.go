@@ -25,17 +25,15 @@ func TestExecuteRoundNormal(t *testing.T) {
 				WalletAddress:    "player1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				HP:               3000,
-				Multiplier:       1,
 				Cards:            []int{4, 5, 3},
-				LostHP:           0,
+				LostHP:           500,
 			},
 			{
 				WalletAddress:    "player2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
 				HP:               3000,
-				Multiplier:       1,
 				Cards:            []int{1, 2, 4},
-				LostHP:           0,
+				LostHP:           2500,
 			},
 		},
 	}
@@ -74,16 +72,16 @@ func TestExecuteRoundProto(t *testing.T) {
 			{
 				WalletAddress:    "player1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				Cards:            []int32{4, 5, 3},
+				Cards:            []int32{4, 2, 3},
 				HP:               3000,
-				LostHP:           0,
+				LostHP:           2000,
 			},
 			{
 				WalletAddress:    "player2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int32{1, 2, 4},
+				Cards:            []int32{1, 5, 4},
 				HP:               3000,
-				LostHP:           0,
+				LostHP:           5000,
 			},
 		},
 	}
@@ -129,5 +127,5 @@ func prepareCards(t *testing.T) {
 	require.NoError(t, db.Get().Save(&cards).Error)
 }
 
-// go test -v ./room_server/battle/ -run TestExecuteRound
+// go test -v ./room_server/battle/ -run TestExecuteRoundNormal
 // go test -v ./room_server/battle/ -run TestExecuteRoundProto

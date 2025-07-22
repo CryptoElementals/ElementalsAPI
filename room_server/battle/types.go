@@ -27,7 +27,6 @@ type PlayerRoundInput struct {
 	TemporaryAddress string `json:"TemporaryAddress"`
 	Cards            []int  `json:"Cards"`
 	HP               int    `json:"HP"`
-	Multiplier       uint32 `json:"Multiplier"`
 	LostHP           int    `json:"LostHP"`
 }
 
@@ -52,21 +51,6 @@ type RoundResult struct {
 	RoundNumber uint32            `json:"RoundNumber"` // 回合号
 	IsGameOver  bool              `json:"IsGameOver"`  // 是否游戏结束
 	GameResult  *GameResult       `json:"GameResult"`  // 游戏结果（仅游戏结束时返回）
-}
-
-type FightResult struct {
-	FightNumber            int            `json:"FightNumber"`            // Fight number
-	Player1CardID          int            `json:"Player1CardID"`          // Player 1 used card ID
-	Player2CardID          int            `json:"Player2CardID"`          // Player 2 used card ID
-	RelationType           string         `json:"RelationType"`           // Elemental relation type
-	Actions                []BattleEffect `json:"Actions"`                // Executed action list
-	Player1HPDelta         int            `json:"Player1HPDelta"`         // Player 1 HP change (负值为受伤，正值为治疗)
-	Player2HPDelta         int            `json:"Player2HPDelta"`         // Player 2 HP change (负值为受伤，正值为治疗)
-	Player1HPAfter         int            `json:"Player1HPAfter"`         // Player 1 health after fight
-	Player2HPAfter         int            `json:"Player2HPAfter"`         // Player 2 health after fight
-	Player1MultiplierAfter float64        `json:"Player1MultiplierAfter"` // Player 1 multiplier after fight
-	Player2MultiplierAfter float64        `json:"Player2MultiplierAfter"` // Player 2 multiplier after fight
-	Description            string         `json:"Description"`            // Fight description
 }
 
 // ElementalRelation elemental relation

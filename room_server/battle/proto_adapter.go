@@ -37,8 +37,6 @@ func convertProtoRoundInputToInternal(in *pb.RoundInput) *RoundInput {
 			Cards:            cards,
 			HP:               int(p.GetHP()),
 			LostHP:           int(p.GetLostHP()),
-			// Multiplier 在引擎内部会重新计算，可以暂设 1
-			Multiplier: 1,
 		}
 	}
 	return &RoundInput{
@@ -113,9 +111,11 @@ func convertInternalGameResultToProto(in *RoundResult) *pb.GameResult {
 	}
 	gr := in.GameResult
 	return &pb.GameResult{
-		Multiplier:     int32(gr.Multiplier),
-		GameResultType: pb.GameResultType(gr.GameResultType),
-		Reward:         convertInternalRewardToProto(&gr.Reward),
+		Multiplier:             int32(gr.Multiplier),
+		WinnerWalletAddress:    gr.WinnerWalletAddress,
+		WinnerTemporaryAddress: gr.WinnerTemporaryAddress,
+		GameResultType:         pb.GameResultType(gr.GameResultType),
+		Reward:                 convertInternalRewardToProto(&gr.Reward),
 	}
 }
 

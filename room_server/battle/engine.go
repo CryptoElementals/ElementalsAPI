@@ -61,7 +61,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	for i, p := range input.Players {
 		states[i] = &playerState{
 			HP:               p.HP,
-			Multiplier:       p.Multiplier,
+			Multiplier:       be.multiplierCalc.CalculateMultiplierByLostHP(p.LostHP),
 			LostHP:           p.LostHP,
 			Stats:            make([]PlayerCardStat, 0, 3),
 			WalletAddress:    p.WalletAddress,
@@ -103,8 +103,18 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 				if p2.HP < 0 {
 					p2.HP = 0
 				}
-				p1.LostHP = input.Players[i].HP - p1.HP
-				p2.LostHP = input.Players[j].HP - p2.HP
+				// 计算此次卡牌造成的伤害，并累加到总 LostHP
+				damage1 := p1BeforeHP - p1.HP
+				if damage1 < 0 {
+					damage1 = 0
+				}
+				p1.LostHP += damage1
+
+				damage2 := p2BeforeHP - p2.HP
+				if damage2 < 0 {
+					damage2 = 0
+				}
+				p2.LostHP += damage2
 				p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
 				p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
 				// 生成p1和p2视角的描述（元素类型+视角），并根据relation.Type选择正确模板
