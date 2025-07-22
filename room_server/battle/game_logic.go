@@ -65,7 +65,7 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 		return fmt.Errorf("at least 2 players required")
 	}
 	for idx, p := range input.Players {
-		if p.Address == "" {
+		if p.WalletAddress == "" {
 			return fmt.Errorf("player %d address cannot be empty", idx+1)
 		}
 		if p.HP <= 0 {

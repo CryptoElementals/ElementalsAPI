@@ -23,26 +23,27 @@ type Player struct {
 // RoundInput battle input parameters
 // 支持多玩家
 type PlayerRoundInput struct {
-	Address    string `json:"Address"`
-	Cards      []int  `json:"Cards"`
-	HP         int    `json:"HP"`
-	Multiplier uint32 `json:"Multiplier"`
-	LostHP     int    `json:"LostHP"`
+	WalletAddress    string `json:"WalletAddress"`
+	TemporaryAddress string `json:"TemporaryAddress"`
+	Cards            []int  `json:"Cards"`
+	HP               int    `json:"HP"`
+	Multiplier       uint32 `json:"Multiplier"`
+	LostHP           int    `json:"LostHP"`
 }
 
 type RoundInput struct {
-	Round   uint               `json:"Round"`
-	Players []PlayerRoundInput `json:"Players"`
+	RoundNumber uint32             `json:"RoundNumber"`
+	Players     []PlayerRoundInput `json:"Players"`
 }
 
 // BattleResult battle result
 type RoundResult struct {
-	Players             []PlayerRoundStat `json:"Players"`             // 所有玩家的回合数据
-	Round               uint              `json:"Round"`               // Round number
+	Players             []PlayerRoundStat `json:"Players"` // 所有玩家的回合数据
+	RoundNumber         uint32            `json:"RoundNumber"`
 	GameFinalMultiplier uint32            `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
 	Winner              string            `json:"Winner"`              // Winner address
 	IsGameOver          bool              `json:"IsGameOver"`          // Whether game is over
-	GameResultType      string            `json:"GameResultType"`      // Game result type
+	GameResultType      GameResultType    `json:"GameResultType"`      // Game result type
 	Reward              *BattleReward     `json:"Reward"`              // Battle reward (token and point)
 }
 
@@ -70,10 +71,10 @@ type ElementalRelation struct {
 // BattleEffect battle effect
 // 代表对自身产生的效果
 type BattleEffect struct {
-	Type        string `json:"Type"`
-	Value       int    `json:"Value"`
-	Description string `json:"Description"`
-	Target      string `json:"Target"`
+	Type        BattleEffectType `json:"Type"`
+	Value       int              `json:"Value"`
+	Description string           `json:"Description"`
+	Target      string           `json:"Target"`
 }
 
 // BattleReward battle reward
@@ -91,21 +92,49 @@ type PlayerReward struct {
 
 // 单个玩家每张卡的详细数据
 type PlayerCardStat struct {
-	CardNumber       int            `json:"CardNumber"`
-	CardID           int            `json:"CardID"`
-	HPBefore         int            `json:"HPBefore"`
-	HPAfter          int            `json:"HPAfter"`
-	MultiplierBefore uint32         `json:"MultiplierBefore"`
-	MultiplierAfter  uint32         `json:"MultiplierAfter"`
-	Effects          []BattleEffect `json:"Effects"`
-	Description      string         `json:"Description"`
-	ElementRelation  string         `json:"ElementRelation"`
+	CardNumber       int             `json:"CardNumber"`
+	CardID           int             `json:"CardID"`
+	HPBefore         int             `json:"HPBefore"`
+	HPAfter          int             `json:"HPAfter"`
+	MultiplierBefore uint32          `json:"MultiplierBefore"`
+	MultiplierAfter  uint32          `json:"MultiplierAfter"`
+	Effects          []BattleEffect  `json:"Effects"`
+	Description      string          `json:"Description"`
+	ElementRelation  ElementRelation `json:"ElementRelation"`
 }
 
 // 单个玩家的所有卡数据
 // PlayerRoundStat 表示每个玩家本轮的所有卡片数据
 type PlayerRoundStat struct {
-	PlayerAddress string           `json:"PlayerAddress"`
-	LostHP        int              `json:"LostHP"` // 本轮累计掉血
-	CardStats     []PlayerCardStat `json:"CardStats"`
+	WalletAddress    string           `json:"WalletAddress"`
+	TemporaryAddress string           `json:"TemporaryAddress"`
+	LostHP           int              `json:"LostHP"`
+	CardStats        []PlayerCardStat `json:"CardStats"`
 }
+
+// ----------- 枚举同步 proto -----------
+
+type ElementRelation int32
+
+const (
+	OVER_POWER ElementRelation = iota
+	OVER_POWERED
+	NURTURE
+	NURTURED
+	TIE
+)
+
+type GameResultType int32
+
+const (
+	GAME_NORMAL GameResultType = iota
+	GAME_KO
+	GAME_TIE
+)
+
+type BattleEffectType int32
+
+const (
+	ATTACK BattleEffectType = iota
+	HEAL
+)

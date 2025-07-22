@@ -19,21 +19,23 @@ func TestExecuteRound(t *testing.T) {
 	engine := NewBattleEngine()
 
 	input := &RoundInput{
-		Round: 3,
+		RoundNumber: 3,
 		Players: []PlayerRoundInput{
 			{
-				Address:    "player1_address",
-				HP:         3000,
-				Multiplier: 1.0,
-				Cards:      []int{4, 5, 3},
-				LostHP:     0,
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "",
+				HP:               3000,
+				Multiplier:       1,
+				Cards:            []int{4, 5, 3},
+				LostHP:           0,
 			},
 			{
-				Address:    "player2_address",
-				HP:         3000,
-				Multiplier: 1.0,
-				Cards:      []int{1, 2, 4},
-				LostHP:     0,
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "",
+				HP:               3000,
+				Multiplier:       1,
+				Cards:            []int{1, 2, 4},
+				LostHP:           0,
 			},
 		},
 	}
@@ -60,11 +62,8 @@ func TestExecuteRound(t *testing.T) {
 	t.Log("Test completed successfully - check the JSON output above for manual verification")
 }
 
-// TestExecuteRoundProto 使用 proto 消息调用并验证结果
 func TestExecuteRoundProto(t *testing.T) {
 	initTestEnv(t)
-
-	// 准备卡牌数据
 	prepareCards(t)
 
 	engine := NewBattleEngine()
@@ -93,14 +92,12 @@ func TestExecuteRoundProto(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, roundResult)
 
-	// 打印结果，方便调试
-	if data, _ := json.MarshalIndent(roundResult, "", "  "); len(data) > 0 {
-		t.Logf("RoundResult:\n%s", string(data))
-	}
+	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
+
 	if gameResult != nil {
-		if data, _ := json.MarshalIndent(gameResult, "", "  "); len(data) > 0 {
-			t.Logf("GameResult:\n%s", string(data))
-		}
+		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		t.Logf("GameResult (JSON):\n%s", string(grJSON))
 	}
 }
 

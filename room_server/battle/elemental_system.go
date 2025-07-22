@@ -80,53 +80,53 @@ func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalR
 	switch relation.Type {
 	case "overpower":
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
+			Type:        ATTACK,
 			Value:       card1.Attack - card2.Defense,
 			Description: desc(card2.Name, card1.Name, "is attacked by"),
 			Target:      addr2,
 		})
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
+			Type:        ATTACK,
 			Value:       card1.Attack - card2.Defense,
 			Description: desc(card2.Name, card1.Name, "is attacked by again"),
 			Target:      addr2,
 		})
 	case "overpowered":
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
+			Type:        ATTACK,
 			Value:       card2.Attack - card1.Defense,
 			Description: desc(card1.Name, card2.Name, "is attacked by"),
 			Target:      addr1,
 		})
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
+			Type:        ATTACK,
 			Value:       card2.Attack - card1.Defense,
 			Description: desc(card1.Name, card2.Name, "is attacked by again"),
 			Target:      addr1,
 		})
 	case "nurture":
 		effects = append(effects, BattleEffect{
-			Type:        "heal",
+			Type:        HEAL,
 			Value:       card1.LifeForce,
 			Description: desc(card1.Name, card2.Name, "is healed by"),
 			Target:      addr1,
 		})
 	case "nurtured":
 		effects = append(effects, BattleEffect{
-			Type:        "heal",
+			Type:        HEAL,
 			Value:       card2.LifeForce,
 			Description: desc(card1.Name, card2.Name, "is healed by"),
 			Target:      addr1,
 		})
 	case "even":
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
+			Type:        ATTACK,
 			Value:       card1.Attack - card2.Defense,
 			Description: desc(card2.Name, card1.Name, "is attacked by"),
 			Target:      addr2,
 		})
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
+			Type:        ATTACK,
 			Value:       card2.Attack - card1.Defense,
 			Description: desc(card1.Name, card2.Name, "is attacked by"),
 			Target:      addr1,
@@ -145,9 +145,9 @@ func (es *ElementalSystem) ExecuteEffects(effects []BattleEffect) int {
 			value = 0
 		}
 		switch effect.Type {
-		case "attack":
+		case ATTACK:
 			hpDelta -= value
-		case "heal":
+		case HEAL:
 			hpDelta += value
 		}
 	}
