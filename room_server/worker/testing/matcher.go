@@ -3,7 +3,7 @@ package testing
 import (
 	reflect "reflect"
 
-	types "github.com/CryptoElementals/common/worker/types"
+	types "github.com/CryptoElementals/common/room_server/worker/types"
 	gomock "github.com/golang/mock/gomock"
 )
 

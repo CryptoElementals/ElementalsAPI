@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 
-	"github.com/CryptoElementals/common/worker/types"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
 type State uint16

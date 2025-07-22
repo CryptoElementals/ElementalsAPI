@@ -9,8 +9,8 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/worker"
-	"github.com/CryptoElementals/common/worker/types"
+	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
 type GameManager struct {

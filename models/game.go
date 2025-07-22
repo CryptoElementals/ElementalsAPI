@@ -10,7 +10,7 @@ type Game struct {
 	InitialHP    int32             `json:"initial_hp"`
 	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
-	GameResult   *GameResult
+	GameResult   *GameResult       `json:"game_result"`
 }
 
 // Round 回合记录
@@ -52,7 +52,7 @@ type RoundSubmittedCard struct {
 type CardEffect struct {
 	BaseModel
 	RoundSubmittedCardID   uint
-	Type                   string
+	Type                   proto.BattleEffectType
 	Value                  int32
 	Description            string
 	TargetWalletAddress    string

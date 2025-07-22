@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
-	"github.com/CryptoElementals/common/worker"
-	"github.com/CryptoElementals/common/worker/types"
+	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/stretchr/testify/require"
 )
 
