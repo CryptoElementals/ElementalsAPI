@@ -37,14 +37,21 @@ type RoundInput struct {
 }
 
 // BattleResult battle result
+// GameResult 表示游戏结束时的结果数据（回合未结束时为 nil）
+type GameResult struct {
+	Multiplier             uint32         `json:"Multiplier"`             // 最终倍率
+	WinnerWalletAddress    string         `json:"WinnerWalletAddress"`    // 胜者钱包地址（tie 时为 "tie"）
+	WinnerTemporaryAddress string         `json:"WinnerTemporaryAddress"` // 胜者临时地址
+	GameResultType         GameResultType `json:"GameResultType"`         // 游戏结果类型
+	Reward                 BattleReward   `json:"Reward"`                 // 奖励信息
+}
+
+// RoundResult 表示单回合结果，若游戏已结束，则 GameResult 不为 nil
 type RoundResult struct {
-	Players             []PlayerRoundStat `json:"Players"` // 所有玩家的回合数据
-	RoundNumber         uint32            `json:"RoundNumber"`
-	GameFinalMultiplier uint32            `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
-	Winner              string            `json:"Winner"`              // Winner address
-	IsGameOver          bool              `json:"IsGameOver"`          // Whether game is over
-	GameResultType      GameResultType    `json:"GameResultType"`      // Game result type
-	Reward              *BattleReward     `json:"Reward"`              // Battle reward (token and point)
+	Players     []PlayerRoundStat `json:"Players"`     // 所有玩家的回合数据
+	RoundNumber uint32            `json:"RoundNumber"` // 回合号
+	IsGameOver  bool              `json:"IsGameOver"`  // 是否游戏结束
+	GameResult  *GameResult       `json:"GameResult"`  // 游戏结果（仅游戏结束时返回）
 }
 
 type FightResult struct {
@@ -71,10 +78,11 @@ type ElementalRelation struct {
 // BattleEffect battle effect
 // 代表对自身产生的效果
 type BattleEffect struct {
-	Type        BattleEffectType `json:"Type"`
-	Value       int              `json:"Value"`
-	Description string           `json:"Description"`
-	Target      string           `json:"Target"`
+	Type                   BattleEffectType `json:"Type"`
+	Value                  int              `json:"Value"`
+	TargetWalletAddress    string           `json:"TargetWalletAddress"`
+	TargetTemporaryAddress string           `json:"TargetTemporaryAddress"`
+	Description            string           `json:"Description"`
 }
 
 // BattleReward battle reward
@@ -85,9 +93,10 @@ type BattleReward struct {
 
 // PlayerReward 单个玩家的奖励
 type PlayerReward struct {
-	PlayerAddress string `json:"PlayerAddress"` // 玩家地址
-	TokenChange   int    `json:"TokenChange"`   // Token变化
-	PointChange   int    `json:"PointChange"`   // 积分变化
+	WalletAddress    string `json:"WalletAddress"`    // 玩家地址
+	TemporaryAddress string `json:"TemporaryAddress"` // 玩家临时地址
+	TokenChange      int    `json:"TokenChange"`      // Token变化
+	PointChange      int    `json:"PointChange"`      // 积分变化
 }
 
 // 单个玩家每张卡的详细数据

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExecuteRound(t *testing.T) {
+func TestExecuteRoundNormal(t *testing.T) {
 	initTestEnv(t)
 
 	prepareCards(t)
@@ -23,7 +23,7 @@ func TestExecuteRound(t *testing.T) {
 		Players: []PlayerRoundInput{
 			{
 				WalletAddress:    "player1_address",
-				TemporaryAddress: "",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				HP:               3000,
 				Multiplier:       1,
 				Cards:            []int{4, 5, 3},
@@ -31,7 +31,7 @@ func TestExecuteRound(t *testing.T) {
 			},
 			{
 				WalletAddress:    "player2_address",
-				TemporaryAddress: "",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
 				HP:               3000,
 				Multiplier:       1,
 				Cards:            []int{1, 2, 4},
@@ -73,14 +73,14 @@ func TestExecuteRoundProto(t *testing.T) {
 		Players: []*pb.PlayerRoundInput{
 			{
 				WalletAddress:    "player1_address",
-				TemporaryAddress: "",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				Cards:            []int32{4, 5, 3},
 				HP:               3000,
 				LostHP:           0,
 			},
 			{
 				WalletAddress:    "player2_address",
-				TemporaryAddress: "",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
 				Cards:            []int32{1, 2, 4},
 				HP:               3000,
 				LostHP:           0,
@@ -120,11 +120,11 @@ func initTestEnv(t *testing.T) {
 func prepareCards(t *testing.T) {
 	t.Helper()
 	cards := []dao.Card{
-		{CardID: 1, ElementType: "Metal", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500},
-		{CardID: 2, ElementType: "Wood", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500},
-		{CardID: 3, ElementType: "Water", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500},
-		{CardID: 4, ElementType: "Fire", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500},
-		{CardID: 5, ElementType: "Earth", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500},
+		{CardID: 1, ElementType: "Metal", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Kylin", Description: "Kylin clad in armor, representing strength and protection"},
+		{CardID: 2, ElementType: "Wood", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Forest Spirit", Description: "Forest Spirit controlling the cycle of life and death"},
+		{CardID: 3, ElementType: "Water", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Siren", Description: "Siren, half-human half-beast, possessing enchanting charm"},
+		{CardID: 4, ElementType: "Fire", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Phoenix", Description: "Phoenix with flames and rebirth, symbolizing eternal life"},
+		{CardID: 5, ElementType: "Earth", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "World Turtle", Description: "World Turtle, steady and powerful with immense strength"},
 	}
 	require.NoError(t, db.Get().Save(&cards).Error)
 }

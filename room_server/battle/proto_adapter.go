@@ -97,23 +97,25 @@ func convertInternalEffectsToProto(effs []BattleEffect) []*pb.BattleEffect {
 	out := make([]*pb.BattleEffect, len(effs))
 	for i, e := range effs {
 		out[i] = &pb.BattleEffect{
-			Type:                pb.BattleEffectType(e.Type),
-			Value:               int32(e.Value),
-			TargetWalletAddress: e.Target,
-			Description:         e.Description,
+			Type:                   pb.BattleEffectType(e.Type),
+			Value:                  int32(e.Value),
+			TargetWalletAddress:    e.TargetWalletAddress,
+			TargetTemporaryAddress: e.TargetTemporaryAddress,
+			Description:            e.Description,
 		}
 	}
 	return out
 }
 
 func convertInternalGameResultToProto(in *RoundResult) *pb.GameResult {
-	if in == nil {
+	if in == nil || in.GameResult == nil {
 		return nil
 	}
+	gr := in.GameResult
 	return &pb.GameResult{
-		Multiplier:     int32(in.GameFinalMultiplier),
-		GameResultType: pb.GameResultType(in.GameResultType),
-		Reward:         convertInternalRewardToProto(in.Reward),
+		Multiplier:     int32(gr.Multiplier),
+		GameResultType: pb.GameResultType(gr.GameResultType),
+		Reward:         convertInternalRewardToProto(&gr.Reward),
 	}
 }
 
@@ -124,8 +126,8 @@ func convertInternalRewardToProto(in *BattleReward) *pb.BattleReward {
 	players := make([]*pb.PlayerReward, len(in.PlayerRewards))
 	for i, pr := range in.PlayerRewards {
 		players[i] = &pb.PlayerReward{
-			WalletAddress:    pr.PlayerAddress,
-			TemporaryAddress: "", // internal 奖励结构未保存临时地址
+			WalletAddress:    pr.WalletAddress,
+			TemporaryAddress: pr.TemporaryAddress,
 			TokenChange:      int32(pr.TokenChange),
 			PointChange:      int32(pr.PointChange),
 		}

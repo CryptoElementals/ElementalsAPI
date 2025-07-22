@@ -70,10 +70,10 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	}
 
 	// 只保留属于自己的effect
-	filterEffects := func(effects []BattleEffect, target string) []BattleEffect {
+	filterEffects := func(effects []BattleEffect, wallet string) []BattleEffect {
 		var filtered []BattleEffect
 		for _, e := range effects {
-			if e.Target == target {
+			if e.TargetWalletAddress == wallet {
 				filtered = append(filtered, e)
 			}
 		}
@@ -88,7 +88,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 				p1Card := playerCards[i][cardIdx]
 				p2Card := playerCards[j][cardIdx]
 				relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card)
-				effects := be.elementalSystem.BuildEffects(p1Card, p2Card, relation, p1.WalletAddress, p2.WalletAddress)
+				effects := be.elementalSystem.BuildEffects(p1Card, p2Card, relation, p1.WalletAddress, p2.WalletAddress, p1.TemporaryAddress, p2.TemporaryAddress)
 				effects1 := filterEffects(effects, p1.WalletAddress)
 				effects2 := filterEffects(effects, p2.WalletAddress)
 				p1BeforeHP := p1.HP
@@ -155,11 +155,12 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 				// 适配新的CheckGameOver - 每张牌对战后检查，此时卡牌未全部打完
 				hps := make([]int, playerCount)
 				addrs := make([]string, playerCount)
+				temps := make([]string, playerCount)
 				for idx, st := range states {
 					hps[idx] = st.HP
 					addrs[idx] = st.WalletAddress
 				}
-				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs, uint(input.RoundNumber), false); isGameOver {
+				if isGameOver, _, _ := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), false); isGameOver {
 					goto END
 				}
 			}
@@ -180,51 +181,56 @@ END:
 	// 游戏结束判定 - 所有卡牌都打完后的最终判定
 	hps := make([]int, playerCount)
 	addrs := make([]string, playerCount)
+	temps := make([]string, playerCount)
 	for idx, st := range states {
 		hps[idx] = st.HP
 		addrs[idx] = st.WalletAddress
+		temps[idx] = st.TemporaryAddress
 	}
-	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs, uint(input.RoundNumber), true)
 
-	// 确定游戏结果类型和最终倍率
-	var gameResultType GameResultType
-	var gameFinalMultiplier uint32
+	isGameOver, winner, temporaryAddress := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), true)
+
+	var gameRes *GameResult
 
 	if isGameOver {
-		gameResultType = be.determineGameResultType(hps, addrs)
-		// 计算最终倍率（取败者倍率，平局为1）
+		// 确定游戏结果类型和最终倍率
+		grType := be.determineGameResultType(hps, addrs)
+
+		var finalMul uint32
 		if winner != "tie" {
 			for _, st := range states {
 				if st.WalletAddress != winner {
-					gameFinalMultiplier = st.Multiplier
+					finalMul = st.Multiplier
 					break
 				}
 			}
 		} else {
-			gameFinalMultiplier = 1.0
+			finalMul = 1
 		}
-	} else {
-		// 游戏未结束时，GameResultType为空，GameFinalMultiplier为0
-		gameResultType = GAME_NORMAL
-		gameFinalMultiplier = 0.0
+
+		gameRes = &GameResult{
+			Multiplier:             finalMul,
+			WinnerWalletAddress:    winner,
+			WinnerTemporaryAddress: temporaryAddress,
+			GameResultType:         grType,
+			// Reward 后续计算后赋值
+		}
 	}
 
-	result := &RoundResult{
-		Players:             playerStats,
-		RoundNumber:         input.RoundNumber,
-		GameFinalMultiplier: gameFinalMultiplier,
-		Winner:              winner,
-		IsGameOver:          isGameOver,
-		GameResultType:      gameResultType,
-		Reward:              nil, // 先设为nil
+	// 构建回合结果
+	roundRes := &RoundResult{
+		Players:     playerStats,
+		RoundNumber: input.RoundNumber,
+		IsGameOver:  isGameOver,
+		GameResult:  gameRes,
 	}
 
-	// 计算奖励
+	// 如果游戏结束，计算奖励
 	if isGameOver {
-		result.Reward = be.rewardCalculator.CalculateRewards(result)
+		roundRes.GameResult.Reward = be.rewardCalculator.CalculateRewards(roundRes)
 	}
 
-	return result, nil
+	return roundRes, nil
 }
 
 // determineGameResultType determine game result type

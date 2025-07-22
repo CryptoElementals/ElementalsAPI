@@ -13,32 +13,41 @@ func NewRewardCalculator() *RewardCalculator {
 }
 
 // CalculateRewards calculate battle rewards
-func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward {
+func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
+	// 如果游戏尚未结束或 GameResult 为空，直接返回 nil
+	if result == nil || result.GameResult == nil {
+		return BattleReward{}
+	}
+
+	gr := result.GameResult
+
 	baseStake := rc.BaseStake
 	systemFeeRate := 0.016 // 1.6% system fee
 
-	systemFee := int(float64(baseStake) * float64(result.GameFinalMultiplier) * systemFeeRate)
+	systemFee := int(float64(baseStake) * float64(gr.Multiplier) * systemFeeRate)
 
 	var playerRewards []PlayerReward
 
-	switch result.GameResultType {
+	switch gr.GameResultType {
 	case GAME_NORMAL, GAME_KO:
-		if result.Winner != "" && result.Winner != "tie" {
+		if gr.WinnerWalletAddress != "" && gr.WinnerWalletAddress != "tie" {
 			// 胜者获得奖励
 			winnerReward := PlayerReward{
-				PlayerAddress: result.Winner,
-				TokenChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * (1.0 - systemFeeRate)),
-				PointChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.012), // 1.2%
+				WalletAddress:    gr.WinnerWalletAddress,
+				TemporaryAddress: gr.WinnerTemporaryAddress,
+				TokenChange:      int(float64(baseStake) * float64(gr.Multiplier) * (1.0 - systemFeeRate)),
+				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.012), // 1.2%
 			}
 			playerRewards = append(playerRewards, winnerReward)
 
 			// 败者扣除赌注
 			for _, player := range result.Players {
-				if player.WalletAddress != result.Winner {
+				if player.WalletAddress != gr.WinnerWalletAddress {
 					loserReward := PlayerReward{
-						PlayerAddress: player.WalletAddress,
-						TokenChange:   -int(float64(baseStake) * float64(result.GameFinalMultiplier)),
-						PointChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.004), // 0.4%
+						WalletAddress:    player.WalletAddress,
+						TemporaryAddress: player.TemporaryAddress,
+						TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier)),
+						PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.004), // 0.4%
 					}
 					playerRewards = append(playerRewards, loserReward)
 					break
@@ -49,19 +58,20 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 		// 平局时所有玩家都扣除部分赌注
 		for _, player := range result.Players {
 			tieReward := PlayerReward{
-				PlayerAddress: player.WalletAddress,
-				TokenChange:   -int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.8),
-				PointChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.008), // 0.8%
+				WalletAddress:    player.WalletAddress,
+				TemporaryAddress: player.TemporaryAddress,
+				TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier) * 0.8),
+				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.008), // 0.8%
 			}
 			playerRewards = append(playerRewards, tieReward)
 		}
 	}
 
 	// KO 特殊处理积分
-	if result.GameResultType == GAME_KO && result.Winner != "" && result.Winner != "tie" {
+	if gr.GameResultType == GAME_KO && gr.WinnerWalletAddress != "" && gr.WinnerWalletAddress != "tie" {
 		for i := range playerRewards {
-			if playerRewards[i].PlayerAddress == result.Winner {
-				playerRewards[i].PointChange = int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.016) // 1.6%
+			if playerRewards[i].WalletAddress == gr.WinnerWalletAddress {
+				playerRewards[i].PointChange = int(float64(baseStake) * float64(gr.Multiplier) * 0.016) // 1.6%
 			} else {
 				// 败者积分为0
 				playerRewards[i].PointChange = 0
@@ -69,7 +79,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 		}
 	}
 
-	return &BattleReward{
+	return BattleReward{
 		PlayerRewards: playerRewards,
 		SystemFee:     systemFee,
 	}

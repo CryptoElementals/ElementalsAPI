@@ -71,8 +71,10 @@ enum GameResultType {
 
 message GameResult {
     int32 Multiplier = 1;
-    GameResultType GameResultType = 5;
-    BattleReward Reward = 6;
+    string WinnerWalletAddress = 2;
+    string WinnerTemporaryAddress = 3;
+    GameResultType GameResultType = 4;
+    BattleReward Reward = 5;
 }
 
 enum BattleEffectType {
