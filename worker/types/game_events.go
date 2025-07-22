@@ -32,7 +32,7 @@ type PlayerCardsOnChain struct {
 	Address     PlayerAddress
 	RoundNumber uint32
 	Salt        []byte
-	Cards       []uint32
+	Cards       []uint
 }
 
 type GameTimeout struct {

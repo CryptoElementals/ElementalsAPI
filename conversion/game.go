@@ -34,9 +34,9 @@ func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerA
 
 func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
 	return &proto.Round{
-		Number:  int32(round.RoundNumber),
-		Status:  proto.RoundStatus(round.Status),
-		Players: DbPlayerRoundInfosToProto(round.PlayerRoundInfos),
+		Number:           int32(round.RoundNumber),
+		Status:           proto.RoundStatus(round.Status),
+		PlayerRoundInfos: DbPlayerRoundInfosToProto(round.PlayerRoundInfos),
 	}
 }
 
@@ -55,7 +55,7 @@ func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.Playe
 	}
 	return &proto.PlayerRoundInfo{
 		PlayerAddress:       addr,
-		Cards:               DbRoundSubmittedCardsToProto(playerRoundInfo.RoundSubmittedCards),
+		SubmittedCards:      DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
 		Salt:                playerRoundInfo.Salt,
 		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
 	}
@@ -72,7 +72,6 @@ func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmi
 	return &proto.RoundSubmittedCard{
 		PlayerHealthBefore: card.HealthBefore,
 		PlayerHealthEnd:    card.HealthAfter,
-		Multiplier:         card.Multiplier,
-		SubmittedCardId:    card.CardID,
+		SubmittedCardId:    uint32(card.CardID),
 	}
 }
