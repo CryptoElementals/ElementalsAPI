@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/CryptoElementals/common/conversion"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type Service struct {
@@ -19,6 +19,10 @@ func NewService(ctx context.Context, workerManager *worker.WorkerManager) *Servi
 		ctx:         ctx,
 		gameManager: NewGameManager(ctx, workerManager),
 	}
+}
+
+func (s *Service) Start() error {
+	return s.gameManager.Start()
 }
 
 func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo {

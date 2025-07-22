@@ -48,7 +48,6 @@ message RoundResult {
     repeated PlayerRoundStat Players = 1;
     uint32 RoundNumber = 2;
     bool IsGameOver = 4;
-
 }
 
 message PlayerReward {
@@ -71,6 +70,8 @@ enum GameResultType {
 
 message GameResult {
     int32 Multiplier = 1;
+    string WinnerWalletAddress = 2;
+    string WinnerTemporaryAddress = 3;
     GameResultType GameResultType = 5;
     BattleReward Reward = 6;
 }

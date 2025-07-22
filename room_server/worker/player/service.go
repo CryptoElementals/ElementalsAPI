@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/rpc/server"
 )
 
 type GameInfoGetter interface {
-	GetActiveGameInfo(playerAddress *types.PlayerAddress) *proto.GameInfo
+	GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 }
 
@@ -96,11 +96,11 @@ func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
 	// we need to lock player here for better consistency
 	player.lock.Lock()
 	defer player.lock.Unlock()
-	gameInfo := s.gameInfoGetter.GetActiveGameInfo(&player.address)
+	gameInfo := s.gameInfoGetter.GetActiveGameInfo(player.address)
 	if gameInfo == nil {
 		return nil
 	}
-	return player.sync(gameInfo)
+	return nil
 }
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {

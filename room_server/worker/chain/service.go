@@ -3,9 +3,10 @@ package chain
 import (
 	"context"
 
+	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 )
 
@@ -17,9 +18,8 @@ type Service struct {
 func NewService(ctx context.Context,
 	workerManager *worker.WorkerManager, chainID int64, client bind.ContractBackend,
 	roomManagerContractAddress string, wallet *wallet.Wallet,
-	roundTimeout int64, maxRounds int64) *Service {
-	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, roundTimeout, maxRounds)
-	chain.createSelf()
+	roundTimeout int64, maxRounds int64, dataCache cache.Cache) *Service {
+	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, roundTimeout, maxRounds, dataCache)
 	return &Service{ctx: ctx, chain: chain}
 }
 
@@ -39,4 +39,8 @@ func (s *Service) ReceiveTransactions(blockNum uint64, txs *proto.TransactionBat
 		return err
 	}
 	return nil
+}
+
+func (s *Service) Start() error {
+	return s.chain.Start()
 }

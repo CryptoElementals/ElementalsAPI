@@ -131,25 +131,16 @@ message RoundCompleted {
 
 enum EventType {
   TYPE_KNOWN = 0;
-  SYNC_INFO = 1;
-  GAME_CREATED = 2;
-  GAME_READY = 3;
-  ROUND_READY = 4;
-  COMMITMENTS_ON_CHAIN = 5;
-  CARDS_ON_CHAIN = 6;
-  ROUND_COMPLETED = 7;
-  GAME_COMPLETED = 8;
+  TYPE_MATCHED = 1;
+  TYPE_PART_CONFIRMED = 2;
+  TYPE_GAME_CREATED = 3;
+  TYPE_ROUND_READY = 4;
+  TYPE_COMMITMENTS_ON_CHAIN = 5;
+  TYPE_CARDS_ON_CHAIN = 6;
+  TYPE_ROUND_COMPLETE = 7;
+  TYPE_GAME_COMPLETE = 8;
 }
 
 message Event {
   EventType type = 1;
-  oneof data {
-    rpc.GameInfo game_info = 2; // SYNC_INFO, GAME_COMPLETE
-    GameCreated game_created = 3; // GAME_CREATED
-    GameReady game_ready = 4; // GAME_READY
-    RoundReady round_ready = 5; // ROUND_READY
-    CommitmentsOnChain commitments_on_chain = 6; // COMMITMENTS_ON_CHAIN
-    CardsOnChain cards_on_chain = 7; // CARDS_ON_CHAIN
-    RoundCompleted round_completed = 8; // ROUND_COMPLETE
-  };
 }

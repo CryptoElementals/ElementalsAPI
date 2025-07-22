@@ -12,10 +12,11 @@ service RpcService {
     // game related api
     rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
-    rpc GetPlayerInfo(PlayerAddress) returns (PlayerInfo);
+    rpc GetGamePhase(PlayerAddress) returns (GamePhase);
     rpc GetGameInfo(GetGameInfoRequest) returns (GameInfo);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
 
+    
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
 }
@@ -32,10 +33,21 @@ enum PlayerStatus {
     PLAYER_IN_GAME = 3;
 }
 
-message PlayerInfo {
-    PlayerAddress address = 1;
-    PlayerStatus status = 2;
-    optional uint32 game_id = 3;
+message GamePhase {
+    GameType GameType = 1;
+    message GamePhasePlayer {
+        PlayerAddress Address = 1;
+        bool IsConfirmed = 2;
+        int32 InitialHP = 3;
+        int32 InitialMultiplier = 4;
+    }
+    repeated GamePhasePlayer Players = 2;
+    message PvPInfo {
+        uint32 GameID = 1;
+        GameStatus Status = 2;
+        uint64 BeginAt = 3;
+        uint64 TimeoutDuration = 4;
+    } 
 }
 
 message GetGameInfoRequest {
