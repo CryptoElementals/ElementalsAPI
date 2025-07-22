@@ -18,7 +18,7 @@ type testEventHandler struct {
 	tt      *testing.T
 }
 
-func (h *testEventHandler) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (h *testEventHandler) Handle(ctx context.Context, event *types.Event) error {
 	h.evtChan <- event
 	h.tt.Log(*event)
 	return nil

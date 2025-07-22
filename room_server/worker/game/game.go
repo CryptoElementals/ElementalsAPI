@@ -8,9 +8,9 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type gamePlayer struct {
@@ -107,7 +107,7 @@ func (g *Game) saveGame() error {
 	return nil
 }
 
-func (g *Game) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT, proto.GameStatus_GAME_RUNNING:
 		return g.handleRound(event)

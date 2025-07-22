@@ -7,9 +7,9 @@ import (
 	"sync"
 
 	"github.com/CryptoElementals/common/conversion"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type Publisher interface {
@@ -41,7 +41,7 @@ func NewPlayer(ctx context.Context,
 	return p
 }
 
-func (p *Player) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {

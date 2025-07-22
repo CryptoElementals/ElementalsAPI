@@ -8,11 +8,11 @@ import (
 
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/wallet"
 	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -91,11 +91,11 @@ func TestChainContractInteraction(t *testing.T) {
 	svc.chain.bindOpts.NoSend = true
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	ackReceived := make(chan struct{})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.AckEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.AckEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		close(ackReceived)
 		return nil
 	})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.ErrorEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.ErrorEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.ErrorEvent)
 		t.Errorf("ErrorEvent should not be sent, err: %v", evt.Err)
 		close(ackReceived)
@@ -126,7 +126,7 @@ func TestChainContractInteraction(t *testing.T) {
 	)
 	txHash, err := hexutil.Decode(tx.TxHash)
 	require.NoError(t, err)
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), gomock.Any(), evtMatcher).Times(5).Return(nil)
+	mockRoomHandler.EXPECT().Handle(gomock.Any(), evtMatcher).Times(5).Return(nil)
 	err = svc.ReceiveTransactions(1, &proto.TransactionBatch{
 		BlockHash: []byte("0x123"),
 		Timestamp: uint64(time.Now().Unix()),

@@ -50,7 +50,7 @@ func (q *Queue) start() error {
 	return nil
 }
 
-func (q *Queue) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (q *Queue) Handle(ctx context.Context, event *types.Event) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	switch evt := event.Data.(type) {

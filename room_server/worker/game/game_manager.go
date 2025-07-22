@@ -38,7 +38,7 @@ func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManag
 }
 
 // Handle implements worker.EventHandler.
-func (r *GameManager) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	switch evt := event.Data.(type) {

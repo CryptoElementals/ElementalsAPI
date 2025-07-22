@@ -8,12 +8,12 @@ import (
 
 	"github.com/CryptoElementals/common/conversion"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/rpc/client"
-	"github.com/CryptoElementals/common/rpc/proto"
-	pub "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
+	pub "github.com/CryptoElementals/common/rpc/server"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +44,7 @@ func TestPlayerJoinExitQueue(t *testing.T) {
 		WalletAddress:    "player2",
 		TemporaryAddress: "temp2",
 	}
-	mockQueueHandler.EXPECT().Handle(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+	mockQueueHandler.EXPECT().Handle(gomock.Any(), gomock.Any()).AnyTimes().
 		DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 			switch evt := event.Data.(type) {
 			case *types.JoinQueueEvent:

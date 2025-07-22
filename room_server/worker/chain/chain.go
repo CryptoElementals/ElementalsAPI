@@ -11,10 +11,10 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/wallet"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -72,7 +72,7 @@ func (c *Chain) createSelf() {
 	c.workerManager.SpwanWorker(c.ctx, types.CHAIN_MANAGER_ID, types.WORKER_TYPE_CHAIN, c)
 }
 
-func (c *Chain) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (c *Chain) Handle(ctx context.Context, event *types.Event) error {
 	switch evt := event.Data.(type) {
 	case *types.RequireContractCreationEvent:
 		evt, err := types.AssertInterface[*types.RequireContractCreationEvent](event)

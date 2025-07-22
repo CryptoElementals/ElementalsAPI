@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +96,7 @@ func TestGameStateMachine(t *testing.T) {
 	testWorkerManager.SpwanWorker(context.Background(), playerAddress2.String(), types.WORKER_TYPE_PLAYER, mockPlayer2)
 	testWorkerManager.SpwanWorker(context.Background(), types.CHAIN_MANAGER_ID, types.WORKER_TYPE_CHAIN, mockChain)
 	gameCreatedEvtMatcher := tt.NewEventTypeMatcher(&types.GameCreatedEvent{})
-	mockChain.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.RequireContractCreationEvent{})).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireContractCreationEvent{})).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.RequireContractCreationEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -107,7 +107,7 @@ func TestGameStateMachine(t *testing.T) {
 		testWorkerManager.SendEvent(wid, contractEvt)
 		return nil
 	})
-	mockChain.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.RequireSetupNewRoundEvent{})).Times(2).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireSetupNewRoundEvent{})).Times(2).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.RequireSetupNewRoundEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -119,7 +119,7 @@ func TestGameStateMachine(t *testing.T) {
 		testWorkerManager.SendEvent(wid, setupEvt)
 		return nil
 	})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gomock.Any(), gameCreatedEvtMatcher).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer1.EXPECT().Handle(gomock.Any(), gameCreatedEvtMatcher).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.GameCreatedEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -130,7 +130,7 @@ func TestGameStateMachine(t *testing.T) {
 		}))
 		return nil
 	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gomock.Any(), gameCreatedEvtMatcher).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer2.EXPECT().Handle(gomock.Any(), gameCreatedEvtMatcher).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.GameCreatedEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -143,7 +143,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 
 	roundCompleteEvtMatcher := tt.NewEventTypeMatcher(&types.RoundCompletedEvent{})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gomock.Any(), roundCompleteEvtMatcher).Times(2).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer1.EXPECT().Handle(gomock.Any(), roundCompleteEvtMatcher).Times(2).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.RoundCompletedEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -154,7 +154,7 @@ func TestGameStateMachine(t *testing.T) {
 		}))
 		return nil
 	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gomock.Any(), roundCompleteEvtMatcher).Times(2).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer2.EXPECT().Handle(gomock.Any(), roundCompleteEvtMatcher).Times(2).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.RoundCompletedEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -168,9 +168,9 @@ func TestGameStateMachine(t *testing.T) {
 
 	gameReadyEvtMatcher := tt.NewEventTypeMatcher(&types.GameReadyEvent{})
 	roundReadyEvtMatcher := tt.NewEventTypeMatcher(&types.RoundReadyEvent{})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gomock.Any(), gameReadyEvtMatcher).Times(1).Return(nil)
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gomock.Any(), gameReadyEvtMatcher).Times(1).Return(nil)
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gomock.Any(), roundReadyEvtMatcher).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer1.EXPECT().Handle(gomock.Any(), gameReadyEvtMatcher).Times(1).Return(nil)
+	mockPlayer2.EXPECT().Handle(gomock.Any(), gameReadyEvtMatcher).Times(1).Return(nil)
+	mockPlayer1.EXPECT().Handle(gomock.Any(), roundReadyEvtMatcher).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.RoundReadyEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -182,7 +182,7 @@ func TestGameStateMachine(t *testing.T) {
 		}))
 		return nil
 	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gomock.Any(), roundReadyEvtMatcher).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer2.EXPECT().Handle(gomock.Any(), roundReadyEvtMatcher).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.RoundReadyEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -194,7 +194,7 @@ func TestGameStateMachine(t *testing.T) {
 		}))
 		return nil
 	})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.CommitmentsOnChainEvent{})).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer1.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.CommitmentsOnChainEvent{})).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.CommitmentsOnChainEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -207,7 +207,7 @@ func TestGameStateMachine(t *testing.T) {
 		}))
 		return nil
 	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.CommitmentsOnChainEvent{})).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer2.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.CommitmentsOnChainEvent{})).Times(3).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.CommitmentsOnChainEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
@@ -222,7 +222,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 
 	waitGameEnd := make(chan struct{}, 2)
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.GameCompletedEvent{})).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer1.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.GameCompletedEvent{})).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.GameCompletedEvent)
 		gid := evt.GameID
 		require.Equal(t, gid, evt.GameID)
@@ -230,7 +230,7 @@ func TestGameStateMachine(t *testing.T) {
 		waitGameEnd <- struct{}{}
 		return nil
 	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gomock.Any(), tt.NewEventTypeMatcher(&types.GameCompletedEvent{})).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockPlayer2.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.GameCompletedEvent{})).Times(1).DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
 		evt := event.Data.(*types.GameCompletedEvent)
 		gid := evt.GameID
 		require.Equal(t, gid, evt.GameID)

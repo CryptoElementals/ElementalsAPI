@@ -18,7 +18,7 @@ type WorkerCloser interface {
 }
 
 type EventHandler interface {
-	Handle(ctx context.Context, sender EventSender, event *types.Event) error
+	Handle(ctx context.Context, event *types.Event) error
 }
 
 type Worker struct {
@@ -54,7 +54,7 @@ func (w *Worker) Run() {
 			return
 		case event := <-w.msgQueue:
 			sender := event.Sender
-			err := w.handler.Handle(w.ctx, w, event)
+			err := w.handler.Handle(w.ctx, event)
 			if err != nil {
 				errEvent := types.NewEvent(w.Id, &types.ErrorEvent{
 					OriginalEvent:    event,
