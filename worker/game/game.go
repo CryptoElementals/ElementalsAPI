@@ -287,14 +287,14 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	}
 	player := g.gamePlayers[evt.Address]
 	for _, card := range evt.Cards {
-		player.roundPlayer.RoundSubmittedCards = append(player.roundPlayer.RoundSubmittedCards, &dao.RoundSubmittedCard{
+		player.roundPlayer.SubmittedCards = append(player.roundPlayer.SubmittedCards, &dao.RoundSubmittedCard{
 			CardID: card,
 		})
 	}
 	// check if all player cards on chain
 	allCardsOnChain := true
 	for _, player := range g.gamePlayers {
-		if len(player.roundPlayer.RoundSubmittedCards) == 0 {
+		if len(player.roundPlayer.SubmittedCards) == 0 {
 			allCardsOnChain = false
 			break
 		}
@@ -367,9 +367,9 @@ func (g *Game) setupNewRound() {
 	}
 	for _, player := range g.gamePlayers {
 		playerRoundInfo := &dao.PlayerRoundInfo{
-			WalletAddress:       player.player.TemporaryAddress,
-			TemporaryAddress:    player.player.WalletAddress,
-			RoundSubmittedCards: make([]*dao.RoundSubmittedCard, 0),
+			WalletAddress:    player.player.TemporaryAddress,
+			TemporaryAddress: player.player.WalletAddress,
+			SubmittedCards:   make([]*dao.RoundSubmittedCard, 0),
 		}
 		newRound.PlayerRoundInfos = append(newRound.PlayerRoundInfos, playerRoundInfo)
 		player.roundPlayer = playerRoundInfo

@@ -202,7 +202,7 @@ func TestGameStateMachine(t *testing.T) {
 			GameID:      evt.GameID,
 			Address:     playerAddress1,
 			RoundNumber: evt.RoundNumber,
-			Cards:       []uint32{1, 2, 3},
+			Cards:       []uint{1, 2, 3},
 			Salt:        []byte("salt1"),
 		}))
 		return nil
@@ -215,7 +215,7 @@ func TestGameStateMachine(t *testing.T) {
 			GameID:      evt.GameID,
 			Address:     playerAddress2,
 			RoundNumber: evt.RoundNumber,
-			Cards:       []uint32{4, 5, 6},
+			Cards:       []uint{4, 5, 6},
 			Salt:        []byte("salt2"),
 		}))
 		return nil

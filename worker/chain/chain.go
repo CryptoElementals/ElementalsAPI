@@ -264,13 +264,16 @@ func (c *Chain) cardsOnChain(gameID uint, txHash string, blockHash string, tx *p
 	player.FromProto(tx.CardsOnChain.Address)
 	roundNumber := tx.CardsOnChain.RoundNumber
 	salt := tx.CardsOnChain.Salt
-	cards := tx.CardsOnChain.Cards
+	cardsUint := make([]uint, len(tx.CardsOnChain.Cards))
+	for i := range cardsUint {
+		cardsUint[i] = uint(tx.CardsOnChain.Cards[i])
+	}
 	cardsOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardsOnChain{
 		GameID:      gameID,
 		Address:     player,
 		RoundNumber: roundNumber,
 		Salt:        salt,
-		Cards:       cards,
+		Cards:       cardsUint,
 	}, true)
 	evtID := cardsOnChainEvent.EventID
 	c.inflightEvents[evtID] = struct{}{}
