@@ -24,11 +24,11 @@ type Player struct {
 // 支持多玩家
 // PlayerRoundInput 表示每个玩家的输入
 type PlayerRoundInput struct {
-	Address    string  `json:"Address"`
-	Cards      []int   `json:"Cards"`
-	HP         int     `json:"HP"`
-	Multiplier float64 `json:"Multiplier"`
-	LostHP     int     `json:"LostHP"`
+	Address    string `json:"Address"`
+	Cards      []int  `json:"Cards"`
+	HP         int    `json:"HP"`
+	Multiplier uint32 `json:"Multiplier"`
+	LostHP     int    `json:"LostHP"`
 }
 
 type RoundInput struct {
@@ -39,7 +39,7 @@ type RoundInput struct {
 type RoundResult struct {
 	Players             []PlayerRoundStat `json:"Players"`             // 所有玩家的回合数据
 	Round               uint              `json:"Round"`               // Round number
-	GameFinalMultiplier float64           `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
+	GameFinalMultiplier uint32            `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
 	Winner              string            `json:"Winner"`              // Winner address
 	IsGameOver          bool              `json:"IsGameOver"`          // Whether game is over
 	GameResultType      string            `json:"GameResultType"`      // Game result type
@@ -95,8 +95,8 @@ type PlayerCardStat struct {
 	CardID           int            `json:"CardID"`
 	HPBefore         int            `json:"HPBefore"`
 	HPAfter          int            `json:"HPAfter"`
-	MultiplierBefore float64        `json:"MultiplierBefore"`
-	MultiplierAfter  float64        `json:"MultiplierAfter"`
+	MultiplierBefore uint32         `json:"MultiplierBefore"`
+	MultiplierAfter  uint32         `json:"MultiplierAfter"`
 	Effects          []BattleEffect `json:"Effects"`
 	Description      string         `json:"Description"`
 	ElementRelation  string         `json:"ElementRelation"`

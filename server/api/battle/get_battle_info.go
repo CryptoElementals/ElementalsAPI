@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/CryptoElementals/common/room_server/battle"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/services/battle"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -35,7 +35,7 @@ type APIPlayerRoundStat struct {
 type APIRoundResult struct {
 	Players             []APIPlayerRoundStat `json:"Players"`             // 所有玩家的回合数据
 	Round               uint                 `json:"Round"`               // Round number
-	GameFinalMultiplier float64              `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
+	GameFinalMultiplier uint                 `json:"GameFinalMultiplier"` // Game final multiplier (take loser's multiplier, tie is 1)
 	Winner              string               `json:"Winner"`              // Winner address
 	IsGameOver          bool                 `json:"IsGameOver"`          // Whether game is over
 	GameResultType      string               `json:"GameResultType"`      // Game result type
@@ -149,14 +149,14 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 选定要展示的Round（回合）
-	var targetRound int
+	var targetRound uint
 	if task.Request.Round != nil {
-		targetRound = int(*task.Request.Round)
+		targetRound = uint(*task.Request.Round)
 	} else {
 		// 默认取最大回合号
 		for _, round := range gameInfo.Rounds {
-			if int(round.Number) > targetRound {
-				targetRound = int(round.Number)
+			if uint(round.Number) > targetRound {
+				targetRound = uint(round.Number)
 			}
 		}
 	}
@@ -164,7 +164,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	// 获取指定回合的数据
 	var targetRoundData *proto.Round
 	for _, round := range gameInfo.Rounds {
-		if int(round.Number) == targetRound {
+		if uint(round.Number) == targetRound {
 			targetRoundData = round
 			break
 		}
@@ -230,7 +230,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	var isGameOver bool
 	var winner string
 	var gameResultType string
-	var gameFinalMultiplier float64
+	var gameFinalMultiplier uint
 	var reward *battle.BattleReward
 
 	if gameInfo.Status == proto.GameStatus_GAME_END && gameInfo.Result != nil {
@@ -247,7 +247,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 		}
 
 		// 最终倍率
-		gameFinalMultiplier = float64(gameInfo.Result.Multiplier)
+		gameFinalMultiplier = uint(gameInfo.Result.Multiplier)
 
 		// 转换奖励数据
 		if gameInfo.Result.Reward != nil {

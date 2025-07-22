@@ -17,7 +17,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 	baseStake := rc.BaseStake
 	systemFeeRate := 0.016 // 1.6% system fee
 
-	systemFee := int(float64(baseStake) * result.GameFinalMultiplier * systemFeeRate)
+	systemFee := int(float64(baseStake) * float64(result.GameFinalMultiplier) * systemFeeRate)
 
 	var playerRewards []PlayerReward
 
@@ -27,8 +27,8 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 			// 胜者获得奖励
 			winnerReward := PlayerReward{
 				PlayerAddress: result.Winner,
-				TokenChange:   int(float64(baseStake) * result.GameFinalMultiplier * (1.0 - systemFeeRate)),
-				PointChange:   int(float64(baseStake) * result.GameFinalMultiplier * 0.012), // 1.2%
+				TokenChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * (1.0 - systemFeeRate)),
+				PointChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.012), // 1.2%
 			}
 			playerRewards = append(playerRewards, winnerReward)
 
@@ -37,8 +37,8 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 				if player.PlayerAddress != result.Winner {
 					loserReward := PlayerReward{
 						PlayerAddress: player.PlayerAddress,
-						TokenChange:   -int(float64(baseStake) * result.GameFinalMultiplier),
-						PointChange:   int(float64(baseStake) * result.GameFinalMultiplier * 0.004), // 0.4%
+						TokenChange:   -int(float64(baseStake) * float64(result.GameFinalMultiplier)),
+						PointChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.004), // 0.4%
 					}
 					playerRewards = append(playerRewards, loserReward)
 					break
@@ -50,8 +50,8 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 		for _, player := range result.Players {
 			tieReward := PlayerReward{
 				PlayerAddress: player.PlayerAddress,
-				TokenChange:   -int(float64(baseStake) * result.GameFinalMultiplier * 0.8),
-				PointChange:   int(float64(baseStake) * result.GameFinalMultiplier * 0.008), // 0.8%
+				TokenChange:   -int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.8),
+				PointChange:   int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.008), // 0.8%
 			}
 			playerRewards = append(playerRewards, tieReward)
 		}
@@ -61,7 +61,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) *BattleReward 
 	if result.GameResultType == "ko" && result.Winner != "" && result.Winner != "tie" {
 		for i := range playerRewards {
 			if playerRewards[i].PlayerAddress == result.Winner {
-				playerRewards[i].PointChange = int(float64(baseStake) * result.GameFinalMultiplier * 0.016) // 1.6%
+				playerRewards[i].PointChange = int(float64(baseStake) * float64(result.GameFinalMultiplier) * 0.016) // 1.6%
 			} else {
 				// 败者积分为0
 				playerRewards[i].PointChange = 0

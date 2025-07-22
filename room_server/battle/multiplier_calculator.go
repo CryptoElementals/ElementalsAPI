@@ -9,17 +9,17 @@ func NewMultiplierCalculator() *MultiplierCalculator {
 }
 
 // CalculateMultiplierByLostHP calculate multiplier based on accumulated lost health
-func (mc *MultiplierCalculator) CalculateMultiplierByLostHP(lostHP int) float64 {
+func (mc *MultiplierCalculator) CalculateMultiplierByLostHP(lostHP int) uint32 {
 	if lostHP <= 2000 {
-		return 1.0
+		return 1
 	}
 
 	excessHP := lostHP - 2000
-	bonusMultiplier := float64(excessHP) / 500.0
-	newMultiplier := 1.0 + bonusMultiplier
+	bonusMultiplier := uint32(excessHP) / 500
+	newMultiplier := 1 + bonusMultiplier
 
-	if newMultiplier > 9.0 {
-		newMultiplier = 9.0
+	if newMultiplier > 9 {
+		newMultiplier = 9
 	}
 
 	return newMultiplier

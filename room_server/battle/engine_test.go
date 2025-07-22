@@ -147,4 +147,4 @@ func TestExecuteRound(t *testing.T) {
 	t.Log("Test completed successfully - check the JSON output above for manual verification")
 }
 
-// go test -v ./server/services/battle/ -run TestExecuteRound
+// go test -v ./room_server/battle/ -run TestExecuteRound

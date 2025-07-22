@@ -54,7 +54,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 	// 初始化每个玩家的状态
 	type playerState struct {
 		HP         int
-		Multiplier float64
+		Multiplier uint32
 		LostHP     int
 		Stats      []PlayerCardStat
 		Address    string
@@ -82,7 +82,6 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 	}
 
 	for cardIdx := 0; cardIdx < 3; cardIdx++ {
-		// 两两对战（可扩展为多玩家）
 		for i := 0; i < playerCount; i++ {
 			for j := i + 1; j < playerCount; j++ {
 				p1 := states[i]
@@ -188,7 +187,7 @@ END:
 
 	// 确定游戏结果类型和最终倍率
 	var gameResultType string
-	var gameFinalMultiplier float64
+	var gameFinalMultiplier uint32
 
 	if isGameOver {
 		gameResultType = be.determineGameResultType(hps, addrs)
