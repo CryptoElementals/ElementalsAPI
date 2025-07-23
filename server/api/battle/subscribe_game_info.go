@@ -263,7 +263,21 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 	// 		RequestUUID: requestUUID,
 	// 	}
 	//需要增加matched和partconfirmed的roomserver 消息
-	case proto.EventType_GAME_CREATED:
+	case proto.EventType_TYPE_MATCHED:
+		return events.Event{
+			Type: events.EventTypeDataChange,
+			Data: map[string]interface{}{
+				"EventType": "matched",
+			},
+		}
+	case proto.EventType_TYPE_PART_CONFIRMED:
+		return events.Event{
+			Type: events.EventTypeDataChange,
+			Data: map[string]interface{}{
+				"EventType": "partConfirmed",
+			},
+		}
+	case proto.EventType_TYPE_GAME_CREATED:
 		return events.Event{
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
@@ -271,7 +285,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_ROUND_READY:
+	case proto.EventType_TYPE_ROUND_READY:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
@@ -279,7 +293,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_COMMITMENTS_ON_CHAIN:
+	case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
@@ -287,7 +301,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_CARDS_ON_CHAIN:
+	case proto.EventType_TYPE_CARDS_ON_CHAIN:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
@@ -295,7 +309,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_ROUND_COMPLETED:
+	case proto.EventType_TYPE_ROUND_COMPLETE:
 		return events.Event{
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
@@ -303,7 +317,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_GAME_COMPLETED:
+	case proto.EventType_TYPE_GAME_COMPLETE:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{

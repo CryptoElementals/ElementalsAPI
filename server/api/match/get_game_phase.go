@@ -2,7 +2,6 @@ package match
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
@@ -127,7 +126,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		TemporaryAddress: tempAddress,
 	}
 
-	playerInfo, err := client.GetPlayerInfo(context.Background(), playerAddr)
+	_, err = client.GetGamePhase(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "RoomServer GetPlayerInfo failed: " + err.Error()
@@ -139,29 +138,29 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.PvPInfo.BeginAt = currentTime
 	task.Response.PvPInfo.TimeoutDuration = ROUND_TIMEOUT_SECONDS
 
-	switch playerInfo.Status {
-	case proto.PlayerStatus_PLAYER_IN_QUEUE:
-		task.Response.Mode = "PvP"
-		task.Response.PvPInfo.Phase = "Queueing"
-		task.Response.BaseResponse.Message = "Player is in match queue"
-	case proto.PlayerStatus_PLAYER_MATCHED:
-		task.Response.Mode = "PvP"
-		task.Response.PvPInfo.Phase = "Matching"
-		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
-	case proto.PlayerStatus_PLAYER_IN_GAME:
-		task.Response.Mode = "PvP"
-		task.Response.PvPInfo.Phase = "InBattle"
-		task.Response.BaseResponse.Message = "Player has entered battle"
+	// switch playerInfo.Status {
+	// case proto.PlayerStatus_PLAYER_IN_QUEUE:
+	// 	task.Response.Mode = "PvP"
+	// 	task.Response.PvPInfo.Phase = "Queueing"
+	// 	task.Response.BaseResponse.Message = "Player is in match queue"
+	// case proto.PlayerStatus_PLAYER_MATCHED:
+	// 	task.Response.Mode = "PvP"
+	// 	task.Response.PvPInfo.Phase = "Matching"
+	// 	task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
+	// case proto.PlayerStatus_PLAYER_IN_GAME:
+	// 	task.Response.Mode = "PvP"
+	// 	task.Response.PvPInfo.Phase = "InBattle"
+	// 	task.Response.BaseResponse.Message = "Player has entered battle"
 
-		// 当玩家在游戏中时，设置RoomId
-		if playerInfo.GameId != nil {
-			task.Response.PvPInfo.RoomId = strconv.Itoa(int(*playerInfo.GameId))
-		}
-	default:
-		task.Response.Mode = "None"
-		task.Response.PvPInfo.Phase = "None"
-		task.Response.BaseResponse.Message = "Player is not participating in any game"
-	}
+	// 	// 当玩家在游戏中时，设置RoomId
+	// 	if playerInfo.GameId != nil {
+	// 		task.Response.PvPInfo.RoomId = strconv.Itoa(int(*playerInfo.GameId))
+	// 	}
+	// default:
+	// 	task.Response.Mode = "None"
+	// 	task.Response.PvPInfo.Phase = "None"
+	// 	task.Response.BaseResponse.Message = "Player is not participating in any game"
+	// }
 
 	// 集成getmatchinfo功能：如果MatchId非空，查找并组装玩家信息
 	if task.Response.PvPInfo.MatchId != "" {
