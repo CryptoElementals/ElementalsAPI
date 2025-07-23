@@ -29,16 +29,20 @@ func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManag
 		workerManager:   workerMangerService,
 	}
 
-	err := m.recoverGames()
-	if err != nil {
-		log.Errorf("recover games failed: %s", err.Error())
-	}
-	m.createSelf()
 	return m
 }
 
+func (r *GameManager) Start() error {
+	err := r.recoverGames()
+	if err != nil {
+		return err
+	}
+	r.createSelf()
+	return nil
+}
+
 // Handle implements worker.EventHandler.
-func (r *GameManager) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	switch evt := event.Data.(type) {

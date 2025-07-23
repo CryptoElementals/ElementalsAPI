@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package pubsub;
+
+import "rpc/proto/rpc.proto";
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+// PubSub服务定义
+service PubSubService {
+  // 发布消息
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  
+  // 订阅主题
+  rpc Subscribe(SubscribeRequest) returns (stream Message);
+  
+  // 取消订阅
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  
+  // 获取主题列表
+  rpc ListTopics(ListTopicsRequest) returns (ListTopicsResponse);
+  
+  // 获取主题的订阅者数量
+  rpc GetSubscriberCount(GetSubscriberCountRequest) returns (GetSubscriberCountResponse);
+}
+
+// 发布消息请求
+message PublishRequest {
+  string topic = 1;
+  Event event = 2;
+  map<string, string> metadata = 3;
+  int64 timestamp = 4;
+}
+
+// 发布消息响应
+message PublishResponse {
+  string message_id = 1;
+  int32 subscriber_count = 2;
+  bool success = 3;
+  string error = 4;
+}
+
+// 订阅请求
+message SubscribeRequest {
+  string topic = 1;
+  string subscriber_id = 2;
+}
+
+// 消息
+message Message {
+  string message_id = 1;
+  string topic = 2;
+  Event event = 3;
+  map<string, string> metadata = 4;
+  int64 timestamp = 5;
+  string publisher_id = 6;
+}
+
+// 取消订阅请求
+message UnsubscribeRequest {
+  string topic = 1;
+  string subscriber_id = 2;
+}
+
+// 取消订阅响应
+message UnsubscribeResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// 获取主题列表请求
+message ListTopicsRequest {
+  string pattern = 1; // 可选的主题模式匹配
+}
+
+// 获取主题列表响应
+message ListTopicsResponse {
+  repeated TopicInfo topics = 1;
+}
+
+// 主题信息
+message TopicInfo {
+  string name = 1;
+  int32 subscriber_count = 2;
+  int64 last_message_time = 3;
+  int64 message_count = 4;
+}
+
+// 获取订阅者数量请求
+message GetSubscriberCountRequest {
+  string topic = 1;
+}
+
+// 获取订阅者数量响应
+message GetSubscriberCountResponse {
+  string topic = 1;
+  int32 subscriber_count = 2;
+  bool success = 3;
+  string error = 4;
+} 
+
+message GameCreated {
+  uint32 game_id = 1;
+  repeated rpc.PlayerAddress players = 2; 
+}
+
+message GameReady {
+  uint32 game_id = 1;
+  string contract_address = 2;
+}
+
+message RoundReady {
+  uint32 game_id = 1;
+  uint32 round_num = 2;
+}
+
+message CommitmentsOnChain {
+  uint32 game_id = 1;
+  uint32 round_num = 2;
+}
+
+message CardsOnChain {
+  uint32 game_id = 1;
+  uint32 round_num = 2;
+}
+
+message RoundCompleted {
+  uint32 game_id = 1;
+  rpc.Round round_info = 2;
+}
+
+enum EventType {
+  TYPE_KNOWN = 0;
+  TYPE_MATCHED = 1;
+  TYPE_PART_CONFIRMED = 2;
+  TYPE_GAME_CREATED = 3;
+  TYPE_ROUND_READY = 4;
+  TYPE_COMMITMENTS_ON_CHAIN = 5;
+  TYPE_CARDS_ON_CHAIN = 6;
+  TYPE_ROUND_COMPLETE = 7;
+  TYPE_GAME_COMPLETE = 8;
+}
+
+message Event {
+  EventType type = 1;
+}

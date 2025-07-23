@@ -8,7 +8,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	worker "github.com/CryptoElementals/common/room_server/worker"
 	types "github.com/CryptoElementals/common/room_server/worker/types"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -37,15 +36,15 @@ func (m *MockEventHandler) EXPECT() *MockEventHandlerMockRecorder {
 }
 
 // Handle mocks base method.
-func (m *MockEventHandler) Handle(arg0 context.Context, arg1 worker.EventSender, arg2 *types.Event) error {
+func (m *MockEventHandler) Handle(arg0 context.Context, arg1 *types.Event) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Handle", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "Handle", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Handle indicates an expected call of Handle.
-func (mr *MockEventHandlerMockRecorder) Handle(arg0, arg1, arg2 interface{}) *gomock.Call {
+func (mr *MockEventHandlerMockRecorder) Handle(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MockEventHandler)(nil).Handle), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MockEventHandler)(nil).Handle), arg0, arg1)
 }

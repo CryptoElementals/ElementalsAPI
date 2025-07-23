@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type gamePlayer struct {
@@ -107,7 +108,7 @@ func (g *Game) saveGame() error {
 	return nil
 }
 
-func (g *Game) Handle(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT, proto.GameStatus_GAME_RUNNING:
 		return g.handleRound(event)
@@ -149,6 +150,11 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 			allPlayersReady = false
 		}
 	}
+	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
+		GameID:       g.gameInfo.ID,
+		RoundNumber:  uint32(g.currentRound.RoundNumber),
+		ReadyAddress: evt.PlayerAddress,
+	}))
 	if !allPlayersReady {
 		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
@@ -208,8 +214,9 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 		ContractAddress: evt.RoomContractAddress,
 	})
 	roundReadyEvt := types.NewEvent(g.workerID(), &types.RoundReadyEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: g.currentRound.RoundNumber,
+		GameID:         g.gameInfo.ID,
+		RoundNumber:    g.currentRound.RoundNumber,
+		RoundStartedAt: time.Now().Unix(),
 	})
 	g.sendEventsToAllPlayers(gameReadyEvt, roundReadyEvt)
 	return nil
@@ -233,8 +240,9 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 		return err
 	}
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundReadyEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: evt.RoundNumber,
+		GameID:         g.gameInfo.ID,
+		RoundNumber:    evt.RoundNumber,
+		RoundStartedAt: time.Now().Unix(),
 	}))
 	return nil
 }

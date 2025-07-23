@@ -12,9 +12,16 @@ type GameReadyEvent struct {
 	ContractAddress string
 }
 
+type RoundPartialReadyEvent struct {
+	GameID       uint
+	RoundNumber  uint32
+	ReadyAddress PlayerAddress
+}
+
 type RoundReadyEvent struct {
-	GameID      uint
-	RoundNumber uint32
+	GameID         uint
+	RoundNumber    uint32
+	RoundStartedAt int64
 }
 
 type CommitmentsOnChainEvent struct {

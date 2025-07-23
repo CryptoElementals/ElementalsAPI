@@ -32,10 +32,15 @@ func GetAllActiveGames() ([]*dao.Game, error) {
 }
 
 func preloadGameInfo(tx *gorm.DB) *gorm.DB {
-	return tx.Preload("Players").
+	return tx.
+		Preload("Players").
+		Preload("GameResult").
+		Preload("GameResult.BattleReword").
+		Preload("GameResult.BattleReword.PlayerRewards").
 		Preload("Rounds").
 		Preload("Rounds.PlayerRoundInfos").
-		Preload("Rounds.PlayerRoundInfos.RoundSubmittedCards")
+		Preload("Rounds.PlayerRoundInfos.SubmittedCards").
+		Preload("Rounds.PlayerRoundInfos.SubmittedCards.CardEffects")
 }
 
 func SaveGame(game *dao.Game) error {

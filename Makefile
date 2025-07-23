@@ -53,7 +53,7 @@ $(BIN_DIR):
 
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) 
 	@echo "Clean completed"
 
 deps:

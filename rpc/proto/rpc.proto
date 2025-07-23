@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package rpc;
+
+import "google/protobuf/empty.proto";
+
+import "rpc/proto/battle.proto";
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+service RpcService {
+    // game related api
+    rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
+    rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
+    rpc GetGamePhase(PlayerAddress) returns (GamePhase);
+    rpc GetGameInfo(GetGameInfoRequest) returns (GameInfo);
+    rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
+
+    
+    // chain related api
+    rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
+}
+
+message PlayerAddress {
+    string wallet_address = 1;
+    string temporary_address = 2;
+}
+
+enum PlayerStatus {
+    PLAYER_KNOWN = 0;
+    PLAYER_IN_QUEUE = 1;
+    PLAYER_MATCHED = 2;
+    PLAYER_IN_GAME = 3;
+}
+
+message GamePhase {
+    GameType GameType = 1;
+    message GamePhasePlayer {
+        PlayerAddress Address = 1;
+        bool IsConfirmed = 2;
+        int32 InitialHP = 3;
+        int32 InitialMultiplier = 4;
+    }
+    repeated GamePhasePlayer Players = 2;
+    message PvPInfo {
+        uint32 GameID = 1;
+        GameStatus Status = 2;
+        uint64 BeginAt = 3;
+        uint64 TimeoutDuration = 4;
+    } 
+}
+
+message GetGameInfoRequest {
+    uint32 game_id = 1;
+}
+
+message ConfirmBattleRequest {
+    uint32 game_id = 1;
+    uint32 round_num = 2;
+}
+
+enum RoundStatus {
+    ROUND_WAITTING_BATTLE_CONFIRMATION = 0;
+    ROUND_WAITTING_SETUP_ON_CHAIN = 1;
+    ROUND_WAITTING_COMMITMENTS = 2;
+    ROUND_WAITTING_CARDS = 3;
+    ROUND_COMPLETED = 4;
+}
+
+
+message PlayerRoundInfo {
+    PlayerAddress PlayerAddress = 1;
+    bool PlayerReady = 2;
+    bytes Salt = 3;
+    bytes SubmittedCommitment = 4;
+    repeated RoundSubmittedCard SubmittedCards = 5;
+}
+
+// Battle Engine related messages
+
+
+message RoundSubmittedCard {
+    uint32 SubmittedCardId = 1;
+    uint32 PlayerHealthBefore = 2;
+    uint32 PlayerHealthEnd = 3;
+    uint32 MultiplierBefore = 4;      // multiplier before this card
+    uint32 MultiplierAfter = 5;       // multiplier after this card  
+    string Description = 6;            // battle description
+    battle.ElementRelation ElementRelation = 7;       // element relation type
+    repeated battle.BattleEffect Effects = 8; // effects applied to this player
+}
+
+message Round {
+    int32 number = 1; // start from 1
+    RoundStatus status = 2;
+    repeated PlayerRoundInfo player_round_infos = 3;
+}
+
+enum GameStatus {
+    GAME_INIT = 0;
+    GAME_RUNNING = 1;
+    GAME_END = 2;
+}
+
+
+enum GameType {
+    GAME_TYPE_UNKNOWN = 0;
+    PVP = 1;
+}
+
+message GameInfo {
+    uint32 game_id = 1;
+    string room_contract_address = 2;
+    GameType game_type = 3;
+    GameStatus status = 4;
+    int32 initial_hp = 5;
+    repeated PlayerAddress players = 6;
+    repeated Round rounds = 7;
+    optional battle.GameResult result = 8;
+}
+
+message Transaction {
+    bytes tx_hash = 1;
+    oneof tx {
+        TxRoomContractCreated room_contract_created = 2;
+        TxRoomContractRoundSetupReady room_contract_setup_ready = 3;
+        TxCommitmentsOnChain commitments_on_chain = 4;
+        TxCardsOnChain cards_on_chain = 5;
+    };
+}
+
+message TransactionBatch {
+    bytes block_hash = 1;
+    uint64 timestamp = 2;
+    repeated Transaction transactions = 3;
+}
+
+message TxRoomContractCreated {
+    string room_contract_address = 1;
+}
+
+message TxRoomContractRoundSetupReady {
+    string room_contract_address = 1;
+    uint32 round_number = 2;
+}
+
+message TxCommitmentsOnChain {
+    string room_contract_address = 1;
+    PlayerAddress address = 2;
+    uint32 round_number = 3;
+    bytes commitment = 4;
+}
+
+message TxCardsOnChain {
+    string room_contract_address = 1;
+    PlayerAddress address = 2;
+    uint32 round_number = 3;
+    bytes salt = 4;
+    repeated uint32 cards = 5;
+}

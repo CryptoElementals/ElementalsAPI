@@ -44,6 +44,24 @@ func GetCreateRoomTx(gameID uint) (*dao.CreateRoomTx, error) {
 	return &tx, nil
 }
 
+func ListCreateRoomTxWithNoContractAddr() ([]*dao.CreateRoomTx, error) {
+	var txs []*dao.CreateRoomTx
+	err := db.Where("contract_address = ?", "").Find(&txs).Error
+	if err != nil {
+		return nil, err
+	}
+	return txs, nil
+}
+
+func GetCreateRoomTxByContract(contractAddress string) (*dao.CreateRoomTx, error) {
+	var tx dao.CreateRoomTx
+	err := db.Where("contract_address = ?", contractAddress).First(&tx).Error
+	if err != nil {
+		return nil, err
+	}
+	return &tx, nil
+}
+
 func GetSetRoundReadyTx(gameID uint, roundNumber uint32) (*dao.SetRoundReadyTx, error) {
 	var tx dao.SetRoundReadyTx
 	err := db.Where("game_id = ? and round_number = ?", gameID, roundNumber).First(&tx).Error
