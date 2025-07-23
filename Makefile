@@ -24,7 +24,6 @@ SCANNER_MAIN = ./cmd/ele-scanner
 ROOMSERVER_BIN = ele-roomserver
 ROOMSERVER_MAIN = ./cmd/ele-roomserver
 
-# LDFLAGS 注入版本信息（全部用 main 包名）
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
 .PHONY: all build apiserver scanner roomserver clean deps lint help
