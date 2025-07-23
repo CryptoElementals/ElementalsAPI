@@ -118,4 +118,5 @@ func RegisterUserApis() {
 	api.Register(HAS_COLLECTED_DAILY_REWARD_LABEL, NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
 	api.Register(COLLECT_DAILY_REWARD_LABEL, NewCollectDailyRewardTask, api.COOKIEAUTH)
 	api.Register(LIST_AVATARS_LABEL, NewListAvatarsTask, api.NOAUTH)
+	api.Register(GET_CARDS_LABEL, NewGetAllCardsTask, api.NOAUTH)
 }

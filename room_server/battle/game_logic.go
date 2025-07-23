@@ -14,34 +14,38 @@ func NewGameLogic() *GameLogic {
 // 改为支持任意数量玩家，返回是否结束和胜者地址（或空/"tie"）
 // 添加round参数，支持第3轮特殊规则
 // allCardsPlayed: 是否所有卡牌都已打完
-func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, round uint, allCardsPlayed bool) (bool, string) {
+func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint, allCardsPlayed bool) (bool, string, string) {
 	alive := 0
 	winner := ""
+	temporaryAddress := ""
 	for i, hp := range hps {
 		if hp > 0 {
 			alive++
 			winner = addresses[i]
+			temporaryAddress = temps[i]
 		}
 	}
 
 	// 如果有玩家血量为0，直接判定胜负
 	if alive == 1 {
-		return true, winner
+		return true, winner, temporaryAddress
 	}
 	if alive == 0 {
-		return true, "tie"
+		return true, "tie", ""
 	}
 
 	// 第3轮特殊规则：只有在所有卡牌都打完后，且所有玩家都还活着时，才比较血量
 	if round == 3 && allCardsPlayed && alive > 1 {
 		maxHP := -1
 		winner = ""
+		temporaryAddress = ""
 		tie := false
 
 		for i, hp := range hps {
 			if hp > maxHP {
 				maxHP = hp
 				winner = addresses[i]
+				temporaryAddress = temps[i]
 				tie = false
 			} else if hp == maxHP {
 				tie = true
@@ -49,13 +53,13 @@ func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, round uint, al
 		}
 
 		if tie {
-			return true, "tie"
+			return true, "tie", ""
 		} else {
-			return true, winner
+			return true, winner, temporaryAddress
 		}
 	}
 
-	return false, ""
+	return false, "", ""
 }
 
 // ValidateRoundInput validate battle input
@@ -65,7 +69,7 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 		return fmt.Errorf("at least 2 players required")
 	}
 	for idx, p := range input.Players {
-		if p.Address == "" {
+		if p.WalletAddress == "" {
 			return fmt.Errorf("player %d address cannot be empty", idx+1)
 		}
 		if p.HP <= 0 {

@@ -12,7 +12,6 @@ const LIST_AVATARS_LABEL = "ListAvatars"
 // ListAvatarsRequest 请求结构体
 type ListAvatarsRequest struct {
 	api.BaseRequest
-	Address string `mapstructure:"Address" validate:"required"`
 }
 
 // ListAvatarsResponse 响应结构体
@@ -66,13 +65,6 @@ func NewListAvatarsTask(data *map[string]interface{}) (api.Task, error) {
 }
 
 func (task *ListAvatarsTask) Run(c *gin.Context) (api.Response, error) {
-	// 从请求参数中获取用户地址
-	address := task.Request.Address
-	if address == "" {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "User address cannot be empty"
-		return task.Response, nil
-	}
 
 	// 应该改成读取us3，然后返回头像列表
 	defaultAvatarURLs := []string{

@@ -3,7 +3,6 @@ package match
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -23,8 +22,9 @@ const CONFIRM_BATTLE_LABEL = "ConfirmBattle"
 // ConfirmBattleRequest 请求结构体
 type ConfirmBattleRequest struct {
 	api.BaseRequest
-	MatchID string `mapstructure:"MatchId" validate:"required"`
-	Round   uint   `mapstructure:"Round" validate:"required"`
+	GameID      uint32 `mapstructure:"GameId" validate:"required"`
+	Round       uint   `mapstructure:"Round" validate:"required"`
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 }
 
 // ConfirmBattleResponse 响应结构体
@@ -96,15 +96,6 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	// 统一将地址转为小写
 	address = strings.ToLower(address)
 
-	// MatchID就是game_id的字符串表示，需要转为uint32
-	var gameID uint32
-	_, err := fmt.Sscanf(task.Request.MatchID, "%d", &gameID)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Invalid MatchID/game_id format"
-		return task.Response, nil
-	}
-
 	// 通过gRPC调用RoomServer的ConfirmBattle
 	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -116,8 +107,9 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	client := proto.NewRpcServiceClient(conn)
 
 	req := &proto.ConfirmBattleRequest{
-		GameId:   gameID,
-		RoundNum: uint32(task.Request.Round),
+		GameID:        task.Request.GameID,
+		RoundNumber:   uint32(task.Request.Round),
+		PlayerAddress: &proto.PlayerAddress{WalletAddress: address, TemporaryAddress: task.Request.TempAddress},
 	}
 
 	_, err = client.ConfirmBattle(context.Background(), req)

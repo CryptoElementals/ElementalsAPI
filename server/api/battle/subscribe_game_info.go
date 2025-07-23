@@ -253,71 +253,65 @@ func (task *SubscribeGameInfoTask) subscribeToTopic(ctx context.Context, client 
 func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
 	// 根据事件类型进行转换
 	switch msg.Event.Type {
-	case proto.EventType_SYNC_INFO:
+	case proto.EventType_TYPE_MATCHED:
 		return events.Event{
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
-				"EventType": "syncInfo",
-				"GameInfo":  msg.Event.GetGameInfo(),
+				"EventType": "matched",
 			},
-			RequestUUID: requestUUID,
 		}
-	case proto.EventType_GAME_CREATED:
+	case proto.EventType_TYPE_PART_CONFIRMED:
+		return events.Event{
+			Type: events.EventTypeDataChange,
+			Data: map[string]interface{}{
+				"EventType": "partConfirmed",
+			},
+		}
+	case proto.EventType_TYPE_GAME_CREATED:
 		return events.Event{
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
 				"EventType": "gameCreated",
-				"GameId":    msg.Event.GetGameCreated().GameId,
-				"Players":   msg.Event.GetGameCreated().Players,
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_ROUND_READY:
+	case proto.EventType_TYPE_ROUND_READY:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "roundReady",
-				"GameId":    msg.Event.GetRoundReady().GameId,
-				"RoundNum":  msg.Event.GetRoundReady().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_COMMITMENTS_ON_CHAIN:
+	case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "commitmentsOnChain",
-				"GameId":    msg.Event.GetCommitmentsOnChain().GameId,
-				"RoundNum":  msg.Event.GetCommitmentsOnChain().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_CARDS_ON_CHAIN:
+	case proto.EventType_TYPE_CARDS_ON_CHAIN:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "cardsOnChain",
-				"GameId":    msg.Event.GetCardsOnChain().GameId,
-				"RoundNum":  msg.Event.GetCardsOnChain().RoundNum,
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_ROUND_COMPLETED:
+	case proto.EventType_TYPE_ROUND_COMPLETE:
 		return events.Event{
 			Type: events.EventTypeDataChange,
 			Data: map[string]interface{}{
 				"EventType": "roundComplete",
-				"GameId":    msg.Event.GetRoundCompleted().GameId,
-				"RoundInfo": msg.Event.GetRoundCompleted().RoundInfo,
 			},
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_GAME_COMPLETED:
+	case proto.EventType_TYPE_GAME_COMPLETE:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "gameComplete",
-				"GameInfo":  msg.Event.GetGameInfo(),
 			},
 			RequestUUID: requestUUID,
 		}
