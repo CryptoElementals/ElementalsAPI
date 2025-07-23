@@ -3,6 +3,8 @@ package player
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
 	"testing"
 	"time"
 
@@ -15,16 +17,27 @@ import (
 	pub "github.com/CryptoElementals/common/rpc/server"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 var testWorkerManager *worker.WorkerManager
-var testPubsubServer *pub.PubSubServer
+var testPubsubServer *pub.PubSub
 var pubsubPort = 30011
 
 func TestMain(m *testing.M) {
 	testWorkerManager = worker.NewWorkerManager(context.Background())
-	testPubsubServer = pub.NewPubSubServer()
-	testPubsubServer.Run(pubsubPort)
+	testPubsubServer = pub.NewPubSub()
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", pubsubPort))
+	if err != nil {
+		panic(err)
+	}
+	svr := grpc.NewServer()
+	go func() {
+		if err := svr.Serve(lis); err != nil {
+			log.Fatalf("server start failed: %v", err)
+		}
+	}()
+
 	m.Run()
 }
 

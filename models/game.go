@@ -31,6 +31,7 @@ type PlayerRoundInfo struct {
 	TemporaryAddress    string                `json:"temporary_address"`
 	PlayerReady         bool                  `json:"player_ready"`
 	Salt                []byte                `json:"salt"`
+	LostHP              int32                 `json:"lost_hp"`
 	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
 	SubmittedCards      []*RoundSubmittedCard `json:"submitted_cards"`      // 回合牌面记录
 }
@@ -84,8 +85,10 @@ type BattleReward struct {
 
 type GameResult struct {
 	BaseModel
-	GameID         uint
-	Multiplier     int32
-	GameResultType proto.GameResultType
-	BattleReword   *BattleReward
+	GameID                 uint
+	Multiplier             int32
+	WinnerWalletAddress    string
+	WinnerTemporaryAddress string
+	GameResultType         proto.GameResultType
+	BattleReword           *BattleReward
 }

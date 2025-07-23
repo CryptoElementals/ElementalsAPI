@@ -23,7 +23,7 @@ const (
 	RpcService_JoinQueue_FullMethodName          = "/rpc.RpcService/JoinQueue"
 	RpcService_ExitQueue_FullMethodName          = "/rpc.RpcService/ExitQueue"
 	RpcService_GetGamePhase_FullMethodName       = "/rpc.RpcService/GetGamePhase"
-	RpcService_GetGameInfo_FullMethodName        = "/rpc.RpcService/GetGameInfo"
+	RpcService_GetBattleInfo_FullMethodName      = "/rpc.RpcService/GetBattleInfo"
 	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
 	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
 )
@@ -36,7 +36,7 @@ type RpcServiceClient interface {
 	JoinQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
-	GetGameInfo(ctx context.Context, in *GetGameInfoRequest, opts ...grpc.CallOption) (*GameInfo, error)
+	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*RoundResult, error)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// chain related api
 	SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -80,10 +80,10 @@ func (c *rpcServiceClient) GetGamePhase(ctx context.Context, in *PlayerAddress, 
 	return out, nil
 }
 
-func (c *rpcServiceClient) GetGameInfo(ctx context.Context, in *GetGameInfoRequest, opts ...grpc.CallOption) (*GameInfo, error) {
+func (c *rpcServiceClient) GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*RoundResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GameInfo)
-	err := c.cc.Invoke(ctx, RpcService_GetGameInfo_FullMethodName, in, out, cOpts...)
+	out := new(RoundResult)
+	err := c.cc.Invoke(ctx, RpcService_GetBattleInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ type RpcServiceServer interface {
 	JoinQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
-	GetGameInfo(context.Context, *GetGameInfoRequest) (*GameInfo, error)
+	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*RoundResult, error)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	// chain related api
 	SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error)
@@ -141,8 +141,8 @@ func (UnimplementedRpcServiceServer) ExitQueue(context.Context, *PlayerAddress) 
 func (UnimplementedRpcServiceServer) GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGamePhase not implemented")
 }
-func (UnimplementedRpcServiceServer) GetGameInfo(context.Context, *GetGameInfoRequest) (*GameInfo, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetGameInfo not implemented")
+func (UnimplementedRpcServiceServer) GetBattleInfo(context.Context, *GetBattleInfoRequest) (*RoundResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBattleInfo not implemented")
 }
 func (UnimplementedRpcServiceServer) ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmBattle not implemented")
@@ -225,20 +225,20 @@ func _RpcService_GetGamePhase_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_GetGameInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetGameInfoRequest)
+func _RpcService_GetBattleInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBattleInfoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).GetGameInfo(ctx, in)
+		return srv.(RpcServiceServer).GetBattleInfo(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_GetGameInfo_FullMethodName,
+		FullMethod: RpcService_GetBattleInfo_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).GetGameInfo(ctx, req.(*GetGameInfoRequest))
+		return srv.(RpcServiceServer).GetBattleInfo(ctx, req.(*GetBattleInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -299,8 +299,8 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RpcService_GetGamePhase_Handler,
 		},
 		{
-			MethodName: "GetGameInfo",
-			Handler:    _RpcService_GetGameInfo_Handler,
+			MethodName: "GetBattleInfo",
+			Handler:    _RpcService_GetBattleInfo_Handler,
 		},
 		{
 			MethodName: "ConfirmBattle",
