@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -20,8 +21,8 @@ import (
 type gamePlayer struct {
 	player      *dao.GamePlayerInfo
 	roundPlayer *dao.PlayerRoundInfo
-	totalLostHP int32
-	currentHP   int32
+	totalLostHP int64
+	currentHP   int64
 }
 
 func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
@@ -43,21 +44,23 @@ type Game struct {
 	workerMangerService *worker.WorkerManager
 }
 
-func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager) *Game {
+func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager, initialHP int64) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[types.PlayerAddress]*gamePlayer)
 	for _, player := range players {
 		daoPlayer := player.ToDao()
 		daoPlayers = append(daoPlayers, daoPlayer)
 		gamePlayers[player] = &gamePlayer{
-			player: daoPlayer,
+			player:    daoPlayer,
+			currentHP: initialHP,
 		}
 	}
 	game := &Game{
 		ctx: ctx,
 		gameInfo: &dao.Game{
-			Players: daoPlayers,
-			Type:    types.GameTypePVP,
+			Players:   daoPlayers,
+			Type:      types.GameTypePVP,
+			InitialHP: initialHP,
 		},
 		gamePlayers:         gamePlayers,
 		workerMangerService: workerMangerService,
@@ -80,23 +83,32 @@ func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.Worker
 			TemporaryAddress: playerInfo.TemporaryAddress,
 		}
 		g.gamePlayers[addrKey] = &gamePlayer{
-			player: playerInfo,
+			player:    playerInfo,
+			currentHP: g.gameInfo.InitialHP,
 		}
 	}
 	if len(g.gameInfo.Rounds) != 0 {
 		roundNum := uint32(0)
+		sort.Slice(g.gameInfo.Rounds, func(i, j int) bool {
+			return g.gameInfo.Rounds[i].RoundNumber < g.gameInfo.Rounds[j].RoundNumber
+		})
 		for _, r := range g.gameInfo.Rounds {
 			if r.RoundNumber > roundNum {
 				roundNum = r.RoundNumber
 				g.currentRound = r
 			}
-		}
-		for _, roundPlayer := range g.currentRound.PlayerRoundInfos {
-			addrKey := types.PlayerAddress{
-				WalletAddress:    roundPlayer.WalletAddress,
-				TemporaryAddress: roundPlayer.TemporaryAddress,
+			for _, roundPlayer := range g.currentRound.PlayerRoundInfos {
+				addrKey := types.PlayerAddress{
+					WalletAddress:    roundPlayer.WalletAddress,
+					TemporaryAddress: roundPlayer.TemporaryAddress,
+				}
+				player := g.gamePlayers[addrKey]
+				player.roundPlayer = roundPlayer
+				if len(player.roundPlayer.SubmittedCards) != 0 {
+					player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
+				}
+				player.totalLostHP += int64(player.roundPlayer.LostHP)
 			}
-			g.gamePlayers[addrKey].roundPlayer = roundPlayer
 		}
 	} else {
 		g.setupNewRound()
@@ -319,9 +331,10 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		return nil
 	}
 	player := g.gamePlayers[evt.Address]
-	for _, card := range evt.Cards {
+	for i, card := range evt.Cards {
 		player.roundPlayer.SubmittedCards = append(player.roundPlayer.SubmittedCards, &dao.RoundSubmittedCard{
-			CardID: card,
+			CardID:     card,
+			CardNumber: uint32(i + 1),
 		})
 	}
 	// check if all player cards on chain
@@ -343,56 +356,32 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 			TemporaryAddress: p.TemporaryAddress,
 		}
 		player := g.gamePlayers[addr]
-		p.LostHP = player.totalLostHP
-		p.HP = player.currentHP
+		p.LostHP = int32(player.totalLostHP)
+		p.HP = int32(player.currentHP)
 	}
 	roundResult, gameResult, err := e.ExecuteRoundProto(input)
 	if err != nil {
 		return err
 	}
-	for _, p := range roundResult.Players {
-		addr := types.PlayerAddress{
-			WalletAddress:    p.WalletAddress,
-			TemporaryAddress: p.TemporaryAddress,
-		}
-		player := g.gamePlayers[addr]
-		player.roundPlayer.LostHP = p.LostHP
-		player.totalLostHP += p.LostHP
-		for i, card := range p.CardStats {
-			sc := player.roundPlayer.SubmittedCards[i]
-			sc.HealthBefore = uint32(card.HPBefore)
-			sc.HealthAfter = uint32(card.HPAfter)
-			sc.MultiplierBefore = uint32(card.MultiplierBefore)
-			sc.MultiplierAfter = uint32(card.MultiplierAfter)
-			sc.Description = card.Description
-			sc.ElementRelation = card.ElementRelation
-			sc.CardEffects = conversion.ProtoBattleEffectsToDbCardEffects(card.Effects)
-		}
-	}
-
+	g.applyRoundResultToCurrentRound(roundResult)
 	if roundResult.IsGameOver {
 		g.gameInfo.GameResult = conversion.ProtoGameResultToDbGameResult(gameResult)
 		return g.handleGameEnd()
 	}
-	// TODO: calculate round info
-	// TODO: check and calculate game info
-	// send GameCompletedEvent to all players
-	if g.currentRound.RoundNumber == 3 {
-		return g.handleGameEnd()
-	} else {
-		g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
-		roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
-			GameID:    g.gameInfo.ID,
-			RoundInfo: g.currentRound,
-		})
-		g.setupNewRound()
-		err := g.saveGame()
-		if err != nil {
-			return err
-		}
-		g.sendEventsToAllPlayers(roundCompletedEvt)
-		return nil
+
+	g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
+	roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
+		GameID:    g.gameInfo.ID,
+		RoundInfo: g.currentRound,
+	})
+	g.setupNewRound()
+	err = g.saveGame()
+	if err != nil {
+		return err
 	}
+	g.sendEventsToAllPlayers(roundCompletedEvt)
+	return nil
+
 }
 
 // can go into game end from any other status
@@ -456,4 +445,41 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 			g.workerMangerService.SendEvent(player.String(), event)
 		}
 	}
+}
+
+func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
+	for _, p := range roundResult.Players {
+		addr := types.PlayerAddress{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+		}
+		player := g.gamePlayers[addr]
+		player.roundPlayer.LostHP = p.LostHP
+		player.totalLostHP += int64(p.LostHP)
+		for i, card := range p.CardStats {
+			for _, sc := range player.roundPlayer.SubmittedCards {
+				if sc.CardNumber == uint32(card.CardNumber) {
+					sc := player.roundPlayer.SubmittedCards[i]
+					sc.HealthBefore = uint32(card.HPBefore)
+					sc.HealthAfter = uint32(card.HPAfter)
+					sc.MultiplierBefore = uint32(card.MultiplierBefore)
+					sc.MultiplierAfter = uint32(card.MultiplierAfter)
+					sc.Description = card.Description
+					sc.ElementRelation = card.ElementRelation
+					sc.CardEffects = conversion.ProtoBattleEffectsToDbCardEffects(card.Effects)
+				}
+			}
+		}
+		if len(player.roundPlayer.SubmittedCards) != 0 {
+			player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
+		}
+	}
+}
+
+func currentHpFromCards(cards []*dao.RoundSubmittedCard) int64 {
+	sort.Slice(cards, func(i, j int) bool {
+		return cards[i].CardNumber < cards[j].CardNumber
+	})
+	lastCard := cards[len(cards)-1]
+	return int64(lastCard.HealthAfter)
 }

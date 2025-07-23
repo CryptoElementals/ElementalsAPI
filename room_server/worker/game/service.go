@@ -16,10 +16,10 @@ type Service struct {
 	gameManager *GameManager
 }
 
-func NewService(ctx context.Context, workerManager *worker.WorkerManager) *Service {
+func NewService(ctx context.Context, workerManager *worker.WorkerManager, initialHP int64) *Service {
 	return &Service{
 		ctx:         ctx,
-		gameManager: NewGameManager(ctx, workerManager),
+		gameManager: NewGameManager(ctx, workerManager, initialHP),
 	}
 }
 

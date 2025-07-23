@@ -7,7 +7,7 @@ type Game struct {
 	RoomContract string            `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint              `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus  `gorm:"not null" json:"status"`
-	InitialHP    int32             `json:"initial_hp"`
+	InitialHP    int64             `json:"initial_hp"`
 	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
 	GameResult   *GameResult       `json:"game_result"`
@@ -41,6 +41,7 @@ type RoundSubmittedCard struct {
 	BaseModel
 	PlayerRoundInfoID uint                  `json:"player_round_info_id"` // 回合唯一ID
 	CardID            uint                  `json:"card"`                 // 使用过的卡牌
+	CardNumber        uint32                `json:"card_number"`
 	HealthBefore      uint32                `json:"health_before"`
 	HealthAfter       uint32                `json:"health_after"`
 	MultiplierBefore  uint32                `json:"multiplier_before"`
