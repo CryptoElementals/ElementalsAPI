@@ -73,12 +73,12 @@ func TestCreateRoomAndWaitReceiptAndParseEvent(t *testing.T) {
 	maxRounds := big.NewInt(3)
 	timeout := 3 * time.Minute
 
-	eventData, err := CreateRoomAndWaitReceiptAndParseEvent(
+	roomCreatedTx, err := CreateRoomAndWaitReceiptAndParseEvent(
 		client, common.HexToAddress(contractAddr), &contractAbi, roomManager, bindOpts,
 		player1, player2, temp1, temp2, roundTimeout, maxRounds, timeout,
 	)
 	if err != nil {
 		t.Fatalf("CreateRoomAndWaitReceiptAndParseEvent failed: %v", err)
 	}
-	t.Logf("RoomCreated event data: %+v", eventData)
+	t.Logf("RoomCreated tx data: %+v", roomCreatedTx)
 }

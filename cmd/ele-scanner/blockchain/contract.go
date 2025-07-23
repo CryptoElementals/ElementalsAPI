@@ -30,8 +30,26 @@ func WaitForReceipt(ctx context.Context, client *ethclient.Client, txHash common
 	}
 }
 
+type RoomCreatedEvent struct {
+	Player1     common.Address
+	Player2     common.Address
+	Player1Tmp  common.Address
+	Player2Tmp  common.Address
+	TotalRound  *big.Int
+	RoomAddress common.Address
+}
+type RoomCreatedTx struct {
+	RoomCreatedEvent RoomCreatedEvent
+	BlockNumber      *big.Int
+	TxHash           common.Hash
+	BlockHash        common.Hash
+	TransactionIndex uint
+	Status           uint64
+	From             common.Address
+}
+
 // ParseRoomCreatedEvent decodes the RoomCreated event from the receipt logs using the contract ABI
-func ParseRoomCreatedEvent(receipt *types.Receipt, contractAbi *abi.ABI) (map[string]interface{}, error) {
+func ParseRoomCreatedEvent(receipt *types.Receipt, contractAbi *abi.ABI) (*RoomCreatedTx, error) {
 	eventName := "RoomCreated"
 	event, ok := contractAbi.Events[eventName]
 	if !ok {
@@ -41,25 +59,21 @@ func ParseRoomCreatedEvent(receipt *types.Receipt, contractAbi *abi.ABI) (map[st
 
 	for _, vLog := range receipt.Logs {
 		if vLog.Topics[0] == eventSigHash {
-			dataMap := make(map[string]interface{})
-
-			dataMap["Height"] = receipt.BlockNumber
-			dataMap["TxHash"] = receipt.TxHash
-			dataMap["BlockHash"] = receipt.BlockHash
-			dataMap["BlockNumber"] = receipt.BlockNumber
-			dataMap["TransactionIndex"] = receipt.TransactionIndex
-			dataMap["Status"] = receipt.Status
-
-			if err := contractAbi.UnpackIntoMap(dataMap, eventName, vLog.Data); err != nil {
+			eventData := RoomCreatedEvent{}
+			if err := contractAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
 				return nil, err
 			}
-			// Decode indexed params
-			for i, input := range event.Inputs {
-				if input.Indexed {
-					dataMap[input.Name] = vLog.Topics[i+1].Hex()
-				}
+
+			roomCreatedTx := &RoomCreatedTx{
+				RoomCreatedEvent: eventData,
+				BlockNumber:      receipt.BlockNumber,
+				TxHash:           receipt.TxHash,
+				BlockHash:        receipt.BlockHash,
+				TransactionIndex: receipt.TransactionIndex,
+				Status:           receipt.Status,
 			}
-			return dataMap, nil
+
+			return roomCreatedTx, nil
 		}
 	}
 	return nil, fmt.Errorf("RoomCreated event not found in receipt")
@@ -75,7 +89,7 @@ func CreateRoomAndWaitReceiptAndParseEvent(
 	player1, player2, temp1, temp2 common.Address,
 	roundTimeout, maxRounds *big.Int,
 	timeout time.Duration,
-) (map[string]interface{}, error) {
+) (*RoomCreatedTx, error) {
 	tx, err := roomManagerContract.CreateRoom(bindOpts, player1, player2, temp1, temp2, roundTimeout, maxRounds)
 	if err != nil {
 		return nil, err
@@ -87,12 +101,12 @@ func CreateRoomAndWaitReceiptAndParseEvent(
 	if receipt.Status != 1 {
 		return nil, fmt.Errorf("tx failed, status=%d", receipt.Status)
 	}
-	eventData, err := ParseRoomCreatedEvent(receipt, contractAbi)
+	roomCreatedTx, err := ParseRoomCreatedEvent(receipt, contractAbi)
 	if err != nil {
 		return nil, err
 	}
-	eventData["Sender"] = bindOpts.From
-	return eventData, nil
+	roomCreatedTx.From = bindOpts.From
+	return roomCreatedTx, nil
 }
 
 // RoomManagerContract is a placeholder for the abigen-generated contract binding
