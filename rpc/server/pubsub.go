@@ -12,14 +12,21 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
+type PlayerManager interface {
+	AddPlayer(address types.PlayerAddress) error
+	RemovePlayer(address types.PlayerAddress)
+}
+
 type PubSub struct {
 	pb.UnimplementedPubSubServiceServer
-	mu          sync.RWMutex
-	topics      map[string]*Topic
-	subscribers map[string]map[string]*Subscriber
+	mu            sync.RWMutex
+	topics        map[string]*Topic
+	subscribers   map[string]map[string]*Subscriber
+	playerManager PlayerManager
 }
 
 type Topic struct {
@@ -44,6 +51,10 @@ func NewPubSub() *PubSub {
 		subscribers: make(map[string]map[string]*Subscriber),
 	}
 	return s
+}
+
+func (s *PubSub) SetPlayerManager(playerManager PlayerManager) {
+	s.playerManager = playerManager
 }
 
 func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
@@ -115,6 +126,15 @@ func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_Sub
 	if req.SubscriberId == "" {
 		req.SubscriberId = uuid.New().String()
 	}
+	addr := types.PlayerAddress{}
+	err := addr.Parse(req.Topic)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, "topic is invalid, topic should be in 'walletAddress_temporaryAddress' format")
+	}
+	err = s.playerManager.AddPlayer(addr)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, "failed to add player: "+err.Error())
+	}
 
 	s.mu.Lock()
 	topic, exists := s.topics[req.Topic]
@@ -168,6 +188,12 @@ func (s *PubSub) Unsubscribe(ctx context.Context, req *pb.UnsubscribeRequest) (*
 		return nil, status.Error(codes.InvalidArgument, "topic and subscriber_id are required")
 	}
 
+	addr := types.PlayerAddress{}
+	err := addr.Parse(req.Topic)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "topic is invalid, topic should be in 'walletAddress_temporaryAddress' format")
+	}
+	s.playerManager.RemovePlayer(addr)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
