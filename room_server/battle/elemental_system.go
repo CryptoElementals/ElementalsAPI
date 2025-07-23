@@ -46,13 +46,13 @@ func (es *ElementalSystem) GetElementalRelation(card1, card2 *Card) *ElementalRe
 
 	if shengRelations[card1.ElementType] == card2.ElementType {
 		return &ElementalRelation{
-			Type:        "nurture",
+			Type:        "nurtured", // card2 被 card1 生
 			Description: "{self} is nurtured by {opponent}",
 		}
 	}
 	if shengRelations[card2.ElementType] == card1.ElementType {
 		return &ElementalRelation{
-			Type:        "nurtured",
+			Type:        "nurture", // card1 被 card2 生
 			Description: "{self} nurtures {opponent}",
 		}
 	}
@@ -109,6 +109,7 @@ func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalR
 			TargetTemporaryAddress: temp1,
 		})
 	case "nurture":
+		// card1 被 card2 生，card1 获得加血
 		effects = append(effects, BattleEffect{
 			Type:                   HEAL,
 			Value:                  card1.LifeForce,
@@ -117,12 +118,13 @@ func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalR
 			TargetTemporaryAddress: temp1,
 		})
 	case "nurtured":
+		// card2 被 card1 生，card2 获得加血
 		effects = append(effects, BattleEffect{
 			Type:                   HEAL,
 			Value:                  card2.LifeForce,
-			Description:            desc(card1.Name, card2.Name, "is healed by"),
-			TargetWalletAddress:    wallet1,
-			TargetTemporaryAddress: temp1,
+			Description:            desc(card2.Name, card1.Name, "is healed by"),
+			TargetWalletAddress:    wallet2,
+			TargetTemporaryAddress: temp2,
 		})
 	case "even":
 		effects = append(effects, BattleEffect{

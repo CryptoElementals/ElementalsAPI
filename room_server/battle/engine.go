@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const MaxHP = 3000 // 玩家 HP 上限
+
 type BattleEngine struct {
 	cardFactory      *CardFactory
 	elementalSystem  *ElementalSystem
@@ -97,11 +99,16 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 				p2BeforeMul := p2.Multiplier
 				p1.HP += be.elementalSystem.ExecuteEffects(effects1)
 				p2.HP += be.elementalSystem.ExecuteEffects(effects2)
+				// 下限 0，上限 MaxHP
 				if p1.HP < 0 {
 					p1.HP = 0
+				} else if p1.HP > MaxHP {
+					p1.HP = MaxHP
 				}
 				if p2.HP < 0 {
 					p2.HP = 0
+				} else if p2.HP > MaxHP {
+					p2.HP = MaxHP
 				}
 				// 计算此次卡牌造成的伤害，并累加到总 LostHP
 				damage1 := p1BeforeHP - p1.HP
@@ -124,10 +131,13 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 				case "overpower":
 					descP2 = "{self} is overpowered by {opponent}"
 				case "overpowered":
-					descP2 = "{self} overpowers {opponent}"
+					descP1 = "{self} overpowers {opponent}"
+					descP2 = "{self} is overpowered by {opponent}"
 				case "nurture":
+					descP1 = "{self} is nurtured by {opponent}"
 					descP2 = "{self} nurtures {opponent}"
 				case "nurtured":
+					descP1 = "{self} nurtures {opponent}"
 					descP2 = "{self} is nurtured by {opponent}"
 				case "even":
 					descP2 = "{self} and {opponent} are even"

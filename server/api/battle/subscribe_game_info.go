@@ -108,10 +108,10 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	address = strings.ToLower(address)
 
 	// 组装 gameID: address_tempaddress 格式
-	gameID := fmt.Sprintf("%s_%s", lowercaseAddress, task.Request.TempAddress)
+	gameID := fmt.Sprintf("%s_%s", address, task.Request.TempAddress)
 
 	// 发送开始事件
 	startEvent := events.Event{
@@ -127,7 +127,7 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 
 	// 启动游戏事件监听器
 	done := make(chan struct{})
-	task.startGameEventListener(ctx, writer, flusher, requestUUID, lowercaseAddress, gameID, done)
+	task.startGameEventListener(ctx, writer, flusher, requestUUID, address, gameID, done)
 
 	// 等待连接结束
 	select {

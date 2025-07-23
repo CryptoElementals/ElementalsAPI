@@ -180,7 +180,7 @@ func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, err
 	}
 
-	// 新增：自动创建用户档案，用户名用地址
+	// 创建用户档案，用户名用地址
 	if task.Request.Address != "" {
 		// 将地址转换为小写
 		lowercaseAddress := strings.ToLower(task.Request.Address)
