@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"errors"
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -33,8 +34,16 @@ func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.Ga
 	return conversion.DbGameInfoToProtoGameInfo(gameInfo)
 }
 
-func (s *Service) ListGameInfo(playerAddress types.PlayerAddress) ([]*proto.GameInfo, error) {
-	return nil, nil
+func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, error) {
+	game := s.gameManager.GetActiveGameByID(uint(gameID))
+	if game == nil {
+		return nil, errors.New("game not found")
+	}
+	res := game.GetBattleInfo(roundNum)
+	if res != nil {
+		return nil, errors.New("round not found")
+	}
+	return res, nil
 }
 
 func (s *Service) IsPlayerInGame(playerAddress *types.PlayerAddress) bool {

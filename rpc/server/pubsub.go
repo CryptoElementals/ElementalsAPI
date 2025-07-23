@@ -2,15 +2,12 @@ package server
 
 import (
 	"context"
-	"fmt"
 
-	"net"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -18,12 +15,11 @@ import (
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
-type PubSubServer struct {
+type PubSub struct {
 	pb.UnimplementedPubSubServiceServer
 	mu          sync.RWMutex
 	topics      map[string]*Topic
 	subscribers map[string]map[string]*Subscriber
-	server      *grpc.Server
 }
 
 type Topic struct {
@@ -42,19 +38,15 @@ type Subscriber struct {
 	mu     sync.Mutex
 }
 
-func NewPubSubServer(opt ...grpc.ServerOption) *PubSubServer {
-	server := grpc.NewServer(opt...)
-
-	s := &PubSubServer{
+func NewPubSub() *PubSub {
+	s := &PubSub{
 		topics:      make(map[string]*Topic),
 		subscribers: make(map[string]map[string]*Subscriber),
-		server:      server,
 	}
-	pb.RegisterPubSubServiceServer(server, s)
 	return s
 }
 
-func (s *PubSubServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
+func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic is required")
 	}
@@ -116,7 +108,7 @@ func (s *PubSubServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb
 	}, nil
 }
 
-func (s *PubSubServer) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_SubscribeServer) error {
+func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_SubscribeServer) error {
 	if req.Topic == "" {
 		return status.Error(codes.InvalidArgument, "topic is required")
 	}
@@ -171,7 +163,7 @@ func (s *PubSubServer) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubServi
 	return nil
 }
 
-func (s *PubSubServer) Unsubscribe(ctx context.Context, req *pb.UnsubscribeRequest) (*pb.UnsubscribeResponse, error) {
+func (s *PubSub) Unsubscribe(ctx context.Context, req *pb.UnsubscribeRequest) (*pb.UnsubscribeResponse, error) {
 	if req.Topic == "" || req.SubscriberId == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic and subscriber_id are required")
 	}
@@ -202,7 +194,7 @@ func (s *PubSubServer) Unsubscribe(ctx context.Context, req *pb.UnsubscribeReque
 	}, nil
 }
 
-func (s *PubSubServer) ListTopics(ctx context.Context, req *pb.ListTopicsRequest) (*pb.ListTopicsResponse, error) {
+func (s *PubSub) ListTopics(ctx context.Context, req *pb.ListTopicsRequest) (*pb.ListTopicsResponse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -226,7 +218,7 @@ func (s *PubSubServer) ListTopics(ctx context.Context, req *pb.ListTopicsRequest
 	}, nil
 }
 
-func (s *PubSubServer) GetSubscriberCount(ctx context.Context, req *pb.GetSubscriberCountRequest) (*pb.GetSubscriberCountResponse, error) {
+func (s *PubSub) GetSubscriberCount(ctx context.Context, req *pb.GetSubscriberCountRequest) (*pb.GetSubscriberCountResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic is required")
 	}
@@ -250,18 +242,4 @@ func (s *PubSubServer) GetSubscriberCount(ctx context.Context, req *pb.GetSubscr
 		Success: false,
 		Error:   "topic not found",
 	}, nil
-}
-
-func (s *PubSubServer) Run(port int) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return err
-	}
-	go func() {
-		if err := s.server.Serve(lis); err != nil {
-			log.Fatalf("server start failed: %v", err)
-		}
-	}()
-
-	return nil
 }

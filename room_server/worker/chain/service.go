@@ -23,12 +23,12 @@ func NewService(ctx context.Context,
 	return &Service{ctx: ctx, chain: chain}
 }
 
-func (s *Service) ReceiveTransactions(blockNum uint64, txs *proto.TransactionBatch) error {
+func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 	done := make(chan struct{})
 	errChan := make(chan error, 1)
 	evt := &batchTxEvent{
 		txs:       txs,
-		blockNum:  blockNum,
+		blockNum:  txs.BlockNumber,
 		blockHash: txs.BlockHash,
 		done:      done,
 		errChan:   errChan,

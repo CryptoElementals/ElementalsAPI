@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -31,6 +33,7 @@ func (p *gamePlayer) String() string {
 
 type Game struct {
 	ctx                 context.Context
+	lock                sync.RWMutex
 	gameInfo            *dao.Game
 	gamePlayers         map[types.PlayerAddress]*gamePlayer
 	currentRound        *dao.Round
@@ -99,6 +102,17 @@ func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.Worker
 	return g
 }
 
+func (g *Game) GetBattleInfo(roundNum uint32) *proto.RoundResult {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+	for _, round := range g.gameInfo.Rounds {
+		if round.RoundNumber == (roundNum) {
+			return conversion.DbRoundToRoundResult(round)
+		}
+	}
+	return nil
+}
+
 func (g *Game) saveGame() error {
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
@@ -109,6 +123,9 @@ func (g *Game) saveGame() error {
 }
 
 func (g *Game) Handle(ctx context.Context, event *types.Event) error {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT, proto.GameStatus_GAME_RUNNING:
 		return g.handleRound(event)
@@ -127,7 +144,6 @@ func (g *Game) handleRound(event *types.Event) error {
 		return g.handleGameStateWaittingCommitments(event)
 	case proto.RoundStatus_ROUND_WAITTING_CARDS:
 		return g.handleGameStateCardSubmitted(event)
-
 	}
 	return nil
 }

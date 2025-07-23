@@ -13,7 +13,7 @@ service RpcService {
     rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
-    rpc GetGameInfo(GetGameInfoRequest) returns (GameInfo);
+    rpc GetBattleInfo(GetBattleInfoRequest) returns (battle.RoundResult);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
 
     
@@ -33,30 +33,33 @@ enum PlayerStatus {
     PLAYER_IN_GAME = 3;
 }
 
-message GamePhase {
-    GameType GameType = 1;
-    message GamePhasePlayer {
-        PlayerAddress Address = 1;
-        bool IsConfirmed = 2;
-        int32 InitialHP = 3;
-        int32 InitialMultiplier = 4;
-    }
-    repeated GamePhasePlayer Players = 2;
-    message PvPInfo {
-        uint32 GameID = 1;
-        GameStatus Status = 2;
-        uint64 BeginAt = 3;
-        uint64 TimeoutDuration = 4;
-    } 
+message GamePhasePlayer {
+    PlayerAddress Address = 1;
+    bool IsConfirmed = 2;
 }
 
-message GetGameInfoRequest {
-    uint32 game_id = 1;
+message PvPInfo {
+    uint32 GameID = 1;
+    PlayerStatus Status = 2;
+    uint64 BeginAt = 3;
+    uint64 TimeoutDuration = 4;
+} 
+
+message GamePhase {
+    GameType GameType = 1;
+    repeated GamePhasePlayer Players = 2;
+    PvPInfo PvPInfo = 5;
+}
+
+message GetBattleInfoRequest {
+    uint32 GameID = 1;
+    uint32 RoundNumber = 2;
 }
 
 message ConfirmBattleRequest {
-    uint32 game_id = 1;
-    uint32 round_num = 2;
+    PlayerAddress PlayerAddress = 1;
+    uint32 GameID = 2;
+    uint32 RoundNumber = 3;
 }
 
 enum RoundStatus {
@@ -132,7 +135,8 @@ message Transaction {
 message TransactionBatch {
     bytes block_hash = 1;
     uint64 timestamp = 2;
-    repeated Transaction transactions = 3;
+    uint64 block_number = 3;
+    repeated Transaction transactions = 4;
 }
 
 message TxRoomContractCreated {
