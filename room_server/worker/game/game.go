@@ -11,6 +11,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/room_server/battle"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -19,6 +20,8 @@ import (
 type gamePlayer struct {
 	player      *dao.GamePlayerInfo
 	roundPlayer *dao.PlayerRoundInfo
+	totalLostHP int32
+	currentHP   int32
 }
 
 func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
@@ -111,6 +114,12 @@ func (g *Game) GetBattleInfo(roundNum uint32) *proto.RoundResult {
 		}
 	}
 	return nil
+}
+
+func (g *Game) GetGameResult() *proto.GameResult {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+	return conversion.DbGameResultToProtoGameResult(g.gameInfo.GameResult)
 }
 
 func (g *Game) saveGame() error {
@@ -325,6 +334,45 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	}
 	if !allCardsOnChain {
 		return db.SavePlayerRoundInfo(player.roundPlayer)
+	}
+	e := battle.NewBattleEngine()
+	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
+	for _, p := range input.Players {
+		addr := types.PlayerAddress{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+		}
+		player := g.gamePlayers[addr]
+		p.LostHP = player.totalLostHP
+		p.HP = player.currentHP
+	}
+	roundResult, gameResult, err := e.ExecuteRoundProto(input)
+	if err != nil {
+		return err
+	}
+	for _, p := range roundResult.Players {
+		addr := types.PlayerAddress{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+		}
+		player := g.gamePlayers[addr]
+		player.roundPlayer.LostHP = p.LostHP
+		player.totalLostHP += p.LostHP
+		for i, card := range p.CardStats {
+			sc := player.roundPlayer.SubmittedCards[i]
+			sc.HealthBefore = uint32(card.HPBefore)
+			sc.HealthAfter = uint32(card.HPAfter)
+			sc.MultiplierBefore = uint32(card.MultiplierBefore)
+			sc.MultiplierAfter = uint32(card.MultiplierAfter)
+			sc.Description = card.Description
+			sc.ElementRelation = card.ElementRelation
+			sc.CardEffects = conversion.ProtoBattleEffectsToDbCardEffects(card.Effects)
+		}
+	}
+
+	if roundResult.IsGameOver {
+		g.gameInfo.GameResult = conversion.ProtoGameResultToDbGameResult(gameResult)
+		return g.handleGameEnd()
 	}
 	// TODO: calculate round info
 	// TODO: check and calculate game info

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/CryptoElementals/common/conversion"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -34,16 +35,30 @@ func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.Ga
 	return conversion.DbGameInfoToProtoGameInfo(gameInfo)
 }
 
-func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, error) {
+func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
 	game := s.gameManager.GetActiveGameByID(uint(gameID))
 	if game == nil {
-		return nil, errors.New("game not found")
+		// it is a cold game now
+		return s.LoadBattleInfoFromDB(gameID, roundNum)
 	}
 	res := game.GetBattleInfo(roundNum)
 	if res != nil {
-		return nil, errors.New("round not found")
+		return nil, nil, errors.New("round not found")
 	}
-	return res, nil
+	return res, nil, nil
+}
+
+func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
+	gameInfo, err := db.LoadGameByGameID(uint(gameID))
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, round := range gameInfo.Rounds {
+		if round.RoundNumber == roundNum {
+			return conversion.DbRoundToRoundResult(round), conversion.DbGameResultToProtoGameResult(gameInfo.GameResult), nil
+		}
+	}
+	return nil, nil, errors.New("round not found")
 }
 
 func (s *Service) IsPlayerInGame(playerAddress *types.PlayerAddress) bool {

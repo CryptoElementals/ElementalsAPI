@@ -22,15 +22,20 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round))
 	}
 	// conver results
-	gameResult := &proto.GameResult{
-		Multiplier:             int32(info.GameResult.Multiplier),
-		WinnerWalletAddress:    info.GameResult.WinnerWalletAddress,
-		WinnerTemporaryAddress: info.GameResult.WinnerTemporaryAddress,
-		GameResultType:         info.GameResult.GameResultType,
-		Reward:                 DbBattleRewardToProtoBattleReward(info.GameResult.BattleReword),
-	}
+	gameResult := DbGameResultToProtoGameResult(info.GameResult)
 	gameInfo.Result = gameResult
 	return gameInfo
+}
+
+func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
+	gameResult := &proto.GameResult{
+		Multiplier:             int32(result.Multiplier),
+		WinnerWalletAddress:    result.WinnerWalletAddress,
+		WinnerTemporaryAddress: result.WinnerTemporaryAddress,
+		GameResultType:         result.GameResultType,
+		Reward:                 DbBattleRewardToProtoBattleReward(result.BattleReword),
+	}
+	return gameResult
 }
 
 func DbBattleRewardToProtoBattleReward(battleReward *dao.BattleReward) *proto.BattleReward {

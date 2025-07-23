@@ -38,8 +38,15 @@ func (s *Rpc) GetGamePhase(ctx context.Context, req *pb.PlayerAddress) (*pb.Game
 	addr.FromProto(req)
 	return s.playerHandler.GetGamePhase(addr)
 }
-func (s *Rpc) GetBattleInfo(ctx context.Context, req *pb.GetBattleInfoRequest) (*pb.RoundResult, error) {
-	return s.gameHandler.GetBattleInfo(ctx, req.GameID, req.RoundNumber)
+func (s *Rpc) GetBattleInfo(ctx context.Context, req *pb.GetBattleInfoRequest) (*pb.GetBattleInfoResponse, error) {
+	roundResult, gameResult, err := s.gameHandler.GetBattleInfo(ctx, req.GameID, req.RoundNumber)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetBattleInfoResponse{
+		RoundResult: roundResult,
+		GameResult:  gameResult,
+	}, nil
 }
 func (s *Rpc) ConfirmBattle(ctx context.Context, req *pb.ConfirmBattleRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
@@ -57,7 +64,7 @@ func (s *Rpc) SubmitTransactions(ctx context.Context, req *pb.TransactionBatch) 
 }
 
 type GameRequestHandler interface {
-	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, error)
+	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, *pb.GameResult, error)
 }
 
 type ChainRequestHandler interface {

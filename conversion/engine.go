@@ -1,0 +1,73 @@
+package conversion
+
+import (
+	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
+)
+
+func DbRoundToProtoRoundInput(dbRound *dao.Round) *proto.RoundInput {
+	return &proto.RoundInput{
+		RoundNumber: int32(dbRound.RoundNumber),
+		Players:     DbPlayerRoundInfoToProtoPlayerRoundInput(dbRound.PlayerRoundInfos),
+	}
+}
+
+func DbPlayerRoundInfoToProtoPlayerRoundInput(playerRoundInfo []*dao.PlayerRoundInfo) []*proto.PlayerRoundInput {
+	playerRoundInput := make([]*proto.PlayerRoundInput, 0, len(playerRoundInfo))
+	for _, p := range playerRoundInfo {
+		cards := make([]int32, 0, len(p.SubmittedCards))
+		for _, c := range p.SubmittedCards {
+			cards = append(cards, int32(c.CardID))
+		}
+		playerRoundInput = append(playerRoundInput, &proto.PlayerRoundInput{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+			Cards:            cards,
+		})
+	}
+	return playerRoundInput
+}
+
+func ProtoBattleEffectsToDbCardEffects(protoCardEffects []*proto.BattleEffect) []*dao.CardEffect {
+	dbCardEffects := make([]*dao.CardEffect, 0, len(protoCardEffects))
+	for _, effect := range protoCardEffects {
+		dbCardEffects = append(dbCardEffects, &dao.CardEffect{
+			Type:                   effect.Type,
+			Value:                  effect.Value,
+			Description:            effect.Description,
+			TargetWalletAddress:    effect.TargetWalletAddress,
+			TargetTemporaryAddress: effect.TargetTemporaryAddress,
+		})
+	}
+	return dbCardEffects
+}
+
+func ProtoGameResultToDbGameResult(protoGameResult *proto.GameResult) *dao.GameResult {
+	return &dao.GameResult{
+		Multiplier:             protoGameResult.Multiplier,
+		WinnerWalletAddress:    protoGameResult.WinnerWalletAddress,
+		WinnerTemporaryAddress: protoGameResult.WinnerTemporaryAddress,
+		GameResultType:         protoGameResult.GameResultType,
+		BattleReword:           ProtoBattleRewardsToDbBattleReward(protoGameResult.Reward),
+	}
+}
+
+func ProtoBattleRewardsToDbBattleReward(protoBattleReward *proto.BattleReward) *dao.BattleReward {
+	return &dao.BattleReward{
+		SystemFee:     protoBattleReward.SystemFee,
+		PlayerRewards: ProtoPlayerRewardsToDbPlayerRewards(protoBattleReward.PlayerRewards),
+	}
+}
+
+func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerReward) []*dao.PlayerReward {
+	dbPlayerRewards := make([]*dao.PlayerReward, 0, len(protoPlayerRewards))
+	for _, p := range protoPlayerRewards {
+		dbPlayerRewards = append(dbPlayerRewards, &dao.PlayerReward{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+			TokenChange:      p.TokenChange,
+			PointChange:      p.PointChange,
+		})
+	}
+	return dbPlayerRewards
+}
