@@ -6,7 +6,6 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
-	"github.com/CryptoElementals/common/server"
 	"github.com/spf13/viper"
 )
 
@@ -76,34 +75,5 @@ func validateDatabaseConfig(cfg *db.Config) error {
 	if cfg.DbName == "" {
 		return fmt.Errorf("database name is required")
 	}
-	return nil
-}
-
-// validateServerConfig validates server configuration
-func validateServerConfig(cfg *server.Config) error {
-	if cfg.Port <= 0 || cfg.Port > 65535 {
-		return fmt.Errorf("invalid server port: %d", cfg.Port)
-	}
-
-	validModes := []string{"debug", "release", "test"}
-	isValidMode := false
-	for _, mode := range validModes {
-		if cfg.ServerMode == mode {
-			isValidMode = true
-			break
-		}
-	}
-	if !isValidMode {
-		return fmt.Errorf("invalid server mode: %s", cfg.ServerMode)
-	}
-
-	if cfg.SessionMaxAge <= 0 {
-		return fmt.Errorf("session max age must be greater than 0")
-	}
-
-	if cfg.RefreshTokenMaxAge <= 0 {
-		return fmt.Errorf("refresh token max age must be greater than 0")
-	}
-
 	return nil
 }

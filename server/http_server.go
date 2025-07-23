@@ -8,41 +8,32 @@ import (
 	"sync"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api/battle"
 	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/CryptoElementals/common/server/api/match"
 	"github.com/CryptoElementals/common/server/api/user"
+	"github.com/CryptoElementals/common/server/handler"
 	"github.com/CryptoElementals/common/server/middlewares"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/memstore"
-
-	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-
-	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/handler"
 )
 
 const SERVER_WAIT_GROUP_LABEL = "x-gin-waitgroup"
-
-type Config struct {
-	Port               int    `mapstructure:"port"`
-	ServerMode         string `mapstructure:"server-mode"`
-	SessionMaxAge      int    `mapstructure:"session-max-age"`
-	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
-	ServiceName        string `mapstructure:"service-name"`
-}
 
 type Server struct {
 	e      *gin.Engine
 	server *http.Server
 	wg     *sync.WaitGroup
-	cfg    *Config
+	cfg    *config.ServerConfig
 }
 
-func handleDefaultValue(cfg *Config) *Config {
+func handleDefaultValue(cfg *config.ServerConfig) *config.ServerConfig {
 	if cfg == nil {
-		cfg = &Config{}
+		cfg = &config.ServerConfig{}
 	}
 	if cfg.Port == 0 {
 		cfg.Port = 8080
@@ -62,7 +53,7 @@ func handleDefaultValue(cfg *Config) *Config {
 	return cfg
 }
 
-func DefaultConfig() *Config {
+func DefaultConfig() *config.ServerConfig {
 	return handleDefaultValue(nil)
 }
 
@@ -70,7 +61,7 @@ func DefaultSessionStore() sessions.Store {
 	return memstore.NewStore([]byte("test-secret"))
 }
 
-func New(cfg *Config, store sessions.Store, refreshTokenCache cache.Cache) *Server {
+func New(cfg *config.ServerConfig, store sessions.Store, refreshTokenCache cache.Cache) *Server {
 	if cfg == nil {
 		log.Fatal("nil config value")
 	}

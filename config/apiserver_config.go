@@ -6,15 +6,17 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
-	"github.com/CryptoElementals/common/server"
 )
+
+var RoomServerAddress string
 
 // ApiServerConfig represents the complete application configuration structure
 type ApiServerConfig struct {
-	LogCfg    log.Config    `mapstructure:"log"`
-	RedisCfg  redis.Config  `mapstructure:"redis"`
-	DbCfg     db.Config     `mapstructure:"database"`
-	ServerCfg server.Config `mapstructure:"server"`
+	LogCfg            log.Config   `mapstructure:"log"`
+	RedisCfg          redis.Config `mapstructure:"redis"`
+	DbCfg             db.Config    `mapstructure:"database"`
+	ServerCfg         ServerConfig `mapstructure:"server"`
+	RoomServerAddress string       `mapstructure:"room-server-address"`
 }
 
 // LoadApiServerConfig loads the complete application configuration from file
@@ -27,6 +29,9 @@ func LoadApiServerConfig(configPath string) (*ApiServerConfig, error) {
 
 	// Set default values
 	setDefaultValues(cfg)
+
+	// 将房间服地址写入全局变量
+	RoomServerAddress = cfg.RoomServerAddress
 
 	return cfg, nil
 }
@@ -51,6 +56,40 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 	// Validate server configuration
 	if err := validateServerConfig(&cfg.ServerCfg); err != nil {
 		return fmt.Errorf("server config validation failed: %w", err)
+	}
+
+	// Validate room server address
+	if cfg.RoomServerAddress == "" {
+		return fmt.Errorf("room server address cannot be empty")
+	}
+
+	return nil
+}
+
+// validateServerConfig validates server configuration
+func validateServerConfig(cfg *ServerConfig) error {
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		return fmt.Errorf("invalid server port: %d", cfg.Port)
+	}
+
+	validModes := []string{"debug", "release", "test"}
+	isValidMode := false
+	for _, mode := range validModes {
+		if cfg.ServerMode == mode {
+			isValidMode = true
+			break
+		}
+	}
+	if !isValidMode {
+		return fmt.Errorf("invalid server mode: %s", cfg.ServerMode)
+	}
+
+	if cfg.SessionMaxAge <= 0 {
+		return fmt.Errorf("session max age must be greater than 0")
+	}
+
+	if cfg.RefreshTokenMaxAge <= 0 {
+		return fmt.Errorf("refresh token max age must be greater than 0")
 	}
 
 	return nil
@@ -116,5 +155,10 @@ func setDefaultValues(cfg *ApiServerConfig) {
 	}
 	if cfg.ServerCfg.ServiceName == "" {
 		cfg.ServerCfg.ServiceName = "DILL"
+	}
+
+	// 默认 RoomServer 地址
+	if cfg.RoomServerAddress == "" {
+		cfg.RoomServerAddress = "127.0.0.1:50051"
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
@@ -13,8 +14,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const GET_BATTLE_INFO_LABEL = "GetBattleInfo"
-const roomServerAddress = "127.0.0.1:50051"
+const (
+	GET_BATTLE_INFO_LABEL = "GetBattleInfo"
+)
 
 // GetBattleInfoRequest 请求结构体
 type GetBattleInfoRequest struct {
@@ -142,7 +144,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 
 	// 通过gRPC调用RoomServer的GetBattleInfo
-	conn, err := grpc.NewClient(roomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
