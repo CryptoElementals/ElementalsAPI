@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
@@ -21,7 +22,7 @@ import (
 
 type Service struct {
 	ctx       context.Context
-	cfg       *Config
+	cfg       *config.RoomServerConfig
 	mgr       *worker.WorkerManager
 	server    *grpc.Server
 	pubsub    *rpc.PubSub
@@ -32,28 +33,14 @@ type Service struct {
 	queueSvc  *queue.Service
 }
 
-type Config struct {
-	ChainID             int64
-	ChainRpc            string
-	RoomManagerContract string
-	WalletPath          string
-
-	RoundTimeout  int64
-	MaxRounds     int64
-	GameInitialHP int64
-
-	GrpcServerPort int64
-	isDevelop      bool
-}
-
-func New(ctx context.Context, cfg *Config) (*Service, error) {
+func New(ctx context.Context, cfg *config.RoomServerConfig, isDevelop ...bool) (*Service, error) {
 	s := &Service{
 		ctx:    ctx,
 		cfg:    cfg,
 		mgr:    worker.NewWorkerManager(ctx),
 		pubsub: rpc.NewPubSub(),
 	}
-	client, err := ethclient.DialContext(ctx, cfg.ChainRpc)
+	client, err := ethclient.DialContext(ctx, cfg.ChainCfg.HttpRpc)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +53,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		return nil, err
 	}
 	var c cache.Cache
-	if cfg.isDevelop {
+	if len(isDevelop) != 0 && isDevelop[0] {
 		c = cache.NewMemCache()
 	} else {
 		c, err = cache.NewRedisCache()
@@ -75,7 +62,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		}
 	}
 
-	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.RoomManagerContract, w, c)
+	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, w, c)
 	s.chainSvc = chainSvc
 	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP, cfg.RoundTimeout, cfg.MaxRounds)
 	s.gameSvc = gameSvc
@@ -117,7 +104,7 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) startListener() error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.GrpcServerPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.ListenPort))
 	if err != nil {
 		return err
 	}
