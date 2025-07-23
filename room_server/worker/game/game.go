@@ -117,15 +117,19 @@ func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.Worker
 	return g
 }
 
-func (g *Game) GetBattleInfo(roundNum uint32) *proto.RoundResult {
+func (g *Game) GetBattleInfo(roundNum uint32) (*proto.RoundResult, *proto.GameResult) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
+	var gameRes *proto.GameResult
+	if g.gameInfo.GameResult != nil {
+		gameRes = conversion.DbGameResultToProtoGameResult(g.gameInfo.GameResult)
+	}
 	for _, round := range g.gameInfo.Rounds {
 		if round.RoundNumber == (roundNum) {
-			return conversion.DbRoundToRoundResult(round)
+			return conversion.DbRoundToRoundResult(round), gameRes
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func (g *Game) GetGameResult() *proto.GameResult {
@@ -394,6 +398,7 @@ func (g *Game) handleGameEnd() error {
 		GameInfo: g.gameInfo,
 	})
 	g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
+	g.currentRound.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_END
 	err := g.saveGame()
 	if err != nil {

@@ -41,11 +41,11 @@ func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint3
 		// it is a cold game now
 		return s.LoadBattleInfoFromDB(gameID, roundNum)
 	}
-	res := game.GetBattleInfo(roundNum)
-	if res != nil {
+	roundRes, gameRes := game.GetBattleInfo(roundNum)
+	if roundRes == nil {
 		return nil, nil, errors.New("round not found")
 	}
-	return res, nil, nil
+	return roundRes, gameRes, nil
 }
 
 func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
