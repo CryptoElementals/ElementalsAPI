@@ -96,6 +96,7 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Ev
 			}
 			if err != nil {
 				errChan <- err
+				return
 			}
 			select {
 			case <-ctx.Done():

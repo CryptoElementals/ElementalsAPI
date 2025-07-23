@@ -194,6 +194,7 @@ func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex s
 func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 	c.currentBatchTx = evt
 	blockHash := hexutil.Encode(evt.blockHash)
+	blockNumber := evt.blockNum
 	for _, protoTx := range c.currentBatchTx.txs.Transactions {
 		hash := hexutil.Encode(protoTx.TxHash)
 		switch tx := protoTx.Tx.(type) {
@@ -208,14 +209,14 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 				log.Errorf("createRoomTxToGameID: decoded loaded tx with hash %s failed: %s", hash, err.Error())
 				continue
 			}
-			c.contractCreated(uint(gid), blockHash, tx)
+			c.contractCreated(uint(gid), blockHash, blockNumber, tx)
 		case *proto.Transaction_RoomContractSetupReady:
 			gid, err := c.getRoomIDByContract(tx.RoomContractSetupReady.RoomContractAddress)
 			if err != nil {
 				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
 				continue
 			}
-			c.roundSetupCompleted(gid, blockHash, tx)
+			c.roundSetupCompleted(gid, blockHash, blockNumber, tx)
 		case *proto.Transaction_CommitmentsOnChain:
 			gid, err := c.getRoomIDByContract(tx.CommitmentsOnChain.RoomContractAddress)
 			if err != nil {
@@ -224,7 +225,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			}
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CommitmentsOnChain.Address)
-			c.commitmentOnChain(gid, hash, blockHash, tx)
+			c.commitmentOnChain(gid, hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_CardsOnChain:
 			gid, err := c.getRoomIDByContract(tx.CardsOnChain.RoomContractAddress)
 			if err != nil {
@@ -233,7 +234,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			}
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CardsOnChain.Address)
-			c.cardsOnChain(gid, hash, blockHash, tx)
+			c.cardsOnChain(gid, hash, blockHash, blockNumber, tx)
 		}
 	}
 }
@@ -254,7 +255,7 @@ func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
 	return dbRoom.GameID, nil
 }
 
-func (c *Chain) contractCreated(gameID uint, blockHash string, tx *proto.Transaction_RoomContractCreated) error {
+func (c *Chain) contractCreated(gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {
 	roomContract := tx.RoomContractCreated.RoomContractAddress
 	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
 		GameID:              gameID,
@@ -268,10 +269,10 @@ func (c *Chain) contractCreated(gameID uint, blockHash string, tx *proto.Transac
 	if err != nil {
 		log.Errorf("createRoomTxToGameID: delete tx with hash %s from cache failed: %s", roomContract, err.Error())
 	}
-	return db.UpdateCreateRoomTxBlockHashAndContractByGameID(gameID, blockHash, roomContract)
+	return db.UpdateCreateRoomTxBlockHashAndContractByGameID(gameID, blockHash, blockNumber, roomContract)
 }
 
-func (c *Chain) roundSetupCompleted(gameID uint, blockHash string, tx *proto.Transaction_RoomContractSetupReady) error {
+func (c *Chain) roundSetupCompleted(gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractSetupReady) error {
 	roundNumber := tx.RoomContractSetupReady.RoundNumber
 	roundSetupCompletedEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewRoundSetupComplete{
 		GameID:      gameID,
@@ -280,10 +281,10 @@ func (c *Chain) roundSetupCompleted(gameID uint, blockHash string, tx *proto.Tra
 	evtID := roundSetupCompletedEvent.EventID
 	c.inflightEvents[evtID] = struct{}{}
 	c.workerManager.SendEvent(fmt.Sprint(gameID), roundSetupCompletedEvent)
-	return db.UpdateSetRoundReadyTxBlockHashByGameID(gameID, blockHash)
+	return db.UpdateSetRoundReadyTxBlockHashByGameID(gameID, blockHash, blockNumber)
 }
 
-func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, tx *proto.Transaction_CommitmentsOnChain) error {
+func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentsOnChain) error {
 	player := types.PlayerAddress{}
 	player.FromProto(tx.CommitmentsOnChain.Address)
 	roundNumber := tx.CommitmentsOnChain.RoundNumber
@@ -302,6 +303,7 @@ func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, 
 		ContractAddress:  tx.CommitmentsOnChain.RoomContractAddress,
 		TxHash:           txHash,
 		BlockHash:        blockHash,
+		BlockNumber:      blockNumber,
 		Status:           dao.TxStatusSent,
 		RoundNumber:      uint64(roundNumber),
 		WalletAddress:    player.WalletAddress,
@@ -309,7 +311,7 @@ func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, 
 	})
 }
 
-func (c *Chain) cardsOnChain(gameID uint, txHash string, blockHash string, tx *proto.Transaction_CardsOnChain) error {
+func (c *Chain) cardsOnChain(gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardsOnChain) error {
 	player := types.PlayerAddress{}
 	player.FromProto(tx.CardsOnChain.Address)
 	roundNumber := tx.CardsOnChain.RoundNumber
@@ -333,6 +335,7 @@ func (c *Chain) cardsOnChain(gameID uint, txHash string, blockHash string, tx *p
 		ContractAddress:  tx.CardsOnChain.RoomContractAddress,
 		TxHash:           txHash,
 		BlockHash:        blockHash,
+		BlockNumber:      blockNumber,
 		Status:           dao.TxStatusSent,
 		RoundNumber:      uint64(roundNumber),
 		WalletAddress:    player.WalletAddress,

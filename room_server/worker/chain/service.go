@@ -18,7 +18,7 @@ type Service struct {
 func NewService(ctx context.Context,
 	workerManager *worker.WorkerManager, chainID int64, client bind.ContractBackend,
 	roomManagerContractAddress string, wallet *wallet.Wallet,
-	roundTimeout int64, maxRounds int64, dataCache cache.Cache) *Service {
+	roundTimeout int64, maxRounds int64, initialHP int64, dataCache cache.Cache) *Service {
 	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, roundTimeout, maxRounds, dataCache)
 	return &Service{ctx: ctx, chain: chain}
 }
