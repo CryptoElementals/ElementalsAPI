@@ -20,18 +20,20 @@ func SaveCardsOnChainTx(tx *dao.CardsOnChainTx) error {
 	return db.Save(tx).Error
 }
 
-func UpdateCreateRoomTxBlockHashAndContractByGameID(gameID uint, blockHash string, contractAddress string) error {
+func UpdateCreateRoomTxBlockHashAndContractByGameID(gameID uint, blockHash string, blockNumber uint64, contractAddress string) error {
 	return db.Model(&dao.CreateRoomTx{}).Where("game_id = ?", gameID).Updates(map[string]interface{}{
 		"block_hash":       blockHash,
+		"block_number":     blockNumber,
 		"contract_address": contractAddress,
 		"status":           dao.TxStatusSuccess,
 	}).Error
 }
 
-func UpdateSetRoundReadyTxBlockHashByGameID(gameID uint, blockHash string) error {
+func UpdateSetRoundReadyTxBlockHashByGameID(gameID uint, blockHash string, blockNumber uint64) error {
 	return db.Model(&dao.SetRoundReadyTx{}).Where("game_id = ?", gameID).Updates(map[string]interface{}{
-		"block_hash": blockHash,
-		"status":     dao.TxStatusSuccess,
+		"block_hash":   blockHash,
+		"block_number": blockNumber,
+		"status":       dao.TxStatusSuccess,
 	}).Error
 }
 
