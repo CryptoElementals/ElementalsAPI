@@ -9,7 +9,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/rpc/server"
 )
 
 type GameInfoGetter interface {
@@ -21,18 +20,22 @@ type QueueInfoGetter interface {
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
 }
 
+type Publisher interface {
+	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
+}
+
 type Service struct {
 	ctx             context.Context
 	lock            sync.RWMutex
 	players         map[types.PlayerAddress]*Player
-	pub             *server.PubSubServer
+	pub             Publisher
 	workerManager   *worker.WorkerManager
 	gameInfoGetter  GameInfoGetter
 	queueInfoGetter QueueInfoGetter
 }
 
 func NewService(ctx context.Context,
-	pub *server.PubSubServer,
+	pub Publisher,
 	workerManager *worker.WorkerManager,
 	gameInfoGetter GameInfoGetter,
 	queueInfoGetter QueueInfoGetter) *Service {
@@ -107,16 +110,28 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queueInfoGetter.IsPlayerInQueue(address)
 }
 
-func (s *Service) SendPlayerReady(address types.PlayerAddress, gameID uint, roundNum uint32) {
+func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32) error {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	player, ok := s.players[address]
 	if !ok {
-		return
+		return errors.New("player not found")
 	}
 	s.workerManager.SendEvent(fmt.Sprint(gameID), types.NewEvent(player.address.String(), &types.PlayerReadyEvent{
 		GameId:        gameID,
 		RoundNumber:   roundNum,
 		PlayerAddress: address,
 	}))
+	return nil
+}
+
+// GetGamePhase implements server.PlayerRequestHandler.
+func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	p, ok := s.players[address]
+	if !ok {
+		return nil, errors.New("player not found")
+	}
+	return p.ToGamePhase(), nil
 }

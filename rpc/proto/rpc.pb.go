@@ -276,17 +276,138 @@ func (x *PlayerAddress) GetTemporaryAddress() string {
 	return ""
 }
 
+type GamePhasePlayer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       *PlayerAddress         `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	IsConfirmed   bool                   `protobuf:"varint,2,opt,name=IsConfirmed,proto3" json:"IsConfirmed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GamePhasePlayer) Reset() {
+	*x = GamePhasePlayer{}
+	mi := &file_rpc_proto_rpc_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GamePhasePlayer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GamePhasePlayer) ProtoMessage() {}
+
+func (x *GamePhasePlayer) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_proto_rpc_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GamePhasePlayer.ProtoReflect.Descriptor instead.
+func (*GamePhasePlayer) Descriptor() ([]byte, []int) {
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GamePhasePlayer) GetAddress() *PlayerAddress {
+	if x != nil {
+		return x.Address
+	}
+	return nil
+}
+
+func (x *GamePhasePlayer) GetIsConfirmed() bool {
+	if x != nil {
+		return x.IsConfirmed
+	}
+	return false
+}
+
+type PvPInfo struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	GameID          uint32                 `protobuf:"varint,1,opt,name=GameID,proto3" json:"GameID,omitempty"`
+	Status          PlayerStatus           `protobuf:"varint,2,opt,name=Status,proto3,enum=rpc.PlayerStatus" json:"Status,omitempty"`
+	BeginAt         uint64                 `protobuf:"varint,3,opt,name=BeginAt,proto3" json:"BeginAt,omitempty"`
+	TimeoutDuration uint64                 `protobuf:"varint,4,opt,name=TimeoutDuration,proto3" json:"TimeoutDuration,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PvPInfo) Reset() {
+	*x = PvPInfo{}
+	mi := &file_rpc_proto_rpc_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PvPInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PvPInfo) ProtoMessage() {}
+
+func (x *PvPInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_proto_rpc_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PvPInfo.ProtoReflect.Descriptor instead.
+func (*PvPInfo) Descriptor() ([]byte, []int) {
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PvPInfo) GetGameID() uint32 {
+	if x != nil {
+		return x.GameID
+	}
+	return 0
+}
+
+func (x *PvPInfo) GetStatus() PlayerStatus {
+	if x != nil {
+		return x.Status
+	}
+	return PlayerStatus_PLAYER_KNOWN
+}
+
+func (x *PvPInfo) GetBeginAt() uint64 {
+	if x != nil {
+		return x.BeginAt
+	}
+	return 0
+}
+
+func (x *PvPInfo) GetTimeoutDuration() uint64 {
+	if x != nil {
+		return x.TimeoutDuration
+	}
+	return 0
+}
+
 type GamePhase struct {
-	state         protoimpl.MessageState       `protogen:"open.v1"`
-	GameType      GameType                     `protobuf:"varint,1,opt,name=GameType,proto3,enum=rpc.GameType" json:"GameType,omitempty"`
-	Players       []*GamePhase_GamePhasePlayer `protobuf:"bytes,2,rep,name=Players,proto3" json:"Players,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GameType      GameType               `protobuf:"varint,1,opt,name=GameType,proto3,enum=rpc.GameType" json:"GameType,omitempty"`
+	Players       []*GamePhasePlayer     `protobuf:"bytes,2,rep,name=Players,proto3" json:"Players,omitempty"`
+	PvPInfo       *PvPInfo               `protobuf:"bytes,5,opt,name=PvPInfo,proto3" json:"PvPInfo,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GamePhase) Reset() {
 	*x = GamePhase{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[1]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -298,7 +419,7 @@ func (x *GamePhase) String() string {
 func (*GamePhase) ProtoMessage() {}
 
 func (x *GamePhase) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[1]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -311,7 +432,7 @@ func (x *GamePhase) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GamePhase.ProtoReflect.Descriptor instead.
 func (*GamePhase) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{1}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GamePhase) GetGameType() GameType {
@@ -321,35 +442,43 @@ func (x *GamePhase) GetGameType() GameType {
 	return GameType_GAME_TYPE_UNKNOWN
 }
 
-func (x *GamePhase) GetPlayers() []*GamePhase_GamePhasePlayer {
+func (x *GamePhase) GetPlayers() []*GamePhasePlayer {
 	if x != nil {
 		return x.Players
 	}
 	return nil
 }
 
-type GetGameInfoRequest struct {
+func (x *GamePhase) GetPvPInfo() *PvPInfo {
+	if x != nil {
+		return x.PvPInfo
+	}
+	return nil
+}
+
+type GetBattleInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	GameId        uint32                 `protobuf:"varint,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
+	GameID        uint32                 `protobuf:"varint,1,opt,name=GameID,proto3" json:"GameID,omitempty"`
+	RoundNumber   uint32                 `protobuf:"varint,2,opt,name=RoundNumber,proto3" json:"RoundNumber,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetGameInfoRequest) Reset() {
-	*x = GetGameInfoRequest{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[2]
+func (x *GetBattleInfoRequest) Reset() {
+	*x = GetBattleInfoRequest{}
+	mi := &file_rpc_proto_rpc_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetGameInfoRequest) String() string {
+func (x *GetBattleInfoRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetGameInfoRequest) ProtoMessage() {}
+func (*GetBattleInfoRequest) ProtoMessage() {}
 
-func (x *GetGameInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[2]
+func (x *GetBattleInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpc_proto_rpc_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -360,29 +489,37 @@ func (x *GetGameInfoRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetGameInfoRequest.ProtoReflect.Descriptor instead.
-func (*GetGameInfoRequest) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use GetBattleInfoRequest.ProtoReflect.Descriptor instead.
+func (*GetBattleInfoRequest) Descriptor() ([]byte, []int) {
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GetGameInfoRequest) GetGameId() uint32 {
+func (x *GetBattleInfoRequest) GetGameID() uint32 {
 	if x != nil {
-		return x.GameId
+		return x.GameID
+	}
+	return 0
+}
+
+func (x *GetBattleInfoRequest) GetRoundNumber() uint32 {
+	if x != nil {
+		return x.RoundNumber
 	}
 	return 0
 }
 
 type ConfirmBattleRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	GameId        uint32                 `protobuf:"varint,1,opt,name=game_id,json=gameId,proto3" json:"game_id,omitempty"`
-	RoundNum      uint32                 `protobuf:"varint,2,opt,name=round_num,json=roundNum,proto3" json:"round_num,omitempty"`
+	PlayerAddress *PlayerAddress         `protobuf:"bytes,1,opt,name=PlayerAddress,proto3" json:"PlayerAddress,omitempty"`
+	GameID        uint32                 `protobuf:"varint,2,opt,name=GameID,proto3" json:"GameID,omitempty"`
+	RoundNumber   uint32                 `protobuf:"varint,3,opt,name=RoundNumber,proto3" json:"RoundNumber,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ConfirmBattleRequest) Reset() {
 	*x = ConfirmBattleRequest{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[3]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +531,7 @@ func (x *ConfirmBattleRequest) String() string {
 func (*ConfirmBattleRequest) ProtoMessage() {}
 
 func (x *ConfirmBattleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[3]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,19 +544,26 @@ func (x *ConfirmBattleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmBattleRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmBattleRequest) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{3}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ConfirmBattleRequest) GetGameId() uint32 {
+func (x *ConfirmBattleRequest) GetPlayerAddress() *PlayerAddress {
 	if x != nil {
-		return x.GameId
+		return x.PlayerAddress
+	}
+	return nil
+}
+
+func (x *ConfirmBattleRequest) GetGameID() uint32 {
+	if x != nil {
+		return x.GameID
 	}
 	return 0
 }
 
-func (x *ConfirmBattleRequest) GetRoundNum() uint32 {
+func (x *ConfirmBattleRequest) GetRoundNumber() uint32 {
 	if x != nil {
-		return x.RoundNum
+		return x.RoundNumber
 	}
 	return 0
 }
@@ -437,7 +581,7 @@ type PlayerRoundInfo struct {
 
 func (x *PlayerRoundInfo) Reset() {
 	*x = PlayerRoundInfo{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[4]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +593,7 @@ func (x *PlayerRoundInfo) String() string {
 func (*PlayerRoundInfo) ProtoMessage() {}
 
 func (x *PlayerRoundInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[4]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +606,7 @@ func (x *PlayerRoundInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerRoundInfo.ProtoReflect.Descriptor instead.
 func (*PlayerRoundInfo) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{4}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PlayerRoundInfo) GetPlayerAddress() *PlayerAddress {
@@ -516,7 +660,7 @@ type RoundSubmittedCard struct {
 
 func (x *RoundSubmittedCard) Reset() {
 	*x = RoundSubmittedCard{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[5]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -528,7 +672,7 @@ func (x *RoundSubmittedCard) String() string {
 func (*RoundSubmittedCard) ProtoMessage() {}
 
 func (x *RoundSubmittedCard) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[5]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -541,7 +685,7 @@ func (x *RoundSubmittedCard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoundSubmittedCard.ProtoReflect.Descriptor instead.
 func (*RoundSubmittedCard) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{5}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RoundSubmittedCard) GetSubmittedCardId() uint32 {
@@ -611,7 +755,7 @@ type Round struct {
 
 func (x *Round) Reset() {
 	*x = Round{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[6]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -623,7 +767,7 @@ func (x *Round) String() string {
 func (*Round) ProtoMessage() {}
 
 func (x *Round) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[6]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -636,7 +780,7 @@ func (x *Round) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Round.ProtoReflect.Descriptor instead.
 func (*Round) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{6}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Round) GetNumber() int32 {
@@ -676,7 +820,7 @@ type GameInfo struct {
 
 func (x *GameInfo) Reset() {
 	*x = GameInfo{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[7]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -688,7 +832,7 @@ func (x *GameInfo) String() string {
 func (*GameInfo) ProtoMessage() {}
 
 func (x *GameInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[7]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -701,7 +845,7 @@ func (x *GameInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GameInfo.ProtoReflect.Descriptor instead.
 func (*GameInfo) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{7}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GameInfo) GetGameId() uint32 {
@@ -776,7 +920,7 @@ type Transaction struct {
 
 func (x *Transaction) Reset() {
 	*x = Transaction{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[8]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -788,7 +932,7 @@ func (x *Transaction) String() string {
 func (*Transaction) ProtoMessage() {}
 
 func (x *Transaction) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[8]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -801,7 +945,7 @@ func (x *Transaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transaction.ProtoReflect.Descriptor instead.
 func (*Transaction) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{8}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Transaction) GetTxHash() []byte {
@@ -886,14 +1030,15 @@ type TransactionBatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BlockHash     []byte                 `protobuf:"bytes,1,opt,name=block_hash,json=blockHash,proto3" json:"block_hash,omitempty"`
 	Timestamp     uint64                 `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Transactions  []*Transaction         `protobuf:"bytes,3,rep,name=transactions,proto3" json:"transactions,omitempty"`
+	BlockNumber   uint64                 `protobuf:"varint,3,opt,name=block_number,json=blockNumber,proto3" json:"block_number,omitempty"`
+	Transactions  []*Transaction         `protobuf:"bytes,4,rep,name=transactions,proto3" json:"transactions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TransactionBatch) Reset() {
 	*x = TransactionBatch{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[9]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +1050,7 @@ func (x *TransactionBatch) String() string {
 func (*TransactionBatch) ProtoMessage() {}
 
 func (x *TransactionBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[9]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +1063,7 @@ func (x *TransactionBatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionBatch.ProtoReflect.Descriptor instead.
 func (*TransactionBatch) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{9}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *TransactionBatch) GetBlockHash() []byte {
@@ -931,6 +1076,13 @@ func (x *TransactionBatch) GetBlockHash() []byte {
 func (x *TransactionBatch) GetTimestamp() uint64 {
 	if x != nil {
 		return x.Timestamp
+	}
+	return 0
+}
+
+func (x *TransactionBatch) GetBlockNumber() uint64 {
+	if x != nil {
+		return x.BlockNumber
 	}
 	return 0
 }
@@ -951,7 +1103,7 @@ type TxRoomContractCreated struct {
 
 func (x *TxRoomContractCreated) Reset() {
 	*x = TxRoomContractCreated{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[10]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -963,7 +1115,7 @@ func (x *TxRoomContractCreated) String() string {
 func (*TxRoomContractCreated) ProtoMessage() {}
 
 func (x *TxRoomContractCreated) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[10]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -976,7 +1128,7 @@ func (x *TxRoomContractCreated) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TxRoomContractCreated.ProtoReflect.Descriptor instead.
 func (*TxRoomContractCreated) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{10}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *TxRoomContractCreated) GetRoomContractAddress() string {
@@ -996,7 +1148,7 @@ type TxRoomContractRoundSetupReady struct {
 
 func (x *TxRoomContractRoundSetupReady) Reset() {
 	*x = TxRoomContractRoundSetupReady{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[11]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1008,7 +1160,7 @@ func (x *TxRoomContractRoundSetupReady) String() string {
 func (*TxRoomContractRoundSetupReady) ProtoMessage() {}
 
 func (x *TxRoomContractRoundSetupReady) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[11]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1021,7 +1173,7 @@ func (x *TxRoomContractRoundSetupReady) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TxRoomContractRoundSetupReady.ProtoReflect.Descriptor instead.
 func (*TxRoomContractRoundSetupReady) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{11}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *TxRoomContractRoundSetupReady) GetRoomContractAddress() string {
@@ -1050,7 +1202,7 @@ type TxCommitmentsOnChain struct {
 
 func (x *TxCommitmentsOnChain) Reset() {
 	*x = TxCommitmentsOnChain{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[12]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1062,7 +1214,7 @@ func (x *TxCommitmentsOnChain) String() string {
 func (*TxCommitmentsOnChain) ProtoMessage() {}
 
 func (x *TxCommitmentsOnChain) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[12]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1075,7 +1227,7 @@ func (x *TxCommitmentsOnChain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TxCommitmentsOnChain.ProtoReflect.Descriptor instead.
 func (*TxCommitmentsOnChain) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{12}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TxCommitmentsOnChain) GetRoomContractAddress() string {
@@ -1119,7 +1271,7 @@ type TxCardsOnChain struct {
 
 func (x *TxCardsOnChain) Reset() {
 	*x = TxCardsOnChain{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[13]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1131,7 +1283,7 @@ func (x *TxCardsOnChain) String() string {
 func (*TxCardsOnChain) ProtoMessage() {}
 
 func (x *TxCardsOnChain) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[13]
+	mi := &file_rpc_proto_rpc_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1144,7 +1296,7 @@ func (x *TxCardsOnChain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TxCardsOnChain.ProtoReflect.Descriptor instead.
 func (*TxCardsOnChain) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{13}
+	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *TxCardsOnChain) GetRoomContractAddress() string {
@@ -1182,142 +1334,6 @@ func (x *TxCardsOnChain) GetCards() []uint32 {
 	return nil
 }
 
-type GamePhase_GamePhasePlayer struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Address           *PlayerAddress         `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
-	IsConfirmed       bool                   `protobuf:"varint,2,opt,name=IsConfirmed,proto3" json:"IsConfirmed,omitempty"`
-	InitialHP         int32                  `protobuf:"varint,3,opt,name=InitialHP,proto3" json:"InitialHP,omitempty"`
-	InitialMultiplier int32                  `protobuf:"varint,4,opt,name=InitialMultiplier,proto3" json:"InitialMultiplier,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *GamePhase_GamePhasePlayer) Reset() {
-	*x = GamePhase_GamePhasePlayer{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GamePhase_GamePhasePlayer) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GamePhase_GamePhasePlayer) ProtoMessage() {}
-
-func (x *GamePhase_GamePhasePlayer) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GamePhase_GamePhasePlayer.ProtoReflect.Descriptor instead.
-func (*GamePhase_GamePhasePlayer) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{1, 0}
-}
-
-func (x *GamePhase_GamePhasePlayer) GetAddress() *PlayerAddress {
-	if x != nil {
-		return x.Address
-	}
-	return nil
-}
-
-func (x *GamePhase_GamePhasePlayer) GetIsConfirmed() bool {
-	if x != nil {
-		return x.IsConfirmed
-	}
-	return false
-}
-
-func (x *GamePhase_GamePhasePlayer) GetInitialHP() int32 {
-	if x != nil {
-		return x.InitialHP
-	}
-	return 0
-}
-
-func (x *GamePhase_GamePhasePlayer) GetInitialMultiplier() int32 {
-	if x != nil {
-		return x.InitialMultiplier
-	}
-	return 0
-}
-
-type GamePhase_PvPInfo struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	GameID          uint32                 `protobuf:"varint,1,opt,name=GameID,proto3" json:"GameID,omitempty"`
-	Status          GameStatus             `protobuf:"varint,2,opt,name=Status,proto3,enum=rpc.GameStatus" json:"Status,omitempty"`
-	BeginAt         uint64                 `protobuf:"varint,3,opt,name=BeginAt,proto3" json:"BeginAt,omitempty"`
-	TimeoutDuration uint64                 `protobuf:"varint,4,opt,name=TimeoutDuration,proto3" json:"TimeoutDuration,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *GamePhase_PvPInfo) Reset() {
-	*x = GamePhase_PvPInfo{}
-	mi := &file_rpc_proto_rpc_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GamePhase_PvPInfo) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GamePhase_PvPInfo) ProtoMessage() {}
-
-func (x *GamePhase_PvPInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_rpc_proto_rpc_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GamePhase_PvPInfo.ProtoReflect.Descriptor instead.
-func (*GamePhase_PvPInfo) Descriptor() ([]byte, []int) {
-	return file_rpc_proto_rpc_proto_rawDescGZIP(), []int{1, 1}
-}
-
-func (x *GamePhase_PvPInfo) GetGameID() uint32 {
-	if x != nil {
-		return x.GameID
-	}
-	return 0
-}
-
-func (x *GamePhase_PvPInfo) GetStatus() GameStatus {
-	if x != nil {
-		return x.Status
-	}
-	return GameStatus_GAME_INIT
-}
-
-func (x *GamePhase_PvPInfo) GetBeginAt() uint64 {
-	if x != nil {
-		return x.BeginAt
-	}
-	return 0
-}
-
-func (x *GamePhase_PvPInfo) GetTimeoutDuration() uint64 {
-	if x != nil {
-		return x.TimeoutDuration
-	}
-	return 0
-}
-
 var File_rpc_proto_rpc_proto protoreflect.FileDescriptor
 
 const file_rpc_proto_rpc_proto_rawDesc = "" +
@@ -1325,25 +1341,26 @@ const file_rpc_proto_rpc_proto_rawDesc = "" +
 	"\x13rpc/proto/rpc.proto\x12\x03rpc\x1a\x1bgoogle/protobuf/empty.proto\x1a\x16rpc/proto/battle.proto\"c\n" +
 	"\rPlayerAddress\x12%\n" +
 	"\x0ewallet_address\x18\x01 \x01(\tR\rwalletAddress\x12+\n" +
-	"\x11temporary_address\x18\x02 \x01(\tR\x10temporaryAddress\"\xb1\x03\n" +
-	"\tGamePhase\x12)\n" +
-	"\bGameType\x18\x01 \x01(\x0e2\r.rpc.GameTypeR\bGameType\x128\n" +
-	"\aPlayers\x18\x02 \x03(\v2\x1e.rpc.GamePhase.GamePhasePlayerR\aPlayers\x1a\xad\x01\n" +
+	"\x11temporary_address\x18\x02 \x01(\tR\x10temporaryAddress\"a\n" +
 	"\x0fGamePhasePlayer\x12,\n" +
 	"\aAddress\x18\x01 \x01(\v2\x12.rpc.PlayerAddressR\aAddress\x12 \n" +
-	"\vIsConfirmed\x18\x02 \x01(\bR\vIsConfirmed\x12\x1c\n" +
-	"\tInitialHP\x18\x03 \x01(\x05R\tInitialHP\x12,\n" +
-	"\x11InitialMultiplier\x18\x04 \x01(\x05R\x11InitialMultiplier\x1a\x8e\x01\n" +
+	"\vIsConfirmed\x18\x02 \x01(\bR\vIsConfirmed\"\x90\x01\n" +
 	"\aPvPInfo\x12\x16\n" +
-	"\x06GameID\x18\x01 \x01(\rR\x06GameID\x12'\n" +
-	"\x06Status\x18\x02 \x01(\x0e2\x0f.rpc.GameStatusR\x06Status\x12\x18\n" +
+	"\x06GameID\x18\x01 \x01(\rR\x06GameID\x12)\n" +
+	"\x06Status\x18\x02 \x01(\x0e2\x11.rpc.PlayerStatusR\x06Status\x12\x18\n" +
 	"\aBeginAt\x18\x03 \x01(\x04R\aBeginAt\x12(\n" +
-	"\x0fTimeoutDuration\x18\x04 \x01(\x04R\x0fTimeoutDuration\"-\n" +
-	"\x12GetGameInfoRequest\x12\x17\n" +
-	"\agame_id\x18\x01 \x01(\rR\x06gameId\"L\n" +
-	"\x14ConfirmBattleRequest\x12\x17\n" +
-	"\agame_id\x18\x01 \x01(\rR\x06gameId\x12\x1b\n" +
-	"\tround_num\x18\x02 \x01(\rR\broundNum\"\xf4\x01\n" +
+	"\x0fTimeoutDuration\x18\x04 \x01(\x04R\x0fTimeoutDuration\"\x8e\x01\n" +
+	"\tGamePhase\x12)\n" +
+	"\bGameType\x18\x01 \x01(\x0e2\r.rpc.GameTypeR\bGameType\x12.\n" +
+	"\aPlayers\x18\x02 \x03(\v2\x14.rpc.GamePhasePlayerR\aPlayers\x12&\n" +
+	"\aPvPInfo\x18\x05 \x01(\v2\f.rpc.PvPInfoR\aPvPInfo\"P\n" +
+	"\x14GetBattleInfoRequest\x12\x16\n" +
+	"\x06GameID\x18\x01 \x01(\rR\x06GameID\x12 \n" +
+	"\vRoundNumber\x18\x02 \x01(\rR\vRoundNumber\"\x8a\x01\n" +
+	"\x14ConfirmBattleRequest\x128\n" +
+	"\rPlayerAddress\x18\x01 \x01(\v2\x12.rpc.PlayerAddressR\rPlayerAddress\x12\x16\n" +
+	"\x06GameID\x18\x02 \x01(\rR\x06GameID\x12 \n" +
+	"\vRoundNumber\x18\x03 \x01(\rR\vRoundNumber\"\xf4\x01\n" +
 	"\x0fPlayerRoundInfo\x128\n" +
 	"\rPlayerAddress\x18\x01 \x01(\v2\x12.rpc.PlayerAddressR\rPlayerAddress\x12 \n" +
 	"\vPlayerReady\x18\x02 \x01(\bR\vPlayerReady\x12\x12\n" +
@@ -1381,12 +1398,13 @@ const file_rpc_proto_rpc_proto_rawDesc = "" +
 	"\x19room_contract_setup_ready\x18\x03 \x01(\v2\".rpc.TxRoomContractRoundSetupReadyH\x00R\x16roomContractSetupReady\x12M\n" +
 	"\x14commitments_on_chain\x18\x04 \x01(\v2\x19.rpc.TxCommitmentsOnChainH\x00R\x12commitmentsOnChain\x12;\n" +
 	"\x0ecards_on_chain\x18\x05 \x01(\v2\x13.rpc.TxCardsOnChainH\x00R\fcardsOnChainB\x04\n" +
-	"\x02tx\"\x85\x01\n" +
+	"\x02tx\"\xa8\x01\n" +
 	"\x10TransactionBatch\x12\x1d\n" +
 	"\n" +
 	"block_hash\x18\x01 \x01(\fR\tblockHash\x12\x1c\n" +
-	"\ttimestamp\x18\x02 \x01(\x04R\ttimestamp\x124\n" +
-	"\ftransactions\x18\x03 \x03(\v2\x10.rpc.TransactionR\ftransactions\"K\n" +
+	"\ttimestamp\x18\x02 \x01(\x04R\ttimestamp\x12!\n" +
+	"\fblock_number\x18\x03 \x01(\x04R\vblockNumber\x124\n" +
+	"\ftransactions\x18\x04 \x03(\v2\x10.rpc.TransactionR\ftransactions\"K\n" +
 	"\x15TxRoomContractCreated\x122\n" +
 	"\x15room_contract_address\x18\x01 \x01(\tR\x13roomContractAddress\"v\n" +
 	"\x1dTxRoomContractRoundSetupReady\x122\n" +
@@ -1423,13 +1441,13 @@ const file_rpc_proto_rpc_proto_rawDesc = "" +
 	"\bGAME_END\x10\x02**\n" +
 	"\bGameType\x12\x15\n" +
 	"\x11GAME_TYPE_UNKNOWN\x10\x00\x12\a\n" +
-	"\x03PVP\x10\x012\xf2\x02\n" +
+	"\x03PVP\x10\x012\xfc\x02\n" +
 	"\n" +
 	"RpcService\x127\n" +
 	"\tJoinQueue\x12\x12.rpc.PlayerAddress\x1a\x16.google.protobuf.Empty\x127\n" +
 	"\tExitQueue\x12\x12.rpc.PlayerAddress\x1a\x16.google.protobuf.Empty\x122\n" +
-	"\fGetGamePhase\x12\x12.rpc.PlayerAddress\x1a\x0e.rpc.GamePhase\x125\n" +
-	"\vGetGameInfo\x12\x17.rpc.GetGameInfoRequest\x1a\r.rpc.GameInfo\x12B\n" +
+	"\fGetGamePhase\x12\x12.rpc.PlayerAddress\x1a\x0e.rpc.GamePhase\x12?\n" +
+	"\rGetBattleInfo\x12\x19.rpc.GetBattleInfoRequest\x1a\x13.battle.RoundResult\x12B\n" +
 	"\rConfirmBattle\x12\x19.rpc.ConfirmBattleRequest\x1a\x16.google.protobuf.Empty\x12C\n" +
 	"\x12SubmitTransactions\x12\x15.rpc.TransactionBatch\x1a\x16.google.protobuf.EmptyB4Z2github.com/CryptoElementals/common/rpc/proto;protob\x06proto3"
 
@@ -1453,66 +1471,69 @@ var file_rpc_proto_rpc_proto_goTypes = []any{
 	(GameStatus)(0),                       // 2: rpc.GameStatus
 	(GameType)(0),                         // 3: rpc.GameType
 	(*PlayerAddress)(nil),                 // 4: rpc.PlayerAddress
-	(*GamePhase)(nil),                     // 5: rpc.GamePhase
-	(*GetGameInfoRequest)(nil),            // 6: rpc.GetGameInfoRequest
-	(*ConfirmBattleRequest)(nil),          // 7: rpc.ConfirmBattleRequest
-	(*PlayerRoundInfo)(nil),               // 8: rpc.PlayerRoundInfo
-	(*RoundSubmittedCard)(nil),            // 9: rpc.RoundSubmittedCard
-	(*Round)(nil),                         // 10: rpc.Round
-	(*GameInfo)(nil),                      // 11: rpc.GameInfo
-	(*Transaction)(nil),                   // 12: rpc.Transaction
-	(*TransactionBatch)(nil),              // 13: rpc.TransactionBatch
-	(*TxRoomContractCreated)(nil),         // 14: rpc.TxRoomContractCreated
-	(*TxRoomContractRoundSetupReady)(nil), // 15: rpc.TxRoomContractRoundSetupReady
-	(*TxCommitmentsOnChain)(nil),          // 16: rpc.TxCommitmentsOnChain
-	(*TxCardsOnChain)(nil),                // 17: rpc.TxCardsOnChain
-	(*GamePhase_GamePhasePlayer)(nil),     // 18: rpc.GamePhase.GamePhasePlayer
-	(*GamePhase_PvPInfo)(nil),             // 19: rpc.GamePhase.PvPInfo
+	(*GamePhasePlayer)(nil),               // 5: rpc.GamePhasePlayer
+	(*PvPInfo)(nil),                       // 6: rpc.PvPInfo
+	(*GamePhase)(nil),                     // 7: rpc.GamePhase
+	(*GetBattleInfoRequest)(nil),          // 8: rpc.GetBattleInfoRequest
+	(*ConfirmBattleRequest)(nil),          // 9: rpc.ConfirmBattleRequest
+	(*PlayerRoundInfo)(nil),               // 10: rpc.PlayerRoundInfo
+	(*RoundSubmittedCard)(nil),            // 11: rpc.RoundSubmittedCard
+	(*Round)(nil),                         // 12: rpc.Round
+	(*GameInfo)(nil),                      // 13: rpc.GameInfo
+	(*Transaction)(nil),                   // 14: rpc.Transaction
+	(*TransactionBatch)(nil),              // 15: rpc.TransactionBatch
+	(*TxRoomContractCreated)(nil),         // 16: rpc.TxRoomContractCreated
+	(*TxRoomContractRoundSetupReady)(nil), // 17: rpc.TxRoomContractRoundSetupReady
+	(*TxCommitmentsOnChain)(nil),          // 18: rpc.TxCommitmentsOnChain
+	(*TxCardsOnChain)(nil),                // 19: rpc.TxCardsOnChain
 	(ElementRelation)(0),                  // 20: battle.ElementRelation
 	(*BattleEffect)(nil),                  // 21: battle.BattleEffect
 	(*GameResult)(nil),                    // 22: battle.GameResult
 	(*emptypb.Empty)(nil),                 // 23: google.protobuf.Empty
+	(*RoundResult)(nil),                   // 24: battle.RoundResult
 }
 var file_rpc_proto_rpc_proto_depIdxs = []int32{
-	3,  // 0: rpc.GamePhase.GameType:type_name -> rpc.GameType
-	18, // 1: rpc.GamePhase.Players:type_name -> rpc.GamePhase.GamePhasePlayer
-	4,  // 2: rpc.PlayerRoundInfo.PlayerAddress:type_name -> rpc.PlayerAddress
-	9,  // 3: rpc.PlayerRoundInfo.SubmittedCards:type_name -> rpc.RoundSubmittedCard
-	20, // 4: rpc.RoundSubmittedCard.ElementRelation:type_name -> battle.ElementRelation
-	21, // 5: rpc.RoundSubmittedCard.Effects:type_name -> battle.BattleEffect
-	1,  // 6: rpc.Round.status:type_name -> rpc.RoundStatus
-	8,  // 7: rpc.Round.player_round_infos:type_name -> rpc.PlayerRoundInfo
-	3,  // 8: rpc.GameInfo.game_type:type_name -> rpc.GameType
-	2,  // 9: rpc.GameInfo.status:type_name -> rpc.GameStatus
-	4,  // 10: rpc.GameInfo.players:type_name -> rpc.PlayerAddress
-	10, // 11: rpc.GameInfo.rounds:type_name -> rpc.Round
-	22, // 12: rpc.GameInfo.result:type_name -> battle.GameResult
-	14, // 13: rpc.Transaction.room_contract_created:type_name -> rpc.TxRoomContractCreated
-	15, // 14: rpc.Transaction.room_contract_setup_ready:type_name -> rpc.TxRoomContractRoundSetupReady
-	16, // 15: rpc.Transaction.commitments_on_chain:type_name -> rpc.TxCommitmentsOnChain
-	17, // 16: rpc.Transaction.cards_on_chain:type_name -> rpc.TxCardsOnChain
-	12, // 17: rpc.TransactionBatch.transactions:type_name -> rpc.Transaction
-	4,  // 18: rpc.TxCommitmentsOnChain.address:type_name -> rpc.PlayerAddress
-	4,  // 19: rpc.TxCardsOnChain.address:type_name -> rpc.PlayerAddress
-	4,  // 20: rpc.GamePhase.GamePhasePlayer.Address:type_name -> rpc.PlayerAddress
-	2,  // 21: rpc.GamePhase.PvPInfo.Status:type_name -> rpc.GameStatus
-	4,  // 22: rpc.RpcService.JoinQueue:input_type -> rpc.PlayerAddress
-	4,  // 23: rpc.RpcService.ExitQueue:input_type -> rpc.PlayerAddress
-	4,  // 24: rpc.RpcService.GetGamePhase:input_type -> rpc.PlayerAddress
-	6,  // 25: rpc.RpcService.GetGameInfo:input_type -> rpc.GetGameInfoRequest
-	7,  // 26: rpc.RpcService.ConfirmBattle:input_type -> rpc.ConfirmBattleRequest
-	13, // 27: rpc.RpcService.SubmitTransactions:input_type -> rpc.TransactionBatch
-	23, // 28: rpc.RpcService.JoinQueue:output_type -> google.protobuf.Empty
-	23, // 29: rpc.RpcService.ExitQueue:output_type -> google.protobuf.Empty
-	5,  // 30: rpc.RpcService.GetGamePhase:output_type -> rpc.GamePhase
-	11, // 31: rpc.RpcService.GetGameInfo:output_type -> rpc.GameInfo
-	23, // 32: rpc.RpcService.ConfirmBattle:output_type -> google.protobuf.Empty
-	23, // 33: rpc.RpcService.SubmitTransactions:output_type -> google.protobuf.Empty
-	28, // [28:34] is the sub-list for method output_type
-	22, // [22:28] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	4,  // 0: rpc.GamePhasePlayer.Address:type_name -> rpc.PlayerAddress
+	0,  // 1: rpc.PvPInfo.Status:type_name -> rpc.PlayerStatus
+	3,  // 2: rpc.GamePhase.GameType:type_name -> rpc.GameType
+	5,  // 3: rpc.GamePhase.Players:type_name -> rpc.GamePhasePlayer
+	6,  // 4: rpc.GamePhase.PvPInfo:type_name -> rpc.PvPInfo
+	4,  // 5: rpc.ConfirmBattleRequest.PlayerAddress:type_name -> rpc.PlayerAddress
+	4,  // 6: rpc.PlayerRoundInfo.PlayerAddress:type_name -> rpc.PlayerAddress
+	11, // 7: rpc.PlayerRoundInfo.SubmittedCards:type_name -> rpc.RoundSubmittedCard
+	20, // 8: rpc.RoundSubmittedCard.ElementRelation:type_name -> battle.ElementRelation
+	21, // 9: rpc.RoundSubmittedCard.Effects:type_name -> battle.BattleEffect
+	1,  // 10: rpc.Round.status:type_name -> rpc.RoundStatus
+	10, // 11: rpc.Round.player_round_infos:type_name -> rpc.PlayerRoundInfo
+	3,  // 12: rpc.GameInfo.game_type:type_name -> rpc.GameType
+	2,  // 13: rpc.GameInfo.status:type_name -> rpc.GameStatus
+	4,  // 14: rpc.GameInfo.players:type_name -> rpc.PlayerAddress
+	12, // 15: rpc.GameInfo.rounds:type_name -> rpc.Round
+	22, // 16: rpc.GameInfo.result:type_name -> battle.GameResult
+	16, // 17: rpc.Transaction.room_contract_created:type_name -> rpc.TxRoomContractCreated
+	17, // 18: rpc.Transaction.room_contract_setup_ready:type_name -> rpc.TxRoomContractRoundSetupReady
+	18, // 19: rpc.Transaction.commitments_on_chain:type_name -> rpc.TxCommitmentsOnChain
+	19, // 20: rpc.Transaction.cards_on_chain:type_name -> rpc.TxCardsOnChain
+	14, // 21: rpc.TransactionBatch.transactions:type_name -> rpc.Transaction
+	4,  // 22: rpc.TxCommitmentsOnChain.address:type_name -> rpc.PlayerAddress
+	4,  // 23: rpc.TxCardsOnChain.address:type_name -> rpc.PlayerAddress
+	4,  // 24: rpc.RpcService.JoinQueue:input_type -> rpc.PlayerAddress
+	4,  // 25: rpc.RpcService.ExitQueue:input_type -> rpc.PlayerAddress
+	4,  // 26: rpc.RpcService.GetGamePhase:input_type -> rpc.PlayerAddress
+	8,  // 27: rpc.RpcService.GetBattleInfo:input_type -> rpc.GetBattleInfoRequest
+	9,  // 28: rpc.RpcService.ConfirmBattle:input_type -> rpc.ConfirmBattleRequest
+	15, // 29: rpc.RpcService.SubmitTransactions:input_type -> rpc.TransactionBatch
+	23, // 30: rpc.RpcService.JoinQueue:output_type -> google.protobuf.Empty
+	23, // 31: rpc.RpcService.ExitQueue:output_type -> google.protobuf.Empty
+	7,  // 32: rpc.RpcService.GetGamePhase:output_type -> rpc.GamePhase
+	24, // 33: rpc.RpcService.GetBattleInfo:output_type -> battle.RoundResult
+	23, // 34: rpc.RpcService.ConfirmBattle:output_type -> google.protobuf.Empty
+	23, // 35: rpc.RpcService.SubmitTransactions:output_type -> google.protobuf.Empty
+	30, // [30:36] is the sub-list for method output_type
+	24, // [24:30] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_rpc_proto_rpc_proto_init() }
@@ -1521,8 +1542,8 @@ func file_rpc_proto_rpc_proto_init() {
 		return
 	}
 	file_rpc_proto_battle_proto_init()
-	file_rpc_proto_rpc_proto_msgTypes[7].OneofWrappers = []any{}
-	file_rpc_proto_rpc_proto_msgTypes[8].OneofWrappers = []any{
+	file_rpc_proto_rpc_proto_msgTypes[9].OneofWrappers = []any{}
+	file_rpc_proto_rpc_proto_msgTypes[10].OneofWrappers = []any{
 		(*Transaction_RoomContractCreated)(nil),
 		(*Transaction_RoomContractSetupReady)(nil),
 		(*Transaction_CommitmentsOnChain)(nil),

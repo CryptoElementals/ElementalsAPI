@@ -27,7 +27,7 @@ var testWorkerManager *worker.WorkerManager
 var client bind.ContractBackend
 var w *wallet.Wallet
 
-const roomMamangerAddress = "0x9e3F48723D94940F7E1c8dCc6c927A55Df896439"
+const roomMamangerAddress = "0x8c21e3B3A6Cc3739f418535FDE4Bf76F4DfF8535"
 const roomContractAddress = "0xeba41b209e3d8aab61f5072676854979051957f2"
 
 func TestMain(m *testing.M) {
@@ -128,9 +128,10 @@ func TestChainContractInteraction(t *testing.T) {
 	txHash, err := hexutil.Decode(tx.TxHash)
 	require.NoError(t, err)
 	mockRoomHandler.EXPECT().Handle(gomock.Any(), evtMatcher).Times(5).Return(nil)
-	err = svc.ReceiveTransactions(1, &proto.TransactionBatch{
-		BlockHash: []byte("0x123"),
-		Timestamp: uint64(time.Now().Unix()),
+	err = svc.SubmitTransactions(&proto.TransactionBatch{
+		BlockHash:   []byte("0x123"),
+		Timestamp:   uint64(time.Now().Unix()),
+		BlockNumber: 1,
 		Transactions: []*proto.Transaction{
 			{
 				TxHash: txHash,

@@ -11,14 +11,11 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-type Publisher interface {
-	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
-}
-
 type playerGameInfo struct {
 	currentGame  uint
 	currentRound uint
 	roundStarted int64
+	roundTimeout uint64
 
 	players map[types.PlayerAddress]bool
 }
@@ -200,4 +197,22 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 			Type: proto.EventType_TYPE_GAME_COMPLETE,
 		},
 	})
+}
+
+func (p *Player) ToGamePhase() *proto.GamePhase {
+	protoPlayers := make([]*proto.GamePhasePlayer, 0)
+	for addr, p := range p.info.players {
+		protoPlayers = append(protoPlayers, &proto.GamePhasePlayer{
+			Address:     addr.ToProto(),
+			IsConfirmed: p,
+		})
+	}
+	return &proto.GamePhase{
+		PvPInfo: &proto.PvPInfo{
+			GameID:  uint32(p.info.currentGame),
+			Status:  p.status,
+			BeginAt: uint64(p.info.roundStarted),
+		},
+		Players: protoPlayers,
+	}
 }

@@ -85,6 +85,16 @@ func (r *GameManager) GetActiveGame(player types.PlayerAddress) *dao.Game {
 	return game.gameInfo
 }
 
+func (r *GameManager) GetActiveGameByID(id uint) *Game {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	game, ok := r.gamesMap[id]
+	if !ok {
+		return nil
+	}
+	return game
+}
+
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 	for _, player := range players {
 		if game, ok := r.playerToGameMap[player]; ok {

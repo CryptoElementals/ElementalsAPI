@@ -9,7 +9,7 @@ import (
 )
 
 func TestPubSubServer(t *testing.T) {
-	server := NewPubSubServer()
+	server := NewPubSub()
 
 	// 测试发布消息
 	t.Run("Publish", func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestPubSubServer(t *testing.T) {
 }
 
 func TestPubSubServerConcurrency(t *testing.T) {
-	server := NewPubSubServer()
+	server := NewPubSub()
 
 	// 并发发布消息
 	t.Run("ConcurrentPublish", func(t *testing.T) {
@@ -142,7 +142,7 @@ func TestPubSubServerConcurrency(t *testing.T) {
 }
 
 func TestPubSubServerValidation(t *testing.T) {
-	server := NewPubSubServer()
+	server := NewPubSub()
 
 	t.Run("PublishValidation", func(t *testing.T) {
 		// 测试空主题

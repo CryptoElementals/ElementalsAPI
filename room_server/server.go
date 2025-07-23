@@ -2,6 +2,9 @@ package roomserver
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"net"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -9,20 +12,24 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/room_server/worker/player"
 	"github.com/CryptoElementals/common/room_server/worker/queue"
-	"github.com/CryptoElementals/common/rpc/server"
+	"github.com/CryptoElementals/common/rpc/proto"
+	rpc "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"google.golang.org/grpc"
 )
 
 type Service struct {
-	ctx          context.Context
-	cfg          *Config
-	mgr          *worker.WorkerManager
-	pubsubServer *server.PubSubServer
-	chainSvc     *chain.Service
-	gameSvc      *game.Service
-	playerSvc    *player.Service
-	queueSvc     *queue.Service
+	ctx       context.Context
+	cfg       *Config
+	mgr       *worker.WorkerManager
+	server    *grpc.Server
+	pubsub    *rpc.PubSub
+	rpcServer *rpc.Rpc
+	chainSvc  *chain.Service
+	gameSvc   *game.Service
+	playerSvc *player.Service
+	queueSvc  *queue.Service
 }
 
 type Config struct {
@@ -32,16 +39,16 @@ type Config struct {
 	WalletPath          string
 	RoundTimeout        int64
 	MaxRounds           int64
-	PubSubServerPort    int64
+	GrpcServerPort      int64
 	isDevelop           bool
 }
 
 func New(ctx context.Context, cfg *Config) (*Service, error) {
 	s := &Service{
-		ctx:          ctx,
-		cfg:          cfg,
-		mgr:          worker.NewWorkerManager(ctx),
-		pubsubServer: server.NewPubSubServer(),
+		ctx:    ctx,
+		cfg:    cfg,
+		mgr:    worker.NewWorkerManager(ctx),
+		pubsub: rpc.NewPubSub(),
 	}
 	client, err := ethclient.DialContext(ctx, cfg.ChainRpc)
 	if err != nil {
@@ -64,23 +71,30 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 			return nil, err
 		}
 	}
+
 	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.roomManagerContract, w, cfg.RoundTimeout, cfg.MaxRounds, c)
 	s.chainSvc = chainSvc
 	gameSvc := game.NewService(ctx, s.mgr)
 	s.gameSvc = gameSvc
-	playerSvc := player.NewService(ctx, s.pubsubServer, s.mgr, gameSvc, s.queueSvc)
+	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c)
 	s.queueSvc = queueSvc
+	server := grpc.NewServer()
+	rpcServer := rpc.NewRpc(
+		gameSvc,
+		chainSvc,
+		playerSvc,
+	)
+	s.rpcServer = rpcServer
+	proto.RegisterPubSubServiceServer(server, s.pubsub)
+	proto.RegisterRpcServiceServer(server, s.rpcServer)
+	s.server = server
 	return s, nil
 }
 
 func (s *Service) Start() error {
-	err := s.pubsubServer.Run(int(s.cfg.PubSubServerPort))
-	if err != nil {
-		return err
-	}
-	err = s.chainSvc.Start()
+	err := s.chainSvc.Start()
 	if err != nil {
 		return err
 	}
@@ -92,5 +106,23 @@ func (s *Service) Start() error {
 	if err != nil {
 		return err
 	}
+	err = s.startListener()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) startListener() error {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.GrpcServerPort))
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := s.server.Serve(lis); err != nil {
+			log.Fatalf("server start failed: %v", err)
+		}
+	}()
+
 	return nil
 }
