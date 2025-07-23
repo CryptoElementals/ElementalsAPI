@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -31,9 +32,21 @@ func setupMemDb(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func prepareCards(t *testing.T) {
+	t.Helper()
+	cards := []dao.Card{
+		{CardID: 1, ElementType: "Metal", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Kylin", Description: "Kylin clad in armor, representing strength and protection"},
+		{CardID: 2, ElementType: "Wood", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Forest Spirit", Description: "Forest Spirit controlling the cycle of life and death"},
+		{CardID: 3, ElementType: "Water", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Siren", Description: "Siren, half-human half-beast, possessing enchanting charm"},
+		{CardID: 4, ElementType: "Fire", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Phoenix", Description: "Phoenix with flames and rebirth, symbolizing eternal life"},
+		{CardID: 5, ElementType: "Earth", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "World Turtle", Description: "World Turtle, steady and powerful with immense strength"},
+	}
+	require.NoError(t, db.Get().Save(&cards).Error)
+}
+
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
-	gameManager := NewGameManager(context.Background(), testWorkerManager)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		WalletAddress:    "1",
@@ -86,7 +99,8 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 
 func TestGameStateMachine(t *testing.T) {
 	setupMemDb(t)
-	gameManager := NewGameManager(context.Background(), testWorkerManager)
+	prepareCards(t)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		WalletAddress:    "1",
@@ -218,7 +232,7 @@ func TestGameStateMachine(t *testing.T) {
 			GameID:      evt.GameID,
 			Address:     playerAddress1,
 			RoundNumber: evt.RoundNumber,
-			Cards:       []uint{1, 2, 3},
+			Cards:       []uint{4, 5, 3},
 			Salt:        []byte("salt1"),
 		}))
 		return nil
@@ -231,7 +245,7 @@ func TestGameStateMachine(t *testing.T) {
 			GameID:      evt.GameID,
 			Address:     playerAddress2,
 			RoundNumber: evt.RoundNumber,
-			Cards:       []uint{4, 5, 6},
+			Cards:       []uint{1, 2, 4},
 			Salt:        []byte("salt2"),
 		}))
 		return nil

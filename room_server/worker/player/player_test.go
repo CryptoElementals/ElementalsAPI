@@ -32,6 +32,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	svr := grpc.NewServer()
+	proto.RegisterPubSubServiceServer(svr, testPubsubServer)
 	go func() {
 		if err := svr.Serve(lis); err != nil {
 			log.Fatalf("server start failed: %v", err)
@@ -48,6 +49,7 @@ func TestPlayerJoinExitQueue(t *testing.T) {
 	testWorkerManager.SpwanWorker(context.Background(), types.QUEUE_MANAGER_ID, types.WORKER_TYPE_QUEUE, mockQueueHandler)
 
 	testService := NewService(context.Background(), testPubsubServer, testWorkerManager, mockGameInfoGetter, mockQueueInfoGetter)
+	testPubsubServer.SetPlayerManager(testService)
 	player1 := types.PlayerAddress{
 		WalletAddress:    "player1",
 		TemporaryAddress: "temp1",
@@ -57,7 +59,7 @@ func TestPlayerJoinExitQueue(t *testing.T) {
 		TemporaryAddress: "temp2",
 	}
 	mockQueueHandler.EXPECT().Handle(gomock.Any(), gomock.Any()).AnyTimes().
-		DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+		DoAndReturn(func(ctx context.Context, event *types.Event) error {
 			switch evt := event.Data.(type) {
 			case *types.JoinQueueEvent:
 				if event.Sender == player1.String() {
@@ -110,6 +112,7 @@ func TestPlayerEventHandler(t *testing.T) {
 	mockQueueInfoGetter := tt.NewMockQueueInfoGetter(gomock.NewController(t))
 
 	testService := NewService(context.Background(), testPubsubServer, testWorkerManager, mockGameInfoGetter, mockQueueInfoGetter)
+	testPubsubServer.SetPlayerManager(testService)
 	player1 := types.PlayerAddress{
 		WalletAddress:    "player1",
 		TemporaryAddress: "temp1",
@@ -119,23 +122,35 @@ func TestPlayerEventHandler(t *testing.T) {
 		TemporaryAddress: "temp2",
 	}
 
-	require.NoError(t, testService.AddPlayer(player1))
-	player1Struct := testService.players[player1]
-	require.NotNil(t, player1Struct)
 	pubsubClient, err := client.NewPubSubClient(fmt.Sprintf("localhost:%d", pubsubPort))
 	require.NoError(t, err)
 	defer pubsubClient.Close()
 	player1Chan := make(chan *proto.Event, 100)
+	player2Chan := make(chan *proto.Event, 100)
 	errChan := make(chan error, 1)
+	errChan2 := make(chan error, 1)
 	go func() {
-		err := <-errChan
-		if err == nil {
-			return
+		select {
+		case err := <-errChan:
+			if err == nil {
+				return
+			}
+			t.Errorf("unexpected error: %v", err)
+		case err := <-errChan2:
+			if err == nil {
+				return
+			}
+			t.Errorf("unexpected error: %v", err)
 		}
-		t.Errorf("unexpected error: %v", err)
 	}()
 	require.NoError(t, pubsubClient.Subscribe(player1.String(), player1.String(), player1Chan, errChan))
+	require.NoError(t, pubsubClient.Subscribe(player2.String(), player2.String(), player2Chan, errChan2))
 	time.Sleep(1 * time.Millisecond)
+	player1Struct := testService.players[player1]
+	require.NotNil(t, player1Struct)
+	player2Struct := testService.players[player2]
+	require.NotNil(t, player2Struct)
+
 	require.NoError(t, testService.JoinQueue(player1))
 	gameID := 1
 	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{

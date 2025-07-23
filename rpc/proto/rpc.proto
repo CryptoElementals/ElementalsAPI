@@ -13,10 +13,9 @@ service RpcService {
     rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
-    rpc GetBattleInfo(GetBattleInfoRequest) returns (battle.RoundResult);
+    rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
 
-    
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
 }
@@ -54,6 +53,11 @@ message GamePhase {
 message GetBattleInfoRequest {
     uint32 GameID = 1;
     uint32 RoundNumber = 2;
+}
+
+message GetBattleInfoResponse {
+    battle.RoundResult round_result = 1;
+    battle.GameResult game_result = 2;
 }
 
 message ConfirmBattleRequest {

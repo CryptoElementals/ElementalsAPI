@@ -35,12 +35,15 @@ type Service struct {
 type Config struct {
 	ChainID             int64
 	ChainRpc            string
-	roomManagerContract string
+	RoomManagerContract string
 	WalletPath          string
-	RoundTimeout        int64
-	MaxRounds           int64
-	GrpcServerPort      int64
-	isDevelop           bool
+
+	RoundTimeout  int64
+	MaxRounds     int64
+	GameInitialHP int64
+
+	GrpcServerPort int64
+	isDevelop      bool
 }
 
 func New(ctx context.Context, cfg *Config) (*Service, error) {
@@ -72,9 +75,9 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		}
 	}
 
-	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.roomManagerContract, w, cfg.RoundTimeout, cfg.MaxRounds, c)
+	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.RoomManagerContract, w, cfg.RoundTimeout, cfg.MaxRounds, cfg.GameInitialHP, c)
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr)
+	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP)
 	s.gameSvc = gameSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc

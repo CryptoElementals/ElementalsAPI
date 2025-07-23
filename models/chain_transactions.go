@@ -17,6 +17,7 @@ type CreateRoomTx struct {
 	ContractAddress string
 	TxHash          string
 	BlockHash       string
+	BlockNumber     uint64
 	Status          TxStatus
 	RoundTimeout    time.Duration
 	MaxRounds       uint64
@@ -28,6 +29,7 @@ type SetRoundReadyTx struct {
 	ContractAddress string
 	TxHash          string
 	BlockHash       string
+	BlockNumber     uint64
 	Status          TxStatus
 	RoundNumber     uint64
 }
@@ -38,6 +40,7 @@ type CommitmentOnChainTx struct {
 	ContractAddress  string
 	TxHash           string
 	BlockHash        string
+	BlockNumber      uint64
 	Status           TxStatus
 	RoundNumber      uint64
 	WalletAddress    string
@@ -50,6 +53,7 @@ type CardsOnChainTx struct {
 	ContractAddress  string
 	TxHash           string
 	BlockHash        string
+	BlockNumber      uint64
 	Status           TxStatus
 	RoundNumber      uint64
 	WalletAddress    string
