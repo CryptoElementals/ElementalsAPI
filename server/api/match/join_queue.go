@@ -175,7 +175,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 暂时不进行匹配，只返回成功
+	// roomserver 进行匹配
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully joined match queue"
 

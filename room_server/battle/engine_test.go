@@ -7,125 +7,38 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 	"github.com/stretchr/testify/require"
 )
 
-func TestExecuteRound(t *testing.T) {
-	err := log.InitGlobalLogger(&log.Config{
-		Development: true,
-		Level:       "debug",
-	})
-	if err != nil {
-		t.Fatalf("Failed to initialize logger: %v", err)
-	}
+func TestExecuteRoundNormal(t *testing.T) {
+	initTestEnv(t)
 
-	dbConfig := &db.Config{
-		Development: true,
-	}
-
-	err = db.Init(dbConfig)
-	if err != nil {
-		t.Fatalf("Failed to initialize database: %v", err)
-	}
-	require.NoError(t, db.MigrateMemDb())
-
-	cards := []dao.Card{
-		{
-			CardID:             1,
-			ElementType:        "Metal",
-			Level:              "normal",
-			LifeForce:          500,
-			Attack:             1000,
-			Defense:            500,
-			NormalImageURL:     "https://example.com/normal_image.png",
-			ActiveImageURL:     "https://example.com/active_image.png",
-			BackgroundImageURL: "https://example.com/background_image.png",
-			IconURL:            "https://example.com/icon.png",
-			Name:               "Metal Element",
-			Description:        "",
-		},
-		{
-			CardID:             2,
-			ElementType:        "Wood",
-			Level:              "normal",
-			LifeForce:          500,
-			Attack:             1000,
-			Defense:            500,
-			NormalImageURL:     "https://example.com/normal_image.png",
-			ActiveImageURL:     "https://example.com/active_image.png",
-			BackgroundImageURL: "https://example.com/background_image.png",
-			IconURL:            "https://example.com/icon.png",
-			Name:               "Metal Element",
-			Description:        "",
-		},
-		{
-			CardID:             3,
-			ElementType:        "Water",
-			Level:              "normal",
-			LifeForce:          500,
-			Attack:             1000,
-			Defense:            500,
-			NormalImageURL:     "https://example.com/normal_image.png",
-			ActiveImageURL:     "https://example.com/active_image.png",
-			BackgroundImageURL: "https://example.com/background_image.png",
-			IconURL:            "https://example.com/icon.png",
-			Name:               "Metal Element",
-			Description:        "",
-		},
-		{
-			CardID:             4,
-			ElementType:        "Fire",
-			Level:              "normal",
-			LifeForce:          500,
-			Attack:             1000,
-			Defense:            500,
-			NormalImageURL:     "https://example.com/normal_image.png",
-			ActiveImageURL:     "https://example.com/active_image.png",
-			BackgroundImageURL: "https://example.com/background_image.png",
-			IconURL:            "https://example.com/icon.png",
-			Name:               "Metal Element",
-			Description:        "",
-		},
-		{
-			CardID:             5,
-			ElementType:        "Earth",
-			Level:              "normal",
-			LifeForce:          500,
-			Attack:             1000,
-			Defense:            500,
-			NormalImageURL:     "https://example.com/normal_image.png",
-			ActiveImageURL:     "https://example.com/active_image.png",
-			BackgroundImageURL: "https://example.com/background_image.png",
-			IconURL:            "https://example.com/icon.png",
-			Name:               "Metal Element",
-			Description:        "",
-		},
-	}
-	require.NoError(t, db.Get().Save(&cards).Error)
+	prepareCards(t)
 
 	engine := NewBattleEngine()
 
 	input := &RoundInput{
+		RoundNumber: 3,
 		Players: []PlayerRoundInput{
 			{
-				Address:    "player1_address",
-				HP:         3000,
-				Multiplier: 1.0,
-				Cards:      []int{4, 5, 3},
-				LostHP:     0,
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				HP:               3000,
+				Cards:            []int{4, 5, 3},
+				LostHP:           500,
 			},
 			{
-				Address:    "player2_address",
-				HP:         2000,
-				Multiplier: 1.0,
-				Cards:      []int{1, 2, 4},
-				LostHP:     0,
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				HP:               3000,
+				Cards:            []int{1, 2, 4},
+				LostHP:           2500,
 			},
 		},
 	}
 
-	round := uint(3)
-	result, err := engine.ExecuteRound(input, round)
+	result, err := engine.ExecuteRound(input)
 
 	if err != nil {
 		t.Errorf("ExecuteRound failed with error: %v", err)
@@ -147,4 +60,72 @@ func TestExecuteRound(t *testing.T) {
 	t.Log("Test completed successfully - check the JSON output above for manual verification")
 }
 
-//cd /data/ws_tj/BeastRoyaleBackend && go test -v ./server/services/battle/ -run TestExecuteRound
+func TestExecuteRoundProto(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	protoInput := &pb.RoundInput{
+		RoundNumber: 3,
+		Players: []*pb.PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int32{4, 2, 3},
+				HP:               3000,
+				LostHP:           2000,
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int32{1, 5, 4},
+				HP:               3000,
+				LostHP:           5000,
+			},
+		},
+	}
+
+	roundResult, gameResult, err := engine.ExecuteRoundProto(protoInput)
+	require.NoError(t, err)
+	require.NotNil(t, roundResult)
+
+	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
+
+	if gameResult != nil {
+		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		t.Logf("GameResult (JSON):\n%s", string(grJSON))
+	}
+}
+
+// ------------------ 公共辅助函数 ------------------
+
+func initTestEnv(t *testing.T) {
+	t.Helper()
+
+	// 只初始化一次（并发测试时保证安全）
+	if err := log.InitGlobalLogger(&log.Config{Development: true, Level: "debug"}); err != nil {
+		// 如果已初始化会返回错误，忽略
+	}
+
+	if db.Get() == nil {
+		require.NoError(t, db.Init(&db.Config{Development: true}))
+		require.NoError(t, db.MigrateMemDb())
+	}
+}
+
+func prepareCards(t *testing.T) {
+	t.Helper()
+	cards := []dao.Card{
+		{CardID: 1, ElementType: "Metal", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Kylin", Description: "Kylin clad in armor, representing strength and protection"},
+		{CardID: 2, ElementType: "Wood", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Forest Spirit", Description: "Forest Spirit controlling the cycle of life and death"},
+		{CardID: 3, ElementType: "Water", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Siren", Description: "Siren, half-human half-beast, possessing enchanting charm"},
+		{CardID: 4, ElementType: "Fire", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "Phoenix", Description: "Phoenix with flames and rebirth, symbolizing eternal life"},
+		{CardID: 5, ElementType: "Earth", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "World Turtle", Description: "World Turtle, steady and powerful with immense strength"},
+	}
+	require.NoError(t, db.Get().Save(&cards).Error)
+}
+
+// go test -v ./room_server/battle/ -run TestExecuteRoundNormal
+// go test -v ./room_server/battle/ -run TestExecuteRoundProto

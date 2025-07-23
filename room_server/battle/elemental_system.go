@@ -64,7 +64,7 @@ func (es *ElementalSystem) GetElementalRelation(card1, card2 *Card) *ElementalRe
 }
 
 // BuildEffects build effect list based on elemental relations
-func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalRelation, addr1, addr2 string) []BattleEffect {
+func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalRelation, wallet1, wallet2, temp1, temp2 string) []BattleEffect {
 	var effects []BattleEffect
 
 	// 辅助函数：生成描述（用卡牌名字）
@@ -80,56 +80,64 @@ func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalR
 	switch relation.Type {
 	case "overpower":
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
-			Value:       card1.Attack - card2.Defense,
-			Description: desc(card2.Name, card1.Name, "is attacked by"),
-			Target:      addr2,
+			Type:                   ATTACK,
+			Value:                  card1.Attack - card2.Defense,
+			Description:            desc(card2.Name, card1.Name, "is attacked by"),
+			TargetWalletAddress:    wallet2,
+			TargetTemporaryAddress: temp2,
 		})
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
-			Value:       card1.Attack - card2.Defense,
-			Description: desc(card2.Name, card1.Name, "is attacked by again"),
-			Target:      addr2,
+			Type:                   ATTACK,
+			Value:                  card1.Attack - card2.Defense,
+			Description:            desc(card2.Name, card1.Name, "is attacked by again"),
+			TargetWalletAddress:    wallet2,
+			TargetTemporaryAddress: temp2,
 		})
 	case "overpowered":
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
-			Value:       card2.Attack - card1.Defense,
-			Description: desc(card1.Name, card2.Name, "is attacked by"),
-			Target:      addr1,
+			Type:                   ATTACK,
+			Value:                  card2.Attack - card1.Defense,
+			Description:            desc(card1.Name, card2.Name, "is attacked by"),
+			TargetWalletAddress:    wallet1,
+			TargetTemporaryAddress: temp1,
 		})
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
-			Value:       card2.Attack - card1.Defense,
-			Description: desc(card1.Name, card2.Name, "is attacked by again"),
-			Target:      addr1,
+			Type:                   ATTACK,
+			Value:                  card2.Attack - card1.Defense,
+			Description:            desc(card1.Name, card2.Name, "is attacked by again"),
+			TargetWalletAddress:    wallet1,
+			TargetTemporaryAddress: temp1,
 		})
 	case "nurture":
 		effects = append(effects, BattleEffect{
-			Type:        "heal",
-			Value:       card1.LifeForce,
-			Description: desc(card1.Name, card2.Name, "is healed by"),
-			Target:      addr1,
+			Type:                   HEAL,
+			Value:                  card1.LifeForce,
+			Description:            desc(card1.Name, card2.Name, "is healed by"),
+			TargetWalletAddress:    wallet1,
+			TargetTemporaryAddress: temp1,
 		})
 	case "nurtured":
 		effects = append(effects, BattleEffect{
-			Type:        "heal",
-			Value:       card2.LifeForce,
-			Description: desc(card1.Name, card2.Name, "is healed by"),
-			Target:      addr1,
+			Type:                   HEAL,
+			Value:                  card2.LifeForce,
+			Description:            desc(card1.Name, card2.Name, "is healed by"),
+			TargetWalletAddress:    wallet1,
+			TargetTemporaryAddress: temp1,
 		})
 	case "even":
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
-			Value:       card1.Attack - card2.Defense,
-			Description: desc(card2.Name, card1.Name, "is attacked by"),
-			Target:      addr2,
+			Type:                   ATTACK,
+			Value:                  card1.Attack - card2.Defense,
+			Description:            desc(card2.Name, card1.Name, "is attacked by"),
+			TargetWalletAddress:    wallet2,
+			TargetTemporaryAddress: temp2,
 		})
 		effects = append(effects, BattleEffect{
-			Type:        "attack",
-			Value:       card2.Attack - card1.Defense,
-			Description: desc(card1.Name, card2.Name, "is attacked by"),
-			Target:      addr1,
+			Type:                   ATTACK,
+			Value:                  card2.Attack - card1.Defense,
+			Description:            desc(card1.Name, card2.Name, "is attacked by"),
+			TargetWalletAddress:    wallet1,
+			TargetTemporaryAddress: temp1,
 		})
 	}
 
@@ -145,9 +153,9 @@ func (es *ElementalSystem) ExecuteEffects(effects []BattleEffect) int {
 			value = 0
 		}
 		switch effect.Type {
-		case "attack":
+		case ATTACK:
 			hpDelta -= value
-		case "heal":
+		case HEAL:
 			hpDelta += value
 		}
 	}

@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// BattleEngine battle engine
 type BattleEngine struct {
 	cardFactory      *CardFactory
 	elementalSystem  *ElementalSystem
@@ -14,7 +13,6 @@ type BattleEngine struct {
 	rewardCalculator *RewardCalculator
 }
 
-// NewBattleEngine create a new battle engine
 func NewBattleEngine() *BattleEngine {
 	return &BattleEngine{
 		cardFactory:      NewCardFactory(),
@@ -26,13 +24,12 @@ func NewBattleEngine() *BattleEngine {
 }
 
 // ExecuteRound execute round
-// 返回值改为 (RoundResult, error)
-func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResult, error) {
+func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	if err := be.gameLogic.ValidateRoundInput(input); err != nil {
 		return nil, err
 	}
 
-	if round < 1 || round > 3 {
+	if input.RoundNumber < 1 || input.RoundNumber > 3 {
 		return nil, fmt.Errorf("round parameter must be between 1 and 3")
 	}
 
@@ -53,28 +50,30 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 
 	// 初始化每个玩家的状态
 	type playerState struct {
-		HP         int
-		Multiplier float64
-		LostHP     int
-		Stats      []PlayerCardStat
-		Address    string
+		HP               int
+		Multiplier       uint32
+		LostHP           int
+		Stats            []PlayerCardStat
+		WalletAddress    string
+		TemporaryAddress string
 	}
 	states := make([]*playerState, playerCount)
 	for i, p := range input.Players {
 		states[i] = &playerState{
-			HP:         p.HP,
-			Multiplier: p.Multiplier,
-			LostHP:     p.LostHP,
-			Stats:      make([]PlayerCardStat, 0, 3),
-			Address:    p.Address,
+			HP:               p.HP,
+			Multiplier:       be.multiplierCalc.CalculateMultiplierByLostHP(p.LostHP),
+			LostHP:           p.LostHP,
+			Stats:            make([]PlayerCardStat, 0, 3),
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
 		}
 	}
 
 	// 只保留属于自己的effect
-	filterEffects := func(effects []BattleEffect, target string) []BattleEffect {
+	filterEffects := func(effects []BattleEffect, wallet string) []BattleEffect {
 		var filtered []BattleEffect
 		for _, e := range effects {
-			if e.Target == target {
+			if e.TargetWalletAddress == wallet {
 				filtered = append(filtered, e)
 			}
 		}
@@ -82,7 +81,6 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 	}
 
 	for cardIdx := 0; cardIdx < 3; cardIdx++ {
-		// 两两对战（可扩展为多玩家）
 		for i := 0; i < playerCount; i++ {
 			for j := i + 1; j < playerCount; j++ {
 				p1 := states[i]
@@ -90,9 +88,9 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 				p1Card := playerCards[i][cardIdx]
 				p2Card := playerCards[j][cardIdx]
 				relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card)
-				effects := be.elementalSystem.BuildEffects(p1Card, p2Card, relation, p1.Address, p2.Address)
-				effects1 := filterEffects(effects, p1.Address)
-				effects2 := filterEffects(effects, p2.Address)
+				effects := be.elementalSystem.BuildEffects(p1Card, p2Card, relation, p1.WalletAddress, p2.WalletAddress, p1.TemporaryAddress, p2.TemporaryAddress)
+				effects1 := filterEffects(effects, p1.WalletAddress)
+				effects2 := filterEffects(effects, p2.WalletAddress)
 				p1BeforeHP := p1.HP
 				p2BeforeHP := p2.HP
 				p1BeforeMul := p1.Multiplier
@@ -105,8 +103,18 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 				if p2.HP < 0 {
 					p2.HP = 0
 				}
-				p1.LostHP = input.Players[i].HP - p1.HP
-				p2.LostHP = input.Players[j].HP - p2.HP
+				// 计算此次卡牌造成的伤害，并累加到总 LostHP
+				damage1 := p1BeforeHP - p1.HP
+				if damage1 < 0 {
+					damage1 = 0
+				}
+				p1.LostHP += damage1
+
+				damage2 := p2BeforeHP - p2.HP
+				if damage2 < 0 {
+					damage2 = 0
+				}
+				p2.LostHP += damage2
 				p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
 				p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
 				// 生成p1和p2视角的描述（元素类型+视角），并根据relation.Type选择正确模板
@@ -140,7 +148,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 					MultiplierAfter:  p1.Multiplier,
 					Effects:          effects1,
 					Description:      descP1,
-					ElementRelation:  relation.Type, // p1 视角
+					ElementRelation:  mapElementRelationStringToEnum(relation.Type),
 				})
 				p2.Stats = append(p2.Stats, PlayerCardStat{
 					CardNumber:       cardIdx + 1,
@@ -151,17 +159,18 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput, round uint) (*RoundResul
 					MultiplierAfter:  p2.Multiplier,
 					Effects:          effects2,
 					Description:      descP2,
-					ElementRelation:  reverseRelationType(relation.Type), // p2 视角
+					ElementRelation:  mapElementRelationStringToEnum(reverseRelationType(relation.Type)),
 				})
 
 				// 适配新的CheckGameOver - 每张牌对战后检查，此时卡牌未全部打完
 				hps := make([]int, playerCount)
 				addrs := make([]string, playerCount)
+				temps := make([]string, playerCount)
 				for idx, st := range states {
 					hps[idx] = st.HP
-					addrs[idx] = st.Address
+					addrs[idx] = st.WalletAddress
 				}
-				if isGameOver, _ := be.gameLogic.CheckGameOver(hps, addrs, round, false); isGameOver {
+				if isGameOver, _, _ := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), false); isGameOver {
 					goto END
 				}
 			}
@@ -172,63 +181,70 @@ END:
 	playerStats := make([]PlayerRoundStat, playerCount)
 	for i, p := range states {
 		playerStats[i] = PlayerRoundStat{
-			PlayerAddress: p.Address,
-			CardStats:     p.Stats,
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+			LostHP:           p.LostHP,
+			CardStats:        p.Stats,
 		}
 	}
 
 	// 游戏结束判定 - 所有卡牌都打完后的最终判定
 	hps := make([]int, playerCount)
 	addrs := make([]string, playerCount)
+	temps := make([]string, playerCount)
 	for idx, st := range states {
 		hps[idx] = st.HP
-		addrs[idx] = st.Address
+		addrs[idx] = st.WalletAddress
+		temps[idx] = st.TemporaryAddress
 	}
-	isGameOver, winner := be.gameLogic.CheckGameOver(hps, addrs, round, true)
 
-	// 确定游戏结果类型和最终倍率
-	var gameResultType string
-	var gameFinalMultiplier float64
+	isGameOver, winner, temporaryAddress := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), true)
+
+	var gameRes *GameResult
 
 	if isGameOver {
-		gameResultType = be.determineGameResultType(hps, addrs)
-		// 计算最终倍率（取败者倍率，平局为1）
+		// 确定游戏结果类型和最终倍率
+		grType := be.determineGameResultType(hps, addrs)
+
+		var finalMul uint32
 		if winner != "tie" {
 			for _, st := range states {
-				if st.Address != winner {
-					gameFinalMultiplier = st.Multiplier
+				if st.WalletAddress != winner {
+					finalMul = st.Multiplier
 					break
 				}
 			}
 		} else {
-			gameFinalMultiplier = 1.0
+			finalMul = 1
 		}
-	} else {
-		// 游戏未结束时，GameResultType为空，GameFinalMultiplier为0
-		gameResultType = ""
-		gameFinalMultiplier = 0.0
+
+		gameRes = &GameResult{
+			Multiplier:             finalMul,
+			WinnerWalletAddress:    winner,
+			WinnerTemporaryAddress: temporaryAddress,
+			GameResultType:         grType,
+			// Reward 后续计算后赋值
+		}
 	}
 
-	result := &RoundResult{
-		Players:             playerStats,
-		Round:               round,
-		GameFinalMultiplier: gameFinalMultiplier,
-		Winner:              winner,
-		IsGameOver:          isGameOver,
-		GameResultType:      gameResultType,
-		Reward:              nil, // 先设为nil
+	// 构建回合结果
+	roundRes := &RoundResult{
+		Players:     playerStats,
+		RoundNumber: input.RoundNumber,
+		IsGameOver:  isGameOver,
+		GameResult:  gameRes,
 	}
 
-	// 计算奖励
+	// 如果游戏结束，计算奖励
 	if isGameOver {
-		result.Reward = be.rewardCalculator.CalculateRewards(result)
+		roundRes.GameResult.Reward = be.rewardCalculator.CalculateRewards(roundRes)
 	}
 
-	return result, nil
+	return roundRes, nil
 }
 
 // determineGameResultType determine game result type
-func (be *BattleEngine) determineGameResultType(hps []int, addresses []string) string {
+func (be *BattleEngine) determineGameResultType(hps []int, addresses []string) GameResultType {
 	alive := 0
 	for _, hp := range hps {
 		if hp > 0 {
@@ -236,11 +252,11 @@ func (be *BattleEngine) determineGameResultType(hps []int, addresses []string) s
 		}
 	}
 	if alive == 0 {
-		return "tie"
+		return GAME_TIE
 	} else if alive == 1 {
-		return "ko"
+		return GAME_KO
 	} else {
-		return "normal"
+		return GAME_NORMAL
 	}
 }
 
@@ -257,5 +273,20 @@ func reverseRelationType(t string) string {
 		return "nurture"
 	default:
 		return t
+	}
+}
+
+func mapElementRelationStringToEnum(s string) ElementRelation {
+	switch s {
+	case "overpower":
+		return OVER_POWER
+	case "overpowered":
+		return OVER_POWERED
+	case "nurture":
+		return NURTURE
+	case "nurtured":
+		return NURTURED
+	default:
+		return TIE
 	}
 }

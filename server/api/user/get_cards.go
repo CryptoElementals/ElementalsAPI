@@ -1,8 +1,6 @@
-package card
+package user
 
 import (
-	"fmt"
-
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/server/api"
@@ -13,13 +11,12 @@ import (
 
 // API标签常量
 const (
-	GET_CARD_BY_ID_LABEL = "GET_CARD_BY_ID"
+	GET_CARDS_LABEL = "GetCards"
 )
 
 // 请求结构体
-type GetCardByIDRequest struct {
+type GetAllCardsRequest struct {
 	api.BaseRequest
-	CardIDs []int `mapstructure:"CardIDs" validate:"required,dive,required"`
 }
 
 // 响应用卡牌结构体
@@ -40,20 +37,20 @@ type CardInfo struct {
 }
 
 // 响应结构体
-type GetCardByIDResponse struct {
+type GetAllCardsResponse struct {
 	api.BaseResponse
 	Cards []CardInfo `json:"Cards"`
 }
 
 // 任务结构体
-type GetCardByIDTask struct {
-	Request  *GetCardByIDRequest
-	Response *GetCardByIDResponse
+type GetAllCardsTask struct {
+	Request  *GetAllCardsRequest
+	Response *GetAllCardsResponse
 }
 
 // 任务创建函数
-func NewGetCardByIDTask(data *map[string]interface{}) (api.Task, error) {
-	req := &GetCardByIDRequest{}
+func NewGetAllCardsTask(data *map[string]interface{}) (api.Task, error) {
+	req := &GetAllCardsRequest{}
 	err := mapstructure.Decode(*data, &req)
 	if err != nil {
 		return nil, err
@@ -66,11 +63,11 @@ func NewGetCardByIDTask(data *map[string]interface{}) (api.Task, error) {
 		return nil, err
 	}
 
-	return &GetCardByIDTask{
+	return &GetAllCardsTask{
 		Request: req,
-		Response: &GetCardByIDResponse{
+		Response: &GetAllCardsResponse{
 			BaseResponse: api.BaseResponse{
-				Action:      GET_CARD_BY_ID_LABEL + "Response",
+				Action:      GET_CARDS_LABEL + "Response",
 				RequestUUID: req.RequestUUID,
 			},
 		},
@@ -78,13 +75,16 @@ func NewGetCardByIDTask(data *map[string]interface{}) (api.Task, error) {
 }
 
 // 任务执行函数
-func (t *GetCardByIDTask) Run(c *gin.Context) (api.Response, error) {
+func (t *GetAllCardsTask) Run(c *gin.Context) (api.Response, error) {
+	// 获取所有卡牌
+	dbCards, err := db.GetAllCards()
+	if err != nil {
+		return nil, errors.OperateDbFailed("获取卡牌列表失败")
+	}
+
+	// 转换为响应格式
 	var cards []CardInfo
-	for _, id := range t.Request.CardIDs {
-		card, err := db.GetCardByID(int(id))
-		if err != nil {
-			return nil, errors.UserNotFound(fmt.Sprintf("卡牌ID %d 不存在", id))
-		}
+	for _, card := range dbCards {
 		cards = append(cards, CardInfo{
 			CardID:             card.CardID,
 			ElementType:        card.ElementType,
@@ -100,11 +100,7 @@ func (t *GetCardByIDTask) Run(c *gin.Context) (api.Response, error) {
 			Name:               card.Name,
 		})
 	}
+
 	t.Response.Cards = cards
 	return t.Response, nil
-}
-
-// RegisterCardApis 注册卡牌相关API
-func RegisterCardApis() {
-	api.Register(GET_CARD_BY_ID_LABEL, NewGetCardByIDTask, api.NOAUTH)
 }
