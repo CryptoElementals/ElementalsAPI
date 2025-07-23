@@ -287,6 +287,21 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 func TestGameStateMachine(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
+	compareRound := func(svc *Service, roundNumber int, isLast bool) {
+		roundResult, gameResult, err := svc.GetBattleInfo(context.Background(), 1, uint32(roundNumber))
+		require.NoError(t, err)
+		require.Equal(t, isLast, roundResult.IsGameOver)
+		if isLast {
+			require.NotNil(t, gameResult)
+		}
+
+		clear(svc.gameManager.gamesMap)
+		roundResultDb, gameResultDb, err := svc.GetBattleInfo(context.Background(), 1, uint32(roundNumber))
+		require.NoError(t, err)
+
+		require.EqualExportedValues(t, roundResult, roundResultDb)
+		require.EqualExportedValues(t, gameResult, gameResultDb)
+	}
 	t.Run("1 rounds", func(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, 1000)
 		svc.Start()
@@ -294,6 +309,7 @@ func TestGameStateMachine(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
 		defer cancel()
 		setupGameTest(ctx, 1, t)
+		compareRound(svc, 1, true)
 	})
 	t.Run("2 rounds", func(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, 3000)
@@ -302,6 +318,8 @@ func TestGameStateMachine(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
 		defer cancel()
 		setupGameTest(ctx, 2, t)
+		compareRound(svc, 1, false)
+		compareRound(svc, 2, true)
 	})
 	t.Run("3 rounds", func(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, 10000)
@@ -310,9 +328,8 @@ func TestGameStateMachine(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
 		defer cancel()
 		setupGameTest(ctx, 3, t)
-		roundResult, gameResult, err := svc.GetBattleInfo(ctx, 1, 3)
-		require.NoError(t, err)
-		require.True(t, roundResult.IsGameOver)
-		require.NotNil(t, gameResult)
+		compareRound(svc, 1, false)
+		compareRound(svc, 2, false)
+		compareRound(svc, 3, true)
 	})
 }
