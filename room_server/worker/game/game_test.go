@@ -233,7 +233,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
-	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000, 10, 10)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		WalletAddress:    "1",
@@ -303,7 +303,7 @@ func TestGameStateMachine(t *testing.T) {
 		require.EqualExportedValues(t, gameResult, gameResultDb)
 	}
 	t.Run("1 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 1000)
+		svc := NewService(context.Background(), testWorkerManager, 1000, 10, 3)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -312,7 +312,7 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 1, true)
 	})
 	t.Run("2 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 3000)
+		svc := NewService(context.Background(), testWorkerManager, 3000, 10, 3)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -322,7 +322,7 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 2, true)
 	})
 	t.Run("3 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 10000)
+		svc := NewService(context.Background(), testWorkerManager, 10000, 10, 3)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

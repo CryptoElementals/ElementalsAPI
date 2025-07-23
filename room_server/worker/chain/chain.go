@@ -39,8 +39,6 @@ type Chain struct {
 	currentBatchTx             *batchTxEvent
 	client                     bind.ContractBackend
 	roomManagerContractAddress common.Address
-	roundTimeout               *big.Int
-	maxRounds                  *big.Int
 
 	bindOpts *bind.TransactOpts
 }
@@ -52,13 +50,9 @@ func NewChain(
 	client bind.ContractBackend,
 	roomManagerContractAddressHex string,
 	w *wallet.Wallet,
-	roundTimeout int64,
-	maxRounds int64,
 	dataCache cache.Cache,
 ) *Chain {
 	roomManagerContractAddress := common.HexToAddress(roomManagerContractAddressHex)
-	roundTimeoutBigInt := big.NewInt(roundTimeout)
-	maxRoundsBigInt := big.NewInt(maxRounds)
 	bindOpts := &bind.TransactOpts{
 		Context: ctx,
 		From:    w.GetAddr(),
@@ -73,8 +67,6 @@ func NewChain(
 		inflightEvents:             map[string]struct{}{},
 		client:                     client,
 		roomManagerContractAddress: roomManagerContractAddress,
-		roundTimeout:               roundTimeoutBigInt,
-		maxRounds:                  maxRoundsBigInt,
 		bindOpts:                   bindOpts,
 	}
 }
@@ -85,7 +77,7 @@ func (c *Chain) Start() error {
 		return err
 	}
 	for _, tx := range txs {
-		err = c.createRoomTxToGameID.Set(tx.TxHash, fmt.Sprint(tx.GameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+		err = c.createRoomTxToGameID.Set(tx.TxHash, fmt.Sprint(tx.GameID), int(time.Minute.Seconds()))
 		if err != nil {
 			return err
 		}
@@ -105,8 +97,7 @@ func (c *Chain) Handle(ctx context.Context, event *types.Event) error {
 		if err != nil {
 			return err
 		}
-
-		err = c.createRoomContract(evt.GameID, evt.Players)
+		err = c.createRoomContract(evt.GameID, evt.Players, evt.InitialHP, evt.RoundTimeout, evt.MaxRoundNumber)
 		if err != nil {
 			return err
 		}
@@ -144,7 +135,7 @@ func (c *Chain) batchSendTxs(evt *batchTxEvent) {
 	c.workerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent("", evt))
 }
 
-func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress) error {
+func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, initialHP int64, roundTimeout int64, maxRounds int64) error {
 	roomManagerContract, err := contract.NewRoomManagerContract(c.roomManagerContractAddress, c.client)
 	if err != nil {
 		return err
@@ -153,19 +144,21 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress) e
 	player2WalletAddress := common.HexToAddress(players[1].WalletAddress)
 	player1TemporaryAddress := common.HexToAddress(players[0].TemporaryAddress)
 	player2TemporaryAddress := common.HexToAddress(players[1].TemporaryAddress)
+	roundTimeoutBigInt := big.NewInt(roundTimeout)
+	maxRoundsBigInt := big.NewInt(maxRounds)
 	tx, err := roomManagerContract.CreateRoom(c.bindOpts, player1WalletAddress, player2WalletAddress,
-		player1TemporaryAddress, player2TemporaryAddress, c.roundTimeout, c.maxRounds)
+		player1TemporaryAddress, player2TemporaryAddress, roundTimeoutBigInt, maxRoundsBigInt)
 	if err != nil {
 		return err
 	}
 	txHash := tx.Hash().String()
-	c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+	c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), int(time.Minute.Seconds()))
 	createRoomTxModel := &dao.CreateRoomTx{
 		GameID:       gameID,
 		Status:       dao.TxStatusSent,
 		TxHash:       txHash,
-		RoundTimeout: time.Duration(c.roundTimeout.Int64()) * time.Second,
-		MaxRounds:    c.maxRounds.Uint64(),
+		RoundTimeout: time.Duration(roundTimeout) * time.Second,
+		MaxRounds:    uint64(maxRounds),
 	}
 	return db.SaveCreateRoomTx(createRoomTxModel)
 }
@@ -251,7 +244,7 @@ func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	c.gameContractToRoomID.Set(contractAddress, fmt.Sprint(dbRoom.GameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+	c.gameContractToRoomID.Set(contractAddress, fmt.Sprint(dbRoom.GameID), int(time.Minute.Seconds()))
 	return dbRoom.GameID, nil
 }
 
@@ -264,7 +257,7 @@ func (c *Chain) contractCreated(gameID uint, blockHash string, blockNumber uint6
 	evtID := contractCreatedEvt.EventID
 	c.inflightEvents[evtID] = struct{}{}
 	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
-	c.gameContractToRoomID.Set(roomContract, fmt.Sprint(gameID), 3*int(c.roundTimeout.Int64()*c.maxRounds.Int64()))
+	c.gameContractToRoomID.Set(roomContract, fmt.Sprint(gameID), int(time.Minute.Seconds()))
 	err := c.createRoomTxToGameID.Delete(roomContract)
 	if err != nil {
 		log.Errorf("createRoomTxToGameID: delete tx with hash %s from cache failed: %s", roomContract, err.Error())

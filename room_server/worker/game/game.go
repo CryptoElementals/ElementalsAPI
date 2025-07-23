@@ -44,7 +44,8 @@ type Game struct {
 	workerMangerService *worker.WorkerManager
 }
 
-func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager, initialHP int64) *Game {
+func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager,
+	initialHP int64, roundTimeout int64, maxRounds int64) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[types.PlayerAddress]*gamePlayer)
 	for _, player := range players {
@@ -58,9 +59,11 @@ func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerSer
 	game := &Game{
 		ctx: ctx,
 		gameInfo: &dao.Game{
-			Players:   daoPlayers,
-			Type:      types.GameTypePVP,
-			InitialHP: initialHP,
+			Players:      daoPlayers,
+			Type:         types.GameTypePVP,
+			InitialHP:    initialHP,
+			MaxRounds:    maxRounds,
+			RoundTimeout: roundTimeout,
 		},
 		gamePlayers:         gamePlayers,
 		workerMangerService: workerMangerService,
@@ -208,8 +211,11 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 	if g.currentRound.RoundNumber == 1 {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 		newEvt = types.NewEvent(g.workerID(), &types.RequireContractCreationEvent{
-			GameID:  g.gameInfo.ID,
-			Players: allPlayers,
+			GameID:         g.gameInfo.ID,
+			Players:        allPlayers,
+			InitialHP:      g.gameInfo.InitialHP,
+			RoundTimeout:   g.gameInfo.RoundTimeout,
+			MaxRoundNumber: g.gameInfo.MaxRounds,
 		})
 	} else {
 		if g.gameInfo.RoomContract == "" {

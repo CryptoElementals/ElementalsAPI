@@ -75,9 +75,9 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		}
 	}
 
-	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.RoomManagerContract, w, cfg.RoundTimeout, cfg.MaxRounds, cfg.GameInitialHP, c)
+	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.RoomManagerContract, w, c)
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP)
+	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP, cfg.RoundTimeout, cfg.MaxRounds)
 	s.gameSvc = gameSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc

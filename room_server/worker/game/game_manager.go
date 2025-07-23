@@ -20,9 +20,11 @@ type GameManager struct {
 	playerToGameMap map[types.PlayerAddress]*Game
 	workerManager   *worker.WorkerManager
 	gameInitialHP   int64
+	roundTimeout    int64
+	maxRounds       int64
 }
 
-func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager, initialHP int64) *GameManager {
+func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager, initialHP int64, roundTimeout int64, maxRounds int64) *GameManager {
 	m := &GameManager{
 		ctx:             ctx,
 		gamesMap:        make(map[uint]*Game),
@@ -103,7 +105,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP)
+	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP, r.roundTimeout, r.maxRounds)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
