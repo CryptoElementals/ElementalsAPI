@@ -11,6 +11,7 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		RoomContractAddress: info.RoomContract,
 		GameType:            proto.GameType(info.Type),
 		Status:              proto.GameStatus(info.Status),
+		InitialHp:           int32(info.InitialHP),
 	}
 	// convert players
 	for _, player := range info.Players {
@@ -21,8 +22,35 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round))
 	}
 	// conver results
-
+	gameResult := &proto.GameResult{
+		Multiplier:             int32(info.GameResult.Multiplier),
+		WinnerWalletAddress:    info.GameResult.WinnerWalletAddress,
+		WinnerTemporaryAddress: info.GameResult.WinnerTemporaryAddress,
+		GameResultType:         info.GameResult.GameResultType,
+		Reward:                 DbBattleRewardToProtoBattleReward(info.GameResult.BattleReword),
+	}
+	gameInfo.Result = gameResult
 	return gameInfo
+}
+
+func DbBattleRewardToProtoBattleReward(battleReward *dao.BattleReward) *proto.BattleReward {
+	return &proto.BattleReward{
+		PlayerRewards: DbPlayerRewardsToProto(battleReward.PlayerRewards),
+		SystemFee:     int32(battleReward.SystemFee),
+	}
+}
+
+func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerReward {
+	var playerRewards []*proto.PlayerReward
+	for _, playerReward := range playerReward {
+		playerRewards = append(playerRewards, &proto.PlayerReward{
+			WalletAddress:    playerReward.WalletAddress,
+			TemporaryAddress: playerReward.TemporaryAddress,
+			TokenChange:      int32(playerReward.TokenChange),
+			PointChange:      int32(playerReward.PointChange),
+		})
+	}
+	return playerRewards
 }
 
 func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerAddress {
@@ -97,5 +125,52 @@ func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
 		Description:            effect.Description,
 		TargetWalletAddress:    effect.TargetWalletAddress,
 		TargetTemporaryAddress: effect.TargetTemporaryAddress,
+	}
+}
+
+func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
+	return &proto.RoundResult{
+		Players:     DbPlayerRoundInfosToProtoPlayerRoundStats(round.PlayerRoundInfos),
+		RoundNumber: round.RoundNumber,
+		IsGameOver:  round.IsLastRound,
+	}
+}
+
+func DbPlayerRoundInfosToProtoPlayerRoundStats(playerRoundInfo []*dao.PlayerRoundInfo) []*proto.PlayerRoundStat {
+	var playerRoundStats []*proto.PlayerRoundStat
+	for _, playerRoundInfo := range playerRoundInfo {
+		playerRoundStats = append(playerRoundStats, DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo))
+	}
+	return playerRoundStats
+}
+
+func DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundStat {
+	return &proto.PlayerRoundStat{
+		WalletAddress:    playerRoundInfo.WalletAddress,
+		TemporaryAddress: playerRoundInfo.TemporaryAddress,
+		LostHP:           playerRoundInfo.LostHP,
+		CardStats:        DbRoundSubmittedCardToProtoPlayerCardStats(playerRoundInfo.SubmittedCards),
+	}
+}
+
+func DbRoundSubmittedCardToProtoPlayerCardStats(roundSubmittedCard []*dao.RoundSubmittedCard) []*proto.PlayerCardStat {
+	var playerCardStats []*proto.PlayerCardStat
+	for i, card := range roundSubmittedCard {
+		playerCardStats = append(playerCardStats, DbRoundSubmittedCardToProtoPlayerCardStat(i, card))
+	}
+	return playerCardStats
+}
+
+func DbRoundSubmittedCardToProtoPlayerCardStat(i int, card *dao.RoundSubmittedCard) *proto.PlayerCardStat {
+	return &proto.PlayerCardStat{
+		CardNumber:       int32(i),
+		CardID:           int32(card.CardID),
+		HPBefore:         int32(card.HealthBefore),
+		HPAfter:          int32(card.HealthAfter),
+		MultiplierBefore: int32(card.MultiplierBefore),
+		MultiplierAfter:  int32(card.MultiplierAfter),
+		Description:      card.Description,
+		ElementRelation:  card.ElementRelation,
+		Effects:          DbCardEffectsToProto(card.CardEffects),
 	}
 }
