@@ -14,6 +14,7 @@ import (
 )
 
 const GET_BATTLE_INFO_LABEL = "GetBattleInfo"
+const roomServerAddress = "127.0.0.1:50051"
 
 // GetBattleInfoRequest 请求结构体
 type GetBattleInfoRequest struct {
@@ -141,7 +142,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 
 	// 通过gRPC调用RoomServer的GetBattleInfo
-	conn, err := grpc.NewClient("127.0.0.1:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(roomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
@@ -162,18 +163,15 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 转换响应数据
-	// task.Response.IsGameOver = battleInfo.IsGameOver // 移除这行
-
 	// 转换回合结果
 	roundResult := &RoundResult{
-		Round:      int(battleInfo.RoundNumber),
-		Players:    make([]PlayerRoundStat, 0, len(battleInfo.Players)),
-		IsGameOver: battleInfo.IsGameOver,
+		Round:      int(battleInfo.RoundResult.RoundNumber),
+		Players:    make([]PlayerRoundStat, 0, len(battleInfo.RoundResult.Players)),
+		IsGameOver: battleInfo.RoundResult.IsGameOver,
 	}
 
 	// 转换玩家统计信息
-	for _, player := range battleInfo.Players {
+	for _, player := range battleInfo.RoundResult.Players {
 		playerStat := PlayerRoundStat{
 			PlayerAddress: player.WalletAddress,
 			IsSelf:        player.WalletAddress == address,
@@ -200,10 +198,36 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 	task.Response.RoundResult = roundResult
 
-	// 注意：当前的RoomServer实现不返回GameResult
-	// 如果需要GameResult，需要修改RoomServer的GetBattleInfo实现
-	// 或者通过其他API获取游戏结果信息
+	// 转换游戏结果（若有）
+	if battleInfo.GameResult != nil {
+		gameResult := &GameResult{
+			Winner:              battleInfo.GameResult.WinnerWalletAddress,
+			GameResultType:      uint32(battleInfo.GameResult.GameResultType),
+			GameFinalMultiplier: uint32(battleInfo.GameResult.Multiplier),
+		}
 
+		// 转换奖励信息
+		if battleInfo.GameResult.Reward != nil {
+			reward := &BattleReward{
+				PlayerRewards: make([]PlayerReward, 0, len(battleInfo.GameResult.Reward.PlayerRewards)),
+				SystemFee:     battleInfo.GameResult.Reward.SystemFee,
+			}
+
+			for _, pr := range battleInfo.GameResult.Reward.PlayerRewards {
+				reward.PlayerRewards = append(reward.PlayerRewards, PlayerReward{
+					PlayerAddress: pr.WalletAddress,
+					TokenChange:   pr.TokenChange,
+					PointChange:   pr.PointChange,
+				})
+			}
+
+			gameResult.Reward = reward
+		}
+
+		task.Response.GameResult = gameResult
+	}
+
+	// 返回成功
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully retrieved battle info"
 	return task.Response, nil
