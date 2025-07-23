@@ -253,16 +253,6 @@ func (task *SubscribeGameInfoTask) subscribeToTopic(ctx context.Context, client 
 func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
 	// 根据事件类型进行转换
 	switch msg.Event.Type {
-
-	// case proto.EventType_SYNC_INFO:
-	// 	return events.Event{
-	// 		Type: events.EventTypeDataChange,
-	// 		Data: map[string]interface{}{
-	// 			"EventType": "matched",
-	// 		},
-	// 		RequestUUID: requestUUID,
-	// 	}
-	//需要增加matched和partconfirmed的roomserver 消息
 	case proto.EventType_TYPE_MATCHED:
 		return events.Event{
 			Type: events.EventTypeDataChange,
