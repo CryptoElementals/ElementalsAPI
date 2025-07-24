@@ -2,6 +2,7 @@ package match
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
@@ -130,9 +131,9 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	availableTokens := userProfile.TokenAmount - totalLockedTokens
 
 	// 要求用户至少有10000个可用代币才能加入匹配队列
-	if availableTokens < 10000 {
+	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = "Insufficient available tokens, need at least 10000 tokens to join match queue"
+		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
 		return task.Response, nil
 	}
 
@@ -140,7 +141,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	lockToken := &dao.LockToken{
 		Address:     address,
 		TempAddress: tempAddress,
-		Token:       10000, // 默认锁定10000个代币
+		Token:       config.GameParams.TokenThreshold,
 	}
 
 	// 保存锁定代币记录

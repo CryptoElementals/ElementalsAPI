@@ -17,11 +17,6 @@ import (
 
 const GET_GAME_PHASE_LABEL = "GetGamePhase"
 
-// 回合超时时间（秒）
-const ROUND_TIMEOUT_SECONDS = 10
-const INITIAL_HP = 3000
-const INITIAL_MULTIPLER = 1
-
 // GetGamePhaseRequest 请求结构体
 type GetGamePhaseRequest struct {
 	api.BaseRequest
@@ -174,8 +169,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 				Confirmed:        p.IsConfirmed,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
-				InitialHP:        INITIAL_HP,
-				InitialMultipler: INITIAL_MULTIPLER,
+				InitialHP:        int32(config.GameParams.MaxHP),
+				InitialMultipler: int32(config.GameParams.InitialMultiplier),
 			})
 		}
 		task.Response.Players = players

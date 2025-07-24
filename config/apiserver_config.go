@@ -12,11 +12,12 @@ var RoomServerAddress string
 
 // ApiServerConfig represents the complete application configuration structure
 type ApiServerConfig struct {
-	LogCfg            log.Config   `mapstructure:"log"`
-	RedisCfg          redis.Config `mapstructure:"redis"`
-	DbCfg             db.Config    `mapstructure:"database"`
-	ServerCfg         ServerConfig `mapstructure:"server"`
-	RoomServerAddress string       `mapstructure:"room-server-address"`
+	LogCfg            log.Config      `mapstructure:"log"`
+	RedisCfg          redis.Config    `mapstructure:"redis"`
+	DbCfg             db.Config       `mapstructure:"database"`
+	ServerCfg         ServerConfig    `mapstructure:"server"`
+	RoomServerAddress string          `mapstructure:"room-server-address"`
+	GameParams        GameParamConfig `mapstructure:"game-params"`
 }
 
 // LoadApiServerConfig loads the complete application configuration from file
@@ -32,6 +33,7 @@ func LoadApiServerConfig(configPath string) (*ApiServerConfig, error) {
 
 	// 将房间服地址写入全局变量
 	RoomServerAddress = cfg.RoomServerAddress
+	GameParams = cfg.GameParams
 
 	return cfg, nil
 }
@@ -160,5 +162,34 @@ func setDefaultValues(cfg *ApiServerConfig) {
 	// 默认 RoomServer 地址
 	if cfg.RoomServerAddress == "" {
 		cfg.RoomServerAddress = "127.0.0.1:50051"
+	}
+
+	// 默认游戏参数
+	if cfg.GameParams.MaxHP == 0 {
+		cfg.GameParams.MaxHP = 3000
+	}
+	if cfg.GameParams.InitialMultiplier == 0 {
+		cfg.GameParams.InitialMultiplier = 1
+	}
+	if cfg.GameParams.SystemFeeRate == 0 {
+		cfg.GameParams.SystemFeeRate = 0.016
+	}
+	if cfg.GameParams.WinnerPointRate == 0 {
+		cfg.GameParams.WinnerPointRate = 0.012
+	}
+	if cfg.GameParams.LoserPointRate == 0 {
+		cfg.GameParams.LoserPointRate = 0.004
+	}
+	if cfg.GameParams.TieTokenRate == 0 {
+		cfg.GameParams.TieTokenRate = 0.008
+	}
+	if cfg.GameParams.TiePointRate == 0 {
+		cfg.GameParams.TiePointRate = 0.008
+	}
+	if cfg.GameParams.TokenThreshold == 0 {
+		cfg.GameParams.TokenThreshold = 10000
+	}
+	if cfg.GameParams.BaseStake == 0 {
+		cfg.GameParams.BaseStake = 1000
 	}
 }

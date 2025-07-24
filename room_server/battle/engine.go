@@ -3,9 +3,9 @@ package battle
 import (
 	"fmt"
 	"strings"
-)
 
-const MaxHP = 3000 // 玩家 HP 上限
+	"github.com/CryptoElementals/common/config"
+)
 
 type BattleEngine struct {
 	cardFactory      *CardFactory
@@ -102,13 +102,13 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 				// 下限 0，上限 MaxHP
 				if p1.HP < 0 {
 					p1.HP = 0
-				} else if p1.HP > MaxHP {
-					p1.HP = MaxHP
+				} else if p1.HP > config.GameParams.MaxHP {
+					p1.HP = config.GameParams.MaxHP
 				}
 				if p2.HP < 0 {
 					p2.HP = 0
-				} else if p2.HP > MaxHP {
-					p2.HP = MaxHP
+				} else if p2.HP > config.GameParams.MaxHP {
+					p2.HP = config.GameParams.MaxHP
 				}
 				// 计算此次卡牌造成的伤害，并累加到总 LostHP
 				damage1 := p1BeforeHP - p1.HP

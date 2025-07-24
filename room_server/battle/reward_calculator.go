@@ -1,5 +1,7 @@
 package battle
 
+import "github.com/CryptoElementals/common/config"
+
 // RewardCalculator reward calculator
 type RewardCalculator struct {
 	BaseStake int
@@ -7,9 +9,7 @@ type RewardCalculator struct {
 
 // NewRewardCalculator create a new reward calculator
 func NewRewardCalculator() *RewardCalculator {
-	return &RewardCalculator{
-		BaseStake: 1000,
-	}
+	return &RewardCalculator{BaseStake: config.GameParams.BaseStake}
 }
 
 // CalculateRewards calculate battle rewards
@@ -22,7 +22,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 	gr := result.GameResult
 
 	baseStake := rc.BaseStake
-	systemFeeRate := 0.016 // 1.6% system fee
+	systemFeeRate := config.GameParams.SystemFeeRate
 
 	systemFee := int(float64(baseStake) * float64(gr.Multiplier) * systemFeeRate)
 
@@ -36,7 +36,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 				WalletAddress:    gr.WinnerWalletAddress,
 				TemporaryAddress: gr.WinnerTemporaryAddress,
 				TokenChange:      int(float64(baseStake) * float64(gr.Multiplier) * (1.0 - systemFeeRate)),
-				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.012), // 1.2%
+				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.WinnerPointRate),
 			}
 			playerRewards = append(playerRewards, winnerReward)
 
@@ -47,7 +47,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 						WalletAddress:    player.WalletAddress,
 						TemporaryAddress: player.TemporaryAddress,
 						TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier)),
-						PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.004), // 0.4%
+						PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.LoserPointRate),
 					}
 					playerRewards = append(playerRewards, loserReward)
 					break
@@ -60,8 +60,8 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 			tieReward := PlayerReward{
 				WalletAddress:    player.WalletAddress,
 				TemporaryAddress: player.TemporaryAddress,
-				TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier) * 0.008),
-				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.008), // 0.8%
+				TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.TieTokenRate),
+				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.TiePointRate),
 			}
 			playerRewards = append(playerRewards, tieReward)
 		}
@@ -71,7 +71,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 	if gr.GameResultType == GAME_KO && gr.WinnerWalletAddress != "" && gr.WinnerWalletAddress != "tie" {
 		for i := range playerRewards {
 			if playerRewards[i].WalletAddress == gr.WinnerWalletAddress {
-				playerRewards[i].PointChange = int(float64(baseStake) * float64(gr.Multiplier) * 0.016) // 1.6%
+				playerRewards[i].PointChange = int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.WinnerPointRate)
 			} else {
 				// 败者积分为0
 				playerRewards[i].PointChange = 0
