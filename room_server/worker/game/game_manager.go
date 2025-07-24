@@ -31,6 +31,8 @@ func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManag
 		playerToGameMap: make(map[types.PlayerAddress]*Game),
 		workerManager:   workerMangerService,
 		gameInitialHP:   initialHP,
+		maxRounds:       maxRounds,
+		roundTimeout:    roundTimeout,
 	}
 
 	return m

@@ -231,6 +231,7 @@ func TestServer_BattleLogic(t *testing.T) {
 		wg.Wait()
 		close(doneChan)
 	}()
+	round := uint(0)
 	gameID := <-gameIDChan
 	var txHashBytes []byte
 	for {
@@ -252,11 +253,11 @@ func TestServer_BattleLogic(t *testing.T) {
 		}
 		require.Equal(t, round1, round2)
 		require.Less(t, round1, uint(4))
-		round := round1
-		if round == 0 {
+		if round1 == 0 {
 			// chan closed, game completed
 			break
 		}
+		round = round1
 		time.Sleep(3 * time.Second)
 		if round == 1 {
 			tx, err := db.GetCreateRoomTx(gameID)
@@ -303,4 +304,10 @@ func TestServer_BattleLogic(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
+	battleInfo, err := client.GetBattleInfo(ctx, gameID, round)
+	require.NoError(t, err)
+	require.NotNil(t, battleInfo)
+	require.NotNil(t, battleInfo.RoundResult)
+	require.NotNil(t, battleInfo.GameResult)
+	require.True(t, battleInfo.RoundResult.IsGameOver)
 }
