@@ -9,16 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
@@ -161,22 +159,18 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 // startGameEventListener 通过gRPC订阅RoomServer事件并推送SSE
 func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string, game_topic string, done chan struct{}) {
 	go func() {
-		// 连接RoomServer
-		conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			log.Errorf("连接RoomServer失败: %v", err)
+		// 获取全局PubSub客户端
+		pubsubClient := client.GetGlobalPubSubClient()
+		if pubsubClient == nil {
+			log.Errorf("gRPC PubSub客户端未初始化")
 			errorEvent := events.Event{
 				Type:        events.EventTypeError,
-				Data:        map[string]interface{}{"error": fmt.Sprintf("连接RoomServer失败: %v", err)},
+				Data:        map[string]interface{}{"error": "gRPC PubSub客户端未初始化"},
 				RequestUUID: requestUUID,
 			}
 			sendSSEEvent(writer, flusher, errorEvent)
 			return
 		}
-		defer conn.Close()
-
-		// 创建PubSub客户端
-		client := proto.NewPubSubServiceClient(conn)
 
 		// 订阅游戏主题
 		topics := []string{
@@ -185,7 +179,7 @@ func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, w
 
 		// 为每个主题创建订阅
 		for _, topic := range topics {
-			go task.subscribeToTopic(ctx, client, topic, requestUUID, writer, flusher, done)
+			go task.subscribeToTopic(ctx, pubsubClient, topic, requestUUID, writer, flusher, done)
 		}
 
 		// 发送心跳保持连接

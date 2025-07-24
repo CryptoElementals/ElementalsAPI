@@ -4,16 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -113,21 +111,19 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的ExitQueue
-	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
+	rpcClient := client.GetGlobalRpcClient()
+	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		task.Response.BaseResponse.Message = "gRPC client not initialized"
 		return task.Response, nil
 	}
-	defer conn.Close()
-	client := proto.NewRpcServiceClient(conn)
 
 	playerAddr := &proto.PlayerAddress{
 		WalletAddress:    address,
 		TemporaryAddress: tempAddress,
 	}
 
-	_, err = client.ExitQueue(context.Background(), playerAddr)
+	_, err := rpcClient.ExitQueue(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer ExitQueue failed: " + err.Error()

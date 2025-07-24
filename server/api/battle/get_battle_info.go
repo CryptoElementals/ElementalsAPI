@@ -4,14 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -144,21 +142,19 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 
 	// 通过gRPC调用RoomServer的GetBattleInfo
-	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
+	rpcClient := client.GetGlobalRpcClient()
+	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		task.Response.BaseResponse.Message = "gRPC client not initialized"
 		return task.Response, nil
 	}
-	defer conn.Close()
-	client := proto.NewRpcServiceClient(conn)
 
 	req := &proto.GetBattleInfoRequest{
 		GameID:      task.Request.GameID,
 		RoundNumber: task.Request.Round,
 	}
 
-	battleInfo, err := client.GetBattleInfo(context.Background(), req)
+	battleInfo, err := rpcClient.GetBattleInfo(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "RoomServer GetBattleInfo failed: " + err.Error()

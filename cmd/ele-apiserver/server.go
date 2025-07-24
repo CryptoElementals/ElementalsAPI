@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/server"
 	"github.com/CryptoElementals/common/session"
 	"github.com/spf13/cobra"
@@ -73,6 +74,12 @@ func startServer() error {
 	}
 	log.Info("Database connection initialized successfully")
 
+	// Initialize gRPC client manager
+	if err := client.InitGlobalClients(cfg.RoomServerAddress); err != nil {
+		return fmt.Errorf("failed to initialize gRPC clients: %w", err)
+	}
+	log.Info("gRPC clients initialized successfully")
+
 	// Get Redis connection pool
 	pool, err := redis.GetRedigoPool()
 	if err != nil {
@@ -117,6 +124,13 @@ func startServer() error {
 
 	// 取消上下文，停止调度器
 	cancel()
+
+	// Close gRPC clients
+	if err := client.CloseGlobalClients(); err != nil {
+		log.Errorf("Error occurred while closing gRPC clients: %v", err)
+	} else {
+		log.Info("gRPC clients closed successfully")
+	}
 
 	// Gracefully shutdown server
 	if err := svr.Stop(); err != nil {
