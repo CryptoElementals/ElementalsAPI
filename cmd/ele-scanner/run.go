@@ -24,14 +24,108 @@ import (
 )
 
 var (
-	HeadNumberOnChain    uint64 = 0
-	currentScannedHeight uint64
-	gethClient           *ethclient.Client
-	catchupCancel        context.CancelFunc
+	gethClient    *ethclient.Client
+	catchupCancel context.CancelFunc
 )
 
 func init() {
 	rootCmd.AddCommand(runCmd)
+}
+
+// Scanner encapsulates the state and logic for block catching up
+type Scanner struct {
+	ctx                  context.Context
+	client               *ethclient.Client
+	roomManagerAbi       *abi.ABI
+	currentScannedHeight uint64
+	headNumberOnChain    uint64
+}
+
+func NewScanner(ctx context.Context, client *ethclient.Client, roomManagerAbi *abi.ABI, startHeight, headHeight uint64) *Scanner {
+	return &Scanner{
+		ctx:                  ctx,
+		client:               client,
+		roomManagerAbi:       roomManagerAbi,
+		currentScannedHeight: startHeight,
+		headNumberOnChain:    headHeight,
+	}
+}
+
+func (s *Scanner) SetHeadNumberOnChain(height uint64) {
+	s.headNumberOnChain = height
+}
+
+func (s *Scanner) CatchUpChain() {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+			if s.currentScannedHeight > s.headNumberOnChain {
+				time.Sleep(time.Millisecond * 200)
+				continue
+			}
+			err := s.getAndProcessBlock(big.NewInt(int64(s.currentScannedHeight)))
+			if err != nil {
+				log.Warnf("catchUpChain goroutine parse block err %v", err.Error())
+				time.Sleep(time.Second * 5)
+				continue
+			}
+			err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: s.currentScannedHeight})
+			if err != nil {
+				log.Errorf("insert head block sync to db err %v", err.Error())
+				time.Sleep(time.Second * 5)
+				continue
+			}
+			log.Debugf("block %d handled successfully", s.currentScannedHeight)
+			s.currentScannedHeight++
+		}
+	}
+}
+
+func (s *Scanner) getAndProcessBlock(blockHeight *big.Int) error {
+	block, err := blockchain.GetOptimismBlockByNumber(s.ctx, config.ScannerGConf.ChainCfg.HttpRpc, blockHeight)
+	if err != nil {
+		log.Errorf("getBlockByNumber failed, err %s", err.Error())
+		return err
+	}
+	parsedTxs, err := blockchain.ParseOptimismTransactions(block.Transactions)
+	if err != nil {
+		log.Errorf("ParseOptimismTransactions failed, err %s", err.Error())
+		return err
+	}
+	if len(parsedTxs) != len(block.Transactions) {
+		log.Errorf("Parsed tx count %d does not match raw tx count %d", len(parsedTxs), len(block.Transactions))
+		return err
+	}
+	for _, tx := range parsedTxs {
+		log.Debugf("parsed tx: %+v", tx)
+		if strings.EqualFold(tx.To, config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress) {
+			log.Debugf("room manager contract tx: %+v", tx)
+			roomCreatedTx, err := processCreateRoomTx(s.ctx, s.client, tx, s.roomManagerAbi)
+			if err != nil {
+				log.Errorf("processCreateRoomTx failed, err %s", err.Error())
+				continue
+			}
+			log.Debugf("room created tx: %+v", roomCreatedTx)
+		}
+	}
+	return nil
+}
+
+func processCreateRoomTx(ctx context.Context, gethClient *ethclient.Client, tx blockchain.OptimismTx, roomManagerAbi *abi.ABI) (*blockchain.RoomCreatedTx, error) {
+	hash := common.HexToHash(tx.Hash)
+	receipt, err := gethClient.TransactionReceipt(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	roomCreatedTx, err := blockchain.ParseRoomCreatedEvent(receipt, roomManagerAbi)
+	if err != nil {
+		return nil, err
+	}
+
+	return roomCreatedTx, nil
 }
 
 var runCmd = &cobra.Command{
@@ -50,18 +144,15 @@ var runCmd = &cobra.Command{
 		}
 
 		wsRpc := config.ScannerGConf.ChainCfg.WsRpc
-		//httpRpc := config.ScannerGConf.ChainCfg.HttpRpc
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		// Initialize logger
 		if err := log.InitGlobalLogger(&config.ScannerGConf.LogCfg); err != nil {
 			fmt.Printf("failed to initialize logger: %s\n", err.Error())
 			return
 		}
 		log.Info("Logger system initialized successfully")
 
-		// Initialize database
 		if err := db.Init(&config.ScannerGConf.DbCfg); err != nil {
 			log.Errorf("failed to initialize database: %s", err.Error())
 			fmt.Printf("failed to initialize database: %s\n", err.Error())
@@ -69,6 +160,7 @@ var runCmd = &cobra.Command{
 		}
 		log.Info("Database connection initialized successfully")
 
+		var headNumberOnChain, currentScannedHeight uint64
 		for {
 			syncs, err := db.FindBlockSyncs()
 			if err != nil {
@@ -78,7 +170,7 @@ var runCmd = &cobra.Command{
 			}
 			for _, sync := range syncs {
 				if sync.Type == "head" {
-					HeadNumberOnChain = sync.BlockHeight
+					headNumberOnChain = sync.BlockHeight
 					currentScannedHeight = sync.BlockHeight + 1
 				}
 			}
@@ -93,7 +185,8 @@ var runCmd = &cobra.Command{
 		defer rpcClient.Close()
 
 		dialTimeout := 3
-		for { // main loop, reconnect to websocket rpc if disconnected
+		var scanner *Scanner
+		for {
 			gethClient, err = ethclient.Dial(wsRpc)
 			if err != nil {
 				log.Errorf("Failed to connect to WebSocket RPC: %v, retrying in %d seconds...", err.Error(), dialTimeout)
@@ -103,11 +196,16 @@ var runCmd = &cobra.Command{
 			log.Info("WebSocket connected, subscribing to new blocks...")
 
 			if catchupCancel != nil {
-				catchupCancel() // 让旧的 goroutine 退出
+				catchupCancel() // stop old goroutine
 			}
 			catchupCtx, cancel := context.WithCancel(ctx)
 			catchupCancel = cancel
-			go catchUpChain(catchupCtx, gethClient, roomManagerAbi)
+			if scanner != nil {
+				currentScannedHeight = scanner.currentScannedHeight
+				headNumberOnChain = scanner.headNumberOnChain
+			}
+			scanner = NewScanner(catchupCtx, gethClient, roomManagerAbi, currentScannedHeight, headNumberOnChain)
+			go scanner.CatchUpChain()
 
 			headers := make(chan *types.Header)
 			sub, err := gethClient.SubscribeNewHead(ctx, headers)
@@ -118,7 +216,6 @@ var runCmd = &cobra.Command{
 				continue
 			}
 
-			// Subscription main loop
 			for {
 				select {
 				case err := <-sub.Err():
@@ -128,8 +225,11 @@ var runCmd = &cobra.Command{
 					time.Sleep(time.Duration(dialTimeout) * time.Second)
 					goto RECONNECT
 				case header := <-headers:
-					HeadNumberOnChain = header.Number.Uint64()
-					log.Debugf("HeadNumberOnChain is %d", HeadNumberOnChain)
+					headNumberOnChain := header.Number.Uint64()
+					if scanner != nil {
+						scanner.SetHeadNumberOnChain(headNumberOnChain)
+					}
+					log.Debugf("HeadNumberOnChain is %d", headNumberOnChain)
 				}
 			}
 		RECONNECT:
@@ -144,78 +244,4 @@ func readRoomManagerAbi() (*abi.ABI, error) {
 		return nil, fmt.Errorf("failed to parse ABI: %v", err)
 	}
 	return &roomManagerAbi, nil
-}
-
-func catchUpChain(ctx context.Context, client *ethclient.Client, roomManagerAbi *abi.ABI) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			if currentScannedHeight > HeadNumberOnChain {
-				time.Sleep(time.Millisecond * 200)
-			}
-			err := getAndProcessBlock(ctx, client, big.NewInt(int64(currentScannedHeight)), roomManagerAbi)
-			if err != nil {
-				log.Warnf("catchUpChain goroutine parse block err %v", err.Error())
-				continue
-			}
-
-			err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: currentScannedHeight})
-			if err != nil {
-				log.Errorf("insert head block sync to db err %v", err.Error())
-				continue
-			}
-
-			log.Debugf("block %d handled successfully", currentScannedHeight)
-			currentScannedHeight++
-		}
-	}
-
-}
-
-func getAndProcessBlock(ctx context.Context, client *ethclient.Client, blockHeight *big.Int, roomManagerAbi *abi.ABI) error {
-	block, err := blockchain.GetOptimismBlockByNumber(ctx, config.ScannerGConf.ChainCfg.HttpRpc, blockHeight)
-	if err != nil {
-		log.Errorf("getBlockByNumber failed, err %s", err.Error())
-		return err
-	}
-	parsedTxs, err := blockchain.ParseOptimismTransactions(block.Transactions)
-	if err != nil {
-		log.Errorf("ParseOptimismTransactions failed, err %s", err.Error())
-		return err
-	}
-	if len(parsedTxs) != len(block.Transactions) {
-		log.Errorf("Parsed tx count %d does not match raw tx count %d", len(parsedTxs), len(block.Transactions))
-		return err
-	}
-	for _, tx := range parsedTxs {
-		log.Debugf("parsed tx: %+v", tx)
-		if strings.EqualFold(tx.To, config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress) {
-			log.Debugf("room manager contract tx: %+v", tx)
-			roomCreatedTx, err := processCreateRoomTx(ctx, client, tx, roomManagerAbi)
-			if err != nil {
-				log.Errorf("processCreateRoomTx failed, err %s", err.Error())
-				continue
-			}
-			log.Debugf("room created tx: %+v", roomCreatedTx)
-		}
-	}
-
-	return nil
-}
-
-func processCreateRoomTx(ctx context.Context, gethClient *ethclient.Client, tx blockchain.OptimismTx, roomManagerAbi *abi.ABI) (*blockchain.RoomCreatedTx, error) {
-	hash := common.HexToHash(tx.Hash)
-	receipt, err := gethClient.TransactionReceipt(ctx, hash)
-	if err != nil {
-		return nil, err
-	}
-
-	roomCreatedTx, err := blockchain.ParseRoomCreatedEvent(receipt, roomManagerAbi)
-	if err != nil {
-		return nil, err
-	}
-
-	return roomCreatedTx, nil
 }
