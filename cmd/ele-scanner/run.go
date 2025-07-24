@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	eleClient "github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,16 +37,18 @@ func init() {
 // Scanner encapsulates the state and logic for block catching up
 type Scanner struct {
 	ctx                  context.Context
-	client               *ethclient.Client
+	gethClient           *ethclient.Client
+	rpcClient            *eleClient.RpcClient
 	roomManagerAbi       *abi.ABI
 	currentScannedHeight uint64
 	headNumberOnChain    uint64
 }
 
-func NewScanner(ctx context.Context, client *ethclient.Client, roomManagerAbi *abi.ABI, startHeight, headHeight uint64) *Scanner {
+func NewScanner(ctx context.Context, gethClient *ethclient.Client, rpcClient *eleClient.RpcClient, roomManagerAbi *abi.ABI, startHeight, headHeight uint64) *Scanner {
 	return &Scanner{
 		ctx:                  ctx,
-		client:               client,
+		gethClient:           gethClient,
+		rpcClient:            rpcClient,
 		roomManagerAbi:       roomManagerAbi,
 		currentScannedHeight: startHeight,
 		headNumberOnChain:    headHeight,
@@ -89,6 +93,7 @@ func (s *Scanner) getAndProcessBlock(blockHeight *big.Int) error {
 		log.Errorf("getBlockByNumber failed, err %s", err.Error())
 		return err
 	}
+	log.Debugf("blockHeight: %d, block: %+v", blockHeight.Uint64(), block)
 	parsedTxs, err := blockchain.ParseOptimismTransactions(block.Transactions)
 	if err != nil {
 		log.Errorf("ParseOptimismTransactions failed, err %s", err.Error())
@@ -98,16 +103,42 @@ func (s *Scanner) getAndProcessBlock(blockHeight *big.Int) error {
 		log.Errorf("Parsed tx count %d does not match raw tx count %d", len(parsedTxs), len(block.Transactions))
 		return err
 	}
+
+	txsToSubmit := make([]*proto.Transaction, 0)
+
 	for _, tx := range parsedTxs {
 		log.Debugf("parsed tx: %+v", tx)
 		if strings.EqualFold(tx.To, config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress) {
 			log.Debugf("room manager contract tx: %+v", tx)
-			roomCreatedTx, err := processCreateRoomTx(s.ctx, s.client, tx, s.roomManagerAbi)
+			roomCreatedTx, err := processCreateRoomTx(s.ctx, s.gethClient, tx, s.roomManagerAbi)
 			if err != nil {
-				log.Errorf("processCreateRoomTx failed, err %s", err.Error())
-				continue
+				log.Errorf("processCreateRoomTx failed, err %s, tx %+v", err.Error(), tx)
+				return fmt.Errorf("processCreateRoomTx failed, err %s, tx %+v", err.Error(), tx)
 			}
 			log.Debugf("room created tx: %+v", roomCreatedTx)
+			txsToSubmit = append(txsToSubmit, &proto.Transaction{
+				TxHash: roomCreatedTx.TxHash.Bytes(),
+				Tx: &proto.Transaction_RoomContractCreated{
+					RoomContractCreated: &proto.TxRoomContractCreated{
+						RoomContractAddress: roomCreatedTx.RoomCreatedEvent.RoomAddress.Hex(),
+					},
+				},
+			})
+		}
+	}
+
+	if len(txsToSubmit) > 0 {
+		timeStamp, _ := strconv.ParseUint(block.Timestamp, 0, 64)
+		blockNumber, _ := strconv.ParseUint(block.Number, 0, 64)
+		err = s.rpcClient.SubmitTransactions(s.ctx, &proto.TransactionBatch{
+			BlockHash:    common.HexToHash(block.Hash).Bytes(),
+			Timestamp:    timeStamp,
+			BlockNumber:  blockNumber,
+			Transactions: txsToSubmit,
+		})
+		if err != nil {
+			log.Errorf("submit transactions to roomServer failed, err %s", err.Error())
+			return err
 		}
 	}
 	return nil
@@ -204,7 +235,7 @@ var runCmd = &cobra.Command{
 				currentScannedHeight = scanner.currentScannedHeight
 				headNumberOnChain = scanner.headNumberOnChain
 			}
-			scanner = NewScanner(catchupCtx, gethClient, roomManagerAbi, currentScannedHeight, headNumberOnChain)
+			scanner = NewScanner(catchupCtx, gethClient, rpcClient, roomManagerAbi, currentScannedHeight, headNumberOnChain)
 			go scanner.CatchUpChain()
 
 			headers := make(chan *types.Header)
