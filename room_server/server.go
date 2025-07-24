@@ -33,7 +33,9 @@ type Service struct {
 	queueSvc  *queue.Service
 }
 
-func New(ctx context.Context, cfg *config.RoomServerConfig, isDevelop ...bool) (*Service, error) {
+func New(ctx context.Context,
+	cfg *config.RoomServerConfig,
+	isDevelop ...bool) (*Service, error) {
 	s := &Service{
 		ctx:    ctx,
 		cfg:    cfg,
@@ -70,6 +72,7 @@ func New(ctx context.Context, cfg *config.RoomServerConfig, isDevelop ...bool) (
 	s.playerSvc = playerSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c)
 	s.queueSvc = queueSvc
+	s.pubsub.SetPlayerManager(playerSvc)
 	server := grpc.NewServer()
 	rpcServer := rpc.NewRpc(
 		gameSvc,

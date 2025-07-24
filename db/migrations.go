@@ -1,8 +1,32 @@
 package db
 
 import (
+	"fmt"
+
 	dao "github.com/CryptoElementals/common/models"
 )
+
+var migrates = []any{
+	&dao.UserProfile{},
+	&dao.CardStat{},
+	&dao.Game{},
+	&dao.Round{},
+	&dao.PlayerRoundInfo{},
+	&dao.RoundSubmittedCard{},
+	&dao.CardEffect{},
+	&dao.GamePlayerInfo{},
+	&dao.PlayerReward{},
+	&dao.BattleReward{},
+	&dao.GameResult{},
+	&dao.Room{},
+	&dao.Card{},
+	&dao.LockToken{},
+	&dao.CardsOnChainTx{},
+	&dao.CommitmentOnChainTx{},
+	&dao.CreateRoomTx{},
+	&dao.SetRoundReadyTx{},
+	// 以后有新表直接加在这里
+}
 
 func Migrate() error {
 	migrates := []any{
@@ -34,30 +58,15 @@ func Migrate() error {
 }
 
 func MigrateMemDb() error {
-	migrates := []any{
-		&dao.UserProfile{},
-		&dao.CardStat{},
-		&dao.Game{},
-		&dao.Round{},
-		&dao.PlayerRoundInfo{},
-		&dao.RoundSubmittedCard{},
-		&dao.CardEffect{},
-		&dao.GamePlayerInfo{},
-		&dao.PlayerReward{},
-		&dao.BattleReward{},
-		&dao.GameResult{},
-		&dao.Room{},
-		&dao.Card{},
-		&dao.LockToken{},
-		&dao.CardsOnChainTx{},
-		&dao.CommitmentOnChainTx{},
-		&dao.CreateRoomTx{},
-		&dao.SetRoundReadyTx{},
-		// 以后有新表直接加在这里
-	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {
 		return err
+	}
+	for _, table := range migrates {
+		exist := Get().Migrator().HasTable(table)
+		if !exist {
+			return fmt.Errorf("table not found: %T", table)
+		}
 	}
 	return nil
 }

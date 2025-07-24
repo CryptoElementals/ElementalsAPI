@@ -439,8 +439,8 @@ func (g *Game) setupNewRound() {
 	}
 	for _, player := range g.gamePlayers {
 		playerRoundInfo := &dao.PlayerRoundInfo{
-			WalletAddress:    player.player.TemporaryAddress,
-			TemporaryAddress: player.player.WalletAddress,
+			WalletAddress:    player.player.WalletAddress,
+			TemporaryAddress: player.player.TemporaryAddress,
 			SubmittedCards:   make([]*dao.RoundSubmittedCard, 0),
 		}
 		newRound.PlayerRoundInfos = append(newRound.PlayerRoundInfos, playerRoundInfo)

@@ -51,12 +51,16 @@ func NewChain(
 	roomManagerContractAddressHex string,
 	w *wallet.Wallet,
 	dataCache cache.Cache,
+	isDevelop ...bool,
 ) *Chain {
 	roomManagerContractAddress := common.HexToAddress(roomManagerContractAddressHex)
 	bindOpts := &bind.TransactOpts{
 		Context: ctx,
 		From:    w.GetAddr(),
 		Signer:  w.BuildTxSinger(big.NewInt(chainID)),
+	}
+	if len(isDevelop) != 0 && isDevelop[0] {
+		bindOpts.NoSend = true
 	}
 
 	return &Chain{

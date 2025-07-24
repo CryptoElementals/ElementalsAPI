@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"sync"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -11,14 +12,19 @@ import (
 )
 
 type Service struct {
-	ctx   context.Context
-	chain *Chain
+	ctx         context.Context
+	chain       *Chain
+	batchTxLock sync.RWMutex
 }
 
 func NewService(ctx context.Context,
-	workerManager *worker.WorkerManager, chainID int64, client bind.ContractBackend,
-	roomManagerContractAddress string, wallet *wallet.Wallet, dataCache cache.Cache) *Service {
-	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, dataCache)
+	workerManager *worker.WorkerManager,
+	chainID int64,
+	client bind.ContractBackend,
+	roomManagerContractAddress string,
+	wallet *wallet.Wallet,
+	dataCache cache.Cache, isDevelop ...bool) *Service {
+	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, dataCache, isDevelop...)
 	return &Service{ctx: ctx, chain: chain}
 }
 
