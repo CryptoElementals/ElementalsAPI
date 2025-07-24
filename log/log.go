@@ -41,8 +41,11 @@ type Config struct {
 
 func InitGlobalLogger(cfg *Config, opts ...zap.Option) error {
 	log, err := NewLogger(cfg, opts...)
+	if err != nil {
+		return err
+	}
 	globalLogger = log
-	return err
+	return nil
 }
 
 func GlobalLogger() *Logger {

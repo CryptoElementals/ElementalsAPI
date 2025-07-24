@@ -10,9 +10,10 @@ func main() {
 	Execute()
 }
 
+
 var rootCmd = &cobra.Command{
-	Use:   "ele-scanner",
-	Short: "Make block scan and analysis and notify the roomserver",
+	Use:   "room-server",
+	Short: "elemental battle server",
 }
 
 func Execute() {

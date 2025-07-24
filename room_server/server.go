@@ -106,6 +106,10 @@ func (s *Service) Start() error {
 	return nil
 }
 
+func (s *Service) Stop() {
+	s.server.GracefulStop()
+}
+
 func (s *Service) startListener() error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.ListenPort))
 	if err != nil {
