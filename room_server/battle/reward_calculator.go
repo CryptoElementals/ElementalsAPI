@@ -30,7 +30,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 
 	switch gr.GameResultType {
 	case GAME_NORMAL, GAME_KO:
-		if gr.WinnerWalletAddress != "" && gr.WinnerWalletAddress != "tie" {
+		if gr.WinnerWalletAddress != "" {
 			// 胜者获得奖励
 			winnerReward := PlayerReward{
 				WalletAddress:    gr.WinnerWalletAddress,
@@ -68,7 +68,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 	}
 
 	// KO 特殊处理积分
-	if gr.GameResultType == GAME_KO && gr.WinnerWalletAddress != "" && gr.WinnerWalletAddress != "tie" {
+	if gr.GameResultType == GAME_KO && gr.WinnerWalletAddress != "" {
 		for i := range playerRewards {
 			if playerRewards[i].WalletAddress == gr.WinnerWalletAddress {
 				playerRewards[i].PointChange = int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.WinnerPointRate)

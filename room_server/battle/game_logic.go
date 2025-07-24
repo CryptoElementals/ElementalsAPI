@@ -11,13 +11,15 @@ func NewGameLogic() *GameLogic {
 }
 
 // CheckGameOver check if game is over
-// 改为支持任意数量玩家，返回是否结束和胜者地址（或空/"tie"）
+// 改为支持任意数量玩家，返回是否结束和胜者地址（或空）
 // 添加round参数，支持第3轮特殊规则
 // allCardsPlayed: 是否所有卡牌都已打完
-func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint, allCardsPlayed bool) (bool, string, string) {
+func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint, allCardsPlayed bool) (bool, GameResultType, string, string) {
 	alive := 0
 	winner := ""
 	temporaryAddress := ""
+	resultType := GAME_NORMAL
+
 	for i, hp := range hps {
 		if hp > 0 {
 			alive++
@@ -28,38 +30,41 @@ func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string
 
 	// 如果有玩家血量为0，直接判定胜负
 	if alive == 1 {
-		return true, winner, temporaryAddress
+		return true, GAME_KO, winner, temporaryAddress
 	}
 	if alive == 0 {
-		return true, "tie", ""
+		return true, GAME_TIE, "", ""
 	}
 
 	// 第3轮特殊规则：只有在所有卡牌都打完后，且所有玩家都还活着时，才比较血量
 	if round == 3 && allCardsPlayed && alive > 1 {
+		// 找到最高 HP
 		maxHP := -1
-		winner = ""
-		temporaryAddress = ""
-		tie := false
-
-		for i, hp := range hps {
+		for _, hp := range hps {
 			if hp > maxHP {
 				maxHP = hp
-				winner = addresses[i]
-				temporaryAddress = temps[i]
-				tie = false
-			} else if hp == maxHP {
-				tie = true
 			}
 		}
 
-		if tie {
-			return true, "tie", ""
-		} else {
-			return true, winner, temporaryAddress
+		// 统计拥有最高 HP 的玩家数量
+		winners := []int{}
+		for i, hp := range hps {
+			if hp == maxHP {
+				winners = append(winners, i)
+			}
 		}
+
+		if len(winners) == 1 {
+			idx := winners[0]
+			return true, GAME_NORMAL, addresses[idx], temps[idx]
+		}
+
+		// 多个玩家最高 HP 相同，判定平局
+		return true, GAME_TIE, "", ""
 	}
 
-	return false, "", ""
+	// 未结束
+	return false, resultType, "", ""
 }
 
 // ValidateRoundInput validate battle input
@@ -125,15 +130,4 @@ func (gl *GameLogic) validateCardElements(cardIDs []int, playerName string) erro
 	}
 
 	return nil
-}
-
-// GetWinner determine winner based on health
-func (gl *GameLogic) GetWinner(player1HP, player2HP int, player1Address, player2Address string) string {
-	if player1HP > player2HP {
-		return player1Address
-	} else if player2HP > player1HP {
-		return player2Address
-	} else {
-		return "tie"
-	}
 }

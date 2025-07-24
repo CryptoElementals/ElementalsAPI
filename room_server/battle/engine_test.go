@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -201,6 +202,14 @@ func initTestEnv(t *testing.T) {
 	if db.Get() == nil {
 		require.NoError(t, db.Init(&db.Config{Development: true}))
 		require.NoError(t, db.MigrateMemDb())
+	}
+
+	// 加载配置文件（只加载一次）
+	if config.GameParams.MaxHP == 0 {
+		cfgPath := "../../config.yaml" // 相对路径：从 room_server/battle 到项目根目录
+		if err := config.InitRSConfig(cfgPath); err != nil {
+			t.Fatalf("failed to load config: %v", err)
+		}
 	}
 }
 

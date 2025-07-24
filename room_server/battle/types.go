@@ -39,7 +39,7 @@ type RoundInput struct {
 // GameResult 表示游戏结束时的结果数据（回合未结束时为 nil）
 type GameResult struct {
 	Multiplier             uint32         `json:"Multiplier"`             // 最终倍率
-	WinnerWalletAddress    string         `json:"WinnerWalletAddress"`    // 胜者钱包地址（tie 时为 "tie"）
+	WinnerWalletAddress    string         `json:"WinnerWalletAddress"`    // 胜者钱包地址（tie 时为 ""）
 	WinnerTemporaryAddress string         `json:"WinnerTemporaryAddress"` // 胜者临时地址
 	GameResultType         GameResultType `json:"GameResultType"`         // 游戏结果类型
 	Reward                 BattleReward   `json:"Reward"`                 // 奖励信息

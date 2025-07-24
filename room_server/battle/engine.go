@@ -180,7 +180,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 					hps[idx] = st.HP
 					addrs[idx] = st.WalletAddress
 				}
-				if isGameOver, _, _ := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), false); isGameOver {
+				if isGameOver, _, _, _ := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), false); isGameOver {
 					goto END
 				}
 			}
@@ -208,16 +208,20 @@ END:
 		temps[idx] = st.TemporaryAddress
 	}
 
-	isGameOver, winner, temporaryAddress := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), true)
+	isGameOver, grType, winner, temporaryAddress := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), true)
 
-	var gameRes *GameResult
+	// 先构建回合结果（暂不含 GameResult）
+	roundRes := &RoundResult{
+		Players:     playerStats,
+		RoundNumber: input.RoundNumber,
+		IsGameOver:  isGameOver,
+		GameResult:  nil,
+	}
 
+	// 如果游戏结束，再构建 GameResult 并计算奖励
 	if isGameOver {
-		// 确定游戏结果类型和最终倍率
-		grType := be.determineGameResultType(hps, addrs)
-
 		var finalMul uint32
-		if winner != "tie" {
+		if winner != "" {
 			for _, st := range states {
 				if st.WalletAddress != winner {
 					finalMul = st.Multiplier
@@ -228,46 +232,20 @@ END:
 			finalMul = 1
 		}
 
-		gameRes = &GameResult{
+		gameRes := &GameResult{
 			Multiplier:             finalMul,
 			WinnerWalletAddress:    winner,
 			WinnerTemporaryAddress: temporaryAddress,
 			GameResultType:         grType,
-			// Reward 后续计算后赋值
 		}
-	}
 
-	// 构建回合结果
-	roundRes := &RoundResult{
-		Players:     playerStats,
-		RoundNumber: input.RoundNumber,
-		IsGameOver:  isGameOver,
-		GameResult:  gameRes,
-	}
-
-	// 如果游戏结束，计算奖励
-	if isGameOver {
-		roundRes.GameResult.Reward = be.rewardCalculator.CalculateRewards(roundRes)
+		// 先将 GameResult 赋给 roundRes，以便奖励计算器使用
+		roundRes.GameResult = gameRes
+		// 计算奖励并填充
+		gameRes.Reward = be.rewardCalculator.CalculateRewards(roundRes)
 	}
 
 	return roundRes, nil
-}
-
-// determineGameResultType determine game result type
-func (be *BattleEngine) determineGameResultType(hps []int, addresses []string) GameResultType {
-	alive := 0
-	for _, hp := range hps {
-		if hp > 0 {
-			alive++
-		}
-	}
-	if alive == 0 {
-		return GAME_TIE
-	} else if alive == 1 {
-		return GAME_KO
-	} else {
-		return GAME_NORMAL
-	}
 }
 
 // reverseRelationType 用于反转元素关系类型
