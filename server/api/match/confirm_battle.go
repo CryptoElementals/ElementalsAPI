@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -97,7 +98,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
-	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
@@ -107,9 +108,12 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	client := proto.NewRpcServiceClient(conn)
 
 	req := &proto.ConfirmBattleRequest{
-		GameID:        task.Request.GameID,
-		RoundNumber:   uint32(task.Request.Round),
-		PlayerAddress: &proto.PlayerAddress{WalletAddress: address, TemporaryAddress: task.Request.TempAddress},
+		GameID:      task.Request.GameID,
+		RoundNumber: uint32(task.Request.Round),
+		PlayerAddress: &proto.PlayerAddress{
+			WalletAddress:    address,
+			TemporaryAddress: task.Request.TempAddress,
+		},
 	}
 
 	_, err = client.ConfirmBattle(context.Background(), req)

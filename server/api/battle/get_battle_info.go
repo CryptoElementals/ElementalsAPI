@@ -21,8 +21,8 @@ const (
 // GetBattleInfoRequest 请求结构体
 type GetBattleInfoRequest struct {
 	api.BaseRequest
-	GameID      uint32 `mapstructure:"GameID" validate:"required"`      // 游戏ID
-	RoundNumber uint32 `mapstructure:"RoundNumber" validate:"required"` // 回合号
+	GameID uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
+	Round  uint32 `mapstructure:"Round" validate:"required"`  // 回合号
 }
 
 // PlayerCardStat 玩家卡牌统计信息
@@ -67,7 +67,7 @@ type GameResult struct {
 
 // RoundResult 回合结果
 type RoundResult struct {
-	Round      int               `json:"Round"`      // 回合号
+	Round      uint32            `json:"Round"`      // 回合号
 	IsGameOver bool              `json:"IsGameOver"` // 游戏是否结束
 	Players    []PlayerRoundStat `json:"Players"`    // 玩家回合统计
 }
@@ -155,7 +155,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 	req := &proto.GetBattleInfoRequest{
 		GameID:      task.Request.GameID,
-		RoundNumber: task.Request.RoundNumber,
+		RoundNumber: task.Request.Round,
 	}
 
 	battleInfo, err := client.GetBattleInfo(context.Background(), req)
@@ -167,7 +167,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 转换回合结果
 	roundResult := &RoundResult{
-		Round:      int(battleInfo.RoundResult.RoundNumber),
+		Round:      battleInfo.RoundResult.RoundNumber,
 		Players:    make([]PlayerRoundStat, 0, len(battleInfo.RoundResult.Players)),
 		IsGameOver: battleInfo.RoundResult.IsGameOver,
 	}
@@ -180,7 +180,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 			CardStats:     make([]PlayerCardStat, 0, len(player.CardStats)),
 		}
 
-		// 转换卡牌统计信息
+		// 转换卡牌信息，去掉了不需要的effects字段
 		for _, cardStat := range player.CardStats {
 			cardStatInfo := PlayerCardStat{
 				CardNumber:       cardStat.CardNumber,

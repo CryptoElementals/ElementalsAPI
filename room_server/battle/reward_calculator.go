@@ -60,7 +60,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 			tieReward := PlayerReward{
 				WalletAddress:    player.WalletAddress,
 				TemporaryAddress: player.TemporaryAddress,
-				TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier) * 0.8),
+				TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier) * 0.008),
 				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * 0.008), // 0.8%
 			}
 			playerRewards = append(playerRewards, tieReward)

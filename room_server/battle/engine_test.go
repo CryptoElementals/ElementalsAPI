@@ -130,7 +130,7 @@ func TestExecuteRoundProtoFromFile(t *testing.T) {
 			// 将结果转换为GetBattleInfoResponse格式
 			response := &battle.GetBattleInfoResponse{
 				RoundResult: &battle.RoundResult{
-					Round:      int(roundResult.RoundNumber),
+					Round:      roundResult.RoundNumber,
 					IsGameOver: roundResult.IsGameOver,
 					Players:    make([]battle.PlayerRoundStat, len(roundResult.Players)),
 				},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -112,7 +113,7 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的ExitQueue
-	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()

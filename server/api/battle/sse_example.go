@@ -2,7 +2,6 @@ package battle
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -246,22 +245,4 @@ func (el *EventListener) Start() {
 func (el *EventListener) Stop() {
 	close(el.stopChan)
 	log.Infof("Event listener stopped for RequestUUID: %s", el.requestUUID)
-}
-
-// sendSSEEvent 发送 SSE 事件
-func sendSSEEvent(writer http.ResponseWriter, flusher http.Flusher, event events.Event) error {
-	jsonData, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	// SSE 格式：data: {json}\n\n
-	eventStr := fmt.Sprintf("data: %s\n\n", string(jsonData))
-	_, err = writer.Write([]byte(eventStr))
-	if err != nil {
-		return err
-	}
-
-	flusher.Flush()
-	return nil
 }

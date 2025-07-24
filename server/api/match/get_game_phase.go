@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
@@ -18,6 +19,8 @@ const GET_GAME_PHASE_LABEL = "GetGamePhase"
 
 // 回合超时时间（秒）
 const ROUND_TIMEOUT_SECONDS = 10
+const INITIAL_HP = 3000
+const INITIAL_MULTIPLER = 1
 
 // GetGamePhaseRequest 请求结构体
 type GetGamePhaseRequest struct {
@@ -110,7 +113,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的GetPlayerInfo
-	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
@@ -171,8 +174,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 				Confirmed:        p.IsConfirmed,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
-				InitialHP:        3000,
-				InitialMultipler: 1,
+				InitialHP:        INITIAL_HP,
+				InitialMultipler: INITIAL_MULTIPLER,
 			})
 		}
 		task.Response.Players = players

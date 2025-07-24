@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
@@ -21,13 +22,12 @@ import (
 )
 
 const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
-const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址
 
 // SubscribeGameInfoRequest 请求结构体
 type SubscribeGameInfoRequest struct {
 	api.BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`   // 临时地址
-	Duration    int    `mapstructure:"Duration" validate:"min=1,max=360"` // 连接持续时间（秒）
+	Duration    int    `mapstructure:"Duration" validate:"min=1,max=600"` // 连接持续时间（秒）
 }
 
 // SubscribeGameInfoResponse 响应结构体
@@ -109,9 +109,10 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	address = strings.ToLower(address)
+	temp_address := strings.ToLower(task.Request.TempAddress)
 
-	// 组装 gameID: address_tempaddress 格式
-	gameID := fmt.Sprintf("%s_%s", address, task.Request.TempAddress)
+	// 组装 game_topic: address_tempaddress 格式
+	game_topic := fmt.Sprintf("%s_%s", address, temp_address)
 
 	// 发送开始事件
 	startEvent := events.Event{
@@ -127,7 +128,7 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 
 	// 启动游戏事件监听器
 	done := make(chan struct{})
-	task.startGameEventListener(ctx, writer, flusher, requestUUID, address, gameID, done)
+	task.startGameEventListener(ctx, writer, flusher, requestUUID, game_topic, done)
 
 	// 等待连接结束
 	select {
@@ -158,10 +159,10 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 }
 
 // startGameEventListener 通过gRPC订阅RoomServer事件并推送SSE
-func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string, address string, gameID string, done chan struct{}) {
+func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string, game_topic string, done chan struct{}) {
 	go func() {
 		// 连接RoomServer
-		conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Errorf("连接RoomServer失败: %v", err)
 			errorEvent := events.Event{
@@ -177,9 +178,9 @@ func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, w
 		// 创建PubSub客户端
 		client := proto.NewPubSubServiceClient(conn)
 
-		// 订阅游戏相关主题
+		// 订阅游戏主题
 		topics := []string{
-			fmt.Sprintf("%s_%s", address, task.Request.TempAddress), // 使用 address_tempaddress 格式作为 topic
+			game_topic,
 		}
 
 		// 为每个主题创建订阅
@@ -329,4 +330,22 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	}
+}
+
+// sendSSEEvent 发送 SSE 事件
+func sendSSEEvent(writer http.ResponseWriter, flusher http.Flusher, event events.Event) error {
+	jsonData, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	// SSE 格式：data: {json}\n\n
+	eventStr := fmt.Sprintf("data: %s\n\n", string(jsonData))
+	_, err = writer.Write([]byte(eventStr))
+	if err != nil {
+		return err
+	}
+
+	flusher.Flush()
+	return nil
 }

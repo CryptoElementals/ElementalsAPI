@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -16,7 +17,6 @@ import (
 )
 
 const JOIN_QUEUE_LABEL = "JoinQueue"
-const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址/写到配置文件中
 
 // JoinQueueRequest 请求结构体
 type JoinQueueRequest struct {
@@ -152,7 +152,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的JoinQueue
-	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(config.RoomServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		_ = db.SoftDeleteLockToken(lockToken.ID)
 		task.Response.BaseResponse.RetCode = 1002
@@ -178,6 +178,8 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	// roomserver 进行匹配
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully joined match queue"
+
+	// todo: 需要在roomserver里当游戏结束后解除锁定代币
 
 	return task.Response, nil
 }
