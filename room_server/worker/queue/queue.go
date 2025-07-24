@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -21,6 +22,7 @@ type Queue struct {
 	queue         map[types.PlayerAddress]struct{}
 	workerManager *worker.WorkerManager
 	queueCache    cache.Cache
+	closing       bool
 }
 
 func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, queueCache cache.Cache) *Queue {
@@ -50,11 +52,18 @@ func (q *Queue) start() error {
 	return nil
 }
 
-func (q *Queue) Handle(ctx context.Context, event *types.Event) error {
+func (q *Queue) close() {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	q.closing = true
+}
+
+func (q *Queue) Handle(ctx context.Context, event *types.Event) error {
 	switch evt := event.Data.(type) {
 	case *types.JoinQueueEvent:
+		if q.closing {
+			return errors.New("server is closing, can not join queue")
+		}
 		q.handleJoinQueueEvent(evt)
 	case *types.ExitQueueEvent:
 		q.handleExitQueueEvent(evt)
@@ -70,7 +79,6 @@ func (q *Queue) handleJoinQueueEvent(event *types.JoinQueueEvent) {
 	if _, ok := q.queue[event.PlayerAddress]; ok {
 		return
 	}
-
 	matched := false
 	for player := range q.queue {
 		// don't match players with same wallet address
