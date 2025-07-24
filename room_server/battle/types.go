@@ -55,8 +55,10 @@ type RoundResult struct {
 
 // ElementalRelation elemental relation
 type ElementalRelation struct {
-	Type        string `json:"Type"`        // Relation type: "overpower"(overpower), "overpowered"(overpowered), "nurture"(nurture), "nurtured"(nurtured), "even"(even)
-	Description string `json:"Description"` // Relation description
+	P1Type        string `json:"P1Type"`        // P1's relation type
+	P2Type        string `json:"P2Type"`        // P2's relation type
+	P1Description string `json:"P1Description"` // Description from P1's perspective
+	P2Description string `json:"P2Description"` // Description from P2's perspective
 }
 
 // BattleEffect battle effect

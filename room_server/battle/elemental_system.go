@@ -2,7 +2,6 @@ package battle
 
 import (
 	"fmt"
-	"strings"
 )
 
 // ElementalSystem elemental system
@@ -14,7 +13,7 @@ func NewElementalSystem() *ElementalSystem {
 }
 
 // GetElementalRelation get elemental relation
-func (es *ElementalSystem) GetElementalRelation(card1, card2 *Card) *ElementalRelation {
+func (es *ElementalSystem) GetElementalRelation(card1, card2 *Card, wallet1, wallet2 string) *ElementalRelation {
 	keRelations := map[string]string{
 		"Metal": "Wood",  // Metal overpowers Wood
 		"Wood":  "Earth", // Wood overpowers Earth
@@ -31,119 +30,117 @@ func (es *ElementalSystem) GetElementalRelation(card1, card2 *Card) *ElementalRe
 		"Earth": "Metal", // Earth nurtures Metal
 	}
 
+	// 截取钱包地址用于显示
+	addr1 := truncateAddress(wallet1)
+	addr2 := truncateAddress(wallet2)
+
 	if keRelations[card1.ElementType] == card2.ElementType {
 		return &ElementalRelation{
-			Type:        "overpower",
-			Description: "{self} overpowers {opponent}",
+			P1Type:        "overpower",
+			P2Type:        "overpowered",
+			P1Description: fmt.Sprintf("%s(%s) overpowers %s(%s)", card1.ElementType, addr1, card2.ElementType, addr2),
+			P2Description: fmt.Sprintf("%s(%s) is overpowered by %s(%s)", card2.ElementType, addr2, card1.ElementType, addr1),
 		}
 	}
 	if keRelations[card2.ElementType] == card1.ElementType {
 		return &ElementalRelation{
-			Type:        "overpowered",
-			Description: "{self} is overpowered by {opponent}",
+			P1Type:        "overpowered",
+			P2Type:        "overpower",
+			P1Description: fmt.Sprintf("%s(%s) is overpowered by %s(%s)", card1.ElementType, addr1, card2.ElementType, addr2),
+			P2Description: fmt.Sprintf("%s(%s) overpowers %s(%s)", card2.ElementType, addr2, card1.ElementType, addr1),
 		}
 	}
 
 	if shengRelations[card1.ElementType] == card2.ElementType {
 		return &ElementalRelation{
-			Type:        "nurtured", // card2 被 card1 生
-			Description: "{self} is nurtured by {opponent}",
+			P1Type:        "nurture",
+			P2Type:        "nurtured",
+			P1Description: fmt.Sprintf("%s(%s) nurtures %s(%s)", card1.ElementType, addr1, card2.ElementType, addr2),
+			P2Description: fmt.Sprintf("%s(%s) is nurtured by %s(%s)", card2.ElementType, addr2, card1.ElementType, addr1),
 		}
 	}
 	if shengRelations[card2.ElementType] == card1.ElementType {
 		return &ElementalRelation{
-			Type:        "nurture", // card1 被 card2 生
-			Description: "{self} nurtures {opponent}",
+			P1Type:        "nurtured",
+			P2Type:        "nurture",
+			P1Description: fmt.Sprintf("%s(%s) is nurtured by %s(%s)", card1.ElementType, addr1, card2.ElementType, addr2),
+			P2Description: fmt.Sprintf("%s(%s) nurtures %s(%s)", card2.ElementType, addr2, card1.ElementType, addr1),
 		}
 	}
 
 	return &ElementalRelation{
-		Type:        "even",
-		Description: "{self} and {opponent} are even",
+		P1Type:        "even",
+		P2Type:        "even",
+		P1Description: fmt.Sprintf("%s(%s) and %s(%s) are even", card1.ElementType, addr1, card2.ElementType, addr2),
+		P2Description: fmt.Sprintf("%s(%s) and %s(%s) are even", card2.ElementType, addr2, card1.ElementType, addr1),
 	}
 }
 
-// BuildEffects build effect list based on elemental relations
-func (es *ElementalSystem) BuildEffects(card1, card2 *Card, relation *ElementalRelation, wallet1, wallet2, temp1, temp2 string) []BattleEffect {
+// BuildPlayerEffects build effects for a specific player based on their relation type
+func (es *ElementalSystem) BuildPlayerEffects(playerType string, selfCard, opponentCard *Card, selfWallet, selfTemp, opponentWallet string) []BattleEffect {
 	var effects []BattleEffect
 
-	// 辅助函数：生成描述（用卡牌名字）
-	desc := func(selfName, oppName, action string) string {
-		if strings.Contains(action, "again") {
-			// 如果action包含again，将其移到句子末尾
-			baseAction := strings.Replace(action, " again", "", 1)
-			return fmt.Sprintf("%s(self) %s %s(opponent) again", selfName, baseAction, oppName)
-		}
-		return fmt.Sprintf("%s(self) %s %s(opponent)", selfName, action, oppName)
+	// 截取钱包地址用于显示
+	selfAddr := truncateAddress(selfWallet)
+	oppAddr := truncateAddress(opponentWallet)
+
+	// 辅助函数：生成描述
+	desc := func(action string) string {
+		return fmt.Sprintf("%s(%s) %s %s(%s)", selfCard.ElementType, selfAddr, action, opponentCard.ElementType, oppAddr)
 	}
 
-	switch relation.Type {
+	switch playerType {
 	case "overpower":
-		effects = append(effects, BattleEffect{
-			Type:                   ATTACK,
-			Value:                  card1.Attack - card2.Defense,
-			Description:            desc(card2.Name, card1.Name, "is attacked by"),
-			TargetWalletAddress:    wallet2,
-			TargetTemporaryAddress: temp2,
-		})
-		effects = append(effects, BattleEffect{
-			Type:                   ATTACK,
-			Value:                  card1.Attack - card2.Defense,
-			Description:            desc(card2.Name, card1.Name, "is attacked by again"),
-			TargetWalletAddress:    wallet2,
-			TargetTemporaryAddress: temp2,
-		})
+		// overpower 不对自己造成影响，对手会被攻击
+		// 这里不产生任何效果，因为效果作用在对手身上
 	case "overpowered":
+		// 被对手压制，自己受到两次攻击
 		effects = append(effects, BattleEffect{
 			Type:                   ATTACK,
-			Value:                  card2.Attack - card1.Defense,
-			Description:            desc(card1.Name, card2.Name, "is attacked by"),
-			TargetWalletAddress:    wallet1,
-			TargetTemporaryAddress: temp1,
+			Value:                  opponentCard.Attack - selfCard.Defense,
+			Description:            desc("is attacked by"),
+			TargetWalletAddress:    selfWallet,
+			TargetTemporaryAddress: selfTemp,
 		})
 		effects = append(effects, BattleEffect{
 			Type:                   ATTACK,
-			Value:                  card2.Attack - card1.Defense,
-			Description:            desc(card1.Name, card2.Name, "is attacked by again"),
-			TargetWalletAddress:    wallet1,
-			TargetTemporaryAddress: temp1,
+			Value:                  opponentCard.Attack - selfCard.Defense,
+			Description:            desc("is double attacked by"),
+			TargetWalletAddress:    selfWallet,
+			TargetTemporaryAddress: selfTemp,
 		})
 	case "nurture":
-		// card1 被 card2 生，card1 获得加血
-		effects = append(effects, BattleEffect{
-			Type:                   HEAL,
-			Value:                  card1.LifeForce,
-			Description:            desc(card1.Name, card2.Name, "is healed by"),
-			TargetWalletAddress:    wallet1,
-			TargetTemporaryAddress: temp1,
-		})
+		// nurture 不对自己造成影响，对手会被治疗
+		// 这里不产生任何效果，因为效果作用在对手身上
 	case "nurtured":
-		// card2 被 card1 生，card2 获得加血
+		// 被对手滋养，自己获得治疗
 		effects = append(effects, BattleEffect{
 			Type:                   HEAL,
-			Value:                  card2.LifeForce,
-			Description:            desc(card2.Name, card1.Name, "is healed by"),
-			TargetWalletAddress:    wallet2,
-			TargetTemporaryAddress: temp2,
+			Value:                  selfCard.LifeForce,
+			Description:            desc("is healed by"),
+			TargetWalletAddress:    selfWallet,
+			TargetTemporaryAddress: selfTemp,
 		})
 	case "even":
+		// 平手，自己受到一次攻击
 		effects = append(effects, BattleEffect{
 			Type:                   ATTACK,
-			Value:                  card1.Attack - card2.Defense,
-			Description:            desc(card2.Name, card1.Name, "is attacked by"),
-			TargetWalletAddress:    wallet2,
-			TargetTemporaryAddress: temp2,
-		})
-		effects = append(effects, BattleEffect{
-			Type:                   ATTACK,
-			Value:                  card2.Attack - card1.Defense,
-			Description:            desc(card1.Name, card2.Name, "is attacked by"),
-			TargetWalletAddress:    wallet1,
-			TargetTemporaryAddress: temp1,
+			Value:                  opponentCard.Attack - selfCard.Defense,
+			Description:            desc("is attacked by"),
+			TargetWalletAddress:    selfWallet,
+			TargetTemporaryAddress: selfTemp,
 		})
 	}
 
 	return effects
+}
+
+// truncateAddress 截取钱包地址用于显示（前6位+...+后4位）
+func truncateAddress(address string) string {
+	if len(address) <= 10 {
+		return address
+	}
+	return address[:6] + "..." + address[len(address)-4:]
 }
 
 // ExecuteEffects execute effect list and calculate HP delta for self

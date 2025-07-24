@@ -14,7 +14,7 @@ func NewGameLogic() *GameLogic {
 // 改为支持任意数量玩家，返回是否结束和胜者地址（或空）
 // 添加round参数，支持第3轮特殊规则
 // allCardsPlayed: 是否所有卡牌都已打完
-func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint, allCardsPlayed bool) (bool, GameResultType, string, string) {
+func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint32, allCardsPlayed bool) (bool, GameResultType, string, string) {
 	alive := 0
 	winner := ""
 	temporaryAddress := ""
