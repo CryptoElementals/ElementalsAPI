@@ -25,6 +25,9 @@ go.work.sum
 # env file
 .env
 
+# vscode settings
+.vscode
+
 # config file
 config.yaml
 config.yaml*

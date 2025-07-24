@@ -60,12 +60,18 @@ func initMysql(cfg *Config) error {
 
 func initMemDbSqlite() error {
 	ldb, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gorm_logger.Default.LogMode(gorm_logger.Info),
+		Logger:                                   gorm_logger.Default.LogMode(gorm_logger.Info),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		return err
 	}
 	db = ldb
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	sqlDB.SetMaxOpenConns(1)
 	return nil
 }
 

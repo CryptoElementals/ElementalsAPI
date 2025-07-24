@@ -11,6 +11,8 @@ type Game struct {
 	Players      []*GamePlayerInfo `json:"players"`
 	Rounds       []*Round          `json:"rounds"`
 	GameResult   *GameResult       `json:"game_result"`
+	MaxRounds    int64
+	RoundTimeout int64
 }
 
 // Round 回合记录
