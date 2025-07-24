@@ -22,7 +22,7 @@ type PubSubClient struct {
 }
 
 func NewPubSubClient(serverAddr string) (*PubSubClient, error) {
-	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %v", err)
 	}

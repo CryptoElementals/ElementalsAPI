@@ -15,6 +15,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	eleClient "github.com/CryptoElementals/common/rpc/client"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -84,8 +85,15 @@ var runCmd = &cobra.Command{
 			break
 		}
 
+		rpcClient, err := eleClient.NewRpcClient("localhost:50051")
+		if err != nil {
+			log.Errorf("Failed to create rpcClient to roomServer: %v", err)
+			return
+		}
+		defer rpcClient.Close()
+
 		dialTimeout := 3
-		for {
+		for { // main loop, reconnect to websocket rpc if disconnected
 			gethClient, err = ethclient.Dial(wsRpc)
 			if err != nil {
 				log.Errorf("Failed to connect to WebSocket RPC: %v, retrying in %d seconds...", err.Error(), dialTimeout)
