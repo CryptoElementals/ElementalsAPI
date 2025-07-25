@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/server/api/battle"
 	"github.com/CryptoElementals/common/server/api/login"
 	"github.com/CryptoElementals/common/server/api/match"
+	"github.com/CryptoElementals/common/server/api/system"
 	"github.com/CryptoElementals/common/server/api/user"
 	"github.com/CryptoElementals/common/server/handler"
 	"github.com/CryptoElementals/common/server/middlewares"
@@ -124,6 +125,10 @@ func newRouter(wg *sync.WaitGroup, serverMode, serviceName string, store session
 	r.Use(gin.Recovery())
 	r.Use(ginWaitGroup(wg))
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
+
+	// 添加CORS中间件
+	r.Use(corsMiddleware())
+
 	//注册session 中间件
 	r.Use(sessions.Sessions(serviceName+"_session", store))
 	// register apis here
@@ -131,6 +136,54 @@ func newRouter(wg *sync.WaitGroup, serverMode, serviceName string, store session
 	// SSE API
 	r.POST("/sse", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.HandleSSE)
 	return r
+}
+
+// corsMiddleware 添加CORS支持
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+
+		// 允许的来源
+		allowedOrigins := []string{
+			"http://localhost:3000",
+			"http://127.0.0.1:3000",
+			"http://localhost:8080",
+			"http://127.0.0.1:8080",
+		}
+
+		// 检查来源是否被允许
+		isAllowed := false
+		for _, allowedOrigin := range allowedOrigins {
+			if origin == allowedOrigin {
+				isAllowed = true
+				break
+			}
+		}
+
+		// 开发模式下允许所有来源
+		if !isAllowed {
+			// 在开发环境下允许所有localhost和127.0.0.1来源
+			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
+				isAllowed = true
+			}
+		}
+
+		if isAllowed {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		// 处理预检请求
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func ginWaitGroup(wg *sync.WaitGroup) gin.HandlerFunc {
@@ -154,4 +207,6 @@ func registerAllApis() {
 	match.RegisterMatchApis()
 	// 注册对战相关API
 	battle.RegisterBattleApis()
+	// 注册系统相关API
+	system.RegisterSystemApis()
 }

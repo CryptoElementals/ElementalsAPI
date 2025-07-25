@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/events"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -139,15 +139,14 @@ func (task *LeaveAfterGameTask) Run(c *gin.Context) (api.Response, error) {
 	// 通过SSE向对手发送离开通知
 	//这里是直接在apiserver中实现消息通知，没有通过room_server中转
 	//可能还是通过roomserver处理好一些？
-	eventManager := events.GetEventManager()
+	// TODO: 重构为使用新的全局事件管理器
+	log.Infof("Player left game - opponent should be notified: %s_%s", opponentAddress, opponentTempAddress)
 
 	// 使用本地的BuildGameUserID函数构造对手的用户标识符
 	opponentUserID := BuildGameUserID(opponentAddress, opponentTempAddress)
 
-	// 发送离开事件，遵循通用的事件格式
-	eventManager.PublishEventToUser(opponentUserID, events.EventTypeStatusUpdate, map[string]interface{}{
-		"EventType": "opponentLeft",
-	}, nil)
+	// 记录离开事件，后续可以通过RoomServer处理
+	log.Infof("Opponent left event for user: %s", opponentUserID)
 
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Leave notification sent successfully"

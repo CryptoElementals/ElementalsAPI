@@ -65,8 +65,11 @@ func InitGlobalClients(serverAddress string) error {
 
 // startHealthCheck 启动健康检查
 func startHealthCheck(serverAddress string) {
-	ticker := time.NewTicker(30 * time.Second) // 每30秒检查一次
+	ticker := time.NewTicker(10 * time.Second) // 改为每10秒检查一次
 	defer ticker.Stop()
+
+	var consecutiveFailures int
+	const maxRetries = 5
 
 	for {
 		select {
@@ -81,15 +84,32 @@ func startHealthCheck(serverAddress string) {
 
 			// 检查连接状态
 			state := conn.GetState()
-			if state == connectivity.TransientFailure || state == connectivity.Shutdown {
-				log.Warnf("gRPC连接状态异常: %v，尝试重新连接", state)
-
-				// 重新连接
-				if err := reconnectGlobalClients(serverAddress); err != nil {
-					log.Errorf("重新连接失败: %v", err)
-				} else {
-					log.Infof("gRPC连接重新建立成功")
+			switch state {
+			case connectivity.Ready:
+				// 连接正常，重置失败计数
+				if consecutiveFailures > 0 {
+					log.Infof("gRPC连接恢复正常")
+					consecutiveFailures = 0
 				}
+			case connectivity.TransientFailure, connectivity.Shutdown:
+				consecutiveFailures++
+				log.Warnf("gRPC连接状态异常: %v，连续失败次数: %d/%d", state, consecutiveFailures, maxRetries)
+
+				if consecutiveFailures >= maxRetries {
+					log.Errorf("连续失败次数达到上限，尝试重新连接")
+
+					// 重新连接
+					if err := reconnectGlobalClients(serverAddress); err != nil {
+						log.Errorf("重新连接失败: %v", err)
+					} else {
+						log.Infof("gRPC连接重新建立成功")
+						consecutiveFailures = 0
+					}
+				}
+			case connectivity.Connecting:
+				log.Debugf("gRPC连接正在重连中...")
+			case connectivity.Idle:
+				log.Debugf("gRPC连接处于空闲状态")
 			}
 		}
 	}
@@ -113,6 +133,10 @@ func reconnectGlobalClients(serverAddress string) error {
 			Timeout:             5 * time.Second,
 			PermitWithoutStream: true,
 		}),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB
+			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB
+		),
 	}
 
 	conn, err := grpc.NewClient(serverAddress, opts...)
@@ -124,6 +148,7 @@ func reconnectGlobalClients(serverAddress string) error {
 	globalRpcClient = pb.NewRpcServiceClient(conn)
 	globalPubSubClient = pb.NewPubSubServiceClient(conn)
 
+	log.Infof("gRPC连接重新建立成功到: %s", serverAddress)
 	return nil
 }
 

@@ -223,7 +223,7 @@ type EventListener struct {
 	flusher      http.Flusher
 	requestUUID  string
 	stopChan     chan struct{}
-	eventManager *events.EventManager
+	eventManager *events.GlobalEventManager
 }
 
 func NewEventListener(eventTypes []string, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) *EventListener {
@@ -233,7 +233,7 @@ func NewEventListener(eventTypes []string, writer http.ResponseWriter, flusher h
 		flusher:      flusher,
 		requestUUID:  requestUUID,
 		stopChan:     make(chan struct{}),
-		eventManager: events.GetEventManager(),
+		eventManager: events.GetGlobalEventManager(),
 	}
 }
 
