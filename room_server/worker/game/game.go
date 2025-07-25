@@ -440,7 +440,7 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 	}
 }
 
-func (g *Game) handleRoundEnd(forceOver bool) error {
+func (g *Game) handleRoundEnd(forceCloseGame bool) error {
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
 	for _, p := range input.Players {
@@ -457,7 +457,7 @@ func (g *Game) handleRoundEnd(forceOver bool) error {
 		return err
 	}
 	g.applyRoundResultToCurrentRound(roundResult)
-	if forceOver || roundResult.IsGameOver {
+	if forceCloseGame || roundResult.IsGameOver {
 		g.gameInfo.GameResult = conversion.ProtoGameResultToDbGameResult(gameResult)
 		return g.handleGameEnd()
 	}
@@ -526,6 +526,16 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	}
 	// stale event
 	if g.currentRound.RoundNumber != event.currentRound {
+		return
+	}
+	// status changed go ahead
+	if g.currentRound.Status != event.currentRoundStatus {
+		return
+	}
+	// game init only exists at the very beginning, once both players confirms, it turns to game running
+	// so we just close the game
+	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+		g.handleGameEnd()
 		return
 	}
 	switch g.currentRound.Status {
