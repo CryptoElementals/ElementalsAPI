@@ -41,6 +41,7 @@ type SSEConnection struct {
 	Cancel      context.CancelFunc
 	mu          sync.Mutex
 	closed      bool
+	Metadata    map[string]interface{} // 新增：用于存储连接的元数据
 }
 
 // EventManager 事件管理器
@@ -185,6 +186,7 @@ func NewSSEConnection(id string, writer http.ResponseWriter, flusher http.Flushe
 		RequestUUID: requestUUID,
 		Context:     ctx,
 		Cancel:      cancel,
+		Metadata:    make(map[string]interface{}), // 初始化Metadata
 	}
 }
 
@@ -237,14 +239,22 @@ func (conn *SSEConnection) isClosed() bool {
 	return conn.closed
 }
 
-// getUserIDFromConnection 从连接中获取用户ID（需要根据实际认证机制实现）
+// getUserIDFromConnection 从连接中获取用户ID（基于游戏主题格式：address_tempaddress）
 func getUserIDFromConnection(conn *SSEConnection) string {
-	// 这里需要根据你的认证机制来实现
-	// 例如从 session、token 或请求头中获取用户ID
+	// 对于游戏相关的SSE连接，我们需要从连接的metadata中获取game_topic
+
+	// 首先尝试从连接的metadata中获取
+	if conn.Metadata != nil {
+		if gameTopic, ok := conn.Metadata["game_topic"].(string); ok {
+			return gameTopic
+		}
+	}
+
+	// 如果没有metadata，使用RequestUUID
 	if conn.RequestUUID != "" {
-		// 临时实现，实际应该从认证信息中获取
 		return conn.RequestUUID
 	}
+
 	return ""
 }
 

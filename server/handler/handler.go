@@ -8,6 +8,7 @@ import (
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/server/api/match"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -143,6 +144,26 @@ func HandleSSE(c *gin.Context) {
 	// 创建 SSE 连接
 	connID := fmt.Sprintf("%s_%s", action, requestUUID)
 	conn := events.NewSSEConnection(connID, c.Writer, flusher, requestUUID)
+
+	// 为 SubscribeGameInfo 任务设置用户标识符
+	if action == "SubscribeGameInfo" {
+		_params, _ := c.Get("params")
+		if params, ok := _params.(*map[string]interface{}); ok {
+			if address, ok := (*params)["Address"].(string); ok {
+				// 从请求中获取 TempAddress
+				var tempAddress string
+				if data, ok := (*params)["TempAddress"].(string); ok {
+					tempAddress = data
+				}
+				// 构造用户标识符并设置到连接metadata中
+				if address != "" && tempAddress != "" {
+					userID := match.BuildGameUserID(address, tempAddress)
+					conn.Metadata["game_topic"] = userID
+					log.Infof("SSE connection user identifier set: %s", userID)
+				}
+			}
+		}
+	}
 
 	// 注册连接到事件管理器
 	eventManager := events.GetEventManager()
