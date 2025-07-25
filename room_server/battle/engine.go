@@ -220,8 +220,15 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 
 		// 先将 GameResult 赋给 roundRes，以便奖励计算器使用
 		roundRes.GameResult = gameRes
+
+		// 构建玩家状态映射
+		playerStatuses := make(map[string]PlayerStatus)
+		for _, st := range states {
+			playerStatuses[st.WalletAddress] = st.Status
+		}
+
 		// 计算奖励并填充
-		gameRes.Reward = be.rewardCalculator.CalculateRewards(roundRes)
+		gameRes.Reward = be.rewardCalculator.CalculateRewards(roundRes, playerStatuses)
 	}
 
 	return roundRes, nil

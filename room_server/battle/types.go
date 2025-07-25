@@ -92,6 +92,7 @@ type PlayerReward struct {
 	TemporaryAddress string `json:"TemporaryAddress"` // 玩家临时地址
 	TokenChange      int    `json:"TokenChange"`      // Token变化
 	PointChange      int    `json:"PointChange"`      // 积分变化
+	IsOffline        bool   `json:"IsOffline"`        // 是否离线
 }
 
 // 单个玩家每张卡的详细数据

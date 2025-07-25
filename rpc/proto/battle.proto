@@ -55,6 +55,7 @@ message PlayerReward {
     string TemporaryAddress = 2;
     int32 TokenChange = 3;
     int32 PointChange = 4;
+    bool IsOffline = 5;
 }
 
 message BattleReward {

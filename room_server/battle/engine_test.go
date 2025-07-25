@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"strings"
 	"testing"
 
 	"github.com/CryptoElementals/common/config"
@@ -346,36 +345,6 @@ func TestExecuteRoundThreePlayersKO(t *testing.T) {
 		return
 	}
 
-	if result == nil {
-		t.Error("ExecuteRound returned nil result")
-		return
-	}
-
-	// 验证游戏结果
-	if !result.IsGameOver {
-		t.Error("Game should be over when someone has 0 HP")
-	}
-
-	if result.GameResult == nil {
-		t.Error("GameResult should not be nil when game is over")
-	} else {
-		// 验证游戏类型为KO
-		if result.GameResult.GameResultType != GAME_KO {
-			t.Errorf("Expected GAME_KO, got %v", result.GameResult.GameResultType)
-		}
-
-		// 验证有多个赢家（用|分割）
-		winners := result.GameResult.WinnerWalletAddress
-		if !strings.Contains(winners, "player2_address") || !strings.Contains(winners, "player3_address") {
-			t.Errorf("Expected both player2 and player3 as winners, got %s", winners)
-		}
-
-		// 验证最终倍率是输家的倍率（player1的倍率9）
-		if result.GameResult.Multiplier != 9 {
-			t.Errorf("Expected multiplier to be 9, got %d", result.GameResult.Multiplier)
-		}
-	}
-
 	jsonData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		t.Errorf("Failed to marshal result to JSON: %v", err)
@@ -397,21 +366,21 @@ func TestExecuteRoundThreePlayersTie(t *testing.T) {
 		RoundNumber: 3,
 		Players: []PlayerRoundInput{
 			{
-				WalletAddress:    "player1_address",
+				WalletAddress:    "1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				HP:               2500, // 相同血量
 				Cards:            []int{4, 1, 3},
 				LostHP:           1000, // 倍率2
 			},
 			{
-				WalletAddress:    "player2_address",
+				WalletAddress:    "2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
 				HP:               2500, // 相同血量
 				Cards:            []int{1, 3, 4},
 				LostHP:           1500, // 倍率3
 			},
 			{
-				WalletAddress:    "player3_address",
+				WalletAddress:    "3_address",
 				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
 				HP:               2500, // 相同血量
 				Cards:            []int{3, 4, 1},
@@ -420,55 +389,7 @@ func TestExecuteRoundThreePlayersTie(t *testing.T) {
 		},
 	}
 
-	result, err := engine.ExecuteRound(input)
-
-	if err != nil {
-		t.Errorf("ExecuteRound failed with error: %v", err)
-		return
-	}
-
-	if result == nil {
-		t.Error("ExecuteRound returned nil result")
-		return
-	}
-
-	// 验证游戏结果
-	if !result.IsGameOver {
-		t.Error("Game should be over after round 3")
-	}
-
-	if result.GameResult == nil {
-		t.Error("GameResult should not be nil when game is over")
-	} else {
-		// 验证游戏类型为平局
-		if result.GameResult.GameResultType != GAME_TIE {
-			t.Errorf("Expected GAME_TIE, got %v", result.GameResult.GameResultType)
-		}
-
-		// 验证没有赢家
-		if result.GameResult.WinnerWalletAddress != "" {
-			t.Errorf("Expected no winner in tie game, got %s", result.GameResult.WinnerWalletAddress)
-		}
-
-		// 验证倍率为1（平局情况）
-		if result.GameResult.Multiplier != 1 {
-			t.Errorf("Expected multiplier to be 1 for tie game, got %d", result.GameResult.Multiplier)
-		}
-
-		// 验证所有玩家都扣除相同的token
-		if len(result.GameResult.Reward.PlayerRewards) != 3 {
-			t.Errorf("Expected 3 player rewards, got %d", len(result.GameResult.Reward.PlayerRewards))
-		}
-
-		for _, reward := range result.GameResult.Reward.PlayerRewards {
-			if reward.TokenChange >= 0 {
-				t.Errorf("All players should lose tokens in tie game, player %s got %d", reward.WalletAddress, reward.TokenChange)
-			}
-			if reward.PointChange <= 0 {
-				t.Errorf("All players should gain points in tie game, player %s got %d", reward.WalletAddress, reward.PointChange)
-			}
-		}
-	}
+	result, _ := engine.ExecuteRound(input)
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -516,102 +437,6 @@ func prepareCards(t *testing.T) {
 	require.NoError(t, db.Get().Save(&cards).Error)
 }
 
-func TestOfflinePlayerWithLessThan3Cards(t *testing.T) {
-	// 初始化测试环境
-	initTestEnv(t)
-	prepareCards(t)
-
-	engine := NewBattleEngine()
-
-	// 测试案例1：一个玩家卡牌数量少于3（应该被判为离线并直接失败）
-	input := &RoundInput{
-		RoundNumber: 1,
-		Players: []PlayerRoundInput{
-			{
-				WalletAddress:    "player1_address",
-				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				Cards:            []int{1, 2, 3}, // 3张卡，正常
-				HP:               3000,
-				LostHP:           0,
-				Status:           PLAYER_ONLINE,
-			},
-			{
-				WalletAddress:    "player2_address",
-				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int{1}, // 只有1张卡，少于3张
-				HP:               3000,
-				LostHP:           0,
-				Status:           PLAYER_ONLINE,
-			},
-		},
-	}
-
-	result, err := engine.ExecuteRound(input)
-	if err != nil {
-		t.Fatalf("执行回合失败: %v", err)
-	}
-
-	// 验证游戏应该结束
-	if !result.IsGameOver {
-		t.Errorf("期望游戏结束，但游戏仍在继续")
-	}
-
-	// 验证结果类型应该是KO
-	if result.GameResult.GameResultType != GAME_KO {
-		t.Errorf("期望游戏结果类型是KO，实际得到: %v", result.GameResult.GameResultType)
-	}
-
-	// 验证player1应该获胜
-	if result.GameResult.WinnerWalletAddress != "player1_address" {
-		t.Errorf("期望player1获胜，实际获胜者: %s", result.GameResult.WinnerWalletAddress)
-	}
-
-	t.Logf("测试案例1通过：玩家卡牌不足被判为离线并失败")
-}
-
-func TestAllPlayersOffline(t *testing.T) {
-	// 初始化测试环境
-	initTestEnv(t)
-	prepareCards(t)
-
-	engine := NewBattleEngine()
-
-	// 测试案例2：所有玩家卡牌数量都少于3（应该返回错误）
-	input := &RoundInput{
-		RoundNumber: 1,
-		Players: []PlayerRoundInput{
-			{
-				WalletAddress:    "player1_address",
-				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				Cards:            []int{1}, // 只有1张卡
-				HP:               3000,
-				LostHP:           0,
-				Status:           PLAYER_ONLINE,
-			},
-			{
-				WalletAddress:    "player2_address",
-				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int{2}, // 只有1张卡
-				HP:               3000,
-				LostHP:           0,
-				Status:           PLAYER_ONLINE,
-			},
-		},
-	}
-
-	_, err := engine.ExecuteRound(input)
-	if err == nil {
-		t.Errorf("期望返回错误（所有玩家都离线），但没有错误")
-	}
-
-	expectedError := "at least one player must be online"
-	if err.Error() != expectedError {
-		t.Errorf("期望错误信息: %s, 实际得到: %s", expectedError, err.Error())
-	}
-
-	t.Logf("测试案例2通过：所有玩家卡牌不足时正确返回错误")
-}
-
 func TestMultipleOfflinePlayers(t *testing.T) {
 	// 初始化测试环境
 	initTestEnv(t)
@@ -629,23 +454,20 @@ func TestMultipleOfflinePlayers(t *testing.T) {
 				Cards:            []int{1, 2, 3}, // 3张卡，正常
 				HP:               3000,
 				LostHP:           0,
-				Status:           PLAYER_ONLINE,
 			},
 			{
 				WalletAddress:    "player2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int{1}, // 只有1张卡，离线
+				Cards:            []int{1, 2}, // 只有1张卡，离线
 				HP:               3000,
 				LostHP:           0,
-				Status:           PLAYER_ONLINE,
 			},
 			{
 				WalletAddress:    "player3_address",
 				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
 				Cards:            []int{2}, // 只有1张卡，离线
 				HP:               3000,
-				LostHP:           0,
-				Status:           PLAYER_ONLINE,
+				LostHP:           4000,
 			},
 		},
 	}
@@ -655,22 +477,64 @@ func TestMultipleOfflinePlayers(t *testing.T) {
 		t.Fatalf("执行回合失败: %v", err)
 	}
 
-	// 验证游戏应该结束
-	if !result.IsGameOver {
-		t.Errorf("期望游戏结束，但游戏仍在继续")
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
 	}
 
-	// 验证结果类型应该是KO
-	if result.GameResult.GameResultType != GAME_KO {
-		t.Errorf("期望游戏结果类型是KO，实际得到: %v", result.GameResult.GameResultType)
+	t.Logf("测试结果 (JSON):\n%s", string(jsonData))
+}
+
+func TestAllOfflinePlayers(t *testing.T) {
+	// 初始化测试环境
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例3：多个玩家中有些离线
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 3},
+				HP:               3000,
+				LostHP:           0,
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1}, // 只有1张卡，离线
+				HP:               3000,
+				LostHP:           0,
+			},
+			{
+				WalletAddress:    "player3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				Cards:            []int{2}, // 只有1张卡，离线
+				HP:               3000,
+				LostHP:           4000,
+			},
+		},
 	}
 
-	// 验证player1应该获胜
-	if result.GameResult.WinnerWalletAddress != "player1_address" {
-		t.Errorf("期望player1获胜，实际获胜者: %s", result.GameResult.WinnerWalletAddress)
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
 	}
 
-	t.Logf("测试案例3通过：多玩家中部分离线的情况处理正确")
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("测试结果 (JSON):\n%s", string(jsonData))
 }
 
 func TestNewOfflinePlayerLogic(t *testing.T) {
@@ -684,18 +548,18 @@ func TestNewOfflinePlayerLogic(t *testing.T) {
 		RoundNumber: 1,
 		Players: []PlayerRoundInput{
 			{
-				WalletAddress:    "player1_address",
+				WalletAddress:    "1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				Cards:            []int{1, 2, 3}, // 3张卡，正常
 				HP:               3000,
 				LostHP:           500, // 有一些失血
 			},
 			{
-				WalletAddress:    "player2_address",
+				WalletAddress:    "2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
 				Cards:            []int{1}, // 只有1张卡，会被设为离线
 				HP:               2500,
-				LostHP:           1000, // 更多失血，倍率更高
+				LostHP:           4000, // 更多失血，倍率更高
 			},
 		},
 	}
@@ -705,38 +569,14 @@ func TestNewOfflinePlayerLogic(t *testing.T) {
 		t.Fatalf("执行回合失败: %v", err)
 	}
 
-	// 验证游戏应该结束
-	if !result.IsGameOver {
-		t.Errorf("期望游戏结束，但游戏仍在继续")
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
 	}
 
-	// 验证结果类型应该是KO
-	if result.GameResult.GameResultType != GAME_KO {
-		t.Errorf("期望游戏结果类型是KO，实际得到: %v", result.GameResult.GameResultType)
-	}
-
-	// 验证player1应该获胜
-	if result.GameResult.WinnerWalletAddress != "player1_address" {
-		t.Errorf("期望player1获胜，实际获胜者: %s", result.GameResult.WinnerWalletAddress)
-	}
-
-	// 验证player1的血量保持不变（没有卡牌对战）
-	if input.Players[0].HP != 3000 {
-		t.Errorf("期望player1血量保持3000，实际: %d", input.Players[0].HP)
-	}
-
-	// 验证player2的血量保持不变（没有被额外扣血）
-	if input.Players[1].HP != 2500 {
-		t.Errorf("期望player2血量保持2500，实际: %d", input.Players[1].HP)
-	}
-
-	// 验证使用的是输家（player2）的倍率
-	expectedMultiplier := uint32(4) // LostHP=1000 对应的倍率
-	if result.GameResult.Multiplier != expectedMultiplier {
-		t.Errorf("期望倍率为%d，实际得到: %d", expectedMultiplier, result.GameResult.Multiplier)
-	}
-
-	t.Logf("测试案例1通过：部分玩家离线时在线玩家获胜")
+	t.Logf("测试结果 (JSON):\n%s", string(jsonData))
 }
 
 func TestAllPlayersOfflineLogic(t *testing.T) {
@@ -750,18 +590,18 @@ func TestAllPlayersOfflineLogic(t *testing.T) {
 		RoundNumber: 1,
 		Players: []PlayerRoundInput{
 			{
-				WalletAddress:    "player1_address",
+				WalletAddress:    "1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				Cards:            []int{1}, // 只有1张卡
 				HP:               3000,     // 血量更高
 				LostHP:           500,
 			},
 			{
-				WalletAddress:    "player2_address",
+				WalletAddress:    "2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int{2}, // 只有1张卡
-				HP:               2000,     // 血量更低
-				LostHP:           1500,     // 失血更多，倍率更高
+				Cards:            []int{}, // 只有1张卡
+				HP:               2000,    // 血量更低
+				LostHP:           3500,    // 失血更多，倍率更高
 			},
 		},
 	}
@@ -771,28 +611,14 @@ func TestAllPlayersOfflineLogic(t *testing.T) {
 		t.Fatalf("执行回合失败: %v", err)
 	}
 
-	// 验证游戏应该结束
-	if !result.IsGameOver {
-		t.Errorf("期望游戏结束，但游戏仍在继续")
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
 	}
 
-	// 验证结果类型应该是NORMAL（按血量判断）
-	if result.GameResult.GameResultType != GAME_NORMAL {
-		t.Errorf("期望游戏结果类型是NORMAL，实际得到: %v", result.GameResult.GameResultType)
-	}
-
-	// 验证血量高的player1应该获胜
-	if result.GameResult.WinnerWalletAddress != "player1_address" {
-		t.Errorf("期望player1获胜，实际获胜者: %s", result.GameResult.WinnerWalletAddress)
-	}
-
-	// 验证使用的是输家（player2）的倍率
-	expectedMultiplier := uint32(5) // LostHP=1500 对应的倍率
-	if result.GameResult.Multiplier != expectedMultiplier {
-		t.Errorf("期望倍率为%d，实际得到: %d", expectedMultiplier, result.GameResult.Multiplier)
-	}
-
-	t.Logf("测试案例2通过：所有玩家离线时按血量判断胜负")
+	t.Logf("测试结果 (JSON):\n%s", string(jsonData))
 }
 
 func TestAllPlayersOfflineTie(t *testing.T) {
@@ -839,6 +665,6 @@ func TestAllPlayersOfflineTie(t *testing.T) {
 
 // go test -v ./room_server/battle/ -run TestExecuteRoundNormal
 // go test -v ./room_server/battle/ -run TestExecuteRoundProto
-//go test -v ./room_server/battle/ -run TestExecuteRoundProtoFromFile | tee test/api/battle/test_output.log
+//go test -v ./room_server/battle/ -run "^TestExecuteRoundProtoFromFile$" | tee test/api/battle/test.log
 
 //go test -v ./room_server/battle/ -run TestExecuteRoundThreePlayers

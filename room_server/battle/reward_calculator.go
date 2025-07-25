@@ -17,7 +17,7 @@ func NewRewardCalculator() *RewardCalculator {
 }
 
 // CalculateRewards calculate battle rewards
-func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
+func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses map[string]PlayerStatus) BattleReward {
 	// 如果游戏尚未结束或 GameResult 为空，直接返回 nil
 	if result == nil || result.GameResult == nil {
 		return BattleReward{}
@@ -38,11 +38,17 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 			pointGain := int(float64(baseStake) * 0.008)
 			totalDeducted += tokenDeduction
 
+			isOffline := false
+			if status, exists := playerStatuses[player.WalletAddress]; exists {
+				isOffline = status == PLAYER_OFFLINE
+			}
+
 			playerRewards = append(playerRewards, PlayerReward{
 				WalletAddress:    player.WalletAddress,
 				TemporaryAddress: player.TemporaryAddress,
 				TokenChange:      -tokenDeduction,
 				PointChange:      pointGain,
+				IsOffline:        isOffline,
 			})
 		}
 		systemFee = totalDeducted
@@ -83,6 +89,11 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 
 			// 分配奖励
 			for _, player := range result.Players {
+				isOffline := false
+				if status, exists := playerStatuses[player.WalletAddress]; exists {
+					isOffline = status == PLAYER_OFFLINE
+				}
+
 				if winnerAddresses[player.WalletAddress] {
 					// 赢家
 					playerRewards = append(playerRewards, PlayerReward{
@@ -90,6 +101,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 						TemporaryAddress: player.TemporaryAddress,
 						TokenChange:      winnerTokenPerPlayer,
 						PointChange:      winnerPointPerPlayer,
+						IsOffline:        isOffline,
 					})
 				} else {
 					// 输家
@@ -98,6 +110,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 						TemporaryAddress: player.TemporaryAddress,
 						TokenChange:      -loserTokenPerPlayer,
 						PointChange:      loserPointPerPlayer,
+						IsOffline:        isOffline,
 					})
 				}
 			}
