@@ -28,12 +28,9 @@ func InitRSConfig(configPath string) error {
 	if err := viper.Unmarshal(&RSGConf); err != nil {
 		return err
 	}
-	if RSGConf.GameParams.TokenThreshold == 0 {
-		RSGConf.GameParams.TokenThreshold = 10000
-	}
-	if RSGConf.GameParams.BaseStake == 0 {
-		RSGConf.GameParams.BaseStake = 1000
-	}
-	GameParams = RSGConf.GameParams
+
+	// 初始化游戏参数
+	InitializeGameParams(&RSGConf.GameParams)
+
 	return nil
 }

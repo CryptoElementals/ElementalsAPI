@@ -14,3 +14,38 @@ type GameParamConfig struct {
 
 // 全局可读的游戏参数
 var GameParams = GameParamConfig{}
+
+// InitializeGameParams 设置 GameParams 的默认值并赋值给全局变量
+func InitializeGameParams(gameParams *GameParamConfig) {
+	// 设置默认值
+	if gameParams.MaxHP == 0 {
+		gameParams.MaxHP = 3000
+	}
+	if gameParams.InitialMultiplier == 0 {
+		gameParams.InitialMultiplier = 1
+	}
+	if gameParams.SystemFeeRate == 0 {
+		gameParams.SystemFeeRate = 0.016
+	}
+	if gameParams.WinnerPointRate == 0 {
+		gameParams.WinnerPointRate = 0.012
+	}
+	if gameParams.LoserPointRate == 0 {
+		gameParams.LoserPointRate = 0.004
+	}
+	if gameParams.TieTokenRate == 0 {
+		gameParams.TieTokenRate = 0.008
+	}
+	if gameParams.TiePointRate == 0 {
+		gameParams.TiePointRate = 0.008
+	}
+	if gameParams.TokenThreshold == 0 {
+		gameParams.TokenThreshold = 10000
+	}
+	if gameParams.BaseStake == 0 {
+		gameParams.BaseStake = 1000
+	}
+
+	// 赋值给全局变量
+	GameParams = *gameParams
+}
