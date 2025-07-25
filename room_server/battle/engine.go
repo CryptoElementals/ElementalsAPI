@@ -73,6 +73,8 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	// 只保留属于自己的effect
 	//目前只有2人对战，这里实际上只会取到i=0,j=1，处理一次card对战
 	//如果3人，应该在每个round的每个card的3次card对战结束后再统一结算effect，包括effect的记录和计算
+	//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有
+	//多人情况下怎么解决合谋作弊问题，即两个人串通让第三个人输？
 	for cardIdx := 0; cardIdx < 3; cardIdx++ {
 		for i := 0; i < playerCount; i++ {
 			for j := i + 1; j < playerCount; j++ {
@@ -140,15 +142,16 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 
 			}
 		}
-		// 每个round的每张牌对战后都检查一次游戏是否结束，而不是每个人3张卡牌全部打完再结算
-		hps := make([]int, playerCount)
-		addrs := make([]string, playerCount)
-		temps := make([]string, playerCount)
-		for idx, st := range states {
-			hps[idx] = st.HP
-			addrs[idx] = st.WalletAddress
+
+		// 检查是否有玩家血量为0，如果有就结束游戏
+		hasZeroHP := false
+		for _, st := range states {
+			if st.HP == 0 {
+				hasZeroHP = true
+				break
+			}
 		}
-		if isGameOver, _, _, _ := be.gameLogic.CheckGameOver(hps, addrs, temps, input.RoundNumber, false); isGameOver {
+		if hasZeroHP {
 			break
 		}
 	}
@@ -165,16 +168,17 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	}
 
 	// 游戏结束判定 - 所有卡牌都打完后的最终判定
-	hps := make([]int, playerCount)
-	addrs := make([]string, playerCount)
-	temps := make([]string, playerCount)
-	for idx, st := range states {
-		hps[idx] = st.HP
-		addrs[idx] = st.WalletAddress
-		temps[idx] = st.TemporaryAddress
+	gameEndState := make([]*GameEndState, playerCount)
+	for i, st := range states {
+		gameEndState[i] = &GameEndState{
+			HP:               st.HP,
+			Multiplier:       st.Multiplier,
+			WalletAddress:    st.WalletAddress,
+			TemporaryAddress: st.TemporaryAddress,
+		}
 	}
 
-	isGameOver, grType, winner, temporaryAddress := be.gameLogic.CheckGameOver(hps, addrs, temps, input.RoundNumber, true)
+	isGameOver, grType, winner, temporaryAddress, finalMul := be.gameLogic.CheckGameOver(gameEndState, input.RoundNumber)
 
 	// 先构建回合结果（暂不含 GameResult）
 	roundRes := &RoundResult{
@@ -186,18 +190,6 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 
 	// 如果游戏结束，再构建 GameResult 并计算奖励
 	if isGameOver {
-		var finalMul uint32
-		if winner != "" {
-			for _, st := range states {
-				if st.WalletAddress != winner {
-					finalMul = st.Multiplier
-					break
-				}
-			}
-		} else {
-			finalMul = 1
-		}
-
 		gameRes := &GameResult{
 			Multiplier:             finalMul,
 			WinnerWalletAddress:    winner,

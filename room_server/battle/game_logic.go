@@ -2,6 +2,14 @@ package battle
 
 import "fmt"
 
+// GameEndState 用于游戏结束判定的玩家状态
+type GameEndState struct {
+	HP               int
+	Multiplier       uint32
+	WalletAddress    string
+	TemporaryAddress string
+}
+
 // GameLogic game logic
 type GameLogic struct{}
 
@@ -11,34 +19,86 @@ func NewGameLogic() *GameLogic {
 }
 
 // CheckGameOver check if game is over
-// 改为支持任意数量玩家，返回是否结束和胜者地址（或空）
-// 添加round参数，支持第3轮特殊规则
-// allCardsPlayed: 是否所有卡牌都已打完
-func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint32, allCardsPlayed bool) (bool, GameResultType, string, string) {
-	alive := 0
-	winner := ""
-	temporaryAddress := ""
-	resultType := GAME_NORMAL
+// 返回是否结束、游戏结果类型、赢家地址列表（用|分割）、赢家临时地址列表（用|分割）、最终倍率
+func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, GameResultType, string, string, uint32) {
+	// 从states中提取需要的数据
+	hps := make([]int, len(states))
+	addresses := make([]string, len(states))
+	temps := make([]string, len(states))
+	multipliers := make([]uint32, len(states))
 
-	for i, hp := range hps {
-		if hp > 0 {
-			alive++
-			winner = addresses[i]
-			temporaryAddress = temps[i]
+	for i, state := range states {
+		hps[i] = state.HP
+		addresses[i] = state.WalletAddress
+		temps[i] = state.TemporaryAddress
+		multipliers[i] = state.Multiplier
+	}
+
+	// 首先检查所有人血量是否相同
+	allSameHP := true
+	firstHP := hps[0]
+	for _, hp := range hps[1:] {
+		if hp != firstHP {
+			allSameHP = false
+			break
 		}
 	}
 
-	// 如果有玩家血量为0，直接判定胜负
-	if alive == 1 {
-		return true, GAME_KO, winner, temporaryAddress
-	}
-	if alive == 0 {
-		return true, GAME_TIE, "", ""
+	// 平局判定：
+	// 1. 如果所有人血量都是0，不管哪一轮都是平局
+	// 2. 如果所有人血量相同但不是0，只有第3轮才是平局
+	if allSameHP {
+		if firstHP == 0 {
+			// 所有人血量都是0，直接平局
+			return true, GAME_TIE, "", "", 1
+		} else if round == 3 {
+			// 所有人血量相同但不是0，第3轮才平局
+			return true, GAME_TIE, "", "", 1
+		}
+		// 所有人血量相同但不是0且不是第3轮，游戏继续
+		return false, GAME_NORMAL, "", "", 1
 	}
 
-	// 第3轮特殊规则：只有在所有卡牌都打完后，且所有玩家都还活着时，才比较血量
-	if round == 3 && allCardsPlayed && alive > 1 {
-		// 找到最高 HP
+	// 血量不相同的情况
+	// 检查是否有人血量为0
+	hasZeroHP := false
+	for _, hp := range hps {
+		if hp == 0 {
+			hasZeroHP = true
+			break
+		}
+	}
+
+	var winners []string
+	var winnerTemps []string
+	var gameType GameResultType
+	var finalMultiplier uint32 = 1
+
+	if hasZeroHP {
+		// 有人血量为0：血量为0的是输家，其余是赢家，游戏结束类型是KO
+		gameType = GAME_KO
+		maxLoserMul := uint32(1)
+		for i, hp := range hps {
+			if hp > 0 {
+				winners = append(winners, addresses[i])
+				winnerTemps = append(winnerTemps, temps[i])
+			} else {
+				// 这是输家，更新最大倍率
+				if multipliers[i] > maxLoserMul {
+					maxLoserMul = multipliers[i]
+				}
+			}
+		}
+		finalMultiplier = maxLoserMul
+	} else {
+		// 没人血量为0：只有在第3轮才比较剩余血量
+		if round != 3 {
+			// 未结束
+			return false, GAME_NORMAL, "", "", 1
+		}
+
+		gameType = GAME_NORMAL
+		// 找到最高血量
 		maxHP := -1
 		for _, hp := range hps {
 			if hp > maxHP {
@@ -46,29 +106,38 @@ func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string
 			}
 		}
 
-		// 统计拥有最高 HP 的玩家数量
-		winners := []int{}
+		// 血量最多的是赢家（可能多个），其余是输家
+		maxLoserMul := uint32(1)
 		for i, hp := range hps {
 			if hp == maxHP {
-				winners = append(winners, i)
+				winners = append(winners, addresses[i])
+				winnerTemps = append(winnerTemps, temps[i])
+			} else {
+				// 这是输家，更新最大倍率
+				if multipliers[i] > maxLoserMul {
+					maxLoserMul = multipliers[i]
+				}
 			}
 		}
-
-		if len(winners) == 1 {
-			idx := winners[0]
-			return true, GAME_NORMAL, addresses[idx], temps[idx]
-		}
-
-		// 多个玩家最高 HP 相同，判定平局
-		return true, GAME_TIE, "", ""
+		finalMultiplier = maxLoserMul
 	}
 
-	// 未结束
-	return false, resultType, "", ""
+	// 拼接赢家地址（用|分割）
+	winnersStr := ""
+	winnerTempsStr := ""
+	if len(winners) > 0 {
+		winnersStr = winners[0]
+		winnerTempsStr = winnerTemps[0]
+		for i := 1; i < len(winners); i++ {
+			winnersStr += "|" + winners[i]
+			winnerTempsStr += "|" + winnerTemps[i]
+		}
+	}
+
+	return true, gameType, winnersStr, winnerTempsStr, finalMultiplier
 }
 
 // ValidateRoundInput validate battle input
-// 改为校验Players列表
 func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 	if len(input.Players) < 2 {
 		return fmt.Errorf("at least 2 players required")
@@ -76,6 +145,9 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 	for idx, p := range input.Players {
 		if p.WalletAddress == "" {
 			return fmt.Errorf("player %d address cannot be empty", idx+1)
+		}
+		if p.TemporaryAddress == "" {
+			return fmt.Errorf("player %d temporary address cannot be empty", idx+1)
 		}
 		if p.HP <= 0 {
 			return fmt.Errorf("player %d HP must be greater than 0", idx+1)

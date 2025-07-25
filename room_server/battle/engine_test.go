@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"strings"
 	"testing"
 
 	"github.com/CryptoElementals/common/config"
@@ -25,20 +26,20 @@ func TestExecuteRoundNormal(t *testing.T) {
 	engine := NewBattleEngine()
 
 	input := &RoundInput{
-		RoundNumber: 3,
+		RoundNumber: 2,
 		Players: []PlayerRoundInput{
 			{
-				WalletAddress:    "player1_address",
+				WalletAddress:    "1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				HP:               3000,
-				Cards:            []int{4, 1, 3},
+				HP:               1500,
+				Cards:            []int{1, 2, 5},
 				LostHP:           500,
 			},
 			{
-				WalletAddress:    "player2_address",
+				WalletAddress:    "2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				HP:               3000,
-				Cards:            []int{1, 3, 4},
+				HP:               1500,
+				Cards:            []int{1, 2, 3},
 				LostHP:           2500,
 			},
 		},
@@ -189,6 +190,296 @@ func TestExecuteRoundProtoFromFile(t *testing.T) {
 	}
 }
 
+func TestExecuteRoundThreePlayers(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试三人游戏 - NORMAL情况（没人血量为0，第3轮比较血量）
+	input := &RoundInput{
+		RoundNumber: 3,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				HP:               2800,           // 最高血量，应该获胜
+				Cards:            []int{4, 1, 3}, // Fire, Metal, Water
+				LostHP:           1000,           // 倍率2
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				HP:               2500,           // 中等血量，输家
+				Cards:            []int{1, 3, 4}, // Metal, Water, Fire
+				LostHP:           2500,           // 倍率5
+			},
+			{
+				WalletAddress:    "3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				HP:               2200,           // 最低血量，输家
+				Cards:            []int{3, 4, 1}, // Water, Fire, Metal
+				LostHP:           3500,           // 会在战斗中增加到5500，倍率8
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+
+	if err != nil {
+		t.Errorf("ExecuteRound failed with error: %v", err)
+		return
+	}
+
+	if result == nil {
+		t.Error("ExecuteRound returned nil result")
+		return
+	}
+
+	// 验证游戏结果
+	if !result.IsGameOver {
+		t.Error("Game should be over after round 3")
+	}
+
+	if result.GameResult == nil {
+		t.Error("GameResult should not be nil when game is over")
+	} else {
+		// 验证游戏类型为NORMAL（没人血量为0）
+		if result.GameResult.GameResultType != GAME_NORMAL {
+			t.Errorf("Expected GAME_NORMAL, got %v", result.GameResult.GameResultType)
+		}
+
+		// 验证赢家是player1
+		if result.GameResult.WinnerWalletAddress != "player1_address" {
+			t.Errorf("Expected winner to be player1_address, got %s", result.GameResult.WinnerWalletAddress)
+		}
+
+		// 验证最终倍率是输家中最大的（player3的倍率8）
+		if result.GameResult.Multiplier != 8 {
+			t.Errorf("Expected multiplier to be 8, got %d", result.GameResult.Multiplier)
+		}
+
+		// 验证奖励分配
+		if len(result.GameResult.Reward.PlayerRewards) != 3 {
+			t.Errorf("Expected 3 player rewards, got %d", len(result.GameResult.Reward.PlayerRewards))
+		}
+
+		// 找到每个玩家的奖励
+		rewardMap := make(map[string]*PlayerReward)
+		for i := range result.GameResult.Reward.PlayerRewards {
+			reward := &result.GameResult.Reward.PlayerRewards[i]
+			rewardMap[reward.WalletAddress] = reward
+		}
+
+		// 验证赢家奖励（获得token和积分）
+		player1Reward := rewardMap["player1_address"]
+		if player1Reward == nil {
+			t.Error("Player1 reward not found")
+		} else if player1Reward.TokenChange <= 0 {
+			t.Errorf("Player1 should gain tokens, got %d", player1Reward.TokenChange)
+		}
+
+		// 验证输家奖励（损失token但获得少量积分）
+		player2Reward := rewardMap["player2_address"]
+		if player2Reward == nil {
+			t.Error("Player2 reward not found")
+		} else if player2Reward.TokenChange >= 0 {
+			t.Errorf("Player2 should lose tokens, got %d", player2Reward.TokenChange)
+		}
+
+		player3Reward := rewardMap["player3_address"]
+		if player3Reward == nil {
+			t.Error("Player3 reward not found")
+		} else if player3Reward.TokenChange >= 0 {
+			t.Errorf("Player3 should lose tokens, got %d", player3Reward.TokenChange)
+		}
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("Three Players Round Result (JSON):\n%s", string(jsonData))
+	t.Log("Three players test completed successfully")
+}
+
+func TestExecuteRoundThreePlayersKO(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试三人游戏 - KO情况（有人血量为0）
+	input := &RoundInput{
+		RoundNumber: 3, // 第2轮就有人血量为0
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				HP:               1500,           // 会被打死
+				Cards:            []int{1, 3, 4}, // Metal, Water, Fire
+				LostHP:           4000,           // 会在战斗中增加到6000，倍率9
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				HP:               2500,           // 存活，赢家
+				Cards:            []int{4, 1, 3}, // Fire, Metal, Water
+				LostHP:           1500,           // 倍率3
+			},
+			{
+				WalletAddress:    "3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				HP:               2000,           // 存活，赢家
+				Cards:            []int{3, 4, 2}, // Water, Fire, Wood
+				LostHP:           2000,           // 倍率4
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+
+	if err != nil {
+		t.Errorf("ExecuteRound failed with error: %v", err)
+		return
+	}
+
+	if result == nil {
+		t.Error("ExecuteRound returned nil result")
+		return
+	}
+
+	// 验证游戏结果
+	if !result.IsGameOver {
+		t.Error("Game should be over when someone has 0 HP")
+	}
+
+	if result.GameResult == nil {
+		t.Error("GameResult should not be nil when game is over")
+	} else {
+		// 验证游戏类型为KO
+		if result.GameResult.GameResultType != GAME_KO {
+			t.Errorf("Expected GAME_KO, got %v", result.GameResult.GameResultType)
+		}
+
+		// 验证有多个赢家（用|分割）
+		winners := result.GameResult.WinnerWalletAddress
+		if !strings.Contains(winners, "player2_address") || !strings.Contains(winners, "player3_address") {
+			t.Errorf("Expected both player2 and player3 as winners, got %s", winners)
+		}
+
+		// 验证最终倍率是输家的倍率（player1的倍率9）
+		if result.GameResult.Multiplier != 9 {
+			t.Errorf("Expected multiplier to be 9, got %d", result.GameResult.Multiplier)
+		}
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("Three Players KO Round Result (JSON):\n%s", string(jsonData))
+	t.Log("Three players KO test completed successfully")
+}
+
+func TestExecuteRoundThreePlayersTie(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试三人游戏 - 平局情况（所有人血量相同）
+	input := &RoundInput{
+		RoundNumber: 3,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				HP:               2500, // 相同血量
+				Cards:            []int{4, 1, 3},
+				LostHP:           1000, // 倍率2
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				HP:               2500, // 相同血量
+				Cards:            []int{1, 3, 4},
+				LostHP:           1500, // 倍率3
+			},
+			{
+				WalletAddress:    "player3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				HP:               2500, // 相同血量
+				Cards:            []int{3, 4, 1},
+				LostHP:           2000, // 倍率4
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+
+	if err != nil {
+		t.Errorf("ExecuteRound failed with error: %v", err)
+		return
+	}
+
+	if result == nil {
+		t.Error("ExecuteRound returned nil result")
+		return
+	}
+
+	// 验证游戏结果
+	if !result.IsGameOver {
+		t.Error("Game should be over after round 3")
+	}
+
+	if result.GameResult == nil {
+		t.Error("GameResult should not be nil when game is over")
+	} else {
+		// 验证游戏类型为平局
+		if result.GameResult.GameResultType != GAME_TIE {
+			t.Errorf("Expected GAME_TIE, got %v", result.GameResult.GameResultType)
+		}
+
+		// 验证没有赢家
+		if result.GameResult.WinnerWalletAddress != "" {
+			t.Errorf("Expected no winner in tie game, got %s", result.GameResult.WinnerWalletAddress)
+		}
+
+		// 验证倍率为1（平局情况）
+		if result.GameResult.Multiplier != 1 {
+			t.Errorf("Expected multiplier to be 1 for tie game, got %d", result.GameResult.Multiplier)
+		}
+
+		// 验证所有玩家都扣除相同的token
+		if len(result.GameResult.Reward.PlayerRewards) != 3 {
+			t.Errorf("Expected 3 player rewards, got %d", len(result.GameResult.Reward.PlayerRewards))
+		}
+
+		for _, reward := range result.GameResult.Reward.PlayerRewards {
+			if reward.TokenChange >= 0 {
+				t.Errorf("All players should lose tokens in tie game, player %s got %d", reward.WalletAddress, reward.TokenChange)
+			}
+			if reward.PointChange <= 0 {
+				t.Errorf("All players should gain points in tie game, player %s got %d", reward.WalletAddress, reward.PointChange)
+			}
+		}
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("Three Players Tie Round Result (JSON):\n%s", string(jsonData))
+	t.Log("Three players tie test completed successfully")
+}
+
 // ------------------ 公共辅助函数 ------------------
 
 func initTestEnv(t *testing.T) {
@@ -228,3 +519,5 @@ func prepareCards(t *testing.T) {
 // go test -v ./room_server/battle/ -run TestExecuteRoundNormal
 // go test -v ./room_server/battle/ -run TestExecuteRoundProto
 //go test -v ./room_server/battle/ -run TestExecuteRoundProtoFromFile | tee test/api/battle/test_output.log
+
+//go test -v ./room_server/battle/ -run TestExecuteRoundThreePlayers

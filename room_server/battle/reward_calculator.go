@@ -1,6 +1,10 @@
 package battle
 
-import "github.com/CryptoElementals/common/config"
+import (
+	"strings"
+
+	"github.com/CryptoElementals/common/config"
+)
 
 // RewardCalculator reward calculator
 type RewardCalculator struct {
@@ -20,62 +24,85 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult) BattleReward {
 	}
 
 	gr := result.GameResult
-
 	baseStake := rc.BaseStake
-	systemFeeRate := config.GameParams.SystemFeeRate
-
-	systemFee := int(float64(baseStake) * float64(gr.Multiplier) * systemFeeRate)
-
+	finalMultiplier := float64(gr.Multiplier)
 	var playerRewards []PlayerReward
+	var systemFee int
 
 	switch gr.GameResultType {
-	case GAME_NORMAL, GAME_KO:
-		if gr.WinnerWalletAddress != "" {
-			// 胜者获得奖励
-			winnerReward := PlayerReward{
-				WalletAddress:    gr.WinnerWalletAddress,
-				TemporaryAddress: gr.WinnerTemporaryAddress,
-				TokenChange:      int(float64(baseStake) * float64(gr.Multiplier) * (1.0 - systemFeeRate)),
-				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.WinnerPointRate),
-			}
-			playerRewards = append(playerRewards, winnerReward)
-
-			// 败者扣除赌注
-			for _, player := range result.Players {
-				if player.WalletAddress != gr.WinnerWalletAddress {
-					loserReward := PlayerReward{
-						WalletAddress:    player.WalletAddress,
-						TemporaryAddress: player.TemporaryAddress,
-						TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier)),
-						PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.LoserPointRate),
-					}
-					playerRewards = append(playerRewards, loserReward)
-					break
-				}
-			}
-		}
 	case GAME_TIE:
-		// 平局时所有玩家都扣除部分赌注
+		// 平局情况：每个人扣除basetoken×0.008，积分basetoken×0.008，系统抽水是所有人扣除的token之和
+		totalDeducted := 0
 		for _, player := range result.Players {
-			tieReward := PlayerReward{
+			tokenDeduction := int(float64(baseStake) * 0.008)
+			pointGain := int(float64(baseStake) * 0.008)
+			totalDeducted += tokenDeduction
+
+			playerRewards = append(playerRewards, PlayerReward{
 				WalletAddress:    player.WalletAddress,
 				TemporaryAddress: player.TemporaryAddress,
-				TokenChange:      -int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.TieTokenRate),
-				PointChange:      int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.TiePointRate),
-			}
-			playerRewards = append(playerRewards, tieReward)
+				TokenChange:      -tokenDeduction,
+				PointChange:      pointGain,
+			})
 		}
-	}
+		systemFee = totalDeducted
 
-	// KO 特殊处理积分
-	if gr.GameResultType == GAME_KO && gr.WinnerWalletAddress != "" {
-		for i := range playerRewards {
-			if playerRewards[i].WalletAddress == gr.WinnerWalletAddress {
-				playerRewards[i].PointChange = int(float64(baseStake) * float64(gr.Multiplier) * config.GameParams.WinnerPointRate)
-			} else {
-				// 败者积分为0
-				playerRewards[i].PointChange = 0
+	case GAME_NORMAL, GAME_KO:
+		if gr.WinnerWalletAddress != "" {
+			// 解析赢家地址列表
+			winnerAddresses := make(map[string]bool)
+			winnerList := []string{gr.WinnerWalletAddress}
+			if gr.WinnerWalletAddress != "" {
+				winnerList = strings.Split(gr.WinnerWalletAddress, "|")
+				for _, addr := range winnerList {
+					winnerAddresses[addr] = true
+				}
 			}
+
+			winnerCount := len(winnerList)
+			loserCount := len(result.Players) - winnerCount
+			totalPool := int(float64(baseStake) * finalMultiplier)
+
+			// 赢家平分总奖池×(1-0.016)
+			winnerTokenPerPlayer := int(float64(totalPool)*(1.0-0.016)) / winnerCount
+
+			// 输家平均承担扣除总奖池
+			loserTokenPerPlayer := totalPool / loserCount
+
+			// 积分计算
+			var winnerPointPerPlayer, loserPointPerPlayer int
+			if gr.GameResultType == GAME_NORMAL {
+				// NORMAL: 赢家平分总奖池×0.012，输家平分总奖池×0.004
+				winnerPointPerPlayer = int(float64(totalPool)*0.012) / winnerCount
+				loserPointPerPlayer = int(float64(totalPool)*0.004) / loserCount
+			} else {
+				// KO: 赢家平分总奖池×0.016，输家没有积分收益
+				winnerPointPerPlayer = int(float64(totalPool)*0.016) / winnerCount
+				loserPointPerPlayer = 0
+			}
+
+			// 分配奖励
+			for _, player := range result.Players {
+				if winnerAddresses[player.WalletAddress] {
+					// 赢家
+					playerRewards = append(playerRewards, PlayerReward{
+						WalletAddress:    player.WalletAddress,
+						TemporaryAddress: player.TemporaryAddress,
+						TokenChange:      winnerTokenPerPlayer,
+						PointChange:      winnerPointPerPlayer,
+					})
+				} else {
+					// 输家
+					playerRewards = append(playerRewards, PlayerReward{
+						WalletAddress:    player.WalletAddress,
+						TemporaryAddress: player.TemporaryAddress,
+						TokenChange:      -loserTokenPerPlayer,
+						PointChange:      loserPointPerPlayer,
+					})
+				}
+			}
+
+			systemFee = int(float64(totalPool) * 0.016)
 		}
 	}
 
