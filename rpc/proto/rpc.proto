@@ -40,8 +40,9 @@ message GamePhasePlayer {
 message PvPInfo {
     uint32 GameID = 1;
     PlayerStatus Status = 2;
-    uint64 BeginAt = 3;
-    uint64 TimeoutDuration = 4;
+    string ContractAddress = 3;
+    uint64 BeginAt = 4;
+    uint64 TimeoutDuration = 5;
 } 
 
 message GamePhase {

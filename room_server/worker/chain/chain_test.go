@@ -27,8 +27,10 @@ var testWorkerManager *worker.WorkerManager
 var client bind.ContractBackend
 var w *wallet.Wallet
 
-const roomMamangerAddress = "0x8c21e3B3A6Cc3739f418535FDE4Bf76F4DfF8535"
-const roomContractAddress = "0xeba41b209e3d8aab61f5072676854979051957f2"
+var chainID uint64
+
+const roomMamangerAddress = "0x59554b201cFc12E6930a3631060C3d9CDF704F67"
+const roomContractAddress = "0xc6ed12DA8617D2e0A0aD5CFfC571754813cf8303"
 
 func TestMain(m *testing.M) {
 	time.Local = time.UTC
@@ -49,17 +51,23 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	w = wallet.NewWalletFromPrivKey(priv)
-	client, err = ethclient.Dial("http://117.50.80.239:8545")
+	ethC, err := ethclient.Dial("http://123.58.197.185:8545")
 	if err != nil {
 		panic(err)
 	}
+	id, err := ethC.ChainID(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	chainID = id.Uint64()
+	client = ethC
 	os.Exit(m.Run())
 }
 
 func TestFilterEvent(t *testing.T) {
 	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0x8029cab6955f5cc97e89602afe2e9f64c07730d5833d61dc1e2679cb3be1d849"))
+		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0xf67df7b535518d2f8d76312172295fcf458c87fa6589fec8108393285d38adfe"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -69,14 +77,14 @@ func TestFilterEvent(t *testing.T) {
 		require.NoError(t, err)
 		parsed, err := ctrt.ParseRoomCreated(*receipt.Logs[0])
 		require.NoError(t, err)
-		addr := parsed.RoomAddress
+		addr := parsed.RoomAddress.String()
 		t.Log(addr)
 		break
 	}
 }
 
 func TestChainContractInteraction(t *testing.T) {
-	workerID := "123"
+	roomWorkerID := "123"
 	gameID := 123
 	player1 := types.PlayerAddress{
 		WalletAddress:    "0x123",
@@ -87,32 +95,36 @@ func TestChainContractInteraction(t *testing.T) {
 		TemporaryAddress: "0xabc",
 	}
 
-	svc := NewService(context.Background(), testWorkerManager, 707, client, roomMamangerAddress, w, 10, 3, 3000, cache.NewMemCache())
+	svc := NewService(context.Background(), testWorkerManager, int64(chainID), client, roomMamangerAddress, w, cache.NewMemCache(), true)
 
-	svc.chain.bindOpts.NoSend = true
+	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	ackReceived := make(chan struct{})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.AckEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.AckEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, event *types.Event) error {
 		close(ackReceived)
 		return nil
 	})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.ErrorEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, sender worker.EventSender, event *types.Event) error {
+	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.ErrorEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, event *types.Event) error {
 		evt := event.Data.(*types.ErrorEvent)
 		t.Errorf("ErrorEvent should not be sent, err: %v", evt.Err)
 		close(ackReceived)
 		return nil
 	})
-	testWorkerManager.SpwanWorker(context.Background(), workerID, types.WORKER_TYPE_GAME, mockRoomHandler)
-	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(workerID, &types.RequireContractCreationEvent{
-		GameID:  uint(gameID),
-		Players: []types.PlayerAddress{player1, player2},
+	testWorkerManager.SpwanWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
+
+	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireContractCreationEvent{
+		GameID:         uint(gameID),
+		Players:        []types.PlayerAddress{player1, player2},
+		RoundTimeout:   10,
+		MaxRoundNumber: 3,
+		InitialHP:      1000,
 	}, true))
 	<-ackReceived
 	tx, err := db.GetCreateRoomTx(uint(gameID))
 	require.NoError(t, err)
 	require.NotEmpty(t, tx)
 	ackReceived = make(chan struct{})
-	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(workerID, &types.RequireSetupNewRoundEvent{
+	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireSetupNewRoundEvent{
 		GameID:          uint(gameID),
 		RoundNumber:     2,
 		ContractAddress: roomContractAddress,

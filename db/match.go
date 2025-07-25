@@ -44,23 +44,23 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 }
 
 func SaveGame(game *dao.Game) error {
-	return Get().Save(game).Error
+	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(game).Error
 }
 
 func SaveRound(round *dao.Round) error {
-	return Get().Save(round).Error
+	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(round).Error
 }
 
 func SavePlayerRoundInfo(playerRoundInfo *dao.PlayerRoundInfo) error {
-	return Get().Save(playerRoundInfo).Error
+	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(playerRoundInfo).Error
 }
 
 func SaveRoundSubmittedCard(card *dao.RoundSubmittedCard) error {
-	return Get().Save(card).Error
+	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(card).Error
 }
 
 func SaveGamePlayerInfo(gamePlayerInfo *dao.GamePlayerInfo) error {
-	return Get().Save(gamePlayerInfo).Error
+	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(gamePlayerInfo).Error
 }
 
 // UpdateMatchStatusByRoomID 根据RoomID更新匹配记录状态

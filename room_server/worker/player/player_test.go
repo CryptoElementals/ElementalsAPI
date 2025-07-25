@@ -121,10 +121,10 @@ func TestPlayerEventHandler(t *testing.T) {
 		WalletAddress:    "player2",
 		TemporaryAddress: "temp2",
 	}
-
-	pubsubClient, err := client.NewPubSubClient(fmt.Sprintf("localhost:%d", pubsubPort))
+	conn, err := client.DailGrpcEndpoint(fmt.Sprintf("localhost:%d", pubsubPort))
 	require.NoError(t, err)
-	defer pubsubClient.Close()
+	defer conn.Close()
+	pubsubClient := client.NewPubSubClient(conn)
 	player1Chan := make(chan *proto.Event, 100)
 	player2Chan := make(chan *proto.Event, 100)
 	errChan := make(chan error, 1)
@@ -180,6 +180,17 @@ func TestPlayerEventHandler(t *testing.T) {
 		GameID:       uint(gameID),
 		RoundNumber:  0,
 		ReadyAddress: player1,
+	}))
+	select {
+	case evt = <-player1Chan:
+		t.Fatalf("unexpected event: %v", evt)
+	default:
+	}
+
+	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.RoundPartialReadyEvent{
+		GameID:       uint(gameID),
+		RoundNumber:  0,
+		ReadyAddress: player2,
 	}))
 	evt = <-player1Chan
 	require.EqualExportedValues(t, &proto.Event{

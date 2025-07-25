@@ -41,8 +41,11 @@ type Config struct {
 
 func InitGlobalLogger(cfg *Config, opts ...zap.Option) error {
 	log, err := NewLogger(cfg, opts...)
+	if err != nil {
+		return err
+	}
 	globalLogger = log
-	return err
+	return nil
 }
 
 func GlobalLogger() *Logger {
@@ -203,7 +206,7 @@ func NewLogger(cfg *Config, opts ...zap.Option) (*Logger, error) {
 	)
 
 	allCore := zapcore.NewTee(core)
-	l := zap.New(allCore, zap.AddCaller())
+	l := zap.New(allCore, zap.AddCaller(), zap.AddCallerSkip(1))
 
 	if development {
 		l = l.WithOptions(zap.Development())
