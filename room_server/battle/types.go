@@ -20,14 +20,23 @@ type Player struct {
 	Multiplier float64 `json:"Multiplier"` // Score multiplier
 }
 
+// PlayerStatus 玩家状态
+type PlayerStatus int32
+
+const (
+	PLAYER_ONLINE  PlayerStatus = 0
+	PLAYER_OFFLINE PlayerStatus = 1
+)
+
 // RoundInput battle input parameters
 // 支持多玩家
 type PlayerRoundInput struct {
-	WalletAddress    string `json:"WalletAddress"`
-	TemporaryAddress string `json:"TemporaryAddress"`
-	Cards            []int  `json:"Cards"`
-	HP               int    `json:"HP"`
-	LostHP           int    `json:"LostHP"`
+	WalletAddress    string       `json:"WalletAddress"`
+	TemporaryAddress string       `json:"TemporaryAddress"`
+	Cards            []int        `json:"Cards"`
+	HP               int          `json:"HP"`
+	LostHP           int          `json:"LostHP"`
+	Status           PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
 }
 
 type RoundInput struct {

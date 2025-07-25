@@ -39,14 +39,25 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		return nil, fmt.Errorf("at least 2 players required")
 	}
 
-	// 获取所有玩家的卡牌
+	// 检查是否有离线玩家
+	hasOfflinePlayer := false
+	for _, p := range input.Players {
+		if p.Status == PLAYER_OFFLINE {
+			hasOfflinePlayer = true
+			break
+		}
+	}
+
+	// 获取所有在线玩家的卡牌
 	playerCards := make([][]*Card, playerCount)
 	for i, p := range input.Players {
-		cards, err := be.cardFactory.GetCards(p.Cards)
-		if err != nil {
-			return nil, err
+		if p.Status == PLAYER_ONLINE {
+			cards, err := be.cardFactory.GetCards(p.Cards)
+			if err != nil {
+				return nil, err
+			}
+			playerCards[i] = cards
 		}
-		playerCards[i] = cards
 	}
 
 	// 初始化每个玩家的状态
@@ -57,6 +68,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		Stats            []PlayerCardStat
 		WalletAddress    string
 		TemporaryAddress string
+		Status           PlayerStatus
 	}
 	states := make([]*playerState, playerCount)
 	for i, p := range input.Players {
@@ -64,95 +76,103 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 			HP:               p.HP,
 			Multiplier:       be.multiplierCalc.CalculateMultiplierByLostHP(p.LostHP),
 			LostHP:           p.LostHP,
-			Stats:            make([]PlayerCardStat, 0, 3),
+			Stats:            make([]PlayerCardStat, 0, 3), //如果有人离线，跳过对战，这个字段为空
 			WalletAddress:    p.WalletAddress,
 			TemporaryAddress: p.TemporaryAddress,
+			Status:           p.Status,
 		}
 	}
 
-	// 只保留属于自己的effect
-	//目前只有2人对战，这里实际上只会取到i=0,j=1，处理一次card对战
-	//如果3人，应该在每个round的每个card的3次card对战结束后再统一结算effect，包括effect的记录和计算
-	//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有
-	//多人情况下怎么解决合谋作弊问题，即两个人串通让第三个人输？
-	for cardIdx := 0; cardIdx < 3; cardIdx++ {
-		for i := 0; i < playerCount; i++ {
-			for j := i + 1; j < playerCount; j++ {
-				p1 := states[i]
-				p2 := states[j]
-				p1Card := playerCards[i][cardIdx]
-				p2Card := playerCards[j][cardIdx]
-				relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card, p1.WalletAddress, p2.WalletAddress)
-				effects1 := be.elementalSystem.BuildPlayerEffects(relation.P1Type, p1Card, p2Card, p1.WalletAddress, p1.TemporaryAddress, p2.WalletAddress)
-				effects2 := be.elementalSystem.BuildPlayerEffects(relation.P2Type, p2Card, p1Card, p2.WalletAddress, p2.TemporaryAddress, p1.WalletAddress)
-				p1BeforeHP := p1.HP
-				p2BeforeHP := p2.HP
-				p1BeforeMul := p1.Multiplier
-				p2BeforeMul := p2.Multiplier
-				p1.HP += be.elementalSystem.ExecuteEffects(effects1)
-				p2.HP += be.elementalSystem.ExecuteEffects(effects2)
-				// 下限 0，上限 MaxHP
-				if p1.HP < 0 {
-					p1.HP = 0
-				} else if p1.HP > config.GameParams.MaxHP {
-					p1.HP = config.GameParams.MaxHP
-				}
-				if p2.HP < 0 {
-					p2.HP = 0
-				} else if p2.HP > config.GameParams.MaxHP {
-					p2.HP = config.GameParams.MaxHP
-				}
-				// 计算此次卡牌造成的伤害，并累加到总 LostHP
-				damage1 := p1BeforeHP - p1.HP
-				if damage1 < 0 {
-					damage1 = 0
-				}
-				p1.LostHP += damage1
+	// 如果有离线玩家，直接跳过卡牌对战进入结算
+	if !hasOfflinePlayer {
+		//目前只有2人对战，这里实际上只会取到i=0,j=1，处理一次card对战
+		//如果3人，应该在每个round的每个card的3次card对战结束后再统一结算effect，包括effect的记录和计算
+		//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有
+		//多人情况下怎么解决合谋作弊问题，即两个人串通让第三个人输？
+		for cardIdx := 0; cardIdx < 3; cardIdx++ {
+			for i := 0; i < playerCount; i++ {
+				for j := i + 1; j < playerCount; j++ {
+					// 跳过离线玩家的对战
+					if states[i].Status == PLAYER_OFFLINE || states[j].Status == PLAYER_OFFLINE {
+						continue
+					}
 
-				damage2 := p2BeforeHP - p2.HP
-				if damage2 < 0 {
-					damage2 = 0
+					p1 := states[i]
+					p2 := states[j]
+					p1Card := playerCards[i][cardIdx]
+					p2Card := playerCards[j][cardIdx]
+					relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card, p1.WalletAddress, p2.WalletAddress)
+					effects1 := be.elementalSystem.BuildPlayerEffects(relation.P1Type, p1Card, p2Card, p1.WalletAddress, p1.TemporaryAddress, p2.WalletAddress)
+					effects2 := be.elementalSystem.BuildPlayerEffects(relation.P2Type, p2Card, p1Card, p2.WalletAddress, p2.TemporaryAddress, p1.WalletAddress)
+					p1BeforeHP := p1.HP
+					p2BeforeHP := p2.HP
+					p1BeforeMul := p1.Multiplier
+					p2BeforeMul := p2.Multiplier
+					p1.HP += be.elementalSystem.ExecuteEffects(effects1)
+					p2.HP += be.elementalSystem.ExecuteEffects(effects2)
+					// 下限 0，上限 MaxHP
+					if p1.HP < 0 {
+						p1.HP = 0
+					} else if p1.HP > config.GameParams.MaxHP {
+						p1.HP = config.GameParams.MaxHP
+					}
+					if p2.HP < 0 {
+						p2.HP = 0
+					} else if p2.HP > config.GameParams.MaxHP {
+						p2.HP = config.GameParams.MaxHP
+					}
+					// 计算此次卡牌造成的伤害，并累加到总 LostHP
+					damage1 := p1BeforeHP - p1.HP
+					if damage1 < 0 {
+						damage1 = 0
+					}
+					p1.LostHP += damage1
+
+					damage2 := p2BeforeHP - p2.HP
+					if damage2 < 0 {
+						damage2 = 0
+					}
+					p2.LostHP += damage2
+					p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
+					p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
+
+					p1.Stats = append(p1.Stats, PlayerCardStat{
+						CardNumber:       cardIdx + 1,
+						CardID:           p1Card.ID,
+						HPBefore:         p1BeforeHP,
+						HPAfter:          p1.HP,
+						MultiplierBefore: p1BeforeMul,
+						MultiplierAfter:  p1.Multiplier,
+						Effects:          effects1,
+						Description:      relation.P1Description,
+						ElementRelation:  mapElementRelationStringToEnum(relation.P1Type),
+					})
+					p2.Stats = append(p2.Stats, PlayerCardStat{
+						CardNumber:       cardIdx + 1,
+						CardID:           p2Card.ID,
+						HPBefore:         p2BeforeHP,
+						HPAfter:          p2.HP,
+						MultiplierBefore: p2BeforeMul,
+						MultiplierAfter:  p2.Multiplier,
+						Effects:          effects2,
+						Description:      relation.P2Description,
+						ElementRelation:  mapElementRelationStringToEnum(relation.P2Type),
+					})
+
 				}
-				p2.LostHP += damage2
-				p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
-				p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
-
-				p1.Stats = append(p1.Stats, PlayerCardStat{
-					CardNumber:       cardIdx + 1,
-					CardID:           p1Card.ID,
-					HPBefore:         p1BeforeHP,
-					HPAfter:          p1.HP,
-					MultiplierBefore: p1BeforeMul,
-					MultiplierAfter:  p1.Multiplier,
-					Effects:          effects1,
-					Description:      relation.P1Description,
-					ElementRelation:  mapElementRelationStringToEnum(relation.P1Type),
-				})
-				p2.Stats = append(p2.Stats, PlayerCardStat{
-					CardNumber:       cardIdx + 1,
-					CardID:           p2Card.ID,
-					HPBefore:         p2BeforeHP,
-					HPAfter:          p2.HP,
-					MultiplierBefore: p2BeforeMul,
-					MultiplierAfter:  p2.Multiplier,
-					Effects:          effects2,
-					Description:      relation.P2Description,
-					ElementRelation:  mapElementRelationStringToEnum(relation.P2Type),
-				})
-
 			}
-		}
 
-		// 检查是否有玩家血量为0，如果有就结束游戏
-		hasZeroHP := false
-		for _, st := range states {
-			if st.HP == 0 {
-				hasZeroHP = true
+			// 检查是否有玩家血量为0，如果有就结束游戏
+			hasZeroHP := false
+			for _, st := range states {
+				if st.HP == 0 {
+					hasZeroHP = true
+					break
+				}
+			}
+			if hasZeroHP {
 				break
 			}
-		}
-		if hasZeroHP {
-			break
 		}
 	}
 
@@ -163,7 +183,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 			WalletAddress:    p.WalletAddress,
 			TemporaryAddress: p.TemporaryAddress,
 			LostHP:           p.LostHP,
-			CardStats:        p.Stats,
+			CardStats:        p.Stats, // 如果有人离线，跳过对战，这个字段为空
 		}
 	}
 
@@ -175,6 +195,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 			Multiplier:       st.Multiplier,
 			WalletAddress:    st.WalletAddress,
 			TemporaryAddress: st.TemporaryAddress,
+			Status:           st.Status, // 添加状态字段
 		}
 	}
 
