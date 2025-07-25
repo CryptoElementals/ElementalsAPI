@@ -61,6 +61,12 @@ func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 	}
 }
 
+func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
+	return &proto.PlayerAddress{
+		TemporaryAddress: a.TemporaryAddress,
+	}
+}
+
 func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
 	a.WalletAddress = player.WalletAddress
 	a.TemporaryAddress = player.TemporaryAddress

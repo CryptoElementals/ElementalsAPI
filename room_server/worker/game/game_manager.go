@@ -121,6 +121,9 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 }
 
 func (r *GameManager) recoverGames() error {
+	if r.roundTimeout == 0 {
+		return nil
+	}
 	gameInfos, err := db.GetAllActiveGames()
 	if err != nil {
 		return err

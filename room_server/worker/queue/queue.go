@@ -85,6 +85,9 @@ func (q *Queue) handleJoinQueueEvent(event *types.JoinQueueEvent) {
 		if player.WalletAddress == event.PlayerAddress.WalletAddress {
 			continue
 		}
+		if player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
+			continue
+		}
 		evt := &types.GameMatchedEvent{
 			Players: []types.PlayerAddress{player, event.PlayerAddress},
 		}

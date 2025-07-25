@@ -140,7 +140,7 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 								Tx: &proto.Transaction_CommitmentsOnChain{
 									CommitmentsOnChain: &proto.TxCommitmentsOnChain{
 										RoomContractAddress: fakeRoomAddress,
-										Address:             addr.ToProto(),
+										Address:             addr.ToProtoNoWallet(),
 										RoundNumber:         uint32(round),
 										Commitment:          fmt.Appendf(nil, "%s_%s_%d", "card_commitments", addr.String(), round),
 									},
@@ -161,7 +161,7 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 								Tx: &proto.Transaction_CardsOnChain{
 									CardsOnChain: &proto.TxCardsOnChain{
 										RoomContractAddress: fakeRoomAddress,
-										Address:             addr.ToProto(),
+										Address:             addr.ToProtoNoWallet(),
 										RoundNumber:         uint32(round),
 										Cards:               submittedCards,
 									},

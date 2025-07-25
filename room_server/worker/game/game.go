@@ -29,6 +29,7 @@ type gamePlayer struct {
 	roundPlayer *dao.PlayerRoundInfo
 	totalLostHP int64
 	currentHP   int64
+	addr        *types.PlayerAddress
 }
 
 func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
@@ -45,7 +46,7 @@ type Game struct {
 	ctx                 context.Context
 	lock                sync.RWMutex
 	gameInfo            *dao.Game
-	gamePlayers         map[types.PlayerAddress]*gamePlayer
+	gamePlayers         map[string]*gamePlayer
 	currentRound        *dao.Round
 	workerMangerService *worker.WorkerManager
 }
@@ -53,13 +54,14 @@ type Game struct {
 func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager,
 	initialHP int64, roundTimeout int64, maxRounds int64) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
-	gamePlayers := make(map[types.PlayerAddress]*gamePlayer)
+	gamePlayers := make(map[string]*gamePlayer)
 	for _, player := range players {
 		daoPlayer := player.ToDao()
 		daoPlayers = append(daoPlayers, daoPlayer)
-		gamePlayers[player] = &gamePlayer{
+		gamePlayers[player.TemporaryAddress] = &gamePlayer{
 			player:    daoPlayer,
 			currentHP: initialHP,
+			addr:      &player,
 		}
 	}
 	game := &Game{
@@ -82,7 +84,7 @@ func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.Worker
 	g := &Game{
 		ctx:                 ctx,
 		gameInfo:            gameInfo,
-		gamePlayers:         make(map[types.PlayerAddress]*gamePlayer),
+		gamePlayers:         make(map[string]*gamePlayer),
 		workerMangerService: workerMangerService,
 	}
 
@@ -91,9 +93,10 @@ func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.Worker
 			WalletAddress:    playerInfo.WalletAddress,
 			TemporaryAddress: playerInfo.TemporaryAddress,
 		}
-		g.gamePlayers[addrKey] = &gamePlayer{
+		g.gamePlayers[playerInfo.TemporaryAddress] = &gamePlayer{
 			player:    playerInfo,
 			currentHP: g.gameInfo.InitialHP,
+			addr:      &addrKey,
 		}
 	}
 	if len(g.gameInfo.Rounds) != 0 {
@@ -107,11 +110,7 @@ func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.Worker
 				g.currentRound = r
 			}
 			for _, roundPlayer := range g.currentRound.PlayerRoundInfos {
-				addrKey := types.PlayerAddress{
-					WalletAddress:    roundPlayer.WalletAddress,
-					TemporaryAddress: roundPlayer.TemporaryAddress,
-				}
-				player := g.gamePlayers[addrKey]
+				player := g.gamePlayers[roundPlayer.TemporaryAddress]
 				player.roundPlayer = roundPlayer
 				if len(player.roundPlayer.SubmittedCards) != 0 {
 					player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
@@ -196,7 +195,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
 	}
-	player := g.gamePlayers[evt.PlayerAddress]
+	player := g.gamePlayers[evt.PlayerAddress.TemporaryAddress]
 	player.roundPlayer.PlayerReady = true
 	// check if all players ready
 	allPlayersReady := true
@@ -316,7 +315,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
 	}
-	player := g.gamePlayers[evt.Address]
+	player := g.gamePlayers[evt.Address.TemporaryAddress]
 	player.roundPlayer.SubmittedCommitment = evt.Commitment
 	// check if all player commitment on chain
 	allCommitmentsOnChain := true
@@ -354,7 +353,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
 	}
-	player := g.gamePlayers[evt.Address]
+	player := g.gamePlayers[evt.Address.TemporaryAddress]
 	for i, card := range evt.Cards {
 		player.roundPlayer.SubmittedCards = append(player.roundPlayer.SubmittedCards, &dao.RoundSubmittedCard{
 			CardID:     card,
@@ -444,11 +443,7 @@ func (g *Game) handleRoundEnd(forceCloseGame bool) error {
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
 	for _, p := range input.Players {
-		addr := types.PlayerAddress{
-			WalletAddress:    p.WalletAddress,
-			TemporaryAddress: p.TemporaryAddress,
-		}
-		player := g.gamePlayers[addr]
+		player := g.gamePlayers[p.TemporaryAddress]
 		p.LostHP = int32(player.totalLostHP)
 		p.HP = int32(player.currentHP)
 	}
@@ -477,11 +472,7 @@ func (g *Game) handleRoundEnd(forceCloseGame bool) error {
 
 func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
 	for _, p := range roundResult.Players {
-		addr := types.PlayerAddress{
-			WalletAddress:    p.WalletAddress,
-			TemporaryAddress: p.TemporaryAddress,
-		}
-		player := g.gamePlayers[addr]
+		player := g.gamePlayers[p.TemporaryAddress]
 		player.roundPlayer.LostHP = p.LostHP
 		player.totalLostHP += int64(p.LostHP)
 		for i, card := range p.CardStats {
@@ -505,6 +496,9 @@ func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
 }
 
 func (g *Game) sendTimerEventByCurrentRound() {
+	if g.gameInfo.RoundTimeout == 0 {
+		return
+	}
 	timeout := time.Second * time.Duration(g.gameInfo.RoundTimeout)
 	if !g.currentRound.UpdatedAt.IsZero() {
 		timeout -= time.Since(g.currentRound.UpdatedAt)
