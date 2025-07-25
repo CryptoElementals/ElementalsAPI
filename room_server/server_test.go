@@ -112,18 +112,18 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 					return
 				case proto.EventType_TYPE_MATCHED:
 					t.Log("player matched")
-					phase, err := client.GetGamePhase(ctx, addr)
+					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
 					gameID = uint(phase.PvPInfo.GameID)
 					gameIDChan <- gameID
-					require.NoError(t, client.ConfirmBattle(ctx, addr, gameID, round))
+					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					t.Log("player part confirmed")
 					partConfimredChan <- round
 				case proto.EventType_TYPE_GAME_CREATED:
 					t.Log("game created")
 					// get contract
-					phase, err := client.GetGamePhase(ctx, addr)
+					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
 					t.Log("game phase: ", toJsonLoggable(phase))
 					require.Equal(t, fakeRoomAddress, phase.PvPInfo.ContractAddress)
@@ -174,12 +174,12 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 					// skip
 				case proto.EventType_TYPE_ROUND_COMPLETE:
 					t.Log("round complete")
-					battleInfo, err := client.GetBattleInfo(ctx, gameID, round)
+					battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
 					require.NoError(t, err)
 					t.Log("battle info: ", toJsonLoggable(battleInfo))
 					if !battleInfo.RoundResult.IsGameOver {
 						round++
-						require.NoError(t, client.ConfirmBattle(ctx, addr, gameID, round))
+						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
 					t.Log("game complete")
@@ -191,8 +191,8 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}()
-	require.NoError(t, client.Subscribe(addr.String(), addr.String(), chanEvt, chanErr))
-	require.NoError(t, client.JoinQueue(ctx, addr))
+	require.NoError(t, client.PubSubClient.Subscribe(addr.String(), addr.String(), chanEvt, chanErr))
+	require.NoError(t, client.RpcClient.JoinQueue(ctx, addr))
 }
 
 func TestServer_BattleLogic(t *testing.T) {
@@ -221,7 +221,7 @@ func TestServer_BattleLogic(t *testing.T) {
 	txChan := make(chan *proto.TransactionBatch, 10)
 	go func() {
 		for tx := range txChan {
-			err := client.SubmitTransactions(ctx, tx)
+			err := client.RpcClient.SubmitTransactions(ctx, tx)
 			require.NoError(t, err)
 		}
 	}()
@@ -304,7 +304,7 @@ func TestServer_BattleLogic(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err := client.GetBattleInfo(ctx, gameID, round)
+	battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
 	require.NoError(t, err)
 	require.NotNil(t, battleInfo)
 	require.NotNil(t, battleInfo.RoundResult)
