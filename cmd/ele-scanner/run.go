@@ -76,7 +76,7 @@ var runCmd = &cobra.Command{
 
 		cancel()
 		scanner.Stop()
-		time.Sleep(10 * time.Second)
+		time.Sleep(6 * time.Second)
 
 	},
 }

@@ -14,6 +14,7 @@ type ScannerConfig struct {
 	DbCfg             db.Config   `mapstructure:"database"`
 	ChainCfg          ChainConfig `mapstructure:"chain"`
 	RoomServerHttpRpc string      `mapstructure:"room-server"`
+	RoomServerMocked  bool        `mapstructure:"room-server-mocked"`
 }
 
 func InitScannerConfig(configPath string) error {

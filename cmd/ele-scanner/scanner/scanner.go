@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cmd/ele-scanner/blockchain"
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -79,10 +80,9 @@ func (s *Scanner) Run() {
 		break
 	}
 
-	var rpcClient *eleClient.RpcClient
 	var err error
 	for {
-		rpcClient, err = eleClient.NewRpcClient(s.roomServerHttpRpc)
+		s.rpcClient, err = eleClient.NewRpcClient(s.roomServerHttpRpc)
 		if err != nil {
 			log.Errorf("Failed to create rpcClient to roomServer: %v, retrying in %d seconds...", err.Error(), dialTimeout)
 			time.Sleep(time.Duration(dialTimeout) * time.Second)
@@ -90,17 +90,16 @@ func (s *Scanner) Run() {
 		}
 		break
 	}
-	defer rpcClient.Close()
+	defer s.rpcClient.Close()
 
-	go s.RunCatchUp(rpcClient)
+	go s.RunCatchUp()
 }
 
-func (s *Scanner) RunCatchUp(rpcClient *eleClient.RpcClient) {
-	var gethClient *ethclient.Client
+func (s *Scanner) RunCatchUp() {
 	var err error
 	var catchupCancel context.CancelFunc
 	for {
-		gethClient, err = ethclient.Dial(s.gethWsRpc)
+		s.gethClient, err = ethclient.Dial(s.gethWsRpc)
 		if err != nil {
 			log.Errorf("Failed to connect to WebSocket RPC: %v, retrying in %d seconds...", err.Error(), dialTimeout)
 			time.Sleep(time.Duration(dialTimeout) * time.Second)
@@ -116,10 +115,10 @@ func (s *Scanner) RunCatchUp(rpcClient *eleClient.RpcClient) {
 		go s.CatchUpChain()
 
 		headers := make(chan *types.Header)
-		sub, err := gethClient.SubscribeNewHead(s.ctx, headers)
+		sub, err := s.gethClient.SubscribeNewHead(s.ctx, headers)
 		if err != nil {
 			log.Infof("Failed to subscribe to new blocks: %v, retrying in %d seconds...", err.Error(), dialTimeout)
-			gethClient.Close()
+			s.gethClient.Close()
 			time.Sleep(time.Duration(dialTimeout) * time.Second)
 			continue
 		}
@@ -132,7 +131,7 @@ func (s *Scanner) RunCatchUp(rpcClient *eleClient.RpcClient) {
 			case err := <-sub.Err():
 				log.Infof("Subscription error: %v, reconnecting in %d seconds...", err.Error(), dialTimeout)
 				sub.Unsubscribe()
-				gethClient.Close()
+				s.gethClient.Close()
 				time.Sleep(time.Duration(dialTimeout) * time.Second)
 				goto RECONNECT
 			case header := <-headers:
@@ -173,7 +172,7 @@ func (s *Scanner) CatchUpChain() {
 				time.Sleep(time.Second * 5)
 				continue
 			}
-			log.Debugf("block %d handled successfully", s.currentScannedHeight)
+			log.Infof("block %d handled successfully", s.currentScannedHeight)
 			s.currentScannedHeight++
 		}
 	}
@@ -219,7 +218,7 @@ func (s *Scanner) getAndProcessBlock(blockHeight *big.Int) error {
 		}
 	}
 
-	if len(txsToSubmit) > 0 {
+	if len(txsToSubmit) > 0 && !config.ScannerGConf.RoomServerMocked {
 		timeStamp, _ := strconv.ParseUint(block.Timestamp, 0, 64)
 		blockNumber, _ := strconv.ParseUint(block.Number, 0, 64)
 		err = s.rpcClient.SubmitTransactions(s.ctx, &proto.TransactionBatch{
