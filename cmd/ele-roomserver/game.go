@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/sha3"
 )
 
 // gameCmd represents the game command
@@ -48,13 +49,14 @@ func init() {
 	gameCmd.Flags().StringVarP(&walletPath, "wallet-path", "w", "", "wallet path")
 	gameCmd.MarkFlagRequired("chain-rpc")
 	gameCmd.MarkFlagRequired("room-server-endpoint")
+	gameCmd.MarkFlagRequired("wallet-path")
 }
 
 var suggestions = []prompt.Suggest{
 	{Text: "join-queue", Description: "join game queue"},
 	{Text: "exit-queue", Description: "exit game queue"},
 	{Text: "confirm", Description: "confirm game"},
-	{Text: "submit-commitment", Description: "submit card commitments"},
+	//{Text: "submit-commitment", Description: "submit card commitments"},
 	{Text: "submit-cards", Description: "submit cards"},
 }
 
@@ -122,6 +124,7 @@ type gameContext struct {
 	errChan         chan error
 	state           playerState
 	lock            sync.Mutex
+	signalChan      chan struct{}
 }
 
 func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*gameContext, error) {
@@ -144,6 +147,7 @@ func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 		bindOpts:        bindOpts,
 		chainClient:     chainClient,
 		rpcClient:       rpcClient,
+		signalChan:      make(chan struct{}),
 	}, nil
 }
 
@@ -200,14 +204,20 @@ func (c *gameContext) run() error {
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
+					fmt.Println("contract address: ", c.contractAddress)
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_READY:
-					// skip
+					fmt.Println("round ready")
+					c.lock.Lock()
+					c.state = playerStateWaittingCommitmentsSubmitted
+					c.lock.Unlock()
 				case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
+					fmt.Println("commitments on chain")
 					c.lock.Lock()
 					c.state = playerStateWaittingCardsSubmitted
 					c.lock.Unlock()
+					c.signalChan <- struct{}{}
 				case proto.EventType_TYPE_CARDS_ON_CHAIN:
 					c.lock.Lock()
 					fmt.Println("cards on chain")
@@ -219,11 +229,13 @@ func (c *gameContext) run() error {
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
+					fmt.Println("round result: ", battleInfo.RoundResult.String())
 					if !battleInfo.RoundResult.IsGameOver {
 						c.lock.Lock()
 						c.currentRound++
 						c.state = playerStateWaittingConfirm
 						c.lock.Unlock()
+						fmt.Println("round result: ", battleInfo.GameResult.String())
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
 					fmt.Println("game complete")
@@ -273,7 +285,7 @@ func (c *gameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound))
+	err := c.rpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound+1))
 	if err != nil {
 		return err
 	}
@@ -381,12 +393,26 @@ func makeExecutor(ctx *gameContext) func(in string) {
 			fmt.Println("submit commitment success, tx hash: ", tx)
 			fmt.Println("waitting for commitment on chain")
 		case "submit-cards":
-			err := assetArgsNumber(4)
+			err := assetArgsNumber(3)
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
-			tx, err := ctx.SubmitCards(strings.Join(blocks[:3], ","), blocks[3])
+			cards := strings.Join(blocks[:3], ",")
+			salt := "salt"
+			hh := sha3.NewLegacyKeccak256()
+			hh.Write([]byte(cards))
+			hh.Write([]byte(salt))
+			commitment := hh.Sum(nil)
+			tx, err := ctx.SubmitCommitment(commitment)
+			if err != nil {
+				fmt.Println("submit commitment failed, err: ", err)
+				return
+			}
+			fmt.Println("submit commitment success, tx hash: ", tx)
+			fmt.Println("waitting for commitment on chain")
+			<-ctx.signalChan
+			tx, err = ctx.SubmitCards(cards, salt)
 			if err != nil {
 				fmt.Println("submit cards failed, err: ", err)
 				return
@@ -408,26 +434,18 @@ func startGame() error {
 	if err != nil {
 		return err
 	}
-	var w *wallet.Wallet
-	if walletPath == "" {
-		w, err = wallet.NewWallet("")
-		if err != nil {
-			return err
-		}
-		fmt.Println("using generated wallet account, address: ", w.GetAddrHex())
+	var wTemp *wallet.Wallet
 
-	} else {
-		w, err = wallet.NewWallet(walletPath)
-		if err != nil {
-			return err
-		}
-		fmt.Println("using wallet account, address: ", w.GetAddrHex())
-	}
-	wTemp, err := wallet.NewWallet("")
+	wTemp, err = wallet.LoadWallet(walletPath)
 	if err != nil {
 		return err
 	}
-	fmt.Println("using generated temporary account, address: ", wTemp.GetAddrHex())
+	fmt.Println("using temp account, address: ", wTemp.GetAddrHex())
+	w, err := wallet.NewWallet("")
+	if err != nil {
+		return err
+	}
+	fmt.Println("using generated account, address: ", w.GetAddrHex())
 	gameContext, err := newGameContext(context.Background(), w, wTemp, chainClient, client)
 	if err != nil {
 		return err

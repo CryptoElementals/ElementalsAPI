@@ -69,6 +69,12 @@ func setupMemDb(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestInsertCards(t *testing.T) {
+	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
+	require.NoError(t, err)
+	prepareCards(t)
+}
+
 func prepareCards(t *testing.T) {
 	t.Helper()
 	cards := []dao.Card{

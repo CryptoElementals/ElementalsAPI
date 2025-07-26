@@ -12,6 +12,7 @@ service RpcService {
     // game related api
     rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
+    rpc ContinueGame(ContinueGameRequest) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
@@ -23,6 +24,11 @@ service RpcService {
 message PlayerAddress {
     string wallet_address = 1;
     string temporary_address = 2;
+}
+
+message ContinueGameRequest {
+    repeated PlayerAddress players = 1;
+    uint32 LastGameID = 2;
 }
 
 enum PlayerStatus {
