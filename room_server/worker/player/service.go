@@ -53,7 +53,7 @@ func (s *Service) AddPlayer(address types.PlayerAddress) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if _, ok := s.players[address]; ok {
-		return errors.New("player already exists")
+		return errors.New("player already exists: " + address.String())
 	}
 
 	player := NewPlayer(s.ctx, address, s.pub, s.workerManager)

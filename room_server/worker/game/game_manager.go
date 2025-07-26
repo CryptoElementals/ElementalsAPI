@@ -20,15 +20,19 @@ type GameManager struct {
 	playerToGameMap map[types.PlayerAddress]*Game
 	workerManager   *worker.WorkerManager
 	gameInitialHP   int64
+	roundTimeout    int64
+	maxRounds       int64
 }
 
-func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager, initialHP int64) *GameManager {
+func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager, initialHP int64, roundTimeout int64, maxRounds int64) *GameManager {
 	m := &GameManager{
 		ctx:             ctx,
 		gamesMap:        make(map[uint]*Game),
 		playerToGameMap: make(map[types.PlayerAddress]*Game),
 		workerManager:   workerMangerService,
 		gameInitialHP:   initialHP,
+		maxRounds:       maxRounds,
+		roundTimeout:    roundTimeout,
 	}
 
 	return m
@@ -64,6 +68,8 @@ func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 				Players: evt.Players,
 			}))
 		}
+
+		log.Infof("gameMatched: gameID %d", gameID)
 		return nil
 	default:
 		return fmt.Errorf("GameManager Handle err: event type not match, %d", reflect.TypeOf(evt))
@@ -103,7 +109,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP)
+	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP, r.roundTimeout, r.maxRounds)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -117,6 +123,9 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 }
 
 func (r *GameManager) recoverGames() error {
+	if r.roundTimeout == 0 {
+		return nil
+	}
 	gameInfos, err := db.GetAllActiveGames()
 	if err != nil {
 		return err

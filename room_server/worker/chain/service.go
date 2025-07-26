@@ -2,8 +2,10 @@ package chain
 
 import (
 	"context"
+	"sync"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
@@ -11,19 +13,24 @@ import (
 )
 
 type Service struct {
-	ctx   context.Context
-	chain *Chain
+	ctx         context.Context
+	chain       *Chain
+	batchTxLock sync.RWMutex
 }
 
 func NewService(ctx context.Context,
-	workerManager *worker.WorkerManager, chainID int64, client bind.ContractBackend,
-	roomManagerContractAddress string, wallet *wallet.Wallet,
-	roundTimeout int64, maxRounds int64, initialHP int64, dataCache cache.Cache) *Service {
-	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, roundTimeout, maxRounds, dataCache)
+	workerManager *worker.WorkerManager,
+	chainID int64,
+	client bind.ContractBackend,
+	roomManagerContractAddress string,
+	wallet *wallet.Wallet,
+	dataCache cache.Cache, isDevelop ...bool) *Service {
+	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, dataCache, isDevelop...)
 	return &Service{ctx: ctx, chain: chain}
 }
 
 func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
+	log.Info("receive tx batch, block number: ", txs.BlockNumber)
 	done := make(chan struct{})
 	errChan := make(chan error, 1)
 	evt := &batchTxEvent{
@@ -36,8 +43,10 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 	s.chain.batchSendTxs(evt)
 	<-done
 	if err := <-errChan; err != nil {
+		log.Error("SubmitTransactions failed", err)
 		return err
 	}
+	log.Info("SubmitTransactions success")
 	return nil
 }
 

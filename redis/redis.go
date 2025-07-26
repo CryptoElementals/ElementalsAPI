@@ -114,6 +114,10 @@ func Set(key string, val string, expire int) error {
 			log.Errorf("redis client close err: %s", err.Error())
 		}
 	}()
+	if expire <= 0 {
+		_, err := conn.Do(SET_COMMAND, key, val)
+		return err
+	}
 	_, err := conn.Do(SET_COMMAND, key, val, EXPIRE_COMMAND, expire)
 	return err
 }

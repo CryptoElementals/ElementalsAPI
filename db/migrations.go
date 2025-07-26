@@ -1,6 +1,8 @@
 package db
 
 import (
+	"fmt"
+
 	dao "github.com/CryptoElementals/common/models"
 )
 
@@ -34,7 +36,7 @@ func Migrate() error {
 }
 
 func MigrateMemDb() error {
-	migrates := []any{
+	var migrates = []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
 		&dao.Game{},
@@ -53,11 +55,17 @@ func MigrateMemDb() error {
 		&dao.CommitmentOnChainTx{},
 		&dao.CreateRoomTx{},
 		&dao.SetRoundReadyTx{},
-		// 以后有新表直接加在这里
+		&dao.BlockSync{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {
 		return err
+	}
+	for _, table := range migrates {
+		exist := Get().Migrator().HasTable(table)
+		if !exist {
+			return fmt.Errorf("table not found: %T", table)
+		}
 	}
 	return nil
 }

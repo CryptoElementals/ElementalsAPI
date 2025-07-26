@@ -6,16 +6,18 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type playerGameInfo struct {
-	currentGame  uint
-	currentRound uint
-	roundStarted int64
-	roundTimeout uint64
+	currentGame     uint
+	currentRound    uint
+	contractAddress string
+	roundStarted    int64
+	roundTimeout    uint64
 
 	players map[types.PlayerAddress]bool
 }
@@ -54,6 +56,10 @@ func (p *Player) createSelf() {
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+	if evt, ok := event.Data.(*types.ErrorEvent); ok {
+		log.Errorf("received error: %T, err: %s", evt.OriginalEvent.Data, evt.Err.Error())
+		return nil
+	}
 	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
 		evt := event.Data.(*types.GameCreatedEvent)
 		p.handleNewGameEvent(p.ctx, evt)
@@ -125,6 +131,7 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 }
 
 func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) {
+	p.info.contractAddress = evt.ContractAddress
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -134,13 +141,17 @@ func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyE
 }
 
 func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.RoundPartialReadyEvent) {
+	p.info.players[evt.ReadyAddress] = true
+	// don't send event to itself
+	if p.address == evt.ReadyAddress {
+		return
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_PART_CONFIRMED,
 		},
 	})
-	p.info.players[evt.ReadyAddress] = true
 }
 
 func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) {
@@ -209,9 +220,10 @@ func (p *Player) ToGamePhase() *proto.GamePhase {
 	}
 	return &proto.GamePhase{
 		PvPInfo: &proto.PvPInfo{
-			GameID:  uint32(p.info.currentGame),
-			Status:  p.status,
-			BeginAt: uint64(p.info.roundStarted),
+			GameID:          uint32(p.info.currentGame),
+			Status:          p.status,
+			ContractAddress: p.info.contractAddress,
+			BeginAt:         uint64(p.info.roundStarted),
 		},
 		Players: protoPlayers,
 	}

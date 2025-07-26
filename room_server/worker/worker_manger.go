@@ -33,6 +33,17 @@ func (w *WorkerManager) SendEvent(id string, event *types.Event) {
 	defer w.lock.RUnlock()
 	if worker := w.workers[id]; worker != nil {
 		worker.msgQueue <- event
+		return
+	}
+	// we might not find the worker, in this case, we should send an ack event
+	// for not blocking the sender
+	if event.NeedAck {
+		w.SendEvent(event.Sender, &types.Event{
+			Sender:  types.WORKER_MANAGER_ID,
+			EventID: event.EventID,
+			NeedAck: false,
+			Data:    &types.AckEvent{EventID: event.EventID},
+		})
 	}
 }
 
