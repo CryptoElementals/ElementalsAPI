@@ -14,6 +14,7 @@ import (
 )
 
 const queueInfoPrefix = "queue_info:"
+const pendingContinuePrefix = "pending_continue:"
 const queueInfoVal = "v"
 
 type Queue struct {

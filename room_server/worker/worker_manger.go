@@ -28,10 +28,10 @@ func (w *WorkerManager) SpwanWorker(ctx context.Context, id string, t WorkerType
 	go worker.Run()
 }
 
-func (w *WorkerManager) SendEvent(id string, event *types.Event) {
+func (w *WorkerManager) SendEvent(to string, event *types.Event) {
 	w.lock.RLock()
 	defer w.lock.RUnlock()
-	if worker := w.workers[id]; worker != nil {
+	if worker := w.workers[to]; worker != nil {
 		worker.msgQueue <- event
 		return
 	}

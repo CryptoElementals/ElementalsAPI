@@ -2,7 +2,6 @@ package chain
 
 import (
 	"context"
-	"sync"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/log"
@@ -13,9 +12,8 @@ import (
 )
 
 type Service struct {
-	ctx         context.Context
-	chain       *Chain
-	batchTxLock sync.RWMutex
+	ctx   context.Context
+	chain *Chain
 }
 
 func NewService(ctx context.Context,
