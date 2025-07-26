@@ -176,10 +176,30 @@ func (s *Scanner) SetHeadNumberOnChain(height uint64) {
 	s.headNumberOnChain = height
 }
 
+// 新增：有序的交易提交结构
+type orderedTxBatch struct {
+	blockNumber uint64
+	batch       *proto.TransactionBatch
+	done        chan error
+}
+
 func (s *Scanner) CatchUpChain() {
+	const maxWorkers = 5
+	blockChan := make(chan uint64, maxWorkers*2)
+	submitChan := make(chan *orderedTxBatch, 100)
+
+	// 启动 worker goroutines
+	for i := 0; i < maxWorkers; i++ {
+		go s.blockWorker(blockChan, submitChan)
+	}
+	// 启动专门的提交 goroutine（保证顺序）
+	go s.orderedSubmitWorker(submitChan)
+
 	for {
 		select {
 		case <-s.ctx.Done():
+			close(blockChan)
+			close(submitChan)
 			s.rpcClient.Close()
 			log.Info("Scanner context done, CatchUpChain exited...")
 			return
@@ -189,100 +209,144 @@ func (s *Scanner) CatchUpChain() {
 				continue
 			}
 			log.Infof("Start processing block %d", s.currentScannedHeight)
-			err := s.getAndProcessBlock(big.NewInt(int64(s.currentScannedHeight)))
-			if err != nil {
-				log.Warnf("CatchUpChain goroutine parse block err %v", err.Error())
-				time.Sleep(time.Second * 5)
-				continue
-			}
-			err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: s.currentScannedHeight})
-			if err != nil {
-				log.Errorf("Insert head block sync to db err %v", err.Error())
-				time.Sleep(time.Second * 5)
-				continue
-			}
-			log.Infof("Block %d handled successfully", s.currentScannedHeight)
+			blockChan <- s.currentScannedHeight
 			s.currentScannedHeight++
 		}
 	}
 }
 
-func (s *Scanner) getAndProcessBlock(blockHeight *big.Int) error {
+// blockWorker 处理单个区块，但不直接提交
+func (s *Scanner) blockWorker(blockChan <-chan uint64, submitChan chan<- *orderedTxBatch) {
+	for blockHeight := range blockChan {
+		batch, err := s.getAndProcessBlockToBatch(big.NewInt(int64(blockHeight)))
+		if err != nil {
+			log.Warnf("blockWorker parse block %d err %v", blockHeight, err.Error())
+			time.Sleep(time.Second * 5)
+			continue // 出错时不保存同步状态，下次重试
+		}
+
+		// 如果有交易需要提交
+		if batch != nil && len(batch.Transactions) > 0 {
+			orderedBatch := &orderedTxBatch{
+				blockNumber: blockHeight,
+				batch:       batch,
+				done:        make(chan error, 1),
+			}
+			submitChan <- orderedBatch
+			// 等待提交完成
+			if err := <-orderedBatch.done; err != nil {
+				log.Errorf("submit failed for block %d: %v", blockHeight, err)
+				continue // 提交失败时不保存同步状态，下次重试
+			}
+		}
+
+		// 只有处理成功且提交成功（如果有交易）才保存区块同步状态
+		err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: blockHeight})
+		if err != nil {
+			log.Errorf("Insert head block sync to db err %v", err.Error())
+			time.Sleep(time.Second * 5)
+			continue // 保存失败时也不继续，下次重试
+		}
+		log.Infof("Block %d handled successfully", blockHeight)
+	}
+}
+
+// orderedSubmitWorker 按顺序提交交易到 roomServer
+func (s *Scanner) orderedSubmitWorker(submitChan <-chan *orderedTxBatch) {
+	const maxPending = 10000 // 最大缓存阈值，可根据实际情况调整
+	expectedBlockNumber := s.currentScannedHeight
+	pendingBatches := make(map[uint64]*orderedTxBatch)
+	for batch := range submitChan {
+		if batch.blockNumber == expectedBlockNumber {
+			err := s.submitBatch(batch.batch)
+			batch.done <- err
+			expectedBlockNumber++
+			for {
+				if nextBatch, exists := pendingBatches[expectedBlockNumber]; exists {
+					err := s.submitBatch(nextBatch.batch)
+					nextBatch.done <- err
+					delete(pendingBatches, expectedBlockNumber)
+					expectedBlockNumber++
+				} else {
+					break
+				}
+			}
+		} else {
+			if len(pendingBatches) >= maxPending {
+				// 缓存过大时，拒绝新的 batch，等待处理完成
+				log.Errorf("pendingBatches size exceeded: %d, rejecting block %d, waiting for processing", len(pendingBatches), batch.blockNumber)
+				batch.done <- fmt.Errorf("pending batches overflow, block %d rejected", batch.blockNumber)
+				continue
+			}
+			pendingBatches[batch.blockNumber] = batch
+		}
+	}
+}
+
+// submitBatch 提交交易批次到 roomServer
+func (s *Scanner) submitBatch(batch *proto.TransactionBatch) error {
+	if config.ScannerGConf.RoomServerMocked {
+		log.Debugf("RoomServer mocked, skipping submit for block %d", batch.BlockNumber)
+		return nil
+	}
+	err := s.rpcClient.SubmitTransactions(s.ctx, batch)
+	if err != nil {
+		log.Errorf("submit transactions to roomServer failed, err %s, BlockNumber %d, BlockHash %x, Timestamp %d",
+			err.Error(), batch.BlockNumber, batch.BlockHash, batch.Timestamp)
+		for i, tx := range batch.Transactions {
+			jsonStr, _ := protojson.Marshal(tx)
+			log.Errorf("txsToSubmit[%d]: %s, txHash(hex): %x", i, string(jsonStr), tx.TxHash)
+		}
+		return err
+	}
+	log.Infof("submit transactions to roomServer success, BlockNumber %d, BlockHash %x, Timestamp %d",
+		batch.BlockNumber, batch.BlockHash, batch.Timestamp)
+	for i, tx := range batch.Transactions {
+		jsonStr, _ := protojson.Marshal(tx)
+		log.Debugf("txsToSubmit[%d]: %s, txHash(hex): %x", i, string(jsonStr), tx.TxHash)
+	}
+	return nil
+}
+
+// getAndProcessBlockToBatch 返回 TransactionBatch，不直接提交
+func (s *Scanner) getAndProcessBlockToBatch(blockHeight *big.Int) (*proto.TransactionBatch, error) {
 	block, err := blockchain.GetOptimismBlockByNumber(s.ctx, s.gethHttpRpc, blockHeight)
 	if err != nil {
 		log.Errorf("getBlockByNumber failed, err %s", err.Error())
-		return err
+		return nil, err
 	}
-	//log.Debugf("blockHeight: %d, block: %+v", blockHeight.Uint64(), block)
 	parsedTxs, err := blockchain.ParseOptimismTransactions(block.Transactions)
 	if err != nil {
 		log.Errorf("ParseOptimismTransactions failed, err %s", err.Error())
-		return err
+		return nil, err
 	}
 	if len(parsedTxs) != len(block.Transactions) {
 		log.Errorf("Parsed tx count %d does not match raw tx count %d", len(parsedTxs), len(block.Transactions))
-		return err
+		return nil, err
 	}
-
 	txsToSubmit := make([]*proto.Transaction, 0)
-
 	for _, tx := range parsedTxs {
 		if tx.To != "0x4200000000000000000000000000000000000015" {
 			log.Debugf("parsed tx: %+v", tx)
 		}
-		// if strings.EqualFold(tx.To, s.roomManagerAddress) {
-		// 	log.Debugf("room manager contract tx: %+v", tx)
-		// 	roomCreatedTx, err := processCreateRoomTx(s.ctx, s.gethClient, tx, s.roomManagerAbi)
-		// 	if err != nil {
-		// 		log.Errorf("processCreateRoomTx failed, err %s, tx %+v", err.Error(), tx)
-		// 		return fmt.Errorf("processCreateRoomTx failed, err %s, tx %+v", err.Error(), tx)
-		// 	}
-		// 	log.Debugf("room created tx: %+v", roomCreatedTx)
-		// 	txsToSubmit = append(txsToSubmit, &proto.Transaction{
-		// 		TxHash: roomCreatedTx.TxHash.Bytes(),
-		// 		Tx: &proto.Transaction_RoomContractCreated{
-		// 			RoomContractCreated: &proto.TxRoomContractCreated{
-		// 				RoomContractAddress: roomCreatedTx.RoomCreatedEvent.RoomAddress.Hex(),
-		// 			},
-		// 		},
-		// 	})
-		// }
-
 		txs, err := s.processTx(tx)
 		if err != nil {
 			log.Errorf("processTx failed, err %s, tx %+v", err.Error(), tx)
-			return err
+			return nil, err
 		}
 		txsToSubmit = append(txsToSubmit, txs...)
 	}
-
-	if len(txsToSubmit) > 0 && !config.ScannerGConf.RoomServerMocked {
+	if len(txsToSubmit) > 0 {
 		timeStamp, _ := strconv.ParseUint(block.Timestamp, 0, 64)
 		blockNumber, _ := strconv.ParseUint(block.Number, 0, 64)
-		err = s.rpcClient.SubmitTransactions(s.ctx, &proto.TransactionBatch{
+		return &proto.TransactionBatch{
 			BlockHash:    common.HexToHash(block.Hash).Bytes(),
 			Timestamp:    timeStamp,
 			BlockNumber:  blockNumber,
 			Transactions: txsToSubmit,
-		})
-		if err != nil {
-			log.Errorf("submit transactions to roomServer failed, err %s, BlockNumber %d, BlockHash %s, Timestamp %d",
-				err.Error(), blockNumber, block.Hash, timeStamp)
-			for i, tx := range txsToSubmit {
-				jsonStr, _ := protojson.Marshal(tx)
-				log.Errorf("txsToSubmit[%d]: %s, txHash(hex): %x", i, string(jsonStr), tx.TxHash)
-			}
-			return err
-		} else {
-			log.Infof("submit transactions to roomServer success, BlockNumber %d, BlockHash %s, Timestamp %d",
-				blockNumber, block.Hash, timeStamp)
-			for i, tx := range txsToSubmit {
-				jsonStr, _ := protojson.Marshal(tx)
-				log.Debugf("txsToSubmit[%d]: %s, txHash(hex): %x", i, string(jsonStr), tx.TxHash)
-			}
-		}
+		}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, error) {
