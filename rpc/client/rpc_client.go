@@ -3,6 +3,7 @@ package client
 import (
 	context "context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -21,6 +22,8 @@ type RpcClient struct {
 
 // NewRpcClient creates a new RpcClient.
 func NewRpcClient(serverAddr string) (*RpcClient, error) {
+	serverAddr = strings.TrimPrefix(serverAddr, "http://")
+	serverAddr = strings.TrimPrefix(serverAddr, "https://")
 	conn, err := grpc.NewClient(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %v", err)

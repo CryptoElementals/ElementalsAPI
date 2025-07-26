@@ -26,9 +26,17 @@ func init() {
 func readRoomManagerAbi() (*abi.ABI, error) {
 	roomManagerAbi, err := abi.JSON(strings.NewReader(contract.RoomManagerContractABI))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %v", err)
+		return nil, fmt.Errorf("failed to parse contract.RoomManagerContractABI: %v", err)
 	}
 	return &roomManagerAbi, nil
+}
+
+func readRoomAbi() (*abi.ABI, error) {
+	roomAbi, err := abi.JSON(strings.NewReader(contract.RoomContractABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse contract.RoomContractABI: %v", err)
+	}
+	return &roomAbi, nil
 }
 
 var runCmd = &cobra.Command{
@@ -39,7 +47,12 @@ var runCmd = &cobra.Command{
 
 		roomManagerAbi, err := readRoomManagerAbi()
 		if err != nil {
-			fmt.Printf("readRoomManagerAbi()  failed: %+v", err)
+			fmt.Printf("readRoomManagerAbi() failed: %+v", err)
+			os.Exit(-1)
+		}
+		roomAbi, err := readRoomAbi()
+		if err != nil {
+			fmt.Printf("readRoomAbi() failed: %+v", err)
 			os.Exit(-1)
 		}
 		err = config.InitScannerConfig(configPath)
@@ -65,7 +78,7 @@ var runCmd = &cobra.Command{
 		gethHttpRpc := config.ScannerGConf.ChainCfg.HttpRpc
 		roomServerHttpRpc := config.ScannerGConf.RoomServerHttpRpc
 		roomManagerAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress
-		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomManagerAddress, roomManagerAbi)
+		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomManagerAddress, roomManagerAbi, roomAbi)
 		scanner.Run()
 
 		// Wait for interrupt signal
