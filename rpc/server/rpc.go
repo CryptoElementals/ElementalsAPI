@@ -53,6 +53,11 @@ func (s *Rpc) ConfirmBattle(ctx context.Context, req *pb.ConfirmBattleRequest) (
 	addr.FromProto(req.PlayerAddress)
 	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber)
 }
+func (s *Rpc) ContinueGame(ctx context.Context, req *pb.ContinueGameRequest) (*emptypb.Empty, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req.Player)
+	return &emptypb.Empty{}, s.playerHandler.ContinueGame(addr, uint(req.LastGameID))
+}
 
 // chain related api
 func (s *Rpc) SubmitTransactions(ctx context.Context, req *pb.TransactionBatch) (*emptypb.Empty, error) {
@@ -74,6 +79,7 @@ type ChainRequestHandler interface {
 type PlayerRequestHandler interface {
 	JoinQueue(types.PlayerAddress) error
 	ExitQueue(req types.PlayerAddress) error
+	ContinueGame(address types.PlayerAddress, gameID uint) error
 	GetGamePhase(types.PlayerAddress) (*pb.GamePhase, error)
 	ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32) error
 }

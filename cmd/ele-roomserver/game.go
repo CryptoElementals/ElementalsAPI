@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -50,6 +51,11 @@ func init() {
 	gameCmd.MarkFlagRequired("chain-rpc")
 	gameCmd.MarkFlagRequired("room-server-endpoint")
 	gameCmd.MarkFlagRequired("wallet-path")
+}
+
+func toJsonLoggable(obj any) string {
+	res, _ := json.MarshalIndent(obj, "", "  ")
+	return string(res)
 }
 
 var suggestions = []prompt.Suggest{
@@ -171,7 +177,7 @@ func (c *gameContext) run() error {
 				case proto.EventType_TYPE_KNOWN:
 					return
 				case proto.EventType_TYPE_MATCHED:
-					fmt.Println("game matched")
+					fmt.Println("game matched, please confirm")
 					phase, err := c.rpcClient.GetGamePhase(c.ctx, &c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
@@ -192,7 +198,7 @@ func (c *gameContext) run() error {
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					fmt.Println("player part confirmed")
 				case proto.EventType_TYPE_GAME_CREATED:
-					fmt.Println("game created")
+					fmt.Println("game created, please submit cards")
 					// get contract
 					phase, err := c.rpcClient.GetGamePhase(c.ctx, &c.myself)
 					if err != nil {
@@ -208,7 +214,7 @@ func (c *gameContext) run() error {
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_READY:
-					fmt.Println("round ready")
+					fmt.Println("round ready, please submit cards")
 					c.lock.Lock()
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
@@ -224,18 +230,19 @@ func (c *gameContext) run() error {
 					c.state = playerStateWaittingRoundEnd
 					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_COMPLETE:
-					fmt.Println("round complete")
+					fmt.Println("round complete, please confirm to start a new round")
 					battleInfo, err := c.rpcClient.GetBattleInfo(c.ctx, c.gameID, uint(c.currentRound))
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
-					fmt.Println("round result: ", battleInfo.RoundResult.String())
+					fmt.Println("round result: ", toJsonLoggable(battleInfo.RoundResult))
 					if !battleInfo.RoundResult.IsGameOver {
 						c.lock.Lock()
 						c.currentRound++
 						c.state = playerStateWaittingConfirm
 						c.lock.Unlock()
-						fmt.Println("round result: ", battleInfo.GameResult.String())
+					} else {
+						fmt.Println("game result: ", toJsonLoggable(battleInfo.GameResult))
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
 					fmt.Println("game complete")
@@ -285,7 +292,7 @@ func (c *gameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound+1))
+	err := c.rpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound))
 	if err != nil {
 		return err
 	}
@@ -299,6 +306,7 @@ func (c *gameContext) SubmitCommitment(cardHash []byte) (string, error) {
 	if c.state != playerStateWaittingCommitmentsSubmitted {
 		return "", fmt.Errorf("cannot submit commitment, invalid state: %s", c.state.String())
 	}
+	fmt.Println("submit commitment, round: ", c.currentRound)
 	tx, err := c.contract.SubmitCardsHash(c.bindOpts, [32]byte(cardHash), big.NewInt(int64(c.currentRound)))
 	if err != nil {
 		return "", err
@@ -313,6 +321,7 @@ func (c *gameContext) SubmitCards(cards string, salt string) (string, error) {
 	// if c.state != playerStateWaittingCardsSubmitted {
 	// 	return "", fmt.Errorf("cannot submit cards, invalid state: %s", c.state.String())
 	// }
+	fmt.Println("submit cards, round: ", c.currentRound)
 	tx, err := c.contract.SubmitCards(c.bindOpts, cards, salt, big.NewInt(int64(c.currentRound)))
 	if err != nil {
 		return "", err

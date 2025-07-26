@@ -30,7 +30,7 @@ var w *wallet.Wallet
 var chainID uint64
 
 const roomMamangerAddress = "0x59554b201cFc12E6930a3631060C3d9CDF704F67"
-const roomContractAddress = "0xc6ed12DA8617D2e0A0aD5CFfC571754813cf8303"
+const roomContractAddress = "0x8c21e3B3A6Cc3739f418535FDE4Bf76F4DfF8535"
 
 func TestMain(m *testing.M) {
 	time.Local = time.UTC
@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	w = wallet.NewWalletFromPrivKey(priv)
-	ethC, err := ethclient.Dial("http://123.58.197.185:8545")
+	ethC, err := ethclient.Dial("http://152.32.231.145:8545")
 	if err != nil {
 		panic(err)
 	}
@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 func TestFilterEvent(t *testing.T) {
 	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0xcc9e6e753a9e3ed637a628f08098a04ea7805c6601c9b6f75862716a896c1196"))
+		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0x22d291808a727ff9531c61d38271715370760534ed16d39e171785522580ca9e"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -83,6 +83,15 @@ func TestFilterEvent(t *testing.T) {
 		t.Log(addr)
 		break
 	}
+}
+
+func TestFilterRoomEvent(t *testing.T) {
+	ctrt, err := contract.NewRoomContract(common.HexToAddress("0xCaa747a5B46427ED0b4203637e5F6F7FDbA4c541"), client)
+	require.NoError(t, err)
+	hh, err := ctrt.CurrentRound(nil)
+	require.NoError(t, err)
+	num := hh.Uint64()
+	t.Log(num)
 }
 
 func TestChainContractInteraction(t *testing.T) {

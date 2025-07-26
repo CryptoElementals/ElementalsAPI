@@ -27,7 +27,7 @@ message PlayerAddress {
 }
 
 message ContinueGameRequest {
-    repeated PlayerAddress players = 1;
+    PlayerAddress player = 1;
     uint32 LastGameID = 2;
 }
 
