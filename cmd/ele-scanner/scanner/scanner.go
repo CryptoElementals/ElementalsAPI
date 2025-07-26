@@ -29,6 +29,7 @@ const (
 	RoomCreatedEventName     = "RoomCreated"
 	SubmitCardsHashEventName = "submitCardsHash"
 	SubmitCardsEventName     = "submitCards"
+	StartANewRoundName       = "startANewRound"
 )
 
 type eventSigHashCache struct {
@@ -107,7 +108,7 @@ func (s *Scanner) Run() {
 	}
 
 	for {
-		s.rpcClient, err = eleClient.NewRpcClient(s.roomServerHttpRpc)
+		s.rpcClient, err = eleClient.NewRpcClientWithAddr(s.roomServerHttpRpc)
 		if err != nil {
 			log.Errorf("Failed to create rpcClient to roomServer: %v, retrying in %d seconds...", err.Error(), dialTimeout)
 			time.Sleep(time.Duration(dialTimeout) * time.Second)
@@ -161,7 +162,9 @@ func (s *Scanner) RunCatchUp() {
 			case header := <-headers:
 				headNumberOnChain := header.Number.Uint64()
 				s.SetHeadNumberOnChain(headNumberOnChain)
-				log.Debugf("HeadNumberOnChain is %d", headNumberOnChain)
+				if headNumberOnChain%10 == 0 {
+					log.Debugf("HeadNumberOnChain is %d", headNumberOnChain)
+				}
 			}
 		}
 	RECONNECT:
@@ -185,19 +188,20 @@ func (s *Scanner) CatchUpChain() {
 				time.Sleep(time.Millisecond * 200)
 				continue
 			}
+			log.Infof("Start processing block %d", s.currentScannedHeight)
 			err := s.getAndProcessBlock(big.NewInt(int64(s.currentScannedHeight)))
 			if err != nil {
-				log.Warnf("catchUpChain goroutine parse block err %v", err.Error())
+				log.Warnf("CatchUpChain goroutine parse block err %v", err.Error())
 				time.Sleep(time.Second * 5)
 				continue
 			}
 			err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: s.currentScannedHeight})
 			if err != nil {
-				log.Errorf("insert head block sync to db err %v", err.Error())
+				log.Errorf("Insert head block sync to db err %v", err.Error())
 				time.Sleep(time.Second * 5)
 				continue
 			}
-			log.Infof("block %d handled successfully", s.currentScannedHeight)
+			log.Infof("Block %d handled successfully", s.currentScannedHeight)
 			s.currentScannedHeight++
 		}
 	}
@@ -334,7 +338,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 						RoundNumber:         uint32(eventData.Round.Uint64()),
 						Address: &proto.PlayerAddress{
 							//WalletAddress:    eventData.Address.Hex(),
-							TemporaryAddress: eventData.Arg0.Hex(),
+							TemporaryAddress: eventData.Player.Hex(),
 						},
 						Commitment: eventData.CardsHash[:],
 					},
@@ -368,11 +372,27 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 						RoomContractAddress: tx.To,
 						Address: &proto.PlayerAddress{
 							//WalletAddress:    eventData.Address.Hex(),
-							TemporaryAddress: eventData.Arg0.Hex(),
+							TemporaryAddress: eventData.Player.Hex(),
 						},
 						RoundNumber: uint32(eventData.Round.Uint64()),
-						Salt:        []byte("mockedSalt"),
+						Salt:        []byte(eventData.Salt),
 						Cards:       cards,
+					},
+				},
+			}
+		}
+
+		if eventName == StartANewRoundName {
+			eventData := contract.RoomContractStartANewRound{}
+			if err := s.roomAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
+				return nil, err
+			}
+			txSubmit = &proto.Transaction{
+				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				Tx: &proto.Transaction_RoomContractSetupReady{
+					RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
+						RoomContractAddress: tx.To,
+						RoundNumber:         uint32(eventData.Round.Uint64()),
 					},
 				},
 			}
@@ -387,7 +407,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 func (s *Scanner) initEventSigHashCache() error {
 	cache := &s.eventSigHashCache
-	roomEventNames := []string{SubmitCardsHashEventName, SubmitCardsEventName}
+	roomEventNames := []string{SubmitCardsHashEventName, SubmitCardsEventName, StartANewRoundName}
 	roomManagerEventNames := []string{RoomCreatedEventName}
 
 	cache.mu.Lock()
