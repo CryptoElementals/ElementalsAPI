@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 func TestFilterEvent(t *testing.T) {
 	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0xf67df7b535518d2f8d76312172295fcf458c87fa6589fec8108393285d38adfe"))
+		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0xcc9e6e753a9e3ed637a628f08098a04ea7805c6601c9b6f75862716a896c1196"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -78,6 +78,8 @@ func TestFilterEvent(t *testing.T) {
 		parsed, err := ctrt.ParseRoomCreated(*receipt.Logs[0])
 		require.NoError(t, err)
 		addr := parsed.RoomAddress.String()
+		blockNum := receipt.BlockNumber.Uint64()
+		t.Log(blockNum)
 		t.Log(addr)
 		break
 	}

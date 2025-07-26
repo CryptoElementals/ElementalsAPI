@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -55,6 +56,10 @@ func (p *Player) createSelf() {
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+	if evt, ok := event.Data.(*types.ErrorEvent); ok {
+		log.Errorf("received error: %T, err: %s", evt.OriginalEvent.Data, evt.Err.Error())
+		return nil
+	}
 	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
 		evt := event.Data.(*types.GameCreatedEvent)
 		p.handleNewGameEvent(p.ctx, evt)

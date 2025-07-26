@@ -24,6 +24,11 @@ func (s *Service) Start() error {
 	return s.queue.start()
 }
 
+func (s *Service) Stop() error {
+	s.queue.close()
+	return nil
+}
+
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.isPlayerInQueue(address)
 }

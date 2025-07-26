@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
@@ -29,6 +30,7 @@ func NewService(ctx context.Context,
 }
 
 func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
+	log.Info("receive tx batch, block number: ", txs.BlockNumber)
 	done := make(chan struct{})
 	errChan := make(chan error, 1)
 	evt := &batchTxEvent{
@@ -41,8 +43,10 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 	s.chain.batchSendTxs(evt)
 	<-done
 	if err := <-errChan; err != nil {
+		log.Error("SubmitTransactions failed", err)
 		return err
 	}
+	log.Info("SubmitTransactions success")
 	return nil
 }
 

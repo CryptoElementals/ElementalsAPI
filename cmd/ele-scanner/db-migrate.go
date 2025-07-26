@@ -20,6 +20,7 @@ var dbMigrateCmd = &cobra.Command{
 			fmt.Printf("load config failed: %+v", err)
 			os.Exit(-1)
 		}
+		fmt.Printf("config: %+v\n", config.ScannerGConf)
 		// Initialize logger
 		if err := log.InitGlobalLogger(&config.ScannerGConf.LogCfg); err != nil {
 			fmt.Printf("failed to initialize logger: %s\n", err.Error())

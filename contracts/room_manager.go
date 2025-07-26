@@ -31,7 +31,7 @@ var (
 
 // RoomManagerContractMetaData contains all meta data concerning the RoomManagerContract contract.
 var RoomManagerContractMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_roomAddress\",\"type\":\"address\"}],\"name\":\"RoomCreated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_player1\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"}],\"name\":\"CreateRoom\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"Rooms\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"addManager\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_creator\",\"type\":\"address\"}],\"name\":\"listRooms\",\"outputs\":[{\"internalType\":\"address[]\",\"name\":\"\",\"type\":\"address[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"managerIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_roomAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"}],\"name\":\"RoomCreated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_player1\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"}],\"name\":\"CreateRoom\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"Rooms\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newManager\",\"type\":\"address\"}],\"name\":\"addManager\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_creator\",\"type\":\"address\"}],\"name\":\"listRooms\",\"outputs\":[{\"internalType\":\"address[]\",\"name\":\"\",\"type\":\"address[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"managerIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // RoomManagerContractABI is the input ABI used to generate the binding from.
@@ -273,46 +273,46 @@ func (_RoomManagerContract *RoomManagerContractCallerSession) ManagerIndex(arg0 
 	return _RoomManagerContract.Contract.ManagerIndex(&_RoomManagerContract.CallOpts, arg0)
 }
 
-// CreateRoom is a paid mutator transaction binding the contract method 0xb5ea052c.
+// CreateRoom is a paid mutator transaction binding the contract method 0x576eb81f.
 //
-// Solidity: function CreateRoom(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound) returns()
-func (_RoomManagerContract *RoomManagerContractTransactor) CreateRoom(opts *bind.TransactOpts, _player1 common.Address, _player2 common.Address, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int) (*types.Transaction, error) {
-	return _RoomManagerContract.contract.Transact(opts, "CreateRoom", _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound)
+// Solidity: function CreateRoom(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _initialHP) returns()
+func (_RoomManagerContract *RoomManagerContractTransactor) CreateRoom(opts *bind.TransactOpts, _player1 common.Address, _player2 common.Address, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _initialHP *big.Int) (*types.Transaction, error) {
+	return _RoomManagerContract.contract.Transact(opts, "CreateRoom", _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound, _initialHP)
 }
 
-// CreateRoom is a paid mutator transaction binding the contract method 0xb5ea052c.
+// CreateRoom is a paid mutator transaction binding the contract method 0x576eb81f.
 //
-// Solidity: function CreateRoom(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound) returns()
-func (_RoomManagerContract *RoomManagerContractSession) CreateRoom(_player1 common.Address, _player2 common.Address, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int) (*types.Transaction, error) {
-	return _RoomManagerContract.Contract.CreateRoom(&_RoomManagerContract.TransactOpts, _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound)
+// Solidity: function CreateRoom(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _initialHP) returns()
+func (_RoomManagerContract *RoomManagerContractSession) CreateRoom(_player1 common.Address, _player2 common.Address, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _initialHP *big.Int) (*types.Transaction, error) {
+	return _RoomManagerContract.Contract.CreateRoom(&_RoomManagerContract.TransactOpts, _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound, _initialHP)
 }
 
-// CreateRoom is a paid mutator transaction binding the contract method 0xb5ea052c.
+// CreateRoom is a paid mutator transaction binding the contract method 0x576eb81f.
 //
-// Solidity: function CreateRoom(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound) returns()
-func (_RoomManagerContract *RoomManagerContractTransactorSession) CreateRoom(_player1 common.Address, _player2 common.Address, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int) (*types.Transaction, error) {
-	return _RoomManagerContract.Contract.CreateRoom(&_RoomManagerContract.TransactOpts, _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound)
+// Solidity: function CreateRoom(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _initialHP) returns()
+func (_RoomManagerContract *RoomManagerContractTransactorSession) CreateRoom(_player1 common.Address, _player2 common.Address, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _initialHP *big.Int) (*types.Transaction, error) {
+	return _RoomManagerContract.Contract.CreateRoom(&_RoomManagerContract.TransactOpts, _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound, _initialHP)
 }
 
-// AddManager is a paid mutator transaction binding the contract method 0xf674eecb.
+// AddManager is a paid mutator transaction binding the contract method 0x2d06177a.
 //
-// Solidity: function addManager() returns()
-func (_RoomManagerContract *RoomManagerContractTransactor) AddManager(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _RoomManagerContract.contract.Transact(opts, "addManager")
+// Solidity: function addManager(address _newManager) returns()
+func (_RoomManagerContract *RoomManagerContractTransactor) AddManager(opts *bind.TransactOpts, _newManager common.Address) (*types.Transaction, error) {
+	return _RoomManagerContract.contract.Transact(opts, "addManager", _newManager)
 }
 
-// AddManager is a paid mutator transaction binding the contract method 0xf674eecb.
+// AddManager is a paid mutator transaction binding the contract method 0x2d06177a.
 //
-// Solidity: function addManager() returns()
-func (_RoomManagerContract *RoomManagerContractSession) AddManager() (*types.Transaction, error) {
-	return _RoomManagerContract.Contract.AddManager(&_RoomManagerContract.TransactOpts)
+// Solidity: function addManager(address _newManager) returns()
+func (_RoomManagerContract *RoomManagerContractSession) AddManager(_newManager common.Address) (*types.Transaction, error) {
+	return _RoomManagerContract.Contract.AddManager(&_RoomManagerContract.TransactOpts, _newManager)
 }
 
-// AddManager is a paid mutator transaction binding the contract method 0xf674eecb.
+// AddManager is a paid mutator transaction binding the contract method 0x2d06177a.
 //
-// Solidity: function addManager() returns()
-func (_RoomManagerContract *RoomManagerContractTransactorSession) AddManager() (*types.Transaction, error) {
-	return _RoomManagerContract.Contract.AddManager(&_RoomManagerContract.TransactOpts)
+// Solidity: function addManager(address _newManager) returns()
+func (_RoomManagerContract *RoomManagerContractTransactorSession) AddManager(_newManager common.Address) (*types.Transaction, error) {
+	return _RoomManagerContract.Contract.AddManager(&_RoomManagerContract.TransactOpts, _newManager)
 }
 
 // RoomManagerContractRoomCreatedIterator is returned from FilterRoomCreated and is used to iterate over the raw logs and unpacked data for RoomCreated events raised by the RoomManagerContract contract.
@@ -390,12 +390,13 @@ type RoomManagerContractRoomCreated struct {
 	Player2Tmp  common.Address
 	TotalRound  *big.Int
 	RoomAddress common.Address
+	InitialHP   *big.Int
 	Raw         types.Log // Blockchain specific contextual infos
 }
 
-// FilterRoomCreated is a free log retrieval operation binding the contract event 0x9c63dd4107c2b99fdbe2dc7dde9106d1a807e5375397ec0a7ea0543a0f75a5a3.
+// FilterRoomCreated is a free log retrieval operation binding the contract event 0x6e93140a67954098c010f0772a0069ed959bf970083460914cc6ee8dc4b51a6d.
 //
-// Solidity: event RoomCreated(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, address _roomAddress)
+// Solidity: event RoomCreated(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, address _roomAddress, uint256 _initialHP)
 func (_RoomManagerContract *RoomManagerContractFilterer) FilterRoomCreated(opts *bind.FilterOpts) (*RoomManagerContractRoomCreatedIterator, error) {
 
 	logs, sub, err := _RoomManagerContract.contract.FilterLogs(opts, "RoomCreated")
@@ -405,9 +406,9 @@ func (_RoomManagerContract *RoomManagerContractFilterer) FilterRoomCreated(opts 
 	return &RoomManagerContractRoomCreatedIterator{contract: _RoomManagerContract.contract, event: "RoomCreated", logs: logs, sub: sub}, nil
 }
 
-// WatchRoomCreated is a free log subscription operation binding the contract event 0x9c63dd4107c2b99fdbe2dc7dde9106d1a807e5375397ec0a7ea0543a0f75a5a3.
+// WatchRoomCreated is a free log subscription operation binding the contract event 0x6e93140a67954098c010f0772a0069ed959bf970083460914cc6ee8dc4b51a6d.
 //
-// Solidity: event RoomCreated(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, address _roomAddress)
+// Solidity: event RoomCreated(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, address _roomAddress, uint256 _initialHP)
 func (_RoomManagerContract *RoomManagerContractFilterer) WatchRoomCreated(opts *bind.WatchOpts, sink chan<- *RoomManagerContractRoomCreated) (event.Subscription, error) {
 
 	logs, sub, err := _RoomManagerContract.contract.WatchLogs(opts, "RoomCreated")
@@ -442,9 +443,9 @@ func (_RoomManagerContract *RoomManagerContractFilterer) WatchRoomCreated(opts *
 	}), nil
 }
 
-// ParseRoomCreated is a log parse operation binding the contract event 0x9c63dd4107c2b99fdbe2dc7dde9106d1a807e5375397ec0a7ea0543a0f75a5a3.
+// ParseRoomCreated is a log parse operation binding the contract event 0x6e93140a67954098c010f0772a0069ed959bf970083460914cc6ee8dc4b51a6d.
 //
-// Solidity: event RoomCreated(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, address _roomAddress)
+// Solidity: event RoomCreated(address _player1, address _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, address _roomAddress, uint256 _initialHP)
 func (_RoomManagerContract *RoomManagerContractFilterer) ParseRoomCreated(log types.Log) (*RoomManagerContractRoomCreated, error) {
 	event := new(RoomManagerContractRoomCreated)
 	if err := _RoomManagerContract.contract.UnpackLog(event, "RoomCreated", log); err != nil {

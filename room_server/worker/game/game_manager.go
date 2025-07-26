@@ -68,6 +68,8 @@ func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 				Players: evt.Players,
 			}))
 		}
+
+		log.Infof("gameMatched: gameID %d", gameID)
 		return nil
 	default:
 		return fmt.Errorf("GameManager Handle err: event type not match, %d", reflect.TypeOf(evt))
@@ -121,6 +123,9 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 }
 
 func (r *GameManager) recoverGames() error {
+	if r.roundTimeout == 0 {
+		return nil
+	}
 	gameInfos, err := db.GetAllActiveGames()
 	if err != nil {
 		return err
