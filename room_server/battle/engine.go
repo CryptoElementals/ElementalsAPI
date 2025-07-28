@@ -2,7 +2,8 @@ package battle
 
 import (
 	"fmt"
-	"strings"
+
+	"github.com/CryptoElementals/common/config"
 )
 
 type BattleEngine struct {
@@ -38,14 +39,25 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		return nil, fmt.Errorf("at least 2 players required")
 	}
 
-	// 获取所有玩家的卡牌
+	// 检查是否有离线玩家
+	hasOfflinePlayer := false
+	for _, p := range input.Players {
+		if p.Status == PLAYER_OFFLINE {
+			hasOfflinePlayer = true
+			break
+		}
+	}
+
+	// 获取所有在线玩家的卡牌
 	playerCards := make([][]*Card, playerCount)
 	for i, p := range input.Players {
-		cards, err := be.cardFactory.GetCards(p.Cards)
-		if err != nil {
-			return nil, err
+		if p.Status == PLAYER_ONLINE {
+			cards, err := be.cardFactory.GetCards(p.Cards)
+			if err != nil {
+				return nil, err
+			}
+			playerCards[i] = cards
 		}
-		playerCards[i] = cards
 	}
 
 	// 初始化每个玩家的状态
@@ -56,6 +68,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		Stats            []PlayerCardStat
 		WalletAddress    string
 		TemporaryAddress string
+		Status           PlayerStatus
 	}
 	states := make([]*playerState, playerCount)
 	for i, p := range input.Players {
@@ -63,120 +76,106 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 			HP:               p.HP,
 			Multiplier:       be.multiplierCalc.CalculateMultiplierByLostHP(p.LostHP),
 			LostHP:           p.LostHP,
-			Stats:            make([]PlayerCardStat, 0, 3),
+			Stats:            make([]PlayerCardStat, 0, 3), //如果有人离线，跳过对战，这个字段为空
 			WalletAddress:    p.WalletAddress,
 			TemporaryAddress: p.TemporaryAddress,
+			Status:           p.Status,
 		}
 	}
 
-	// 只保留属于自己的effect
-	filterEffects := func(effects []BattleEffect, wallet string) []BattleEffect {
-		var filtered []BattleEffect
-		for _, e := range effects {
-			if e.TargetWalletAddress == wallet {
-				filtered = append(filtered, e)
+	// 如果有离线玩家，直接跳过卡牌对战进入结算
+	if !hasOfflinePlayer {
+		//目前只有2人对战，这里实际上只会取到i=0,j=1，处理一次card对战
+		//如果3人，应该在每个round的每个card的3次card对战结束后再统一结算effect，包括effect的记录和计算
+		//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有
+		//多人情况下怎么解决合谋作弊问题，即两个人串通让第三个人输？
+		for cardIdx := 0; cardIdx < 3; cardIdx++ {
+			for i := 0; i < playerCount; i++ {
+				for j := i + 1; j < playerCount; j++ {
+					// 跳过离线玩家的对战
+					if states[i].Status == PLAYER_OFFLINE || states[j].Status == PLAYER_OFFLINE {
+						continue
+					}
+
+					p1 := states[i]
+					p2 := states[j]
+					p1Card := playerCards[i][cardIdx]
+					p2Card := playerCards[j][cardIdx]
+					relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card, p1.WalletAddress, p2.WalletAddress)
+					effects1 := be.elementalSystem.BuildPlayerEffects(relation.P1Type, p1Card, p2Card, p1.WalletAddress, p1.TemporaryAddress, p2.WalletAddress)
+					effects2 := be.elementalSystem.BuildPlayerEffects(relation.P2Type, p2Card, p1Card, p2.WalletAddress, p2.TemporaryAddress, p1.WalletAddress)
+					p1BeforeHP := p1.HP
+					p2BeforeHP := p2.HP
+					p1BeforeMul := p1.Multiplier
+					p2BeforeMul := p2.Multiplier
+					p1.HP += be.elementalSystem.ExecuteEffects(effects1)
+					p2.HP += be.elementalSystem.ExecuteEffects(effects2)
+					// 下限 0，上限 MaxHP
+					if p1.HP < 0 {
+						p1.HP = 0
+					} else if p1.HP > config.GameParams.MaxHP {
+						p1.HP = config.GameParams.MaxHP
+					}
+					if p2.HP < 0 {
+						p2.HP = 0
+					} else if p2.HP > config.GameParams.MaxHP {
+						p2.HP = config.GameParams.MaxHP
+					}
+					// 计算此次卡牌造成的伤害，并累加到总 LostHP
+					damage1 := p1BeforeHP - p1.HP
+					if damage1 < 0 {
+						damage1 = 0
+					}
+					p1.LostHP += damage1
+
+					damage2 := p2BeforeHP - p2.HP
+					if damage2 < 0 {
+						damage2 = 0
+					}
+					p2.LostHP += damage2
+					p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
+					p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
+
+					p1.Stats = append(p1.Stats, PlayerCardStat{
+						CardNumber:       cardIdx + 1,
+						CardID:           p1Card.ID,
+						HPBefore:         p1BeforeHP,
+						HPAfter:          p1.HP,
+						MultiplierBefore: p1BeforeMul,
+						MultiplierAfter:  p1.Multiplier,
+						Effects:          effects1,
+						Description:      relation.P1Description,
+						ElementRelation:  mapElementRelationStringToEnum(relation.P1Type),
+					})
+					p2.Stats = append(p2.Stats, PlayerCardStat{
+						CardNumber:       cardIdx + 1,
+						CardID:           p2Card.ID,
+						HPBefore:         p2BeforeHP,
+						HPAfter:          p2.HP,
+						MultiplierBefore: p2BeforeMul,
+						MultiplierAfter:  p2.Multiplier,
+						Effects:          effects2,
+						Description:      relation.P2Description,
+						ElementRelation:  mapElementRelationStringToEnum(relation.P2Type),
+					})
+
+				}
 			}
-		}
-		return filtered
-	}
 
-	for cardIdx := 0; cardIdx < 3; cardIdx++ {
-		for i := 0; i < playerCount; i++ {
-			for j := i + 1; j < playerCount; j++ {
-				p1 := states[i]
-				p2 := states[j]
-				p1Card := playerCards[i][cardIdx]
-				p2Card := playerCards[j][cardIdx]
-				relation := be.elementalSystem.GetElementalRelation(p1Card, p2Card)
-				effects := be.elementalSystem.BuildEffects(p1Card, p2Card, relation, p1.WalletAddress, p2.WalletAddress, p1.TemporaryAddress, p2.TemporaryAddress)
-				effects1 := filterEffects(effects, p1.WalletAddress)
-				effects2 := filterEffects(effects, p2.WalletAddress)
-				p1BeforeHP := p1.HP
-				p2BeforeHP := p2.HP
-				p1BeforeMul := p1.Multiplier
-				p2BeforeMul := p2.Multiplier
-				p1.HP += be.elementalSystem.ExecuteEffects(effects1)
-				p2.HP += be.elementalSystem.ExecuteEffects(effects2)
-				if p1.HP < 0 {
-					p1.HP = 0
+			// 检查是否有玩家血量为0，如果有就结束游戏
+			hasZeroHP := false
+			for _, st := range states {
+				if st.HP == 0 {
+					hasZeroHP = true
+					break
 				}
-				if p2.HP < 0 {
-					p2.HP = 0
-				}
-				// 计算此次卡牌造成的伤害，并累加到总 LostHP
-				damage1 := p1BeforeHP - p1.HP
-				if damage1 < 0 {
-					damage1 = 0
-				}
-				p1.LostHP += damage1
-
-				damage2 := p2BeforeHP - p2.HP
-				if damage2 < 0 {
-					damage2 = 0
-				}
-				p2.LostHP += damage2
-				p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
-				p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
-				// 生成p1和p2视角的描述（元素类型+视角），并根据relation.Type选择正确模板
-				descP1 := relation.Description
-				descP2 := relation.Description
-				switch relation.Type {
-				case "overpower":
-					descP2 = "{self} is overpowered by {opponent}"
-				case "overpowered":
-					descP2 = "{self} overpowers {opponent}"
-				case "nurture":
-					descP2 = "{self} nurtures {opponent}"
-				case "nurtured":
-					descP2 = "{self} is nurtured by {opponent}"
-				case "even":
-					descP2 = "{self} and {opponent} are even"
-				}
-
-				descP1 = strings.ReplaceAll(descP1, "{self}", fmt.Sprintf("%s(self)", p1Card.ElementType))
-				descP1 = strings.ReplaceAll(descP1, "{opponent}", fmt.Sprintf("%s(opponent)", p2Card.ElementType))
-
-				descP2 = strings.ReplaceAll(descP2, "{self}", fmt.Sprintf("%s(self)", p2Card.ElementType))
-				descP2 = strings.ReplaceAll(descP2, "{opponent}", fmt.Sprintf("%s(opponent)", p1Card.ElementType))
-
-				p1.Stats = append(p1.Stats, PlayerCardStat{
-					CardNumber:       cardIdx + 1,
-					CardID:           p1Card.ID,
-					HPBefore:         p1BeforeHP,
-					HPAfter:          p1.HP,
-					MultiplierBefore: p1BeforeMul,
-					MultiplierAfter:  p1.Multiplier,
-					Effects:          effects1,
-					Description:      descP1,
-					ElementRelation:  mapElementRelationStringToEnum(relation.Type),
-				})
-				p2.Stats = append(p2.Stats, PlayerCardStat{
-					CardNumber:       cardIdx + 1,
-					CardID:           p2Card.ID,
-					HPBefore:         p2BeforeHP,
-					HPAfter:          p2.HP,
-					MultiplierBefore: p2BeforeMul,
-					MultiplierAfter:  p2.Multiplier,
-					Effects:          effects2,
-					Description:      descP2,
-					ElementRelation:  mapElementRelationStringToEnum(reverseRelationType(relation.Type)),
-				})
-
-				// 适配新的CheckGameOver - 每张牌对战后检查，此时卡牌未全部打完
-				hps := make([]int, playerCount)
-				addrs := make([]string, playerCount)
-				temps := make([]string, playerCount)
-				for idx, st := range states {
-					hps[idx] = st.HP
-					addrs[idx] = st.WalletAddress
-				}
-				if isGameOver, _, _ := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), false); isGameOver {
-					goto END
-				}
+			}
+			if hasZeroHP {
+				break
 			}
 		}
 	}
-END:
+
 	// 构建玩家回合数据
 	playerStats := make([]PlayerRoundStat, playerCount)
 	for i, p := range states {
@@ -184,96 +183,55 @@ END:
 			WalletAddress:    p.WalletAddress,
 			TemporaryAddress: p.TemporaryAddress,
 			LostHP:           p.LostHP,
-			CardStats:        p.Stats,
+			CardStats:        p.Stats, // 如果有人离线，跳过对战，这个字段为空
 		}
 	}
 
 	// 游戏结束判定 - 所有卡牌都打完后的最终判定
-	hps := make([]int, playerCount)
-	addrs := make([]string, playerCount)
-	temps := make([]string, playerCount)
-	for idx, st := range states {
-		hps[idx] = st.HP
-		addrs[idx] = st.WalletAddress
-		temps[idx] = st.TemporaryAddress
-	}
-
-	isGameOver, winner, temporaryAddress := be.gameLogic.CheckGameOver(hps, addrs, temps, uint(input.RoundNumber), true)
-
-	var gameRes *GameResult
-
-	if isGameOver {
-		// 确定游戏结果类型和最终倍率
-		grType := be.determineGameResultType(hps, addrs)
-
-		var finalMul uint32
-		if winner != "tie" {
-			for _, st := range states {
-				if st.WalletAddress != winner {
-					finalMul = st.Multiplier
-					break
-				}
-			}
-		} else {
-			finalMul = 1
-		}
-
-		gameRes = &GameResult{
-			Multiplier:             finalMul,
-			WinnerWalletAddress:    winner,
-			WinnerTemporaryAddress: temporaryAddress,
-			GameResultType:         grType,
-			// Reward 后续计算后赋值
+	gameEndState := make([]*GameEndState, playerCount)
+	for i, st := range states {
+		gameEndState[i] = &GameEndState{
+			HP:               st.HP,
+			Multiplier:       st.Multiplier,
+			WalletAddress:    st.WalletAddress,
+			TemporaryAddress: st.TemporaryAddress,
+			Status:           st.Status, // 添加状态字段
 		}
 	}
 
-	// 构建回合结果
+	isGameOver, grType, winner, temporaryAddress, finalMul := be.gameLogic.CheckGameOver(gameEndState, input.RoundNumber)
+
+	// 先构建回合结果（暂不含 GameResult）
 	roundRes := &RoundResult{
 		Players:     playerStats,
 		RoundNumber: input.RoundNumber,
 		IsGameOver:  isGameOver,
-		GameResult:  gameRes,
+		GameResult:  nil,
 	}
 
-	// 如果游戏结束，计算奖励
+	// 如果游戏结束，再构建 GameResult 并计算奖励
 	if isGameOver {
-		roundRes.GameResult.Reward = be.rewardCalculator.CalculateRewards(roundRes)
+		gameRes := &GameResult{
+			Multiplier:             finalMul,
+			WinnerWalletAddress:    winner,
+			WinnerTemporaryAddress: temporaryAddress,
+			GameResultType:         grType,
+		}
+
+		// 先将 GameResult 赋给 roundRes，以便奖励计算器使用
+		roundRes.GameResult = gameRes
+
+		// 构建玩家状态映射
+		playerStatuses := make(map[string]PlayerStatus)
+		for _, st := range states {
+			playerStatuses[st.WalletAddress] = st.Status
+		}
+
+		// 计算奖励并填充
+		gameRes.Reward = be.rewardCalculator.CalculateRewards(roundRes, playerStatuses)
 	}
 
 	return roundRes, nil
-}
-
-// determineGameResultType determine game result type
-func (be *BattleEngine) determineGameResultType(hps []int, addresses []string) GameResultType {
-	alive := 0
-	for _, hp := range hps {
-		if hp > 0 {
-			alive++
-		}
-	}
-	if alive == 0 {
-		return GAME_TIE
-	} else if alive == 1 {
-		return GAME_KO
-	} else {
-		return GAME_NORMAL
-	}
-}
-
-// reverseRelationType 用于反转元素关系类型
-func reverseRelationType(t string) string {
-	switch t {
-	case "overpower":
-		return "overpowered"
-	case "overpowered":
-		return "overpower"
-	case "nurture":
-		return "nurtured"
-	case "nurtured":
-		return "nurture"
-	default:
-		return t
-	}
 }
 
 func mapElementRelationStringToEnum(s string) ElementRelation {

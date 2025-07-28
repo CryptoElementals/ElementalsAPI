@@ -33,7 +33,7 @@ func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 		WinnerWalletAddress:    result.WinnerWalletAddress,
 		WinnerTemporaryAddress: result.WinnerTemporaryAddress,
 		GameResultType:         result.GameResultType,
-		Reward:                 DbBattleRewardToProtoBattleReward(result.BattleReword),
+		Reward:                 DbBattleRewardToProtoBattleReward(result.BattleReward),
 	}
 	return gameResult
 }

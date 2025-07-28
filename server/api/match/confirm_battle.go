@@ -8,13 +8,12 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const CONFIRM_BATTLE_LABEL = "ConfirmBattle"
@@ -97,22 +96,23 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
-	conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
+	rpcClient := client.GetGlobalRpcClient()
+	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		task.Response.BaseResponse.Message = "gRPC client not initialized"
 		return task.Response, nil
 	}
-	defer conn.Close()
-	client := proto.NewRpcServiceClient(conn)
 
 	req := &proto.ConfirmBattleRequest{
-		GameID:        task.Request.GameID,
-		RoundNumber:   uint32(task.Request.Round),
-		PlayerAddress: &proto.PlayerAddress{WalletAddress: address, TemporaryAddress: task.Request.TempAddress},
+		GameID:      task.Request.GameID,
+		RoundNumber: uint32(task.Request.Round),
+		PlayerAddress: &proto.PlayerAddress{
+			WalletAddress:    address,
+			TemporaryAddress: task.Request.TempAddress,
+		},
 	}
 
-	_, err = client.ConfirmBattle(context.Background(), req)
+	_, err := rpcClient.ConfirmBattle(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer ConfirmBattle failed: " + err.Error()

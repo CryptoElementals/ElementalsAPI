@@ -74,7 +74,7 @@ func UpdateDailyRewardCollection(address string) error {
 }
 
 // UpdateUserGameStats 更新用户游戏统计数据
-// winner: 获胜者地址，如果是平局则为"tie"
+// winner: 获胜者地址，如果是平局则为""
 // multiplier: 赢家的最高倍率
 func UpdateUserGameStats(player1Address, player2Address, winner string, multiplier float64) error {
 	// 获取两个用户的档案

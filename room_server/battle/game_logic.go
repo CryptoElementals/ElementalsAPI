@@ -2,6 +2,15 @@ package battle
 
 import "fmt"
 
+// GameEndState 用于游戏结束判定的玩家状态
+type GameEndState struct {
+	HP               int
+	Multiplier       uint32
+	WalletAddress    string
+	TemporaryAddress string
+	Status           PlayerStatus // 添加状态字段
+}
+
 // GameLogic game logic
 type GameLogic struct{}
 
@@ -10,78 +19,222 @@ func NewGameLogic() *GameLogic {
 	return &GameLogic{}
 }
 
-// CheckGameOver check if game is over
-// 改为支持任意数量玩家，返回是否结束和胜者地址（或空/"tie"）
-// 添加round参数，支持第3轮特殊规则
-// allCardsPlayed: 是否所有卡牌都已打完
-func (gl *GameLogic) CheckGameOver(hps []int, addresses []string, temps []string, round uint, allCardsPlayed bool) (bool, string, string) {
-	alive := 0
-	winner := ""
-	temporaryAddress := ""
-	for i, hp := range hps {
-		if hp > 0 {
-			alive++
-			winner = addresses[i]
-			temporaryAddress = temps[i]
+// check if game is over
+// 返回是否结束、游戏结果类型、赢家地址列表（用|分割）、赢家临时地址列表（用|分割）、最终倍率
+func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, GameResultType, string, string, uint32) {
+	// 首先检查离线玩家情况
+	onlineCount := 0
+	offlineCount := 0
+
+	for _, state := range states {
+		if state.Status == PLAYER_ONLINE {
+			onlineCount++
+		} else if state.Status == PLAYER_OFFLINE {
+			offlineCount++
 		}
 	}
 
-	// 如果有玩家血量为0，直接判定胜负
-	if alive == 1 {
-		return true, winner, temporaryAddress
-	}
-	if alive == 0 {
-		return true, "tie", ""
+	// 如果有离线玩家，需要特殊处理
+	if offlineCount > 0 {
+		if onlineCount > 0 {
+			// 有在线玩家：在线的是赢家，离线的是输家，应该是normal（血量都大于0）
+			var winners []string
+			var winnerTemps []string
+			var maxLoserMul uint32 = 1
+
+			for _, state := range states {
+				if state.Status == PLAYER_ONLINE {
+					winners = append(winners, state.WalletAddress)
+					winnerTemps = append(winnerTemps, state.TemporaryAddress)
+				} else if state.Status == PLAYER_OFFLINE {
+					// 离线玩家是输家，更新最大倍率
+					if state.Multiplier > maxLoserMul {
+						maxLoserMul = state.Multiplier
+					}
+				}
+			}
+
+			// 拼接赢家地址
+			winnersStr := ""
+			winnerTempsStr := ""
+			if len(winners) > 0 {
+				winnersStr = winners[0]
+				winnerTempsStr = winnerTemps[0]
+				for i := 1; i < len(winners); i++ {
+					winnersStr += "|" + winners[i]
+					winnerTempsStr += "|" + winnerTemps[i]
+				}
+			}
+
+			return true, GAME_NORMAL, winnersStr, winnerTempsStr, maxLoserMul
+		} else {
+			// 所有人都离线：按传入的血量判断胜负，立即结算，不等第3轮
+			return gl.checkGameOverByHP(states, round, true)
+		}
 	}
 
-	// 第3轮特殊规则：只有在所有卡牌都打完后，且所有玩家都还活着时，才比较血量
-	if round == 3 && allCardsPlayed && alive > 1 {
-		maxHP := -1
-		winner = ""
-		temporaryAddress = ""
-		tie := false
+	// 没有离线玩家，使用原有逻辑
+	return gl.checkGameOverByHP(states, round, false)
+}
 
+// checkGameOverByHP 按血量判断游戏结束的逻辑
+// hasOffline: 如果为true，表示有离线玩家，立即结算；否则按原有轮数规则
+func (gl *GameLogic) checkGameOverByHP(states []*GameEndState, round uint32, hasOffline bool) (bool, GameResultType, string, string, uint32) {
+	// 从states中提取需要的数据
+	hps := make([]int, len(states))
+	addresses := make([]string, len(states))
+	temps := make([]string, len(states))
+	multipliers := make([]uint32, len(states))
+
+	for i, state := range states {
+		hps[i] = state.HP
+		addresses[i] = state.WalletAddress
+		temps[i] = state.TemporaryAddress
+		multipliers[i] = state.Multiplier
+	}
+
+	// 首先检查所有人血量是否相同
+	allSameHP := true
+	firstHP := hps[0]
+	for _, hp := range hps[1:] {
+		if hp != firstHP {
+			allSameHP = false
+			break
+		}
+	}
+
+	// 平局判定：
+	if allSameHP {
+		if firstHP == 0 {
+			// 所有人血量都是0，直接平局
+			return true, GAME_TIE, "", "", 1
+		} else if hasOffline || round == 3 {
+			// 有离线玩家时立即判断，或者第3轮血量相同时为平局
+			return true, GAME_TIE, "", "", 1
+		}
+		// 血量相同但不是第3轮且没有离线玩家，游戏继续
+		return false, GAME_NORMAL, "", "", 1
+	}
+
+	// 血量不相同的情况
+	// 检查是否有人血量为0
+	hasZeroHP := false
+	for _, hp := range hps {
+		if hp == 0 {
+			hasZeroHP = true
+			break
+		}
+	}
+
+	var winners []string
+	var winnerTemps []string
+	var gameType GameResultType
+	var finalMultiplier uint32 = 1
+
+	if hasZeroHP {
+		// 有人血量为0：血量为0的是输家，其余是赢家，游戏结束类型是KO
+		gameType = GAME_KO
+		maxLoserMul := uint32(1)
 		for i, hp := range hps {
+			if hp > 0 {
+				winners = append(winners, addresses[i])
+				winnerTemps = append(winnerTemps, temps[i])
+			} else {
+				// 这是输家，更新最大倍率
+				if multipliers[i] > maxLoserMul {
+					maxLoserMul = multipliers[i]
+				}
+			}
+		}
+		finalMultiplier = maxLoserMul
+	} else {
+		// 没人血量为0：有离线玩家时立即判断，否则只有在第3轮才比较剩余血量
+		if !hasOffline && round != 3 {
+			// 没有离线玩家且不是第3轮，未结束
+			return false, GAME_NORMAL, "", "", 1
+		}
+
+		gameType = GAME_NORMAL
+		// 找到最高血量
+		maxHP := -1
+		for _, hp := range hps {
 			if hp > maxHP {
 				maxHP = hp
-				winner = addresses[i]
-				temporaryAddress = temps[i]
-				tie = false
-			} else if hp == maxHP {
-				tie = true
 			}
 		}
 
-		if tie {
-			return true, "tie", ""
-		} else {
-			return true, winner, temporaryAddress
+		// 血量最多的是赢家（可能多个），其余是输家
+		maxLoserMul := uint32(1)
+		for i, hp := range hps {
+			if hp == maxHP {
+				winners = append(winners, addresses[i])
+				winnerTemps = append(winnerTemps, temps[i])
+			} else {
+				// 这是输家，更新最大倍率
+				if multipliers[i] > maxLoserMul {
+					maxLoserMul = multipliers[i]
+				}
+			}
+		}
+		finalMultiplier = maxLoserMul
+	}
+
+	// 拼接赢家地址（用|分割）
+	winnersStr := ""
+	winnerTempsStr := ""
+	if len(winners) > 0 {
+		winnersStr = winners[0]
+		winnerTempsStr = winnerTemps[0]
+		for i := 1; i < len(winners); i++ {
+			winnersStr += "|" + winners[i]
+			winnerTempsStr += "|" + winnerTemps[i]
 		}
 	}
 
-	return false, "", ""
+	return true, gameType, winnersStr, winnerTempsStr, finalMultiplier
 }
 
 // ValidateRoundInput validate battle input
-// 改为校验Players列表
 func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 	if len(input.Players) < 2 {
 		return fmt.Errorf("at least 2 players required")
 	}
+
+	// 首先处理所有玩家的基本验证和默认状态
 	for idx, p := range input.Players {
 		if p.WalletAddress == "" {
 			return fmt.Errorf("player %d address cannot be empty", idx+1)
 		}
+		if p.TemporaryAddress == "" {
+			return fmt.Errorf("player %d temporary address cannot be empty", idx+1)
+		}
 		if p.HP <= 0 {
 			return fmt.Errorf("player %d HP must be greater than 0", idx+1)
 		}
-		if len(p.Cards) != 3 {
-			return fmt.Errorf("player %d must have 3 cards", idx+1)
+		if len(p.Cards) > 3 {
+			return fmt.Errorf("player %d must have at most 3 cards", idx+1)
 		}
-		if err := gl.validateCardElements(p.Cards, fmt.Sprintf("Player %d", idx+1)); err != nil {
-			return err
+
+		// Status字段默认为PLAYER_ONLINE(0)，无需显式设置
+	}
+
+	// 然后处理卡牌数量不足的情况（强制设为离线）
+	for idx, p := range input.Players {
+		if len(p.Cards) < 3 {
+			input.Players[idx].Status = PLAYER_OFFLINE
+			// 不修改HP和LostHP，保持原值，也就是说不因为掉线将其血量扣为0
 		}
 	}
+
+	// 验证卡牌元素类型（只对在线且卡牌数量为3的玩家）
+	for idx, p := range input.Players {
+		if input.Players[idx].Status == PLAYER_ONLINE && len(p.Cards) == 3 {
+			if err := gl.validateCardElements(p.Cards, fmt.Sprintf("Player %d", idx+1)); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -125,15 +278,4 @@ func (gl *GameLogic) validateCardElements(cardIDs []int, playerName string) erro
 	}
 
 	return nil
-}
-
-// GetWinner determine winner based on health
-func (gl *GameLogic) GetWinner(player1HP, player2HP int, player1Address, player2Address string) string {
-	if player1HP > player2HP {
-		return player1Address
-	} else if player2HP > player1HP {
-		return player2Address
-	} else {
-		return "tie"
-	}
 }

@@ -48,7 +48,7 @@ func ProtoGameResultToDbGameResult(protoGameResult *proto.GameResult) *dao.GameR
 		WinnerWalletAddress:    protoGameResult.WinnerWalletAddress,
 		WinnerTemporaryAddress: protoGameResult.WinnerTemporaryAddress,
 		GameResultType:         protoGameResult.GameResultType,
-		BattleReword:           ProtoBattleRewardsToDbBattleReward(protoGameResult.Reward),
+		BattleReward:           ProtoBattleRewardsToDbBattleReward(protoGameResult.Reward),
 	}
 }
 

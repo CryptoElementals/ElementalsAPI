@@ -77,6 +77,7 @@ type PlayerReward struct {
 	TemporaryAddress string
 	TokenChange      int32
 	PointChange      int32
+	IsOffline        bool
 }
 
 type BattleReward struct {
@@ -93,5 +94,5 @@ type GameResult struct {
 	WinnerWalletAddress    string
 	WinnerTemporaryAddress string
 	GameResultType         proto.GameResultType
-	BattleReword           *BattleReward
+	BattleReward           *BattleReward
 }

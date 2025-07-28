@@ -158,7 +158,7 @@ func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 }
 
 func (c *gameContext) run() error {
-	err := c.rpcClient.Subscribe(c.myself.String(), c.myself.String(), c.evtChan, c.errChan)
+	err := c.rpcClient.PubSubClient.Subscribe(c.myself.String(), c.myself.String(), c.evtChan, c.errChan)
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (c *gameContext) run() error {
 					return
 				case proto.EventType_TYPE_MATCHED:
 					fmt.Println("game matched, please confirm")
-					phase, err := c.rpcClient.GetGamePhase(c.ctx, &c.myself)
+					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, &c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 						continue
@@ -200,7 +200,7 @@ func (c *gameContext) run() error {
 				case proto.EventType_TYPE_GAME_CREATED:
 					fmt.Println("game created, please submit cards")
 					// get contract
-					phase, err := c.rpcClient.GetGamePhase(c.ctx, &c.myself)
+					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, &c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
@@ -231,7 +231,7 @@ func (c *gameContext) run() error {
 					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_COMPLETE:
 					fmt.Println("round complete, please confirm to start a new round")
-					battleInfo, err := c.rpcClient.GetBattleInfo(c.ctx, c.gameID, uint(c.currentRound))
+					battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(c.currentRound))
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
@@ -264,7 +264,7 @@ func (c *gameContext) JoinQueue() error {
 		return fmt.Errorf("cannot join queue, invalid state: %s", c.state.String())
 	}
 
-	err := c.rpcClient.JoinQueue(c.ctx, &c.myself)
+	err := c.rpcClient.RpcClient.JoinQueue(c.ctx, &c.myself)
 	if err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func (c *gameContext) ExitQueue() error {
 	if c.state != playerStateWattingGameMatched {
 		return fmt.Errorf("cannot exit queue, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.ExitQueue(c.ctx, &c.myself)
+	err := c.rpcClient.RpcClient.ExitQueue(c.ctx, &c.myself)
 	if err != nil {
 		return err
 	}
@@ -292,7 +292,7 @@ func (c *gameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound))
+	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound))
 	if err != nil {
 		return err
 	}
