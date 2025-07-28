@@ -132,9 +132,6 @@ func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_Sub
 		return status.Error(codes.InvalidArgument, "topic is invalid, topic should be in 'walletAddress_temporaryAddress' format")
 	}
 	s.playerManager.AddPlayer(addr)
-	// if err != nil {
-	// 	return status.Error(codes.InvalidArgument, "failed to add player: "+err.Error())
-	// }
 
 	s.mu.Lock()
 	topic, exists := s.topics[req.Topic]

@@ -39,4 +39,8 @@ type GameCompletedEvent struct {
 	GameInfo *dao.Game
 }
 
+type GamePurgeEvent struct {
+	GameID uint
+}
+
 type SyncEvent GameCompletedEvent

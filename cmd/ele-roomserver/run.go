@@ -34,6 +34,7 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("init logger failed, err: %v", err)
 		}
+		log.Info("config: %+v", config.RSGConf)
 		err = db.Init(&config.RSGConf.DbCfg)
 		if err != nil {
 			log.Fatal("init db failed, err: %v", err)

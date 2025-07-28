@@ -4,9 +4,18 @@ type GameMatchedEvent struct {
 	Players []PlayerAddress
 }
 
+type GameContinueEvent struct {
+	Players []PlayerAddress
+}
+
 type PlayerReadyEvent struct {
 	GameId        uint
 	RoundNumber   uint32
+	PlayerAddress PlayerAddress
+}
+
+type PlayerContinueEvent struct {
+	GameId        uint
 	PlayerAddress PlayerAddress
 }
 

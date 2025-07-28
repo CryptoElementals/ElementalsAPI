@@ -69,6 +69,12 @@ func setupMemDb(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestInsertCards(t *testing.T) {
+	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
+	require.NoError(t, err)
+	prepareCards(t)
+}
+
 func prepareCards(t *testing.T) {
 	t.Helper()
 	cards := []dao.Card{
@@ -140,7 +146,7 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 								Tx: &proto.Transaction_CommitmentsOnChain{
 									CommitmentsOnChain: &proto.TxCommitmentsOnChain{
 										RoomContractAddress: fakeRoomAddress,
-										Address:             addr.ToProto(),
+										Address:             addr.ToProtoNoWallet(),
 										RoundNumber:         uint32(round),
 										Commitment:          fmt.Appendf(nil, "%s_%s_%d", "card_commitments", addr.String(), round),
 									},
@@ -161,7 +167,7 @@ func runClient(t *testing.T, ctx context.Context, wg *sync.WaitGroup,
 								Tx: &proto.Transaction_CardsOnChain{
 									CardsOnChain: &proto.TxCardsOnChain{
 										RoomContractAddress: fakeRoomAddress,
-										Address:             addr.ToProto(),
+										Address:             addr.ToProtoNoWallet(),
 										RoundNumber:         uint32(round),
 										Cards:               submittedCards,
 									},

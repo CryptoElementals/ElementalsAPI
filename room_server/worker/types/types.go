@@ -22,9 +22,10 @@ const GameTypePVP = 1
 
 // well known worker id
 const (
-	GAME_MANAGER_ID  = "game_manager"
-	QUEUE_MANAGER_ID = "queue_manager"
-	CHAIN_MANAGER_ID = "chain_manager"
+	GAME_MANAGER_ID   = "game_manager"
+	QUEUE_MANAGER_ID  = "queue_manager"
+	CHAIN_MANAGER_ID  = "chain_manager"
+	WORKER_MANAGER_ID = "worker_manager"
 )
 
 type PlayerAddress struct {
@@ -56,6 +57,12 @@ func (a *PlayerAddress) ToDao() *dao.GamePlayerInfo {
 func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
 		WalletAddress:    a.WalletAddress,
+		TemporaryAddress: a.TemporaryAddress,
+	}
+}
+
+func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
+	return &proto.PlayerAddress{
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }

@@ -56,6 +56,16 @@ func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 		// just retry
 		r.workerManager.SendEvent(evt.OriginalReceiver, evt.OriginalEvent)
 		return nil
+	case *types.GameCompletedEvent:
+		game := r.gamesMap[evt.GameID]
+		if game == nil {
+			return fmt.Errorf("game not found, game id: %d", evt.GameID)
+		}
+		delete(r.gamesMap, evt.GameID)
+		for _, player := range game.gamePlayers {
+			delete(r.playerToGameMap, *player.addr)
+		}
+		return nil
 	case *types.GameMatchedEvent:
 		gameID, err := r.createGame(evt.Players)
 		if err != nil {
@@ -68,6 +78,8 @@ func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 				Players: evt.Players,
 			}))
 		}
+
+		log.Infof("gameMatched: gameID %d", gameID)
 		return nil
 	default:
 		return fmt.Errorf("GameManager Handle err: event type not match, %d", reflect.TypeOf(evt))
@@ -121,6 +133,9 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 }
 
 func (r *GameManager) recoverGames() error {
+	if r.roundTimeout == 0 {
+		return nil
+	}
 	gameInfos, err := db.GetAllActiveGames()
 	if err != nil {
 		return err
