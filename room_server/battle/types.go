@@ -20,14 +20,23 @@ type Player struct {
 	Multiplier float64 `json:"Multiplier"` // Score multiplier
 }
 
+// PlayerStatus 玩家状态
+type PlayerStatus int32
+
+const (
+	PLAYER_ONLINE  PlayerStatus = 0
+	PLAYER_OFFLINE PlayerStatus = 1
+)
+
 // RoundInput battle input parameters
 // 支持多玩家
 type PlayerRoundInput struct {
-	WalletAddress    string `json:"WalletAddress"`
-	TemporaryAddress string `json:"TemporaryAddress"`
-	Cards            []int  `json:"Cards"`
-	HP               int    `json:"HP"`
-	LostHP           int    `json:"LostHP"`
+	WalletAddress    string       `json:"WalletAddress"`
+	TemporaryAddress string       `json:"TemporaryAddress"`
+	Cards            []int        `json:"Cards"`
+	HP               int          `json:"HP"`
+	LostHP           int          `json:"LostHP"`
+	Status           PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
 }
 
 type RoundInput struct {
@@ -39,7 +48,7 @@ type RoundInput struct {
 // GameResult 表示游戏结束时的结果数据（回合未结束时为 nil）
 type GameResult struct {
 	Multiplier             uint32         `json:"Multiplier"`             // 最终倍率
-	WinnerWalletAddress    string         `json:"WinnerWalletAddress"`    // 胜者钱包地址（tie 时为 "tie"）
+	WinnerWalletAddress    string         `json:"WinnerWalletAddress"`    // 胜者钱包地址（tie 时为 ""）
 	WinnerTemporaryAddress string         `json:"WinnerTemporaryAddress"` // 胜者临时地址
 	GameResultType         GameResultType `json:"GameResultType"`         // 游戏结果类型
 	Reward                 BattleReward   `json:"Reward"`                 // 奖励信息
@@ -55,8 +64,10 @@ type RoundResult struct {
 
 // ElementalRelation elemental relation
 type ElementalRelation struct {
-	Type        string `json:"Type"`        // Relation type: "overpower"(overpower), "overpowered"(overpowered), "nurture"(nurture), "nurtured"(nurtured), "even"(even)
-	Description string `json:"Description"` // Relation description
+	P1Type        string `json:"P1Type"`        // P1's relation type
+	P2Type        string `json:"P2Type"`        // P2's relation type
+	P1Description string `json:"P1Description"` // Description from P1's perspective
+	P2Description string `json:"P2Description"` // Description from P2's perspective
 }
 
 // BattleEffect battle effect
@@ -81,6 +92,7 @@ type PlayerReward struct {
 	TemporaryAddress string `json:"TemporaryAddress"` // 玩家临时地址
 	TokenChange      int    `json:"TokenChange"`      // Token变化
 	PointChange      int    `json:"PointChange"`      // 积分变化
+	IsOffline        bool   `json:"IsOffline"`        // 是否离线
 }
 
 // 单个玩家每张卡的详细数据

@@ -35,8 +35,8 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 	return tx.
 		Preload("Players").
 		Preload("GameResult").
-		Preload("GameResult.BattleReword").
-		Preload("GameResult.BattleReword.PlayerRewards").
+		Preload("GameResult.BattleReward").
+		Preload("GameResult.BattleReward.PlayerRewards").
 		Preload("Rounds").
 		Preload("Rounds.PlayerRoundInfos").
 		Preload("Rounds.PlayerRoundInfos.SubmittedCards").

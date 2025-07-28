@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
@@ -103,6 +104,7 @@ func HandleSSE(c *gin.Context) {
 			Data: map[string]interface{}{
 				"error": "params assert failed",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: uuid.NewString(),
 		}
 		sendSSEEvent(c.Writer, flusher, errorEvent)
@@ -120,6 +122,7 @@ func HandleSSE(c *gin.Context) {
 			Data: map[string]interface{}{
 				"error": err.Error(),
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 		sendSSEEvent(c.Writer, flusher, errorEvent)
@@ -134,19 +137,12 @@ func HandleSSE(c *gin.Context) {
 			Data: map[string]interface{}{
 				"error": fmt.Sprintf("action %s does not support SSE", action),
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 		sendSSEEvent(c.Writer, flusher, errorEvent)
 		return
 	}
-
-	// 创建 SSE 连接
-	connID := fmt.Sprintf("%s_%s", action, requestUUID)
-	conn := events.NewSSEConnection(connID, c.Writer, flusher, requestUUID)
-
-	// 注册连接到事件管理器
-	eventManager := events.GetEventManager()
-	eventManager.AddConnection(conn)
 
 	// 发送连接建立事件
 	startEvent := events.Event{
@@ -155,11 +151,12 @@ func HandleSSE(c *gin.Context) {
 			"status": "connected",
 			"action": action,
 		},
+		Timestamp:   time.Now(),
 		RequestUUID: requestUUID,
 	}
 	sendSSEEvent(c.Writer, flusher, startEvent)
 
-	// 开始 SSE 流
+	// 开始 SSE 流 - 让每个任务自己处理事件管理
 	ctx := c.Request.Context()
 	err = sseTask.RunSSE(ctx, c, c.Writer, flusher, requestUUID)
 	if err != nil {
@@ -169,13 +166,13 @@ func HandleSSE(c *gin.Context) {
 			Data: map[string]interface{}{
 				"error": err.Error(),
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 		sendSSEEvent(c.Writer, flusher, errorEvent)
 	}
 
-	// 清理连接
-	eventManager.RemoveConnection(connID)
+	log.Infof("SSE connection ended - Action: %s, RequestUUID: %s", action, requestUUID)
 }
 
 // sendSSEEvent 发送 SSE 事件

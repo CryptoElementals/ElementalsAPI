@@ -25,11 +25,12 @@ type timerEvent struct {
 }
 
 type gamePlayer struct {
-	player      *dao.GamePlayerInfo
-	roundPlayer *dao.PlayerRoundInfo
-	totalLostHP int64
-	currentHP   int64
-	addr        *types.PlayerAddress
+	player       *dao.GamePlayerInfo
+	roundPlayer  *dao.PlayerRoundInfo
+	totalLostHP  int64
+	currentHP    int64
+	addr         *types.PlayerAddress
+	wantContinue bool
 }
 
 func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
@@ -167,8 +168,36 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT, proto.GameStatus_GAME_RUNNING:
 		return g.handleRound(event)
+	case proto.GameStatus_GAME_END:
+		return g.handleContinueGame(event)
 	}
 	return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
+}
+
+func (g *Game) handleContinueGame(event *types.Event) error {
+	evt, err := types.AssertInterface[*types.PlayerContinueEvent](event)
+	if err != nil {
+		return err
+	}
+	// stale events
+	if evt.GameId != g.gameInfo.ID {
+		return nil
+	}
+	player := g.gamePlayers[evt.PlayerAddress.TemporaryAddress]
+	player.wantContinue = true
+	for _, p := range g.gamePlayers {
+		if !p.wantContinue {
+			return nil
+		}
+	}
+	players := make([]types.PlayerAddress, 0, len(g.gamePlayers))
+	for _, p := range g.gamePlayers {
+		players = append(players, p.PlayerAddress())
+	}
+	g.workerMangerService.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(g.workerID(), &types.GameContinueEvent{
+		Players: players,
+	}))
+	return nil
 }
 
 func (g *Game) handleRound(event *types.Event) error {
@@ -391,7 +420,7 @@ func (g *Game) handleGameEnd() error {
 		return err
 	}
 	g.sendEventsToAllPlayers(gameCompletedEvt)
-	g.stopWorker()
+	g.sendTimerEventByCurrentRound()
 	return nil
 }
 
@@ -495,13 +524,24 @@ func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
 	}
 }
 
-func (g *Game) sendTimerEventByCurrentRound() {
+func (g *Game) timeoutFromCurentRound() time.Duration {
+	if g.gameInfo.Status == proto.GameStatus_GAME_END {
+		return time.Second * 20
+	}
 	if g.gameInfo.RoundTimeout == 0 {
-		return
+		return 0
 	}
 	timeout := time.Second * time.Duration(g.gameInfo.RoundTimeout)
 	if !g.currentRound.UpdatedAt.IsZero() {
 		timeout -= time.Since(g.currentRound.UpdatedAt)
+	}
+	return timeout
+}
+
+func (g *Game) sendTimerEventByCurrentRound() {
+	timeout := g.timeoutFromCurentRound()
+	if timeout == 0 {
+		return
 	}
 	timerEvent := &timerEvent{
 		currentGameStatus:  g.gameInfo.Status,
@@ -514,8 +554,12 @@ func (g *Game) sendTimerEventByCurrentRound() {
 }
 
 func (g *Game) handleTimerEvent(event *timerEvent) {
-	// game end, do nothing
+	// game end, purge self
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
+		g.workerMangerService.SendEvent(g.workerID(), types.NewEvent(g.workerID(), &types.GamePurgeEvent{
+			GameID: g.gameInfo.ID,
+		}))
+		g.stopWorker()
 		return
 	}
 	// stale event

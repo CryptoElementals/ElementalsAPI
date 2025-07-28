@@ -3,22 +3,18 @@ package match
 import (
 	"context"
 	"strings"
-	"time"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const GET_GAME_PHASE_LABEL = "GetGamePhase"
-
-// 回合超时时间（秒）
-const ROUND_TIMEOUT_SECONDS = 10
 
 // GetGamePhaseRequest 请求结构体
 type GetGamePhaseRequest struct {
@@ -28,17 +24,16 @@ type GetGamePhaseRequest struct {
 
 // PvPInfo PvP对战信息
 type PvPInfo struct {
-	Phase           string `json:"Phase"`           // None, Queueing, Matching, InBattle
-	MatchId         string `json:"MatchId"`         // 匹配ID
-	RoomId          string `json:"RoomId"`          // 房间ID
-	BeginAt         int64  `json:"BeginAt"`         // 开始时间
-	TimeoutDuration int64  `json:"TimeoutDuration"` // 超时时间
+	Phase           uint32 `json:"Phase"`           // None, Queueing, Matching, InBattle: 0123
+	GameID          uint32 `json:"GameID"`          // 游戏ID
+	BeginAt         uint64 `json:"BeginAt"`         // 开始时间
+	TimeoutDuration uint64 `json:"TimeoutDuration"` // 超时时间
 }
 
 // GetGamePhaseResponse 响应结构体
 type GetGamePhaseResponse struct {
 	api.BaseResponse
-	Mode    string        `json:"Mode"`              // None, PvP
+	Mode    uint32        `json:"Mode"`              // 0:None, 1:PvP
 	PvPInfo *PvPInfo      `json:"PvPInfo"`           // PvP对战信息
 	Players []MatchPlayer `json:"Players,omitempty"` // 新增，集成对战玩家信息
 }
@@ -66,7 +61,7 @@ func NewGetGamePhaseResponse(sessionId string) *GetGamePhaseResponse {
 			RequestUUID: sessionId,
 		},
 		PvPInfo: &PvPInfo{
-			Phase: "None",
+			Phase: 0,
 		},
 	}
 }
@@ -108,84 +103,74 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的GetPlayerInfo
-	conn, err := grpc.NewClient("127.0.0.1:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
+	rpcClient := client.GetGlobalRpcClient()
+	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to connect to RoomServer: " + err.Error()
+		task.Response.BaseResponse.Message = "gRPC client not initialized"
 		return task.Response, nil
 	}
-	defer conn.Close()
-	client := proto.NewRpcServiceClient(conn)
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    lowercaseAddress,
+		WalletAddress:    address,
 		TemporaryAddress: tempAddress,
 	}
 
-	_, err = client.GetGamePhase(context.Background(), playerAddr)
+	gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "RoomServer GetPlayerInfo failed: " + err.Error()
 		return task.Response, nil
 	}
 
-	// 获取当前时间戳
-	currentTime := time.Now().Unix()
-	task.Response.PvPInfo.BeginAt = currentTime
-	task.Response.PvPInfo.TimeoutDuration = ROUND_TIMEOUT_SECONDS
+	task.Response.PvPInfo.BeginAt = gamePhase.PvPInfo.BeginAt
+	task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
 
-	// switch playerInfo.Status {
-	// case proto.PlayerStatus_PLAYER_IN_QUEUE:
-	// 	task.Response.Mode = "PvP"
-	// 	task.Response.PvPInfo.Phase = "Queueing"
-	// 	task.Response.BaseResponse.Message = "Player is in match queue"
-	// case proto.PlayerStatus_PLAYER_MATCHED:
-	// 	task.Response.Mode = "PvP"
-	// 	task.Response.PvPInfo.Phase = "Matching"
-	// 	task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
-	// case proto.PlayerStatus_PLAYER_IN_GAME:
-	// 	task.Response.Mode = "PvP"
-	// 	task.Response.PvPInfo.Phase = "InBattle"
-	// 	task.Response.BaseResponse.Message = "Player has entered battle"
+	if gamePhase.PvPInfo.GameID != 0 {
+		task.Response.PvPInfo.GameID = gamePhase.PvPInfo.GameID
+	}
+	switch gamePhase.PvPInfo.Status {
+	case proto.PlayerStatus_PLAYER_IN_QUEUE:
+		task.Response.Mode = uint32(gamePhase.GameType)
+		task.Response.PvPInfo.Phase = 1
+		task.Response.BaseResponse.Message = "Player is in match queue"
+	case proto.PlayerStatus_PLAYER_MATCHED:
+		task.Response.Mode = uint32(gamePhase.GameType)
+		task.Response.PvPInfo.Phase = 2
+		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
+	case proto.PlayerStatus_PLAYER_IN_GAME:
+		task.Response.Mode = uint32(gamePhase.GameType)
+		task.Response.PvPInfo.Phase = 3
+		task.Response.BaseResponse.Message = "Player has entered battle"
 
-	// 	// 当玩家在游戏中时，设置RoomId
-	// 	if playerInfo.GameId != nil {
-	// 		task.Response.PvPInfo.RoomId = strconv.Itoa(int(*playerInfo.GameId))
-	// 	}
-	// default:
-	// 	task.Response.Mode = "None"
-	// 	task.Response.PvPInfo.Phase = "None"
-	// 	task.Response.BaseResponse.Message = "Player is not participating in any game"
-	// }
+	default:
+		task.Response.Mode = 0
+		task.Response.PvPInfo.Phase = 0
+		task.Response.BaseResponse.Message = "Player is not participating in any game"
+	}
 
-	// 集成getmatchinfo功能：如果MatchId非空，查找并组装玩家信息
-	if task.Response.PvPInfo.MatchId != "" {
-		match, err := db.GetMatchByMatchID(task.Response.PvPInfo.MatchId)
-		if err == nil {
-			var players []MatchPlayer
-			for _, p := range match.Players {
-				addr := strings.ToLower(p.WalletAddress)
-				player := MatchPlayer{
-					Address:   addr,
-					IsMyself:  addr == lowercaseAddress,
-					Confirmed: false, // 如有状态字段可补充
-				}
-				userProfile, err := db.GetUserProfileByAddress(addr)
-				if err == nil {
-					player.Name = userProfile.Name
-					player.AvatarURL = userProfile.AvatarURL
-				} else {
-					player.Name = addr
-					player.AvatarURL = ""
-				}
-				players = append(players, player)
+	// 补充玩家信息
+	if task.Response.PvPInfo.GameID != 0 {
+		players := make([]MatchPlayer, 0)
+		for _, p := range gamePhase.Players {
+			userProfile, err := db.GetUserProfileByAddress(p.Address.WalletAddress)
+			if err != nil {
+				continue
 			}
-			task.Response.Players = players
+			players = append(players, MatchPlayer{
+				Address:          p.Address.WalletAddress,
+				IsMyself:         p.Address.WalletAddress == address,
+				Confirmed:        p.IsConfirmed,
+				Name:             userProfile.Name,
+				AvatarURL:        userProfile.AvatarURL,
+				InitialHP:        int32(config.GameParams.MaxHP),
+				InitialMultipler: int32(config.GameParams.InitialMultiplier),
+			})
 		}
+		task.Response.Players = players
 	}
 
 	task.Response.BaseResponse.RetCode = 0

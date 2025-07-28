@@ -37,6 +37,7 @@ func convertProtoRoundInputToInternal(in *pb.RoundInput) *RoundInput {
 			Cards:            cards,
 			HP:               int(p.GetHP()),
 			LostHP:           int(p.GetLostHP()),
+			// Status 字段将在 ValidateRoundInput 中设置默认值
 		}
 	}
 	return &RoundInput{

@@ -101,11 +101,11 @@ func (c *Chain) Handle(ctx context.Context, event *types.Event) error {
 		if err != nil {
 			return err
 		}
+		log.Debugf("creating contract for %d", evt.GameID)
 		err = c.createRoomContract(evt.GameID, evt.Players, evt.InitialHP, evt.RoundTimeout, evt.MaxRoundNumber)
 		if err != nil {
 			return err
 		}
-		log.Debugf("created contract for %d", evt.GameID)
 	case *types.RequireSetupNewRoundEvent:
 		err := c.setRoundReady(evt.GameID, evt.RoundNumber, evt.ContractAddress)
 		if err != nil {
@@ -143,6 +143,7 @@ func (c *Chain) batchSendTxs(evt *batchTxEvent) {
 func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, initialHP int64, roundTimeout int64, maxRounds int64) error {
 	roomManagerContract, err := contract.NewRoomManagerContract(c.roomManagerContractAddress, c.client)
 	if err != nil {
+		log.Errorf("newRoomManagerContract: create room contract failed: %s", err.Error())
 		return err
 	}
 	player1WalletAddress := common.HexToAddress(players[0].WalletAddress)
@@ -155,6 +156,7 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 	tx, err := roomManagerContract.CreateRoom(c.bindOpts, player1WalletAddress, player2WalletAddress,
 		player1TemporaryAddress, player2TemporaryAddress, roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
 	if err != nil {
+		log.Errorf("createRoomContract: create room contract failed: %s", err.Error())
 		return err
 	}
 	txHash := tx.Hash().String()

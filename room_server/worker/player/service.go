@@ -125,6 +125,20 @@ func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundN
 	return nil
 }
 
+func (s *Service) ContinueGame(address types.PlayerAddress, gameID uint) error {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	player, ok := s.players[address]
+	if !ok {
+		return errors.New("player not found")
+	}
+	s.workerManager.SendEvent(fmt.Sprint(gameID), types.NewEvent(player.address.String(), &types.PlayerContinueEvent{
+		GameId:        gameID,
+		PlayerAddress: address,
+	}))
+	return nil
+}
+
 // GetGamePhase implements server.PlayerRequestHandler.
 func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	s.lock.RLock()

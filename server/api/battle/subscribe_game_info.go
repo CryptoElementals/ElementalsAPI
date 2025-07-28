@@ -16,18 +16,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
-const roomServerAddr = "127.0.0.1:50051" // TODO: 替换为实际RoomServer地址
 
 // SubscribeGameInfoRequest 请求结构体
 type SubscribeGameInfoRequest struct {
 	api.BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`   // 临时地址
-	Duration    int    `mapstructure:"Duration" validate:"min=1,max=360"` // 连接持续时间（秒）
+	Duration    int    `mapstructure:"Duration" validate:"min=1,max=600"` // 连接持续时间（秒）
 }
 
 // SubscribeGameInfoResponse 响应结构体
@@ -108,10 +105,11 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	address = strings.ToLower(address)
+	temp_address := strings.ToLower(task.Request.TempAddress)
 
-	// 组装 gameID: address_tempaddress 格式
-	gameID := fmt.Sprintf("%s_%s", lowercaseAddress, task.Request.TempAddress)
+	// 组装 game_topic: address_tempaddress 格式
+	game_topic := fmt.Sprintf("%s_%s", address, temp_address)
 
 	// 发送开始事件
 	startEvent := events.Event{
@@ -119,131 +117,72 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 		Data: map[string]interface{}{
 			"Status": "started",
 		},
+		Timestamp:   time.Now(),
 		RequestUUID: requestUUID,
 	}
 	if err := sendSSEEvent(writer, flusher, startEvent); err != nil {
 		return err
 	}
 
-	// 启动游戏事件监听器
-	done := make(chan struct{})
-	task.startGameEventListener(ctx, writer, flusher, requestUUID, lowercaseAddress, gameID, done)
+	// 获取全局事件管理器
+	eventManager := events.GetGlobalEventManager()
 
-	// 等待连接结束
-	select {
-	case <-ctx.Done():
-		log.Infof("SSE connection closed by client - RequestUUID: %s", requestUUID)
-	case <-time.After(time.Duration(task.Request.Duration) * time.Second):
-		log.Infof("SSE connection timeout - RequestUUID: %s", requestUUID)
-	case <-task.stopChan:
-		log.Infof("SSE connection stopped manually - RequestUUID: %s", requestUUID)
+	// 注册SSE客户端
+	clientID := fmt.Sprintf("%s_%s", requestUUID, game_topic)
+	eventHandler := func(msg *proto.Message) {
+		// 将RoomServer事件转换为SSE事件并发送
+		sseEvent := task.convertRoomServerEventToSSE(msg, requestUUID)
+		if err := sendSSEEvent(writer, flusher, sseEvent); err != nil {
+			log.Errorf("发送SSE事件失败: %v", err)
+		}
 	}
 
-	// 通知监听器退出
-	close(done)
+	eventManager.RegisterSSEClient(clientID, eventHandler)
+	defer eventManager.UnregisterSSEClient(clientID)
 
-	// 发送结束事件
-	endEvent := events.Event{
-		Type: events.EventTypeStatusUpdate,
-		Data: map[string]interface{}{
-			"Status": "completed",
-		},
-		RequestUUID: requestUUID,
-	}
-	if err := sendSSEEvent(writer, flusher, endEvent); err != nil {
+	// 订阅游戏主题
+	if err := eventManager.SubscribeToTopic(clientID, game_topic); err != nil {
+		log.Errorf("订阅主题失败: %v", err)
+		errorEvent := events.Event{
+			Type:        events.EventTypeError,
+			Data:        map[string]interface{}{"error": fmt.Sprintf("订阅主题失败: %v", err)},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+		sendSSEEvent(writer, flusher, errorEvent)
 		return err
 	}
+	defer eventManager.UnsubscribeFromTopic(clientID, game_topic)
 
-	return nil
-}
+	// 发送心跳保持连接
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 
-// startGameEventListener 通过gRPC订阅RoomServer事件并推送SSE
-func (task *SubscribeGameInfoTask) startGameEventListener(ctx context.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string, address string, gameID string, done chan struct{}) {
-	go func() {
-		// 连接RoomServer
-		conn, err := grpc.NewClient(roomServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			log.Errorf("连接RoomServer失败: %v", err)
-			errorEvent := events.Event{
-				Type:        events.EventTypeError,
-				Data:        map[string]interface{}{"error": fmt.Sprintf("连接RoomServer失败: %v", err)},
-				RequestUUID: requestUUID,
-			}
-			sendSSEEvent(writer, flusher, errorEvent)
-			return
-		}
-		defer conn.Close()
-
-		// 创建PubSub客户端
-		client := proto.NewPubSubServiceClient(conn)
-
-		// 订阅游戏相关主题
-		topics := []string{
-			fmt.Sprintf("%s_%s", address, task.Request.TempAddress), // 使用 address_tempaddress 格式作为 topic
-		}
-
-		// 为每个主题创建订阅
-		for _, topic := range topics {
-			go task.subscribeToTopic(ctx, client, topic, requestUUID, writer, flusher, done)
-		}
-
-		// 发送心跳保持连接
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				heartbeatEvent := events.Event{
-					Type: events.EventTypeHeartbeat,
-					Data: map[string]interface{}{
-						"Timestamp": time.Now().Unix(),
-					},
-					RequestUUID: requestUUID,
-				}
-				sendSSEEvent(writer, flusher, heartbeatEvent)
-			case <-ctx.Done():
-				return
-			case <-done:
-				return
-			}
-		}
-	}()
-}
-
-// subscribeToTopic 订阅特定主题
-func (task *SubscribeGameInfoTask) subscribeToTopic(ctx context.Context, client proto.PubSubServiceClient, topic string, requestUUID string, writer http.ResponseWriter, flusher http.Flusher, done chan struct{}) {
-	req := &proto.SubscribeRequest{
-		Topic:        topic,
-		SubscriberId: fmt.Sprintf("%s_%s", requestUUID, topic),
-	}
-
-	stream, err := client.Subscribe(ctx, req)
-	if err != nil {
-		log.Errorf("订阅主题 %s 失败: %v", topic, err)
-		return
-	}
-
-	log.Infof("成功订阅主题: %s, RequestUUID: %s", topic, requestUUID)
-
+	// 等待连接结束
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-done:
-			return
-		default:
-			msg, err := stream.Recv()
-			if err != nil {
-				log.Errorf("接收主题 %s 消息失败: %v", topic, err)
-				return
+			log.Infof("SSE connection closed by client - RequestUUID: %s", requestUUID)
+			return nil
+		case <-time.After(time.Duration(task.Request.Duration) * time.Second):
+			log.Infof("SSE connection timeout - RequestUUID: %s", requestUUID)
+			return nil
+		case <-task.stopChan:
+			log.Infof("SSE connection stopped manually - RequestUUID: %s", requestUUID)
+			return nil
+		case <-ticker.C:
+			// 发送心跳
+			heartbeatEvent := events.Event{
+				Type: events.EventTypeHeartbeat,
+				Data: map[string]interface{}{
+					"Timestamp": time.Now().Unix(),
+				},
+				Timestamp:   time.Now(),
+				RequestUUID: requestUUID,
 			}
-
-			// 将RoomServer事件转换为SSE事件
-			sseEvent := task.convertRoomServerEventToSSE(msg, requestUUID)
-			if err := sendSSEEvent(writer, flusher, sseEvent); err != nil {
-				log.Errorf("发送SSE事件失败: %v", err)
-				return
+			if err := sendSSEEvent(writer, flusher, heartbeatEvent); err != nil {
+				log.Errorf("发送心跳失败: %v", err)
+				return err
 			}
 		}
 	}
@@ -259,6 +198,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "matched",
 			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_PART_CONFIRMED:
 		return events.Event{
@@ -266,6 +207,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "partConfirmed",
 			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_GAME_CREATED:
 		return events.Event{
@@ -273,6 +216,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "gameCreated",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_ROUND_READY:
@@ -281,6 +225,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "roundReady",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
@@ -289,6 +234,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "commitmentsOnChain",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_CARDS_ON_CHAIN:
@@ -297,6 +243,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "cardsOnChain",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_ROUND_COMPLETE:
@@ -305,6 +252,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "roundComplete",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_GAME_COMPLETE:
@@ -313,6 +261,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Data: map[string]interface{}{
 				"EventType": "gameComplete",
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_KNOWN:
@@ -326,7 +275,26 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 				"EventType": "unknown",
 				"RawData":   string(jsonData),
 			},
+			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	}
+}
+
+// sendSSEEvent 发送 SSE 事件
+func sendSSEEvent(writer http.ResponseWriter, flusher http.Flusher, event events.Event) error {
+	jsonData, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	// SSE 格式：data: {json}\n\n
+	eventStr := fmt.Sprintf("data: %s\n\n", string(jsonData))
+	_, err = writer.Write([]byte(eventStr))
+	if err != nil {
+		return err
+	}
+
+	flusher.Flush()
+	return nil
 }

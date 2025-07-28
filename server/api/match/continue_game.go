@@ -15,28 +15,28 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const JOIN_QUEUE_LABEL = "JoinQueue"
+const CONTINUE_GAME_LABEL = "ContinueGame"
 
-// JoinQueueRequest 请求结构体
-type JoinQueueRequest struct {
+// ContinueGameRequest 请求结构体
+type ContinueGameRequest struct {
 	api.BaseRequest
-	Mode        string `mapstructure:"Mode" validate:"required"`
+	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 }
 
-// JoinQueueResponse 响应结构体
-type JoinQueueResponse struct {
+// ContinueGameResponse 响应结构体
+type ContinueGameResponse struct {
 	api.BaseResponse
 }
 
-type JoinQueueTask struct {
-	Request  *JoinQueueRequest
-	Response *JoinQueueResponse
+type ContinueGameTask struct {
+	Request  *ContinueGameRequest
+	Response *ContinueGameResponse
 }
 
 // 解码请求
-func NewJoinQueueRequest(data *map[string]interface{}) (*JoinQueueRequest, error) {
-	req := &JoinQueueRequest{}
+func NewContinueGameRequest(data *map[string]interface{}) (*ContinueGameRequest, error) {
+	req := &ContinueGameRequest{}
 	err := mapstructure.Decode(*data, &req)
 	if err != nil {
 		return nil, err
@@ -45,23 +45,23 @@ func NewJoinQueueRequest(data *map[string]interface{}) (*JoinQueueRequest, error
 	return req, nil
 }
 
-func NewJoinQueueResponse(sessionId string) *JoinQueueResponse {
-	return &JoinQueueResponse{
+func NewContinueGameResponse(sessionId string) *ContinueGameResponse {
+	return &ContinueGameResponse{
 		BaseResponse: api.BaseResponse{
-			Action:      JOIN_QUEUE_LABEL + "Response",
+			Action:      CONTINUE_GAME_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewJoinQueueTask(data *map[string]interface{}) (api.Task, error) {
-	req, err := NewJoinQueueRequest(data)
+func NewContinueGameTask(data *map[string]interface{}) (api.Task, error) {
+	req, err := NewContinueGameRequest(data)
 	if err != nil {
 		return nil, err
 	}
-	task := &JoinQueueTask{
+	task := &ContinueGameTask{
 		Request:  req,
-		Response: NewJoinQueueResponse(req.BaseRequest.RequestUUID),
+		Response: NewContinueGameResponse(req.BaseRequest.RequestUUID),
 	}
 
 	validate := validator.New()
@@ -73,7 +73,7 @@ func NewJoinQueueTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
+func (task *ContinueGameTask) Run(c *gin.Context) (api.Response, error) {
 	// 获取玩家地址（从认证中间件设置的params中获取）
 	_params, _ := c.Get("params")
 	params, ok := _params.(*map[string]interface{})
@@ -94,22 +94,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 验证游戏模式
-	validModes := []string{"PvP", "Tournament"}
-	modeValid := false
-	for _, validMode := range validModes {
-		if task.Request.Mode == validMode {
-			modeValid = true
-			break
-		}
-	}
-	if !modeValid {
-		task.Response.BaseResponse.RetCode = 1005
-		task.Response.BaseResponse.Message = "Invalid game mode. Only PvP and Tournament are supported"
-		return task.Response, nil
-	}
-
-	// 检查用户token数量是否足够
+	// 检查用户token数量是否足够（与joinqueue相同的逻辑）
 	userProfile, err := db.GetUserProfileByAddress(address)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
@@ -128,14 +113,14 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	// 计算可用代币数量：用户数据库里的token减去lock_token表里该address对应记录的token总和
 	availableTokens := userProfile.TokenAmount - totalLockedTokens
 
-	// 要求用户至少有10000个可用代币才能加入匹配队列
+	// 要求用户至少有10000个可用代币才能继续游戏
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to continue game", config.GameParams.TokenThreshold)
 		return task.Response, nil
 	}
 
-	// 通过gRPC调用RoomServer的JoinQueue
+	// 通过gRPC调用RoomServer的ContinueGame
 	rpcClient := client.GetGlobalRpcClient()
 	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
@@ -143,31 +128,24 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    address,
-		TemporaryAddress: tempAddress,
+	continueGameReq := &proto.ContinueGameRequest{
+		Player: &proto.PlayerAddress{
+			WalletAddress:    address,
+			TemporaryAddress: tempAddress,
+		},
+		LastGameID: uint32(task.Request.GameID),
 	}
 
-	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)
+	_, err = rpcClient.ContinueGame(context.Background(), continueGameReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer JoinQueue failed: " + err.Error()
+		task.Response.BaseResponse.Message = "RoomServer ContinueGame failed: " + err.Error()
 		return task.Response, nil
 	}
 
-	// roomserver 进行匹配
+	// 继续游戏成功
 	task.Response.BaseResponse.RetCode = 0
-	task.Response.BaseResponse.Message = "Successfully joined match queue"
+	task.Response.BaseResponse.Message = "Successfully continued game"
 
 	return task.Response, nil
-}
-
-// RegisterMatchApis 注册匹配相关API
-func RegisterMatchApis() {
-	api.Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, api.COOKIEAUTH)
-	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
-	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
-	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
-	api.Register(LEAVE_AFTER_GAME_LABEL, NewLeaveAfterGameTask, api.COOKIEAUTH)
-	api.Register(CONTINUE_GAME_LABEL, NewContinueGameTask, api.COOKIEAUTH)
 }
