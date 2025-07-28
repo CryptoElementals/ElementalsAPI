@@ -7,7 +7,6 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
@@ -136,25 +135,9 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 创建锁定代币记录
-	lockToken := &dao.LockToken{
-		Address:     address,
-		TempAddress: tempAddress,
-		Token:       config.GameParams.TokenThreshold,
-	}
-
-	// 保存锁定代币记录
-	err = db.CreateLockToken(lockToken)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "Failed to create lock token record: " + err.Error()
-		return task.Response, nil
-	}
-
 	// 通过gRPC调用RoomServer的JoinQueue
 	rpcClient := client.GetGlobalRpcClient()
 	if rpcClient == nil {
-		_ = db.SoftDeleteLockToken(lockToken.ID)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC client not initialized"
 		return task.Response, nil
@@ -167,7 +150,6 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 
 	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
-		_ = db.SoftDeleteLockToken(lockToken.ID)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer JoinQueue failed: " + err.Error()
 		return task.Response, nil
@@ -176,8 +158,6 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	// roomserver 进行匹配
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully joined match queue"
-
-	// todo: 需要在roomserver里当游戏结束后解除锁定代币
 
 	return task.Response, nil
 }
@@ -189,4 +169,5 @@ func RegisterMatchApis() {
 	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
 	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
 	api.Register(LEAVE_AFTER_GAME_LABEL, NewLeaveAfterGameTask, api.COOKIEAUTH)
+	api.Register(CONTINUE_GAME_LABEL, NewContinueGameTask, api.COOKIEAUTH)
 }
