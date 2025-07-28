@@ -42,8 +42,8 @@ func (a *PlayerAddress) Parse(str string) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid player address")
 	}
-	a.WalletAddress = parts[0]
-	a.TemporaryAddress = parts[1]
+	a.WalletAddress = strings.ToLower(parts[0])
+	a.TemporaryAddress = strings.ToLower(parts[1])
 	return nil
 }
 
@@ -68,13 +68,13 @@ func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
 }
 
 func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
-	a.WalletAddress = player.WalletAddress
-	a.TemporaryAddress = player.TemporaryAddress
+	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
-	a.WalletAddress = player.WalletAddress
-	a.TemporaryAddress = player.TemporaryAddress
+	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 type Event struct {

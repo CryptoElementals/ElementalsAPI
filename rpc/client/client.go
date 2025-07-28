@@ -36,8 +36,8 @@ func InitGlobalClients(serverAddress string) error {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second, // 每30秒发送keepalive ping
-			Timeout:             5 * time.Second,  // 5秒超时
+			Time:                60 * time.Second, // 每60秒发送keepalive ping
+			Timeout:             10 * time.Second, // 10秒超时
 			PermitWithoutStream: true,             // 允许在没有活动流时发送keepalive ping
 		}),
 		grpc.WithDefaultCallOptions(
@@ -65,11 +65,11 @@ func InitGlobalClients(serverAddress string) error {
 
 // startHealthCheck 启动健康检查
 func startHealthCheck(serverAddress string) {
-	ticker := time.NewTicker(10 * time.Second) // 改为每10秒检查一次
+	ticker := time.NewTicker(30 * 60 * time.Second) // 改为每30分钟检查一次
 	defer ticker.Stop()
 
 	var consecutiveFailures int
-	const maxRetries = 5
+	const maxRetries = 3
 
 	for {
 		select {
@@ -129,8 +129,8 @@ func reconnectGlobalClients(serverAddress string) error {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second,
-			Timeout:             5 * time.Second,
+			Time:                60 * time.Second,
+			Timeout:             10 * time.Second,
 			PermitWithoutStream: true,
 		}),
 		grpc.WithDefaultCallOptions(

@@ -48,7 +48,7 @@ func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameIn
 		return nil, err
 	}
 	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
-	// 设置默认值为 600秒（10 分钟）
+	// 设置默认值为 600秒（10分钟）
 	if req.Duration == 0 {
 		req.Duration = 600
 	}
@@ -155,7 +155,7 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 	defer eventManager.UnsubscribeFromTopic(clientID, game_topic)
 
 	// 发送心跳保持连接
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	// 等待连接结束

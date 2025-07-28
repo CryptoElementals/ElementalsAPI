@@ -90,9 +90,9 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
-	tempAddress := strings.ToLower(task.Request.TempAddress)
+	// 将地址转换为小写，确保与数据库中存储的格式一致（用于数据库查询）
+	lowercaseAddress := strings.ToLower(address)
+	lowercaseTempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 验证游戏模式
 	validModes := []string{"PvP", "Tournament"}
@@ -109,16 +109,16 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 检查用户token数量是否足够
-	userProfile, err := db.GetUserProfileByAddress(address)
+	// 检查用户token数量是否足够（使用小写地址查询数据库）
+	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user information"
 		return task.Response, nil
 	}
 
-	// 获取用户已锁定的代币总数
-	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(address)
+	// 获取用户已锁定的代币总数（使用小写地址查询数据库）
+	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get locked token information"
@@ -144,8 +144,8 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    address,
-		TemporaryAddress: tempAddress,
+		WalletAddress:    lowercaseAddress,
+		TemporaryAddress: lowercaseTempAddress,
 	}
 
 	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)

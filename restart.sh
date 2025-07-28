@@ -11,6 +11,8 @@ else
     echo "   ⚠ Server was not running or already stopped"
 fi
 
+rm -rf ./bin/logs/*
+
 # 2. 编译应用
 echo "2. Building application..."
 make build
