@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="beast-royale-server"
+APP_NAME="ele-apiserver"
 
 # 查找所有相关进程（排除grep本身和stop.sh本身）
 PIDS=$(ps aux | grep "$APP_NAME" | grep -v grep | grep -v stop.sh | awk '{print $2}')
