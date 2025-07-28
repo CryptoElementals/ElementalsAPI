@@ -16,10 +16,11 @@ type Service struct {
 	gameManager *GameManager
 }
 
-func NewService(ctx context.Context, workerManager *worker.WorkerManager, initialHP int64, roundTimeout int64, maxRounds int64) *Service {
+func NewService(ctx context.Context, workerManager *worker.WorkerManager,
+	initialHP int64, roundTimeout int64, maxRounds int64, chainSvc ContractClient) *Service {
 	return &Service{
 		ctx:         ctx,
-		gameManager: NewGameManager(ctx, workerManager, initialHP, roundTimeout, maxRounds),
+		gameManager: NewGameManager(ctx, workerManager, initialHP, roundTimeout, maxRounds, chainSvc),
 	}
 }
 
@@ -74,4 +75,8 @@ func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.Pla
 		return proto.PlayerStatus_PLAYER_MATCHED
 	}
 	return proto.PlayerStatus_PLAYER_IN_GAME
+}
+
+func (s *Service) HandleGameMatchedEvent(evt *types.GameMatchedEvent) error {
+	return s.gameManager.HandleGameMatchedEvent(evt)
 }

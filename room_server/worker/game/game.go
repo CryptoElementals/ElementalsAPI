@@ -18,6 +18,16 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+type ContractClient interface {
+	CreateRoomContract(evt *types.RequireContractCreationEvent) error
+	SetRoundReady(evt *types.RequireSetupNewRoundEvent) error
+}
+
+type GameHandler interface {
+	HandleGameContinueEvent(evt *types.GameContinueEvent) error
+	HandleGameCompletedEvent(evt *types.GameCompletedEvent) error
+}
+
 type timerEvent struct {
 	currentGameStatus  proto.GameStatus
 	currentRound       uint32
@@ -50,10 +60,19 @@ type Game struct {
 	gamePlayers         map[string]*gamePlayer
 	currentRound        *dao.Round
 	workerMangerService *worker.WorkerManager
+	chainSvc            ContractClient
+	gameContinuer       GameHandler
 }
 
-func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerService *worker.WorkerManager,
-	initialHP int64, roundTimeout int64, maxRounds int64) *Game {
+func NewGame(
+	ctx context.Context,
+	players []types.PlayerAddress,
+	workerMangerService *worker.WorkerManager,
+	chainSvc ContractClient,
+	gameContinuer GameHandler,
+	initialHP int64,
+	roundTimeout int64,
+	maxRounds int64) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
 	for _, player := range players {
@@ -76,17 +95,26 @@ func NewGame(ctx context.Context, players []types.PlayerAddress, workerMangerSer
 		},
 		gamePlayers:         gamePlayers,
 		workerMangerService: workerMangerService,
+		chainSvc:            chainSvc,
+		gameContinuer:       gameContinuer,
 	}
 	game.setupNewRound()
 	return game
 }
 
-func NewGameFromGameInfo(ctx context.Context, workerMangerService *worker.WorkerManager, gameInfo *dao.Game) *Game {
+func NewGameFromGameInfo(
+	ctx context.Context,
+	workerMangerService *worker.WorkerManager,
+	gameContinuer GameHandler,
+	gameInfo *dao.Game,
+	chainSvc ContractClient) *Game {
 	g := &Game{
 		ctx:                 ctx,
 		gameInfo:            gameInfo,
 		gamePlayers:         make(map[string]*gamePlayer),
 		workerMangerService: workerMangerService,
+		chainSvc:            chainSvc,
+		gameContinuer:       gameContinuer,
 	}
 
 	for _, playerInfo := range g.gameInfo.Players {
@@ -195,10 +223,9 @@ func (g *Game) handleContinueGame(event *types.Event) error {
 	for _, p := range g.gamePlayers {
 		players = append(players, p.PlayerAddress())
 	}
-	g.workerMangerService.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(g.workerID(), &types.GameContinueEvent{
+	return g.gameContinuer.HandleGameContinueEvent(&types.GameContinueEvent{
 		Players: players,
-	}))
-	return nil
+	})
 }
 
 func (g *Game) handleRound(event *types.Event) error {
@@ -248,34 +275,38 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event, noSendPar
 	for _, player := range g.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
 	}
-	var newEvt *types.Event
 	// the first round, we need to create contract
 	if g.currentRound.RoundNumber == 1 {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
-		newEvt = types.NewEvent(g.workerID(), &types.RequireContractCreationEvent{
+		err := g.chainSvc.CreateRoomContract(&types.RequireContractCreationEvent{
 			GameID:         g.gameInfo.ID,
 			Players:        allPlayers,
 			InitialHP:      g.gameInfo.InitialHP,
 			RoundTimeout:   g.gameInfo.RoundTimeout,
 			MaxRoundNumber: g.gameInfo.MaxRounds,
 		})
+		if err != nil {
+			return err
+		}
 	} else {
 		if g.gameInfo.RoomContract == "" {
 			return errors.New("room contract empty, need RequireContractCreationEvent but got RequireSetupNewRoundEvent")
 		}
 		// otherwise we need to setup new round on chain
-		newEvt = types.NewEvent(g.workerID(), &types.RequireSetupNewRoundEvent{
+		err := g.chainSvc.SetRoundReady(&types.RequireSetupNewRoundEvent{
 			GameID:          g.gameInfo.ID,
 			ContractAddress: g.gameInfo.RoomContract,
 			RoundNumber:     uint32(g.currentRound.RoundNumber),
 		})
+		if err != nil {
+			return err
+		}
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
 	err = g.saveGame()
 	if err != nil {
 		return err
 	}
-	g.workerMangerService.SendEvent(types.CHAIN_MANAGER_ID, newEvt)
 	g.sendTimerEventByCurrentRound()
 	return nil
 }
@@ -412,10 +443,11 @@ func (g *Game) handleGameEnd() error {
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
-	gameCompletedEvt := types.NewEvent(g.workerID(), &types.GameCompletedEvent{
+	completeEvt := &types.GameCompletedEvent{
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
-	})
+	}
+	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
 	g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
 	g.currentRound.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_END
@@ -423,8 +455,10 @@ func (g *Game) handleGameEnd() error {
 	if err != nil {
 		return err
 	}
+	if err := g.gameContinuer.HandleGameCompletedEvent(completeEvt); err != nil {
+		return err
+	}
 	g.sendEventsToAllPlayers(gameCompletedEvt)
-	g.workerMangerService.SendEvent(types.GAME_MANAGER_ID, gameCompletedEvt)
 	g.sendTimerEventByCurrentRound()
 	return nil
 }

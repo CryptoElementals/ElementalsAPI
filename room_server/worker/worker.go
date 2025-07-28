@@ -62,11 +62,9 @@ func (w *Worker) Run() {
 					Err:              err,
 				})
 				w.SendEvent(sender, errEvent)
-			} else if event.NeedAck {
-				ackEvent := types.NewEvent(w.Id, &types.AckEvent{
-					EventID: event.EventID,
-				})
-				w.SendEvent(sender, ackEvent)
+			}
+			if event.AckChan != nil {
+				close(event.AckChan)
 			}
 		}
 	}

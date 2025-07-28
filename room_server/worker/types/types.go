@@ -80,7 +80,7 @@ func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
 type Event struct {
 	Sender  string
 	EventID string
-	NeedAck bool
+	AckChan chan struct{}
 	Data    any
 }
 
@@ -91,18 +91,22 @@ type ErrorEvent struct {
 }
 
 func NewEvent(sender string, evt any, needAck ...bool) *Event {
-	ack := false
+	var ack chan struct{}
 	if len(needAck) != 0 && needAck[0] {
-		ack = true
+		ack = make(chan struct{})
 	}
 
 	eid := uuid.NewString()
 	return &Event{
 		Sender:  sender,
 		EventID: eid,
-		NeedAck: ack,
+		AckChan: ack,
 		Data:    evt,
 	}
+}
+
+func (e *Event) Await() {
+	<-e.AckChan
 }
 
 func AssertInterface[T any](evt *Event) (T, error) {
@@ -114,6 +118,20 @@ func AssertInterface[T any](evt *Event) (T, error) {
 	return data, nil
 }
 
-type AckEvent struct {
-	EventID string
+type BatchDone struct {
+	ID string
+}
+
+type EventBatch struct {
+	evt []*Event
+}
+
+func (b *EventBatch) Add(evt *Event) {
+	b.evt = append(b.evt, evt)
+}
+
+func (b *EventBatch) Wait() {
+	for _, e := range b.evt {
+		e.Await()
+	}
 }

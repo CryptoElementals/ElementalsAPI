@@ -30,12 +30,15 @@ type Player struct {
 	publisher    Publisher
 	workerManger *worker.WorkerManager
 	status       proto.PlayerStatus
+	queue        Queuer
 }
 
 func NewPlayer(ctx context.Context,
 	address types.PlayerAddress,
 	publisher Publisher,
-	workerManger *worker.WorkerManager) *Player {
+	workerManger *worker.WorkerManager,
+	queue Queuer,
+) *Player {
 	p := &Player{
 		ctx:          ctx,
 		address:      address,
@@ -44,6 +47,7 @@ func NewPlayer(ctx context.Context,
 		info: playerGameInfo{
 			players: map[types.PlayerAddress]bool{},
 		},
+		queue: queue,
 	}
 	p.createSelf()
 	return p
@@ -101,9 +105,9 @@ func (p *Player) joinQueue() error {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
 
-	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), &types.JoinQueueEvent{
+	p.queue.HandleJoinQueueEvent(&types.JoinQueueEvent{
 		PlayerAddress: p.address,
-	}))
+	})
 	p.status = proto.PlayerStatus_PLAYER_IN_QUEUE
 	return nil
 }
@@ -115,9 +119,9 @@ func (p *Player) exitQueue() error {
 	if p.status != proto.PlayerStatus_PLAYER_IN_QUEUE {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
-	p.workerManger.SendEvent(types.QUEUE_MANAGER_ID, types.NewEvent(p.address.String(), &types.ExitQueueEvent{
+	p.queue.HandleExitQueueEvent(&types.ExitQueueEvent{
 		PlayerAddress: p.address,
-	}))
+	})
 	p.status = proto.PlayerStatus_PLAYER_KNOWN
 	return nil
 }

@@ -13,10 +13,10 @@ type Service struct {
 	queue *Queue
 }
 
-func NewService(ctx context.Context, workerManager *worker.WorkerManager, queueCache cache.Cache) *Service {
+func NewService(ctx context.Context, workerManager *worker.WorkerManager, queueCache cache.Cache, gameCreator GameCreator) *Service {
 	return &Service{
 		ctx:   ctx,
-		queue: NewQueue(ctx, workerManager, queueCache),
+		queue: NewQueue(ctx, workerManager, queueCache, gameCreator),
 	}
 }
 
@@ -31,4 +31,12 @@ func (s *Service) Stop() error {
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.isPlayerInQueue(address)
+}
+
+func (s *Service) HandleJoinQueueEvent(event *types.JoinQueueEvent) {
+	s.queue.HandleJoinQueueEvent(event)
+}
+
+func (s *Service) HandleExitQueueEvent(event *types.ExitQueueEvent) {
+	s.queue.HandleExitQueueEvent(event)
 }

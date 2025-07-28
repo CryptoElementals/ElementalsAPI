@@ -3,7 +3,6 @@ package game
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 
 	"github.com/CryptoElementals/common/db"
@@ -22,9 +21,10 @@ type GameManager struct {
 	gameInitialHP   int64
 	roundTimeout    int64
 	maxRounds       int64
+	chainSvc        ContractClient
 }
 
-func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager, initialHP int64, roundTimeout int64, maxRounds int64) *GameManager {
+func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManager, initialHP int64, roundTimeout int64, maxRounds int64, chainSvc ContractClient) *GameManager {
 	m := &GameManager{
 		ctx:             ctx,
 		gamesMap:        make(map[uint]*Game),
@@ -33,6 +33,7 @@ func NewGameManager(ctx context.Context, workerMangerService *worker.WorkerManag
 		gameInitialHP:   initialHP,
 		maxRounds:       maxRounds,
 		roundTimeout:    roundTimeout,
+		chainSvc:        chainSvc,
 	}
 
 	return m
@@ -43,61 +44,52 @@ func (r *GameManager) Start() error {
 	if err != nil {
 		return err
 	}
-	r.createSelf()
 	return nil
 }
 
-// Handle implements worker.EventHandler.
-func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	switch evt := event.Data.(type) {
-	case *types.ErrorEvent:
-		// just retry
-		r.workerManager.SendEvent(evt.OriginalReceiver, evt.OriginalEvent)
-		return nil
-	case *types.GameContinueEvent:
-		gameID, err := r.continueGame(evt.Players)
-		if err != nil {
-			return err
-		}
-		// also notify players
-		for _, player := range evt.Players {
-			r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-				GameID:  gameID,
-				Players: evt.Players,
-			}))
-		}
-		log.Infof("gameContinue: gameID %d", gameID)
-		return nil
-	case *types.GameCompletedEvent:
-		game := r.gamesMap[evt.GameID]
-		if game == nil {
-			return fmt.Errorf("game not found, game id: %d", evt.GameID)
-		}
-		delete(r.gamesMap, evt.GameID)
-		for _, player := range game.gamePlayers {
-			delete(r.playerToGameMap, *player.addr)
-		}
-		return nil
-	case *types.GameMatchedEvent:
-		gameID, err := r.createGame(evt.Players)
-		if err != nil {
-			return err
-		}
-		// also notify players
-		for _, player := range evt.Players {
-			r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-				GameID:  gameID,
-				Players: evt.Players,
-			}))
-		}
-
-		log.Infof("gameMatched: gameID %d", gameID)
-		return nil
-	default:
-		return fmt.Errorf("GameManager Handle err: event type not match, %d", reflect.TypeOf(evt))
+func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
+	gameID, err := r.continueGame(evt.Players)
+	if err != nil {
+		return err
 	}
+	// also notify players
+	for _, player := range evt.Players {
+		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
+			GameID:  gameID,
+			Players: evt.Players,
+		}))
+	}
+	log.Infof("gameContinue: gameID %d", gameID)
+	return nil
+}
+
+func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) error {
+	game := r.gamesMap[evt.GameID]
+	if game == nil {
+		return fmt.Errorf("game not found, game id: %d", evt.GameID)
+	}
+	delete(r.gamesMap, evt.GameID)
+	for _, player := range game.gamePlayers {
+		delete(r.playerToGameMap, *player.addr)
+	}
+	return nil
+}
+
+func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) error {
+	gameID, err := r.createGame(evt.Players)
+	if err != nil {
+		return err
+	}
+	// also notify players
+	for _, player := range evt.Players {
+		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
+			GameID:  gameID,
+			Players: evt.Players,
+		}))
+	}
+
+	log.Infof("gameMatched: gameID %d", gameID)
+	return nil
 }
 
 func (r *GameManager) IsPlayerInGame(player types.PlayerAddress) bool {
@@ -132,7 +124,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP, r.roundTimeout, r.maxRounds)
+	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, r.gameInitialHP, r.roundTimeout, r.maxRounds)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -164,7 +156,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP, r.roundTimeout, r.maxRounds)
+	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, r.gameInitialHP, r.roundTimeout, r.maxRounds)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -186,7 +178,7 @@ func (r *GameManager) recoverGames() error {
 		return err
 	}
 	for _, info := range gameInfos {
-		game := NewGameFromGameInfo(r.ctx, r.workerManager, info)
+		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
 		players := game.gamePlayers
 		for _, player := range players {
 			addr := player.PlayerAddress()
@@ -199,8 +191,4 @@ func (r *GameManager) recoverGames() error {
 		game.createSelf()
 	}
 	return nil
-}
-
-func (r *GameManager) createSelf() {
-	r.workerManager.SpwanWorker(r.ctx, types.GAME_MANAGER_ID, types.WORKER_TYPE_GAME_MANAGER, r)
 }

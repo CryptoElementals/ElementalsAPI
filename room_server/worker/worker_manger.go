@@ -37,13 +37,8 @@ func (w *WorkerManager) SendEvent(to string, event *types.Event) {
 	}
 	// we might not find the worker, in this case, we should send an ack event
 	// for not blocking the sender
-	if event.NeedAck {
-		w.SendEvent(event.Sender, &types.Event{
-			Sender:  types.WORKER_MANAGER_ID,
-			EventID: event.EventID,
-			NeedAck: false,
-			Data:    &types.AckEvent{EventID: event.EventID},
-		})
+	if event.AckChan != nil {
+		close(event.AckChan)
 	}
 }
 

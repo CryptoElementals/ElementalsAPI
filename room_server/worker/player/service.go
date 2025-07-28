@@ -16,7 +16,9 @@ type GameInfoGetter interface {
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 }
 
-type QueueInfoGetter interface {
+type Queuer interface {
+	HandleJoinQueueEvent(event *types.JoinQueueEvent)
+	HandleExitQueueEvent(event *types.ExitQueueEvent)
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
 }
 
@@ -25,27 +27,27 @@ type Publisher interface {
 }
 
 type Service struct {
-	ctx             context.Context
-	lock            sync.RWMutex
-	players         map[types.PlayerAddress]*Player
-	pub             Publisher
-	workerManager   *worker.WorkerManager
-	gameInfoGetter  GameInfoGetter
-	queueInfoGetter QueueInfoGetter
+	ctx            context.Context
+	lock           sync.RWMutex
+	players        map[types.PlayerAddress]*Player
+	pub            Publisher
+	workerManager  *worker.WorkerManager
+	gameInfoGetter GameInfoGetter
+	queue          Queuer
 }
 
 func NewService(ctx context.Context,
 	pub Publisher,
 	workerManager *worker.WorkerManager,
 	gameInfoGetter GameInfoGetter,
-	queueInfoGetter QueueInfoGetter) *Service {
+	queue Queuer) *Service {
 	return &Service{
-		ctx:             ctx,
-		players:         make(map[types.PlayerAddress]*Player),
-		pub:             pub,
-		workerManager:   workerManager,
-		gameInfoGetter:  gameInfoGetter,
-		queueInfoGetter: queueInfoGetter,
+		ctx:            ctx,
+		players:        make(map[types.PlayerAddress]*Player),
+		pub:            pub,
+		workerManager:  workerManager,
+		gameInfoGetter: gameInfoGetter,
+		queue:          queue,
 	}
 }
 
@@ -56,7 +58,7 @@ func (s *Service) AddPlayer(address types.PlayerAddress) error {
 		return errors.New("player already exists: " + address.String())
 	}
 
-	player := NewPlayer(s.ctx, address, s.pub, s.workerManager)
+	player := NewPlayer(s.ctx, address, s.pub, s.workerManager, s.queue)
 	s.players[address] = player
 	return nil
 }
@@ -87,7 +89,7 @@ func (s *Service) GetOrCreatePlayer(address types.PlayerAddress) *Player {
 	defer s.lock.Unlock()
 	player, ok := s.players[address]
 	if !ok {
-		player = NewPlayer(s.ctx, address, s.pub, s.workerManager)
+		player = NewPlayer(s.ctx, address, s.pub, s.workerManager, s.queue)
 		s.players[address] = player
 	}
 	return player
@@ -107,7 +109,7 @@ func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
 }
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
-	return s.queueInfoGetter.IsPlayerInQueue(address)
+	return s.queue.IsPlayerInQueue(address)
 }
 
 func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32) error {

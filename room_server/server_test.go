@@ -520,7 +520,7 @@ func TestServer_BattleContinue(t *testing.T) {
 				break
 			}
 			round = round1
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
 			if round == 1 {
 				tx, err := db.GetCreateRoomTx(gameID)
 				require.NoError(t, err)

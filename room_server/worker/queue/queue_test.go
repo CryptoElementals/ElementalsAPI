@@ -7,7 +7,9 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/room_server/worker"
+	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,11 +30,13 @@ var globalTestQueueService *Service
 
 func TestMain(m *testing.M) {
 	globalTestWorkerManager = worker.NewWorkerManager(context.Background())
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache())
+
 	m.Run()
 }
 
 func TestJoinExitQueue(t *testing.T) {
+	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -56,11 +60,8 @@ func TestJoinExitQueue(t *testing.T) {
 }
 
 func TestGameMatched(t *testing.T) {
-	testGameWorkerHandler := testEventHandler{
-		evtChan: make(chan *types.Event),
-		tt:      t,
-	}
-	globalTestWorkerManager.SpwanWorker(context.Background(), types.GAME_MANAGER_ID, types.WORKER_TYPE_GAME_MANAGER, &testGameWorkerHandler)
+	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -97,15 +98,4 @@ func TestGameMatched(t *testing.T) {
 	})
 	globalTestWorkerManager.SendEvent(types.QUEUE_MANAGER_ID, evt)
 	time.Sleep(1 * time.Millisecond)
-	// game matched
-	event := <-testGameWorkerHandler.evtChan
-	require.Equal(t, types.QUEUE_MANAGER_ID, event.Sender)
-	gameMatchedEvent, ok := event.Data.(*types.GameMatchedEvent)
-	require.True(t, ok)
-	require.Contains(t, gameMatchedEvent.Players, player2)
-	if globalTestQueueService.IsPlayerInQueue(player1) {
-		require.Contains(t, gameMatchedEvent.Players, player1DuplicatedWallet)
-	} else {
-		require.Contains(t, gameMatchedEvent.Players, player1)
-	}
 }

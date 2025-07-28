@@ -2,7 +2,6 @@ package chain
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -35,8 +34,6 @@ type Chain struct {
 	workerManager              *worker.WorkerManager
 	createRoomTxToGameID       cache.Cache
 	gameContractToRoomID       cache.Cache
-	inflightEvents             map[string]struct{}
-	currentBatchTx             *batchTxEvent
 	client                     bind.ContractBackend
 	roomManagerContractAddress common.Address
 
@@ -68,7 +65,6 @@ func NewChain(
 		workerManager:              workerManager,
 		createRoomTxToGameID:       cache.WithPrefix("create_room_tx_to_game_id", dataCache),
 		gameContractToRoomID:       cache.WithPrefix("game_contract_to_room_id", dataCache),
-		inflightEvents:             map[string]struct{}{},
 		client:                     client,
 		roomManagerContractAddress: roomManagerContractAddress,
 		bindOpts:                   bindOpts,
@@ -86,58 +82,27 @@ func (c *Chain) Start() error {
 			return err
 		}
 	}
-	c.createSelf()
 	return nil
 }
 
-func (c *Chain) createSelf() {
-	c.workerManager.SpwanWorker(c.ctx, types.CHAIN_MANAGER_ID, types.WORKER_TYPE_CHAIN, c)
+func (c *Chain) CreateRoomContract(evt *types.RequireContractCreationEvent) error {
+	err := c.createRoomContract(evt.GameID, evt.Players, evt.InitialHP, evt.RoundTimeout, evt.MaxRoundNumber)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (c *Chain) Handle(ctx context.Context, event *types.Event) error {
-	switch evt := event.Data.(type) {
-	case *types.RequireContractCreationEvent:
-		evt, err := types.AssertInterface[*types.RequireContractCreationEvent](event)
-		if err != nil {
-			return err
-		}
-		log.Debugf("creating contract for %d", evt.GameID)
-		err = c.createRoomContract(evt.GameID, evt.Players, evt.InitialHP, evt.RoundTimeout, evt.MaxRoundNumber)
-		if err != nil {
-			return err
-		}
-	case *types.RequireSetupNewRoundEvent:
-		err := c.setRoundReady(evt.GameID, evt.RoundNumber, evt.ContractAddress)
-		if err != nil {
-			return err
-		}
-	case *batchTxEvent:
-		if c.currentBatchTx != nil {
-			evt.errChan <- errors.New("a tx batch is inflight")
-			close(evt.done)
-			log.Errorf("batchSendTxs: a tx batch is inflight, current inflight event num:%d", len(c.inflightEvents))
-			return nil
-		}
-		// send all events
-		c.handleChainEvents(evt)
-	case *types.AckEvent:
-		// stale event
-		if c.currentBatchTx == nil {
-			return nil
-		}
-		delete(c.inflightEvents, evt.EventID)
-		if len(c.inflightEvents) == 0 {
-			close(c.currentBatchTx.errChan)
-			close(c.currentBatchTx.done)
-			c.currentBatchTx = nil
-		}
+func (c *Chain) SetRoundReady(evt *types.RequireSetupNewRoundEvent) error {
+	err := c.setRoundReady(evt.GameID, evt.RoundNumber, evt.ContractAddress)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 func (c *Chain) batchSendTxs(evt *batchTxEvent) {
-	// send a fake event to chain
-	c.workerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent("", evt))
+	c.handleChainEvents(evt)
 }
 
 func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, initialHP int64, roundTimeout int64, maxRounds int64) error {
@@ -193,10 +158,10 @@ func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex s
 }
 
 func (c *Chain) handleChainEvents(evt *batchTxEvent) {
-	c.currentBatchTx = evt
+	batchTx := &types.EventBatch{}
 	blockHash := hexutil.Encode(evt.blockHash)
 	blockNumber := evt.blockNum
-	for _, protoTx := range c.currentBatchTx.txs.Transactions {
+	for _, protoTx := range evt.txs.Transactions {
 		hash := hexutil.Encode(protoTx.TxHash)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_RoomContractCreated:
@@ -212,7 +177,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 				continue
 			}
 			log.Infof("contractCreated: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
-			c.contractCreated(uint(gid), blockHash, blockNumber, tx)
+			c.contractCreated(batchTx, uint(gid), blockHash, blockNumber, tx)
 		case *proto.Transaction_RoomContractSetupReady:
 			gid, err := c.getRoomIDByContract(tx.RoomContractSetupReady.RoomContractAddress)
 			if err != nil {
@@ -220,7 +185,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 				continue
 			}
 			log.Infof("contractSetupReady: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
-			c.roundSetupCompleted(gid, blockHash, blockNumber, tx)
+			c.roundSetupCompleted(batchTx, gid, blockHash, blockNumber, tx)
 		case *proto.Transaction_CommitmentsOnChain:
 			gid, err := c.getRoomIDByContract(tx.CommitmentsOnChain.RoomContractAddress)
 			if err != nil {
@@ -230,7 +195,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CommitmentsOnChain.Address)
 			log.Infof("commitmentOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, address %s", gid, blockHash, blockNumber, hash, address.String())
-			c.commitmentOnChain(gid, hash, blockHash, blockNumber, tx)
+			c.commitmentOnChain(batchTx, gid, hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_CardsOnChain:
 			gid, err := c.getRoomIDByContract(tx.CardsOnChain.RoomContractAddress)
 			if err != nil {
@@ -240,15 +205,10 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CardsOnChain.Address)
 			log.Infof("cardsOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, address %s", gid, blockHash, blockNumber, hash, address.String())
-			c.cardsOnChain(gid, hash, blockHash, blockNumber, tx)
+			c.cardsOnChain(batchTx, gid, hash, blockHash, blockNumber, tx)
 		}
 	}
-	if len(c.inflightEvents) == 0 {
-		// actually no event sent, just close the batch
-		close(evt.errChan)
-		close(evt.done)
-		c.currentBatchTx = nil
-	}
+	batchTx.Wait()
 }
 
 func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
@@ -267,14 +227,13 @@ func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
 	return dbRoom.GameID, nil
 }
 
-func (c *Chain) contractCreated(gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {
+func (c *Chain) contractCreated(batchTx *types.EventBatch, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {
 	roomContract := tx.RoomContractCreated.RoomContractAddress
 	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
 		GameID:              gameID,
 		RoomContractAddress: roomContract,
 	}, true)
-	evtID := contractCreatedEvt.EventID
-	c.inflightEvents[evtID] = struct{}{}
+	batchTx.Add(contractCreatedEvt)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
 	c.gameContractToRoomID.Set(roomContract, fmt.Sprint(gameID), int(time.Hour.Seconds()))
 	err := c.createRoomTxToGameID.Delete(roomContract)
@@ -284,19 +243,18 @@ func (c *Chain) contractCreated(gameID uint, blockHash string, blockNumber uint6
 	return db.UpdateCreateRoomTxBlockHashAndContractByGameID(gameID, blockHash, blockNumber, roomContract)
 }
 
-func (c *Chain) roundSetupCompleted(gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractSetupReady) error {
+func (c *Chain) roundSetupCompleted(batchTx *types.EventBatch, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractSetupReady) error {
 	roundNumber := tx.RoomContractSetupReady.RoundNumber
 	roundSetupCompletedEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewRoundSetupComplete{
 		GameID:      gameID,
 		RoundNumber: roundNumber,
 	}, true)
-	evtID := roundSetupCompletedEvent.EventID
-	c.inflightEvents[evtID] = struct{}{}
+	batchTx.Add(roundSetupCompletedEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), roundSetupCompletedEvent)
 	return db.UpdateSetRoundReadyTxBlockHashByGameID(gameID, blockHash, blockNumber)
 }
 
-func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentsOnChain) error {
+func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentsOnChain) error {
 	player := types.PlayerAddress{}
 	player.FromProto(tx.CommitmentsOnChain.Address)
 	roundNumber := tx.CommitmentsOnChain.RoundNumber
@@ -307,8 +265,7 @@ func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, 
 		RoundNumber: roundNumber,
 		Commitment:  commitment,
 	}, true)
-	evtID := commitmentOnChainEvent.EventID
-	c.inflightEvents[evtID] = struct{}{}
+	batchTx.Add(commitmentOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
 	return db.SaveCommitmentOnChainTx(&dao.CommitmentOnChainTx{
 		GameID:           gameID,
@@ -323,7 +280,7 @@ func (c *Chain) commitmentOnChain(gameID uint, txHash string, blockHash string, 
 	})
 }
 
-func (c *Chain) cardsOnChain(gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardsOnChain) error {
+func (c *Chain) cardsOnChain(batchTx *types.EventBatch, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardsOnChain) error {
 	player := types.PlayerAddress{}
 	player.FromProto(tx.CardsOnChain.Address)
 	roundNumber := tx.CardsOnChain.RoundNumber
@@ -339,8 +296,7 @@ func (c *Chain) cardsOnChain(gameID uint, txHash string, blockHash string, block
 		Salt:        salt,
 		Cards:       cardsUint,
 	}, true)
-	evtID := cardsOnChainEvent.EventID
-	c.inflightEvents[evtID] = struct{}{}
+	batchTx.Add(cardsOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), cardsOnChainEvent)
 	return db.SaveCardsOnChainTx(&dao.CardsOnChainTx{
 		GameID:           gameID,

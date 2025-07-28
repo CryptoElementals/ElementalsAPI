@@ -20,7 +20,6 @@ import (
 	"github.com/c-bata/go-prompt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/sha3"
@@ -64,6 +63,7 @@ var suggestions = []prompt.Suggest{
 	{Text: "confirm", Description: "confirm game"},
 	//{Text: "submit-commitment", Description: "submit card commitments"},
 	{Text: "submit-cards", Description: "submit cards"},
+	{Text: "continue", Description: "continue game"},
 }
 
 func completer(in prompt.Document) []prompt.Suggest {
@@ -205,11 +205,13 @@ func (c *gameContext) run() error {
 						fmt.Println("error: ", err.Error())
 					}
 					c.lock.Lock()
+					c.gameID = uint(phase.PvPInfo.GameID)
 					c.contractAddress = phase.PvPInfo.ContractAddress
 					c.contract, err = contract.NewRoomContract(common.HexToAddress(c.contractAddress), c.chainClient)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
+					c.currentRound = 1
 					fmt.Println("contract address: ", c.contractAddress)
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
@@ -249,7 +251,6 @@ func (c *gameContext) run() error {
 					c.lock.Lock()
 					c.state = playerStateIdle
 					c.lock.Unlock()
-					return
 				}
 			}
 		}
@@ -330,6 +331,20 @@ func (c *gameContext) SubmitCards(cards string, salt string) (string, error) {
 	return tx.Hash().String(), nil
 }
 
+func (c *gameContext) Continue() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.state != playerStateIdle {
+		return fmt.Errorf("cannot continue, invalid state: %s", c.state.String())
+	}
+	err := c.rpcClient.RpcClient.ContinueGame(c.ctx, &c.myself, c.gameID)
+	if err != nil {
+		return err
+	}
+	c.state = playerStateWaittingGameReady
+	return nil
+}
+
 func makeExecutor(ctx *gameContext) func(in string) {
 	return func(in string) {
 		in = strings.TrimSpace(in)
@@ -379,28 +394,18 @@ func makeExecutor(ctx *gameContext) func(in string) {
 				return
 			}
 			fmt.Println("confirm success, waitting for game ready on chain")
-		case "submit-commitment":
-			err := assetArgsNumber(1)
+		case "continue":
+			err := assetArgsNumber(0)
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
-			cardHash, err := hexutil.Decode(blocks[0])
+			err = ctx.Continue()
 			if err != nil {
-				fmt.Println("decode card hash failed, err: ", err)
+				fmt.Println("continue failed, err: ", err)
 				return
 			}
-			if len(cardHash) != 32 {
-				fmt.Println("card hash length must be 32")
-				return
-			}
-			tx, err := ctx.SubmitCommitment(cardHash)
-			if err != nil {
-				fmt.Println("submit commitment failed, err: ", err)
-				return
-			}
-			fmt.Println("submit commitment success, tx hash: ", tx)
-			fmt.Println("waitting for commitment on chain")
+			fmt.Println("continue success, waitting for game ready on chain")
 		case "submit-cards":
 			err := assetArgsNumber(3)
 			if err != nil {
