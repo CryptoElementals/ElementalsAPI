@@ -179,6 +179,7 @@ func (g *Game) handleContinueGame(event *types.Event) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("handleContinueGame, gameID: %d, player: %s", g.gameInfo.ID, evt.PlayerAddress.TemporaryAddress)
 	// stale events
 	if evt.GameId != g.gameInfo.ID {
 		return nil
@@ -215,7 +216,7 @@ func (g *Game) handleRound(event *types.Event) error {
 	return nil
 }
 
-func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
+func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event, noSendPartialEvt ...bool) error {
 	evt, err := types.AssertInterface[*types.PlayerReadyEvent](event)
 	if err != nil {
 		return err
@@ -233,11 +234,13 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 			allPlayersReady = false
 		}
 	}
-	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
-		GameID:       g.gameInfo.ID,
-		RoundNumber:  uint32(g.currentRound.RoundNumber),
-		ReadyAddress: evt.PlayerAddress,
-	}))
+	if len(noSendPartialEvt) == 0 || !noSendPartialEvt[0] {
+		g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
+			GameID:       g.gameInfo.ID,
+			RoundNumber:  uint32(g.currentRound.RoundNumber),
+			ReadyAddress: evt.PlayerAddress,
+		}))
+	}
 	if !allPlayersReady {
 		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
@@ -305,6 +308,7 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 		GameID:         g.gameInfo.ID,
 		RoundNumber:    g.currentRound.RoundNumber,
 		RoundStartedAt: time.Now().Unix(),
+		RoundTimeout:   g.gameInfo.RoundTimeout,
 	})
 	g.sendEventsToAllPlayers(gameReadyEvt, roundReadyEvt)
 	return nil
@@ -420,6 +424,7 @@ func (g *Game) handleGameEnd() error {
 		return err
 	}
 	g.sendEventsToAllPlayers(gameCompletedEvt)
+	g.workerMangerService.SendEvent(types.GAME_MANAGER_ID, gameCompletedEvt)
 	g.sendTimerEventByCurrentRound()
 	return nil
 }

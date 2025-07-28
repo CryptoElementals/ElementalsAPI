@@ -56,6 +56,20 @@ func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
 		// just retry
 		r.workerManager.SendEvent(evt.OriginalReceiver, evt.OriginalEvent)
 		return nil
+	case *types.GameContinueEvent:
+		gameID, err := r.continueGame(evt.Players)
+		if err != nil {
+			return err
+		}
+		// also notify players
+		for _, player := range evt.Players {
+			r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
+				GameID:  gameID,
+				Players: evt.Players,
+			}))
+		}
+		log.Infof("gameContinue: gameID %d", gameID)
+		return nil
 	case *types.GameCompletedEvent:
 		game := r.gamesMap[evt.GameID]
 		if game == nil {
@@ -111,6 +125,37 @@ func (r *GameManager) GetActiveGameByID(id uint) *Game {
 		return nil
 	}
 	return game
+}
+func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) {
+	for _, player := range players {
+		if game, ok := r.playerToGameMap[player]; ok {
+			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
+		}
+	}
+	game := NewGame(r.ctx, players, r.workerManager, r.gameInitialHP, r.roundTimeout, r.maxRounds)
+	err := game.saveGame()
+	if err != nil {
+		return 0, err
+	}
+	for _, player := range players {
+		err := game.handleWaittingRoundPlayersConfirmed(&types.Event{
+			Data: &types.PlayerReadyEvent{
+				GameId:        game.gameInfo.ID,
+				RoundNumber:   1,
+				PlayerAddress: player,
+			},
+		}, true)
+		if err != nil {
+			log.Errorf("handle waitting round players confirmed failed, %s", err)
+			return 0, err
+		}
+	}
+	r.gamesMap[game.gameInfo.ID] = game
+	for _, player := range players {
+		r.playerToGameMap[player] = game
+	}
+	game.createSelf()
+	return game.gameInfo.ID, nil
 }
 
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {

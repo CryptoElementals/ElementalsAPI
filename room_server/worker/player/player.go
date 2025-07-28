@@ -17,7 +17,7 @@ type playerGameInfo struct {
 	currentRound    uint
 	contractAddress string
 	roundStarted    int64
-	roundTimeout    uint64
+	roundTimeout    int64
 
 	players map[types.PlayerAddress]bool
 }
@@ -60,6 +60,11 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		log.Errorf("received error: %T, err: %s", evt.OriginalEvent.Data, evt.Err.Error())
 		return nil
 	}
+	if p.status == proto.PlayerStatus_PLAYER_KNOWN {
+		evt := event.Data.(*types.GameCreatedEvent)
+		p.setNewGameInfo(evt)
+		p.status = proto.PlayerStatus_PLAYER_IN_GAME
+	}
 	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
 		evt := event.Data.(*types.GameCreatedEvent)
 		p.handleNewGameEvent(p.ctx, evt)
@@ -92,7 +97,7 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 func (p *Player) joinQueue() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.status != proto.PlayerStatus_PLAYER_KNOWN {
+	if p.status != proto.PlayerStatus_PLAYER_KNOWN && p.status != proto.PlayerStatus_PLAYER_WAITTING_CONTINUE {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
 
@@ -124,6 +129,10 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 			Type: proto.EventType_TYPE_MATCHED,
 		},
 	})
+	p.setNewGameInfo(evt)
+}
+
+func (p *Player) setNewGameInfo(evt *types.GameCreatedEvent) {
 	p.info.currentGame = uint(evt.GameID)
 	for _, player := range evt.Players {
 		p.info.players[player] = false
@@ -163,6 +172,7 @@ func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundRead
 	})
 	p.info.currentRound = uint(evt.RoundNumber)
 	p.info.roundStarted = evt.RoundStartedAt
+	p.info.roundTimeout = evt.RoundTimeout
 }
 
 func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) {
@@ -208,6 +218,7 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 			Type: proto.EventType_TYPE_GAME_COMPLETE,
 		},
 	})
+	p.status = proto.PlayerStatus_PLAYER_KNOWN
 }
 
 func (p *Player) ToGamePhase() *proto.GamePhase {
@@ -224,6 +235,7 @@ func (p *Player) ToGamePhase() *proto.GamePhase {
 			Status:          p.status,
 			ContractAddress: p.info.contractAddress,
 			BeginAt:         uint64(p.info.roundStarted),
+			TimeoutDuration: uint64(p.info.roundTimeout),
 		},
 		Players: protoPlayers,
 	}

@@ -56,3 +56,11 @@ func (c *RpcClient) SubmitTransactions(ctx context.Context, in *pb.TransactionBa
 	_, err := c.client.SubmitTransactions(ctx, in)
 	return err
 }
+
+func (c *RpcClient) ContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
+	_, err := c.client.ContinueGame(ctx, &pb.ContinueGameRequest{
+		Player:     addr.ToProto(),
+		LastGameID: uint32(gameID),
+	})
+	return err
+}
