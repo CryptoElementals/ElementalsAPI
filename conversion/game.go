@@ -53,6 +53,7 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerRew
 			TemporaryAddress: playerReward.TemporaryAddress,
 			TokenChange:      int32(playerReward.TokenChange),
 			PointChange:      int32(playerReward.PointChange),
+			Offline:          playerReward.IsOffline,
 		})
 	}
 	return playerRewards

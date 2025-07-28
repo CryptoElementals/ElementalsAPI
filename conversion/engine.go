@@ -67,6 +67,7 @@ func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerRewar
 			TemporaryAddress: p.TemporaryAddress,
 			TokenChange:      p.TokenChange,
 			PointChange:      p.PointChange,
+			IsOffline:        p.Offline,
 		})
 	}
 	return dbPlayerRewards
