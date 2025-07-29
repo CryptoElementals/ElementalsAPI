@@ -51,6 +51,7 @@ type Scanner struct {
 	roomManagerAbi       *abi.ABI
 	roomAbi              *abi.ABI
 	currentScannedHeight uint64
+	toSubmitHeight       uint64
 	headNumberOnChain    uint64
 	eventSigHashCache    eventSigHashCache // 封装后的缓存
 }
@@ -102,6 +103,7 @@ func (s *Scanner) Run() {
 			if sync.Type == "head" {
 				s.headNumberOnChain = sync.BlockHeight
 				s.currentScannedHeight = sync.BlockHeight + 1
+				s.toSubmitHeight = sync.BlockHeight + 1
 			}
 		}
 		break
@@ -184,107 +186,145 @@ type orderedTxBatch struct {
 }
 
 func (s *Scanner) CatchUpChain() {
-	const maxWorkers = 5
-	blockChan := make(chan uint64, maxWorkers*2)
+	const maxWorkers = 100
 	submitChan := make(chan *orderedTxBatch, 100)
 
-	// 启动 worker goroutines
-	for i := 0; i < maxWorkers; i++ {
-		go s.blockWorker(blockChan, submitChan)
-	}
-	// 启动专门的提交 goroutine（保证顺序）
-	go s.orderedSubmitWorker(submitChan)
+	blockQueue := make(chan uint64, 200)
 
-	for {
-		select {
-		case <-s.ctx.Done():
-			close(blockChan)
-			close(submitChan)
-			s.rpcClient.Close()
-			log.Info("Scanner context done, CatchUpChain exited...")
-			return
-		default:
+	// 任务分发协程：基于 toSubmitHeight 控制投递，避免投递过多未处理的区块
+	go func() {
+		for {
 			if s.currentScannedHeight > s.headNumberOnChain {
 				time.Sleep(time.Millisecond * 200)
 				continue
 			}
-			log.Infof("Start processing block %d", s.currentScannedHeight)
-			blockChan <- s.currentScannedHeight
-			s.currentScannedHeight++
-		}
-	}
-}
-
-// blockWorker 处理单个区块，但不直接提交
-func (s *Scanner) blockWorker(blockChan <-chan uint64, submitChan chan<- *orderedTxBatch) {
-	for blockHeight := range blockChan {
-		batch, err := s.getAndProcessBlockToBatch(big.NewInt(int64(blockHeight)))
-		if err != nil {
-			log.Warnf("blockWorker parse block %d err %v", blockHeight, err.Error())
-			time.Sleep(time.Second * 5)
-			continue // 出错时不保存同步状态，下次重试
-		}
-
-		// 如果有交易需要提交
-		if batch != nil && len(batch.Transactions) > 0 {
-			orderedBatch := &orderedTxBatch{
-				blockNumber: blockHeight,
-				batch:       batch,
-				done:        make(chan error, 1),
-			}
-			submitChan <- orderedBatch
-			// 等待提交完成
-			if err := <-orderedBatch.done; err != nil {
-				log.Errorf("submit failed for block %d: %v", blockHeight, err)
-				continue // 提交失败时不保存同步状态，下次重试
+			// 只投递 toSubmitHeight 附近的区块，避免投递过多
+			// 但确保有足够的工作给 worker 做
+			if s.currentScannedHeight <= s.toSubmitHeight+50 {
+				blockQueue <- s.currentScannedHeight
+				s.currentScannedHeight++
+				if s.currentScannedHeight%10 == 0 {
+					log.Debugf("Task distributor: currentScannedHeight=%d, toSubmitHeight=%d", s.currentScannedHeight, s.toSubmitHeight)
+				}
+			} else {
+				// 如果投递的区块太多，等待处理
+				log.Debugf("Task distributor waiting: currentScannedHeight=%d, toSubmitHeight=%d", s.currentScannedHeight, s.toSubmitHeight)
+				time.Sleep(time.Millisecond * 100)
 			}
 		}
+	}()
 
-		// 只有处理成功且提交成功（如果有交易）才保存区块同步状态
-		err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: blockHeight})
-		if err != nil {
-			log.Errorf("Insert head block sync to db err %v", err.Error())
-			time.Sleep(time.Second * 5)
-			continue // 保存失败时也不继续，下次重试
-		}
-		log.Infof("Block %d handled successfully", blockHeight)
+	// worker 并发消费 blockNumber，失败重试，不跳过
+	for i := 0; i < maxWorkers; i++ {
+		go func(workerID int) {
+			for blockNumber := range blockQueue {
+				log.Debugf("Worker %d processing block %d", workerID, blockNumber)
+				batch, err := s.getAndProcessBlockToBatch(big.NewInt(int64(blockNumber)))
+				if err != nil {
+					log.Warnf("Worker %d parse block %d err %v", workerID, blockNumber, err.Error())
+					// 失败重试，重新放回队列
+					go func(bn uint64) { blockQueue <- bn }(blockNumber)
+					time.Sleep(time.Second * 3)
+					continue
+				}
+
+				log.Debugf("Worker %d sending block %d to submitChan", workerID, blockNumber)
+				orderedBatch := &orderedTxBatch{
+					blockNumber: blockNumber,
+					batch:       batch,
+					done:        make(chan error, 1),
+				}
+				submitChan <- orderedBatch
+				if err := <-orderedBatch.done; err != nil {
+					log.Errorf("Worker %d submit failed for block %d: %v", workerID, blockNumber, err)
+					// 失败重试，重新放回队列
+					go func(bn uint64) { blockQueue <- bn }(blockNumber)
+					time.Sleep(time.Second * 3)
+					continue
+				}
+
+				if blockNumber%10 == 0 {
+					err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: blockNumber})
+					if err != nil {
+						log.Errorf("Worker %d Insert head block sync to db err %v, blockNumber %d. Don't update now!!！", workerID, err.Error(), blockNumber)
+						// 失败重试，重新放回队列
+						//go func(bn uint64) { blockQueue <- bn }(blockNumber)
+						//time.Sleep(time.Second * 5)
+					} else {
+						log.Infof("Worker %d Block %d handled successfully, s.toSubmitHeight %d, s.currentScannedHeight %d", workerID, blockNumber, s.toSubmitHeight, s.currentScannedHeight)
+					}
+				} else {
+					log.Infof("Worker %d Block %d handled successfully(not save to db), s.toSubmitHeight %d, s.currentScannedHeight %d", workerID, blockNumber, s.toSubmitHeight, s.currentScannedHeight)
+				}
+			}
+		}(i)
 	}
+	// 启动专门的提交 goroutine（保证顺序）
+	go s.orderedSubmitWorker(submitChan)
+
+	// 主线程只负责监听退出
+	<-s.ctx.Done()
+	s.rpcClient.Close()
+	log.Info("Scanner context done, CatchUpChain exited...")
 }
 
 // orderedSubmitWorker 按顺序提交交易到 roomServer
 func (s *Scanner) orderedSubmitWorker(submitChan <-chan *orderedTxBatch) {
-	const maxPending = 10000 // 最大缓存阈值，可根据实际情况调整
-	expectedBlockNumber := s.currentScannedHeight
 	pendingBatches := make(map[uint64]*orderedTxBatch)
+
 	for batch := range submitChan {
-		if batch.blockNumber == expectedBlockNumber {
-			err := s.submitBatch(batch.batch)
-			batch.done <- err
-			expectedBlockNumber++
-			for {
-				if nextBatch, exists := pendingBatches[expectedBlockNumber]; exists {
-					err := s.submitBatch(nextBatch.batch)
-					nextBatch.done <- err
-					delete(pendingBatches, expectedBlockNumber)
-					expectedBlockNumber++
+		log.Debugf("orderedSubmitWorker received batch for block %d", batch.blockNumber)
+		// 先全部丢到 pendingBatches 里
+		pendingBatches[batch.blockNumber] = batch
+		log.Debugf("added block %d to pendingBatches, current size: %d", batch.blockNumber, len(pendingBatches))
+
+		// 然后处理 toSubmitHeight 的 block
+		for {
+			if nextBatch, exists := pendingBatches[s.toSubmitHeight]; exists {
+				log.Debugf("processing block %d from pendingBatches", s.toSubmitHeight)
+				var err error
+				if nextBatch.batch != nil {
+					// 有交易需要提交
+					err = s.submitBatch(nextBatch.batch)
 				} else {
-					break
+					// 空 batch，没有交易，直接成功
+					err = nil
 				}
+				nextBatch.done <- err
+
+				if err != nil {
+					// 提交失败，不移除 batch，不推进 toSubmitHeight
+					log.Errorf("submit failed for block %d, keeping in pendingBatches for retry", s.toSubmitHeight)
+					break // 退出循环，等待下次重试
+				} else {
+					// 提交成功，移除 batch 并推进 toSubmitHeight
+					delete(pendingBatches, s.toSubmitHeight)
+					s.toSubmitHeight++
+					log.Infof("toSubmitHeight advanced to %d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
+				}
+			} else {
+				// 没有下一个连续的 block，退出循环
+				log.Debugf("waiting for block %d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
+				// 打印 pendingBatches 中的 block numbers 用于调试
+				if len(pendingBatches) > 0 {
+					blockNums := make([]uint64, 0, len(pendingBatches))
+					for bn := range pendingBatches {
+						blockNums = append(blockNums, bn)
+					}
+					log.Debugf("pendingBatches contains blocks: %v", blockNums)
+				}
+				break
 			}
-		} else {
-			if len(pendingBatches) >= maxPending {
-				// 缓存过大时，拒绝新的 batch，等待处理完成
-				log.Errorf("pendingBatches size exceeded: %d, rejecting block %d, waiting for processing", len(pendingBatches), batch.blockNumber)
-				batch.done <- fmt.Errorf("pending batches overflow, block %d rejected", batch.blockNumber)
-				continue
-			}
-			pendingBatches[batch.blockNumber] = batch
 		}
 	}
 }
 
 // submitBatch 提交交易批次到 roomServer
 func (s *Scanner) submitBatch(batch *proto.TransactionBatch) error {
+	if batch == nil {
+		// 空 batch，没有交易需要提交
+		return nil
+	}
 	if config.ScannerGConf.RoomServerMocked {
 		log.Debugf("RoomServer mocked, skipping submit for block %d", batch.BlockNumber)
 		return nil
