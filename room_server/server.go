@@ -68,10 +68,11 @@ func New(ctx context.Context,
 	s.chainSvc = chainSvc
 	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP, cfg.RoundTimeout, cfg.MaxRounds, chainSvc)
 	s.gameSvc = gameSvc
-	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc)
+	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold))
 	s.queueSvc = queueSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc
+	gameSvc.SetGameResultSettler(queueSvc)
 	s.pubsub.SetPlayerManager(playerSvc)
 	server := grpc.NewServer()
 	rpcServer := rpc.NewRpc(

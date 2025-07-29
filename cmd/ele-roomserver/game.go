@@ -120,10 +120,10 @@ type gameContext struct {
 	rpcClient       *rpc.Client
 
 	gameID          uint
-	players         []types.PlayerAddress
+	players         []*types.PlayerAddress
 	currentRound    uint32
 	contractAddress string
-	myself          types.PlayerAddress
+	myself          *types.PlayerAddress
 	contract        *contract.RoomContract
 	bindOpts        *bind.TransactOpts
 	evtChan         chan *proto.Event
@@ -145,7 +145,7 @@ func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 	}
 	return &gameContext{
 		ctx:             ctx,
-		myself:          types.PlayerAddress{WalletAddress: wallet.GetAddrHex(), TemporaryAddress: temporaryWallet.GetAddrHex()},
+		myself:          types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
 		wallet:          wallet,
 		temporaryWallet: temporaryWallet,
 		evtChan:         make(chan *proto.Event, 10),
@@ -178,7 +178,7 @@ func (c *gameContext) run() error {
 					return
 				case proto.EventType_TYPE_MATCHED:
 					fmt.Println("game matched, please confirm")
-					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, &c.myself)
+					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 						continue
@@ -186,10 +186,7 @@ func (c *gameContext) run() error {
 					c.lock.Lock()
 					c.gameID = uint(phase.PvPInfo.GameID)
 					for _, pp := range phase.Players {
-						player := types.PlayerAddress{
-							WalletAddress:    pp.Address.WalletAddress,
-							TemporaryAddress: pp.Address.TemporaryAddress,
-						}
+						player := types.NewPlayerAddress(pp.Address.WalletAddress, pp.Address.TemporaryAddress)
 						c.players = append(c.players, player)
 					}
 					c.state = playerStateWaittingConfirm
@@ -200,7 +197,7 @@ func (c *gameContext) run() error {
 				case proto.EventType_TYPE_GAME_CREATED:
 					fmt.Println("game created, please submit cards")
 					// get contract
-					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, &c.myself)
+					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
@@ -265,7 +262,7 @@ func (c *gameContext) JoinQueue() error {
 		return fmt.Errorf("cannot join queue, invalid state: %s", c.state.String())
 	}
 
-	err := c.rpcClient.RpcClient.JoinQueue(c.ctx, &c.myself)
+	err := c.rpcClient.RpcClient.JoinQueue(c.ctx, c.myself)
 	if err != nil {
 		return err
 	}
@@ -279,7 +276,7 @@ func (c *gameContext) ExitQueue() error {
 	if c.state != playerStateWattingGameMatched {
 		return fmt.Errorf("cannot exit queue, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ExitQueue(c.ctx, &c.myself)
+	err := c.rpcClient.RpcClient.ExitQueue(c.ctx, c.myself)
 	if err != nil {
 		return err
 	}
@@ -293,7 +290,7 @@ func (c *gameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound))
+	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, c.myself, c.gameID, uint(c.currentRound))
 	if err != nil {
 		return err
 	}
@@ -337,7 +334,7 @@ func (c *gameContext) Continue() error {
 	if c.state != playerStateIdle {
 		return fmt.Errorf("cannot continue, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ContinueGame(c.ctx, &c.myself, c.gameID)
+	err := c.rpcClient.RpcClient.ContinueGame(c.ctx, c.myself, c.gameID)
 	if err != nil {
 		return err
 	}

@@ -17,8 +17,9 @@ type GameInfoGetter interface {
 }
 
 type Queuer interface {
-	HandleJoinQueueEvent(event *types.JoinQueueEvent)
-	HandleExitQueueEvent(event *types.ExitQueueEvent)
+	HandleJoinQueueEvent(event *types.JoinQueueEvent) error
+	HandleExitQueueEvent(event *types.ExitQueueEvent) error
+	HandleContinueGameEvent(event *types.PlayerContinueEvent) error
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
 }
 
@@ -75,40 +76,28 @@ func (s *Service) RemovePlayer(address types.PlayerAddress) {
 }
 
 func (s *Service) JoinQueue(address types.PlayerAddress) error {
-	player := s.GetOrCreatePlayer(address)
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	player, ok := s.players[address]
+	if !ok {
+		return errors.New("player not found")
+	}
 	return player.joinQueue()
 }
 
 func (s *Service) ExitQueue(address types.PlayerAddress) error {
-	player := s.GetOrCreatePlayer(address)
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	player, ok := s.players[address]
+	if !ok {
+		return errors.New("player not found")
+	}
 	return player.exitQueue()
 }
 
-func (s *Service) GetOrCreatePlayer(address types.PlayerAddress) *Player {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	player, ok := s.players[address]
-	if !ok {
-		player = NewPlayer(s.ctx, address, s.pub, s.workerManager, s.queue)
-		s.players[address] = player
-	}
-	return player
-}
-
-func (s *Service) SyncPlayerInfo(address types.PlayerAddress) error {
-	player := s.GetOrCreatePlayer(address)
-
-	// we need to lock player here for better consistency
-	player.lock.Lock()
-	defer player.lock.Unlock()
-	gameInfo := s.gameInfoGetter.GetActiveGameInfo(player.address)
-	if gameInfo == nil {
-		return nil
-	}
-	return nil
-}
-
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	return s.queue.IsPlayerInQueue(address)
 }
 
@@ -119,35 +108,25 @@ func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundN
 	if !ok {
 		return errors.New("player not found")
 	}
-	s.workerManager.SendEvent(fmt.Sprint(gameID), types.NewEvent(player.address.String(), &types.PlayerReadyEvent{
+	evt := types.NewEvent(player.address.String(), &types.PlayerReadyEvent{
 		GameId:        gameID,
 		RoundNumber:   roundNum,
 		PlayerAddress: address,
-	}))
-	return nil
+	}, true)
+	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
+	err := evt.Await()
+	return err
 }
 
 func (s *Service) ContinueGame(address types.PlayerAddress, gameID uint) error {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	player, ok := s.players[address]
+	_, ok := s.players[address]
 	if !ok {
 		return errors.New("player not found")
 	}
-	s.workerManager.SendEvent(fmt.Sprint(gameID), types.NewEvent(player.address.String(), &types.PlayerContinueEvent{
+	return s.queue.HandleContinueGameEvent(&types.PlayerContinueEvent{
 		GameId:        gameID,
 		PlayerAddress: address,
-	}))
-	return nil
-}
-
-// GetGamePhase implements server.PlayerRequestHandler.
-func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	p, ok := s.players[address]
-	if !ok {
-		return nil, errors.New("player not found")
-	}
-	return p.ToGamePhase(), nil
+	})
 }

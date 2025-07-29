@@ -36,7 +36,7 @@ func (s *Rpc) ExitQueue(ctx context.Context, req *pb.PlayerAddress) (*emptypb.Em
 func (s *Rpc) GetGamePhase(ctx context.Context, req *pb.PlayerAddress) (*pb.GamePhase, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req)
-	return s.playerHandler.GetGamePhase(addr)
+	return s.gameHandler.GetGamePhase(addr)
 }
 func (s *Rpc) GetBattleInfo(ctx context.Context, req *pb.GetBattleInfoRequest) (*pb.GetBattleInfoResponse, error) {
 	roundResult, gameResult, err := s.gameHandler.GetBattleInfo(ctx, req.GameID, req.RoundNumber)
@@ -70,6 +70,7 @@ func (s *Rpc) SubmitTransactions(ctx context.Context, req *pb.TransactionBatch) 
 
 type GameRequestHandler interface {
 	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, *pb.GameResult, error)
+	GetGamePhase(types.PlayerAddress) (*pb.GamePhase, error)
 }
 
 type ChainRequestHandler interface {
@@ -77,9 +78,8 @@ type ChainRequestHandler interface {
 }
 
 type PlayerRequestHandler interface {
-	JoinQueue(types.PlayerAddress) error
-	ExitQueue(req types.PlayerAddress) error
-	ContinueGame(address types.PlayerAddress, gameID uint) error
-	GetGamePhase(types.PlayerAddress) (*pb.GamePhase, error)
-	ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32) error
+	JoinQueue(playerAddress types.PlayerAddress) error
+	ExitQueue(playerAddress types.PlayerAddress) error
+	ContinueGame(playerAddress types.PlayerAddress, gameID uint) error
+	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
 }

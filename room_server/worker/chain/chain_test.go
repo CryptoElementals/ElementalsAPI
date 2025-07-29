@@ -111,12 +111,6 @@ func TestChainContractInteraction(t *testing.T) {
 	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	ackReceived := make(chan struct{})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.ErrorEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.ErrorEvent)
-		t.Errorf("ErrorEvent should not be sent, err: %v", evt.Err)
-		close(ackReceived)
-		return nil
-	})
 	testWorkerManager.SpwanWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
 
 	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireContractCreationEvent{

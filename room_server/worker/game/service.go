@@ -11,6 +11,20 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+type ContractClient interface {
+	CreateRoomContract(evt *types.RequireContractCreationEvent) error
+	SetRoundReady(evt *types.RequireSetupNewRoundEvent) error
+}
+
+type GameHandler interface {
+	HandleGameContinueEvent(evt *types.GameContinueEvent) error
+	HandleGameCompletedEvent(evt *types.GameCompletedEvent) error
+}
+
+type GameResultSettler interface {
+	GameResultSettlement(event *types.GameCompletedEvent) error
+}
+
 type Service struct {
 	ctx         context.Context
 	gameManager *GameManager
@@ -22,6 +36,10 @@ func NewService(ctx context.Context, workerManager *worker.WorkerManager,
 		ctx:         ctx,
 		gameManager: NewGameManager(ctx, workerManager, initialHP, roundTimeout, maxRounds, chainSvc),
 	}
+}
+
+func (s *Service) SetGameResultSettler(settler GameResultSettler) {
+	s.gameManager.gameResultSettler = settler
 }
 
 func (s *Service) Start() error {
@@ -77,6 +95,14 @@ func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.Pla
 	return proto.PlayerStatus_PLAYER_IN_GAME
 }
 
-func (s *Service) HandleGameMatchedEvent(evt *types.GameMatchedEvent) error {
+func (s *Service) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
 	return s.gameManager.HandleGameMatchedEvent(evt)
+}
+
+func (s *Service) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
+	return s.gameManager.HandleGameContinueEvent(evt)
+}
+
+func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
+	return s.gameManager.GetGamePhase(address)
 }

@@ -33,6 +33,13 @@ type PlayerAddress struct {
 	TemporaryAddress string
 }
 
+func NewPlayerAddress(walletAddress, temporaryAddress string) *PlayerAddress {
+	return &PlayerAddress{
+		WalletAddress:    strings.ToLower(walletAddress),
+		TemporaryAddress: strings.ToLower(temporaryAddress),
+	}
+}
+
 func (a *PlayerAddress) String() string {
 	return fmt.Sprintf("%s_%s", a.WalletAddress, a.TemporaryAddress)
 }
@@ -42,8 +49,8 @@ func (a *PlayerAddress) Parse(str string) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid player address")
 	}
-	a.WalletAddress = parts[0]
-	a.TemporaryAddress = parts[1]
+	a.WalletAddress = strings.ToLower(parts[0])
+	a.TemporaryAddress = strings.ToLower(parts[1])
 	return nil
 }
 
@@ -63,39 +70,33 @@ func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 
 func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
-		TemporaryAddress: a.TemporaryAddress,
+		TemporaryAddress: strings.ToLower(a.TemporaryAddress),
 	}
 }
 
 func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
-	a.WalletAddress = player.WalletAddress
-	a.TemporaryAddress = player.TemporaryAddress
+	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
-	a.WalletAddress = player.WalletAddress
-	a.TemporaryAddress = player.TemporaryAddress
+	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 type Event struct {
 	Sender  string
 	EventID string
 	AckChan chan struct{}
+	Error   error
 	Data    any
-}
-
-type ErrorEvent struct {
-	OriginalEvent    *Event
-	OriginalReceiver string
-	Err              error
 }
 
 func NewEvent(sender string, evt any, needAck ...bool) *Event {
 	var ack chan struct{}
-	if len(needAck) != 0 && needAck[0] {
+	if len(needAck) > 0 && needAck[0] {
 		ack = make(chan struct{})
 	}
-
 	eid := uuid.NewString()
 	return &Event{
 		Sender:  sender,
@@ -105,8 +106,9 @@ func NewEvent(sender string, evt any, needAck ...bool) *Event {
 	}
 }
 
-func (e *Event) Await() {
+func (e *Event) Await() error {
 	<-e.AckChan
+	return e.Error
 }
 
 func AssertInterface[T any](evt *Event) (T, error) {

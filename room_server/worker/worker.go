@@ -53,15 +53,9 @@ func (w *Worker) Run() {
 			w.closer.CloseWorker(w.Id)
 			return
 		case event := <-w.msgQueue:
-			sender := event.Sender
 			err := w.handler.Handle(w.ctx, event)
 			if err != nil {
-				errEvent := types.NewEvent(w.Id, &types.ErrorEvent{
-					OriginalEvent:    event,
-					OriginalReceiver: w.Id,
-					Err:              err,
-				})
-				w.SendEvent(sender, errEvent)
+				event.Error = err
 			}
 			if event.AckChan != nil {
 				close(event.AckChan)

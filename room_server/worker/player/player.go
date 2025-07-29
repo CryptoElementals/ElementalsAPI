@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -60,17 +59,20 @@ func (p *Player) createSelf() {
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if evt, ok := event.Data.(*types.ErrorEvent); ok {
-		log.Errorf("received error: %T, err: %s", evt.OriginalEvent.Data, evt.Err.Error())
-		return nil
-	}
 	if p.status == proto.PlayerStatus_PLAYER_KNOWN {
-		evt := event.Data.(*types.GameCreatedEvent)
-		p.setNewGameInfo(evt)
-		p.status = proto.PlayerStatus_PLAYER_IN_GAME
+		switch evt := event.Data.(type) {
+		case *types.ContinueCanceledEvent:
+			p.handleContinueCanceledEvent(ctx, evt)
+		case *types.GameCreatedEvent:
+			p.setNewGameInfo(evt)
+			p.status = proto.PlayerStatus_PLAYER_IN_GAME
+		}
 	}
 	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
-		evt := event.Data.(*types.GameCreatedEvent)
+		evt, ok := event.Data.(*types.GameCreatedEvent)
+		if !ok {
+			return fmt.Errorf("player not in queue, but got event type %d", reflect.TypeOf(event.Data))
+		}
 		p.handleNewGameEvent(p.ctx, evt)
 		p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	}
@@ -105,9 +107,12 @@ func (p *Player) joinQueue() error {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
 
-	p.queue.HandleJoinQueueEvent(&types.JoinQueueEvent{
+	err := p.queue.HandleJoinQueueEvent(&types.JoinQueueEvent{
 		PlayerAddress: p.address,
 	})
+	if err != nil {
+		return err
+	}
 	p.status = proto.PlayerStatus_PLAYER_IN_QUEUE
 	return nil
 }
@@ -188,6 +193,18 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 	})
 }
 
+func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.ContinueCanceledEvent) {
+	if p.info.currentGame != evt.GameID {
+		return
+	}
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_CONTINUE_CANCELED,
+		},
+	})
+}
+
 func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.RoundCompletedEvent) {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
@@ -223,24 +240,4 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 		},
 	})
 	p.status = proto.PlayerStatus_PLAYER_KNOWN
-}
-
-func (p *Player) ToGamePhase() *proto.GamePhase {
-	protoPlayers := make([]*proto.GamePhasePlayer, 0)
-	for addr, p := range p.info.players {
-		protoPlayers = append(protoPlayers, &proto.GamePhasePlayer{
-			Address:     addr.ToProto(),
-			IsConfirmed: p,
-		})
-	}
-	return &proto.GamePhase{
-		PvPInfo: &proto.PvPInfo{
-			GameID:          uint32(p.info.currentGame),
-			Status:          p.status,
-			ContractAddress: p.info.contractAddress,
-			BeginAt:         uint64(p.info.roundStarted),
-			TimeoutDuration: uint64(p.info.roundTimeout),
-		},
-		Players: protoPlayers,
-	}
 }

@@ -86,10 +86,26 @@ func (m *MockQueuer) EXPECT() *MockQueuerMockRecorder {
 	return m.recorder
 }
 
-// HandleExitQueueEvent mocks base method.
-func (m *MockQueuer) HandleExitQueueEvent(arg0 *types.ExitQueueEvent) {
+// HandleContinueGameEvent mocks base method.
+func (m *MockQueuer) HandleContinueGameEvent(arg0 *types.PlayerContinueEvent) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "HandleExitQueueEvent", arg0)
+	ret := m.ctrl.Call(m, "HandleContinueGameEvent", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// HandleContinueGameEvent indicates an expected call of HandleContinueGameEvent.
+func (mr *MockQueuerMockRecorder) HandleContinueGameEvent(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleContinueGameEvent", reflect.TypeOf((*MockQueuer)(nil).HandleContinueGameEvent), arg0)
+}
+
+// HandleExitQueueEvent mocks base method.
+func (m *MockQueuer) HandleExitQueueEvent(arg0 *types.ExitQueueEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HandleExitQueueEvent", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // HandleExitQueueEvent indicates an expected call of HandleExitQueueEvent.
@@ -99,9 +115,11 @@ func (mr *MockQueuerMockRecorder) HandleExitQueueEvent(arg0 interface{}) *gomock
 }
 
 // HandleJoinQueueEvent mocks base method.
-func (m *MockQueuer) HandleJoinQueueEvent(arg0 *types.JoinQueueEvent) {
+func (m *MockQueuer) HandleJoinQueueEvent(arg0 *types.JoinQueueEvent) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "HandleJoinQueueEvent", arg0)
+	ret := m.ctrl.Call(m, "HandleJoinQueueEvent", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // HandleJoinQueueEvent indicates an expected call of HandleJoinQueueEvent.

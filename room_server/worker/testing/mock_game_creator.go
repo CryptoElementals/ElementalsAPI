@@ -34,12 +34,27 @@ func (m *MockGameCreator) EXPECT() *MockGameCreatorMockRecorder {
 	return m.recorder
 }
 
-// HandleGameMatchedEvent mocks base method.
-func (m *MockGameCreator) HandleGameMatchedEvent(arg0 *types.GameMatchedEvent) error {
+// HandleGameContinueEvent mocks base method.
+func (m *MockGameCreator) HandleGameContinueEvent(arg0 *types.GameContinueEvent) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleGameMatchedEvent", arg0)
+	ret := m.ctrl.Call(m, "HandleGameContinueEvent", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
+}
+
+// HandleGameContinueEvent indicates an expected call of HandleGameContinueEvent.
+func (mr *MockGameCreatorMockRecorder) HandleGameContinueEvent(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleGameContinueEvent", reflect.TypeOf((*MockGameCreator)(nil).HandleGameContinueEvent), arg0)
+}
+
+// HandleGameMatchedEvent mocks base method.
+func (m *MockGameCreator) HandleGameMatchedEvent(arg0 *types.GameMatchedEvent) (uint, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HandleGameMatchedEvent", arg0)
+	ret0, _ := ret[0].(uint)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // HandleGameMatchedEvent indicates an expected call of HandleGameMatchedEvent.

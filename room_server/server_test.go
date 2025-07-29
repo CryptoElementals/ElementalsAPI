@@ -44,8 +44,19 @@ func setupTestSvc(t *testing.T) {
 		WalletPath:    tempFile,
 		RoundTimeout:  0,
 		MaxRounds:     3,
-		GameInitialHP: 10000,
+		GameInitialHP: 3000,
 		ListenPort:    30011,
+		GameParams: config.GameParamConfig{
+			TokenThreshold:    1000,
+			MaxHP:             3000,
+			InitialMultiplier: 1,
+			SystemFeeRate:     0.016,
+			WinnerPointRate:   0.012,
+			LoserPointRate:    0.004,
+			TieTokenRate:      0.008,
+			TiePointRate:      0.008,
+			BaseStake:         1000,
+		},
 	}
 	svr, err := New(context.Background(), cfg, true)
 	if err != nil {
@@ -85,6 +96,15 @@ func prepareCards(t *testing.T) {
 		{CardID: 5, ElementType: "Earth", Level: "normal", LifeForce: 500, Attack: 1000, Defense: 500, Name: "World Turtle", Description: "World Turtle, steady and powerful with immense strength"},
 	}
 	require.NoError(t, db.Get().Save(&cards).Error)
+}
+
+func prepareUserTokens(t *testing.T) {
+	t.Helper()
+	userTokens := []dao.UserToken{
+		{WalletAddress: "wallet1", TokenAmount: 1000000, Points: 0},
+		{WalletAddress: "wallet2", TokenAmount: 1000000, Points: 0},
+	}
+	require.NoError(t, db.SaveUserToken(userTokens...))
 }
 
 func toJsonLoggable(obj any) string {
@@ -207,6 +227,7 @@ func runClient(t *testing.T,
 func TestServer_BattleFullLogic(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
+	prepareUserTokens(t)
 	setupTestSvc(t)
 	client, err := rpc.NewClient(svrUrl)
 	require.NoError(t, err)
@@ -327,6 +348,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
 	setupTestSvc(t)
+	prepareUserTokens(t)
 	client, err := rpc.NewClient(svrUrl)
 	require.NoError(t, err)
 	defer client.Close()
@@ -444,6 +466,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 
 func TestServer_BattleContinue(t *testing.T) {
 	setupMemDb(t)
+	prepareUserTokens(t)
 	prepareCards(t)
 	setupTestSvc(t)
 	client, err := rpc.NewClient(svrUrl)

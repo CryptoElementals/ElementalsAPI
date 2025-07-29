@@ -44,4 +44,8 @@ type GamePurgeEvent struct {
 	GameID uint
 }
 
+type ContinueCanceledEvent struct {
+	GameID uint
+}
+
 type SyncEvent GameCompletedEvent
