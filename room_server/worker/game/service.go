@@ -48,10 +48,7 @@ func (s *Service) Start() error {
 
 func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo {
 	gameInfo := s.gameManager.GetActiveGame(playerAddress)
-	if gameInfo == nil {
-		return nil
-	}
-	return conversion.DbGameInfoToProtoGameInfo(gameInfo)
+	return gameInfo
 }
 
 func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {

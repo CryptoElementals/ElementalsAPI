@@ -11,21 +11,10 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-type playerGameInfo struct {
-	currentGame     uint
-	currentRound    uint
-	contractAddress string
-	roundStarted    int64
-	roundTimeout    int64
-
-	players map[types.PlayerAddress]bool
-}
-
 type Player struct {
 	ctx          context.Context
 	lock         sync.RWMutex
 	address      types.PlayerAddress
-	info         playerGameInfo
 	publisher    Publisher
 	workerManger *worker.WorkerManager
 	status       proto.PlayerStatus
@@ -43,12 +32,8 @@ func NewPlayer(ctx context.Context,
 		address:      address,
 		publisher:    publisher,
 		workerManger: workerManger,
-		info: playerGameInfo{
-			players: map[types.PlayerAddress]bool{},
-		},
-		queue: queue,
+		queue:        queue,
 	}
-	p.createSelf()
 	return p
 }
 
@@ -64,7 +49,6 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		case *types.ContinueCanceledEvent:
 			p.handleContinueCanceledEvent(ctx, evt)
 		case *types.GameCreatedEvent:
-			p.setNewGameInfo(evt)
 			p.status = proto.PlayerStatus_PLAYER_IN_GAME
 		}
 	}
@@ -138,18 +122,9 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 			Type: proto.EventType_TYPE_MATCHED,
 		},
 	})
-	p.setNewGameInfo(evt)
-}
-
-func (p *Player) setNewGameInfo(evt *types.GameCreatedEvent) {
-	p.info.currentGame = uint(evt.GameID)
-	for _, player := range evt.Players {
-		p.info.players[player] = false
-	}
 }
 
 func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) {
-	p.info.contractAddress = evt.ContractAddress
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -159,7 +134,6 @@ func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyE
 }
 
 func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.RoundPartialReadyEvent) {
-	p.info.players[evt.ReadyAddress] = true
 	// don't send event to itself
 	if p.address == evt.ReadyAddress {
 		return
@@ -179,9 +153,6 @@ func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundRead
 			Type: proto.EventType_TYPE_ROUND_READY,
 		},
 	})
-	p.info.currentRound = uint(evt.RoundNumber)
-	p.info.roundStarted = evt.RoundStartedAt
-	p.info.roundTimeout = evt.RoundTimeout
 }
 
 func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) {
@@ -194,9 +165,6 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 }
 
 func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.ContinueCanceledEvent) {
-	if p.info.currentGame != evt.GameID {
-		return
-	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{

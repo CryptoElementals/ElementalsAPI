@@ -60,7 +60,13 @@ func (s *Service) AddPlayer(address types.PlayerAddress) error {
 	}
 
 	player := NewPlayer(s.ctx, address, s.pub, s.workerManager, s.queue)
+	if s.queue.IsPlayerInQueue(address) {
+		player.status = proto.PlayerStatus_PLAYER_IN_QUEUE
+	} else {
+		player.status = s.gameInfoGetter.GetPlayerGameInfo(address)
+	}
 	s.players[address] = player
+	player.createSelf()
 	return nil
 }
 

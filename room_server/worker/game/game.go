@@ -162,6 +162,13 @@ func (g *Game) GetBattleInfo(roundNum uint32) (*proto.RoundResult, *proto.GameRe
 	return nil, nil
 }
 
+func (g *Game) ToProto() *proto.GameInfo {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+	gameProto := conversion.DbGameInfoToProtoGameInfo(g.gameInfo)
+	return gameProto
+}
+
 func (g *Game) GetGameResult() *proto.GameResult {
 	g.lock.RLock()
 	defer g.lock.RUnlock()

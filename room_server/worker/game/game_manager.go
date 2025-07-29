@@ -8,7 +8,6 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -118,14 +117,14 @@ func (r *GameManager) IsPlayerInGame(player types.PlayerAddress) bool {
 	return ok
 }
 
-func (r *GameManager) GetActiveGame(player types.PlayerAddress) *dao.Game {
+func (r *GameManager) GetActiveGame(player types.PlayerAddress) *proto.GameInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	game, ok := r.playerToGameMap[player]
 	if !ok {
 		return nil
 	}
-	return game.gameInfo
+	return game.ToProto()
 }
 
 func (r *GameManager) GetActiveGameByID(id uint) *Game {
