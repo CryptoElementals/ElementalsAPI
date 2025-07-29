@@ -65,9 +65,11 @@ func (m *continueManager) addGame(game *dao.Game) {
 		m.playerToContinueQueue[*playerAddr] = &info
 	}
 	m.continueQueue[game.ID] = continuePlayers
-	time.AfterFunc(m.continueTimeout, func() {
-		m.removeGameByID(game.ID)
-	})
+	if m.continueTimeout != 0 {
+		time.AfterFunc(m.continueTimeout, func() {
+			m.removeGameByID(game.ID)
+		})
+	}
 }
 
 func (m *continueManager) removeGameByAddress(addr types.PlayerAddress) {
@@ -139,17 +141,16 @@ type GameCreator interface {
 	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 }
 
-func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator) *Queue {
+func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64) *Queue {
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	q := &Queue{
-		ctx:           ctx,
-		queue:         make(map[types.PlayerAddress]struct{}),
-		workerManager: workerManager,
-		queueCache:    queueCache,
-		gameCreator:   gameCreator,
-		// set it to one minute for now
-		continueManager: newContinueManager(workerManager, time.Minute),
-		continueTimeout: time.Minute,
+		ctx:             ctx,
+		queue:           make(map[types.PlayerAddress]struct{}),
+		workerManager:   workerManager,
+		queueCache:      queueCache,
+		gameCreator:     gameCreator,
+		continueManager: newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
+		continueTimeout: time.Duration(continueTimeout) * time.Second,
 	}
 	return q
 }
@@ -260,13 +261,13 @@ func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) {
 }
 
 func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
-	q.lock.Lock()
-	defer q.lock.Unlock()
 	err := db.BattleResultSettlement(event.GameInfo)
 	if err != nil {
 		log.Error("BattleResultSettlement failed, err: ", err)
 		return err
 	}
+	q.lock.Lock()
+	defer q.lock.Unlock()
 	q.continueManager.addGame(event.GameInfo)
 	return nil
 }

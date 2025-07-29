@@ -22,10 +22,11 @@ func NewService(ctx context.Context,
 	cache cache.Cache,
 	gameCreator GameCreator,
 	minTokenToJoinQueue int32,
+	continueTimeout int64,
 ) *Service {
 	return &Service{
 		ctx:   ctx,
-		queue: NewQueue(ctx, workerManager, cache, gameCreator),
+		queue: NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout),
 	}
 }
 

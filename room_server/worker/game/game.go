@@ -430,7 +430,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	if !allCardsOnChain {
 		return db.SavePlayerRoundInfo(player.roundPlayer)
 	}
-	return g.handleRoundEnd(false)
+	return g.handleRoundEnd()
 }
 
 // can go into game end from any other status
@@ -450,11 +450,14 @@ func (g *Game) handleGameEnd() error {
 	if err != nil {
 		return err
 	}
+	// we need a deterministic sequence for locks
+	g.lock.Unlock()
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
 		return err
 	}
+	g.lock.Lock()
 	g.sendEventsToAllPlayers(gameCompletedEvt)
-	g.sendTimerEventByCurrentRound()
+	g.stopWorker()
 	return nil
 }
 
@@ -502,7 +505,7 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 	}
 }
 
-func (g *Game) handleRoundEnd(forceCloseGame bool) error {
+func (g *Game) handleRoundEnd() error {
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
 	for _, p := range input.Players {
@@ -519,7 +522,7 @@ func (g *Game) handleRoundEnd(forceCloseGame bool) error {
 		return err
 	}
 	g.applyRoundResultToCurrentRound(roundResult)
-	if forceCloseGame || roundResult.IsGameOver {
+	if roundResult.IsGameOver {
 		g.gameInfo.GameResult = conversion.ProtoGameResultToDbGameResult(gameResult)
 		return g.handleGameEnd()
 	}
@@ -597,12 +600,7 @@ func (g *Game) sendTimerEventByCurrentRound() {
 }
 
 func (g *Game) handleTimerEvent(event *timerEvent) {
-	// game end, purge self
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
-		g.workerMangerService.SendEvent(g.workerID(), types.NewEvent(g.workerID(), &types.GamePurgeEvent{
-			GameID: g.gameInfo.ID,
-		}))
-		g.stopWorker()
 		return
 	}
 	// stale event
@@ -614,9 +612,8 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
-	// so we just close the game
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-		g.handleGameEnd()
+		g.handleRoundEnd()
 		return
 	}
 	switch g.currentRound.Status {
@@ -625,12 +622,12 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	case proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
 		log.Errorf("setup on chain timeout, current round: %d, gameid: %d", event.currentRound, g.gameInfo.ID)
 	case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION:
-		g.handleGameEnd()
+		g.handleRoundEnd()
 		fallthrough
 	case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
 		fallthrough
 	case proto.RoundStatus_ROUND_WAITTING_CARDS:
-		g.handleRoundEnd(true)
+		g.handleRoundEnd()
 	}
 }
 

@@ -72,6 +72,12 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 }
 
 func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) error {
+	if r.gameResultSettler != nil {
+		err := r.gameResultSettler.GameResultSettlement(evt)
+		if err != nil {
+			return err
+		}
+	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	game := r.gamesMap[evt.GameID]
@@ -81,12 +87,6 @@ func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) er
 	delete(r.gamesMap, evt.GameID)
 	for _, player := range game.gamePlayers {
 		delete(r.playerToGameMap, *player.addr)
-	}
-	if r.gameResultSettler != nil {
-		err := r.gameResultSettler.GameResultSettlement(evt)
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
