@@ -22,6 +22,7 @@ func DbPlayerRoundInfoToProtoPlayerRoundInput(playerRoundInfo []*dao.PlayerRound
 		playerRoundInput = append(playerRoundInput, &proto.PlayerRoundInput{
 			WalletAddress:    p.WalletAddress,
 			TemporaryAddress: p.TemporaryAddress,
+			Commitment:       p.SubmittedCommitment,
 			Cards:            cards,
 		})
 	}
@@ -67,6 +68,7 @@ func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerRewar
 			TemporaryAddress: p.TemporaryAddress,
 			TokenChange:      p.TokenChange,
 			PointChange:      p.PointChange,
+			IsOffline:        p.Offline,
 		})
 	}
 	return dbPlayerRewards

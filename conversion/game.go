@@ -2,6 +2,7 @@ package conversion
 
 import (
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
@@ -53,6 +54,7 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerRew
 			TemporaryAddress: playerReward.TemporaryAddress,
 			TokenChange:      int32(playerReward.TokenChange),
 			PointChange:      int32(playerReward.PointChange),
+			Offline:          playerReward.IsOffline,
 		})
 	}
 	return playerRewards
@@ -178,4 +180,29 @@ func DbRoundSubmittedCardToProtoPlayerCardStat(i int, card *dao.RoundSubmittedCa
 		ElementRelation:  card.ElementRelation,
 		Effects:          DbCardEffectsToProto(card.CardEffects),
 	}
+}
+
+func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.GamePhase {
+	gamePhase := &proto.GamePhase{
+		GameType: proto.GameType(game.Type),
+	}
+
+	for _, playerInfo := range currentRound.PlayerRoundInfos {
+		addr := types.NewPlayerAddress(
+			playerInfo.WalletAddress,
+			playerInfo.TemporaryAddress,
+		).ToProto()
+		gamePhase.Players = append(gamePhase.Players, &proto.GamePhasePlayer{
+			Address:     addr,
+			IsConfirmed: playerInfo.PlayerReady,
+		})
+	}
+	gamePhase.PvPInfo = &proto.PvPInfo{
+		GameID:          uint32(game.ID),
+		Status:          proto.PlayerStatus(game.Status),
+		ContractAddress: game.RoomContract,
+		BeginAt:         uint64(game.CreatedAt.Unix()),
+		TimeoutDuration: uint64(game.RoundTimeout),
+	}
+	return gamePhase
 }

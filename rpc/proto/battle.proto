@@ -7,9 +7,10 @@ option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 message PlayerRoundInput {
     string WalletAddress = 1;
     string TemporaryAddress = 2;
-    repeated int32 Cards = 3;
-    int32 HP = 4;
-    int32 LostHP = 5;
+    bytes Commitment = 3;
+    repeated int32 Cards = 4;
+    int32 HP = 5;
+    int32 LostHP = 6;
 }
 
 message RoundInput {

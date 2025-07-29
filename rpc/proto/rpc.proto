@@ -36,6 +36,7 @@ enum PlayerStatus {
     PLAYER_IN_QUEUE = 1;
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
+    PLAYER_WAITTING_CONTINUE = 4;
 }
 
 message GamePhasePlayer {

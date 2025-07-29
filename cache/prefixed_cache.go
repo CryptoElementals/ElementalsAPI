@@ -9,7 +9,14 @@ type PrefixedCache struct {
 
 // List implements Cache.
 func (p *PrefixedCache) List(prefix string) ([]string, error) {
-	return p.cache.List(p.prefix + prefix)
+	keys, err := p.cache.List(p.prefix + prefix)
+	if err != nil {
+		return nil, err
+	}
+	for i, key := range keys {
+		keys[i] = key[len(p.prefix):]
+	}
+	return keys, nil
 }
 
 // Delete implements Cache.

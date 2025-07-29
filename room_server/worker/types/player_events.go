@@ -22,6 +22,7 @@ type RoundReadyEvent struct {
 	GameID         uint
 	RoundNumber    uint32
 	RoundStartedAt int64
+	RoundTimeout   int64
 }
 
 type CommitmentsOnChainEvent struct {
@@ -40,6 +41,10 @@ type GameCompletedEvent struct {
 }
 
 type GamePurgeEvent struct {
+	GameID uint
+}
+
+type ContinueCanceledEvent struct {
 	GameID uint
 }
 
