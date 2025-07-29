@@ -34,10 +34,7 @@ var (
 	userAddr     string
 	tempAddr     string
 	round        uint64
-
-	// 钱包私钥（用于发送交易）
-	wallet1PrivateKey = "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78"
-	wallet2PrivateKey = "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d"
+	privateKey   string
 )
 
 // submitHashCmd 提交卡牌哈希命令
@@ -69,15 +66,17 @@ func init() {
 
 	// 添加全局标志
 	submitterTestCmd.PersistentFlags().StringVarP(&rpcEndpoint, "rpc", "r", "http://152.32.231.145:8545", "区块链RPC端点")
-	submitterTestCmd.PersistentFlags().StringVarP(&contractAddr, "contract", "c", "", "合约地址")
+	submitterTestCmd.PersistentFlags().StringVarP(&contractAddr, "contract", "a", "", "合约地址")
 	submitterTestCmd.PersistentFlags().StringVarP(&userAddr, "user", "u", "", "用户地址")
 	submitterTestCmd.PersistentFlags().StringVarP(&tempAddr, "temp", "t", "", "临时地址")
 	submitterTestCmd.PersistentFlags().Uint64VarP(&round, "round", "n", 1, "回合数")
+	submitterTestCmd.PersistentFlags().StringVarP(&privateKey, "private-key", "p", "", "钱包私钥")
 
 	// 标记必需参数
 	submitterTestCmd.MarkPersistentFlagRequired("contract")
 	submitterTestCmd.MarkPersistentFlagRequired("user")
 	submitterTestCmd.MarkPersistentFlagRequired("temp")
+	submitterTestCmd.MarkPersistentFlagRequired("private-key")
 }
 
 // 解析私钥
@@ -125,16 +124,19 @@ func runSubmitHash(card1, card2, card3 string) error {
 	fmt.Printf("计算出的承诺哈希: %x\n", commitment)
 
 	// 解析私钥
-	privateKey, err := parsePrivateKey(wallet1PrivateKey)
+	privateKey, err := parsePrivateKey(privateKey)
 	if err != nil {
 		return err
 	}
 
-	// 创建交易选项（使用第一个钱包）
+	// 创建交易选项
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
 	if err != nil {
 		return fmt.Errorf("创建交易选项失败: %v", err)
 	}
+
+	// 设置发送方地址为指定的临时地址（转换为小写）
+	auth.From = common.HexToAddress(strings.ToLower(tempAddr))
 
 	fmt.Printf("提交卡牌哈希，回合: %d\n", round)
 	fmt.Printf("卡牌哈希: %s\n", commitment)
@@ -198,16 +200,19 @@ func runSubmitCards(card1, card2, card3 string) error {
 	fmt.Printf("计算出的承诺哈希: %x\n", commitment)
 
 	// 解析私钥
-	privateKey, err := parsePrivateKey(wallet2PrivateKey)
+	privateKey, err := parsePrivateKey(privateKey)
 	if err != nil {
 		return err
 	}
 
-	// 创建交易选项（使用第二个钱包）
+	// 创建交易选项
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
 	if err != nil {
 		return fmt.Errorf("创建交易选项失败: %v", err)
 	}
+
+	// 设置发送方地址为指定的临时地址（转换为小写）
+	auth.From = common.HexToAddress(strings.ToLower(tempAddr))
 
 	fmt.Printf("提交卡牌，回合: %d\n", round)
 	fmt.Printf("发送方地址: %s\n", auth.From.Hex())

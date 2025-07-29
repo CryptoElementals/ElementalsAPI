@@ -168,6 +168,6 @@ func RegisterMatchApis() {
 	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
 	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
 	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
-	api.Register(LEAVE_AFTER_GAME_LABEL, NewLeaveAfterGameTask, api.COOKIEAUTH)
+	api.Register(LEAVE_ROOM_LABEL, NewLeaveRoomTask, api.COOKIEAUTH)
 	api.Register(CONTINUE_GAME_LABEL, NewContinueGameTask, api.COOKIEAUTH)
 }

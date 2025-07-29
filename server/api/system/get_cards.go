@@ -1,4 +1,4 @@
-package user
+package system
 
 import (
 	"github.com/CryptoElementals/common/db"

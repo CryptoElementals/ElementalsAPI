@@ -233,7 +233,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 
 // RegisterBattleApis 注册对战相关API
 func RegisterBattleApis() {
-	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
-	api.Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, api.COOKIEAUTH)
 	api.Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, api.COOKIEAUTH)
+	api.Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, api.COOKIEAUTH)
+	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
 }
