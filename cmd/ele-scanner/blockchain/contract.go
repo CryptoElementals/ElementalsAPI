@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,16 +31,8 @@ func WaitForReceipt(ctx context.Context, client *ethclient.Client, txHash common
 	}
 }
 
-type RoomCreatedEvent struct {
-	Player1     common.Address
-	Player2     common.Address
-	Player1Tmp  common.Address
-	Player2Tmp  common.Address
-	TotalRound  *big.Int
-	RoomAddress common.Address
-}
 type RoomCreatedTx struct {
-	RoomCreatedEvent RoomCreatedEvent
+	RoomCreatedEvent contract.RoomManagerContractRoomCreated
 	BlockNumber      *big.Int
 	TxHash           common.Hash
 	BlockHash        common.Hash
@@ -59,7 +52,7 @@ func ParseRoomCreatedEvent(receipt *types.Receipt, contractAbi *abi.ABI) (*RoomC
 
 	for _, vLog := range receipt.Logs {
 		if vLog.Topics[0] == eventSigHash {
-			eventData := RoomCreatedEvent{}
+			eventData := contract.RoomManagerContractRoomCreated{}
 			if err := contractAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
 				return nil, err
 			}
