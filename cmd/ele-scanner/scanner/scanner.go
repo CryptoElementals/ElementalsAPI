@@ -165,7 +165,7 @@ func (s *Scanner) RunCatchUp() {
 				headNumberOnChain := header.Number.Uint64()
 				s.SetHeadNumberOnChain(headNumberOnChain)
 				if headNumberOnChain%10 == 0 {
-					log.Debugf("HeadNumberOnChain is %d", headNumberOnChain)
+					log.Infof("HeadNumberOnChain is %d", headNumberOnChain)
 				}
 			}
 		}
