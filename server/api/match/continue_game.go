@@ -94,11 +94,11 @@ func (task *ContinueGameTask) Run(c *gin.Context) (api.Response, error) {
 	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 检查用户token数量是否足够（与joinqueue相同的逻辑）
-	userProfile, err := db.GetUserProfileByAddress(address)
+	// 检查用户token数量是否足够
+	userToken, err := db.GetPlayerToken(c.Request.Context(), address)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user information"
+		task.Response.BaseResponse.Message = "Failed to get user token information"
 		return task.Response, nil
 	}
 
@@ -110,8 +110,13 @@ func (task *ContinueGameTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 计算可用代币数量：用户数据库里的token减去lock_token表里该address对应记录的token总和
-	availableTokens := userProfile.TokenAmount - totalLockedTokens
+	var currentTokens int32 = 0
+	if userToken != nil {
+		currentTokens = userToken.TokenAmount
+	}
+
+	// 计算可用代币数量
+	availableTokens := int(currentTokens) - totalLockedTokens
 
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004

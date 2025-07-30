@@ -8,8 +8,6 @@ type UserProfile struct {
 	Name              string     `gorm:"type:varchar(42);not null"`
 	AvatarURL         string     `gorm:"type:varchar(200)"`
 	BackgroundURL     string     `gorm:"type:varchar(200)"`
-	Points            int        `gorm:"default:0"`
-	TokenAmount       int        `gorm:"default:0"`
 	OverallGame       int        `gorm:"default:0"`
 	WinCount          int        `gorm:"default:0"`
 	WinningRate       float64    `gorm:"default:0.0"`

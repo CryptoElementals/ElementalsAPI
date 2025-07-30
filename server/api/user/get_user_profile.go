@@ -100,6 +100,18 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, errors.GetUserProfileFailed(lowercaseAddress)
 	}
 
+	// 从 user_token 表获取积分和代币信息（优先使用该表数据）
+	var (
+		points      int
+		tokenAmount int
+	)
+
+	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
+	if err == nil && userToken != nil {
+		points = int(userToken.Points)
+		tokenAmount = int(userToken.TokenAmount)
+	}
+
 	// 获取用户卡牌统计信息
 	cardStats, err := db.GetCardStatsByAddress(lowercaseAddress)
 	if err != nil {
@@ -117,8 +129,8 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 		Name:          userProfile.Name,
 		AvatarURL:     userProfile.AvatarURL,
 		BackgroundURL: userProfile.BackgroundURL,
-		Points:        userProfile.Points,
-		TokenAmount:   userProfile.TokenAmount,
+		Points:        points,
+		TokenAmount:   tokenAmount,
 		OverallGame:   userProfile.OverallGame,
 		WinningRate:   userProfile.WinningRate,
 		CardStatInfo:  cardStatInfo,

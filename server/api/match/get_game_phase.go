@@ -6,6 +6,7 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
@@ -133,6 +134,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	if gamePhase.PvPInfo.GameID != 0 {
 		task.Response.PvPInfo.GameID = gamePhase.PvPInfo.GameID
 	}
+	log.Infof("gamePhase.PvPInfo.Status: %v (type: %T)", gamePhase.PvPInfo.Status, gamePhase.PvPInfo.Status)
 	switch gamePhase.PvPInfo.Status {
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		task.Response.Mode = uint32(gamePhase.GameType)
@@ -146,6 +148,10 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.Mode = uint32(gamePhase.GameType)
 		task.Response.PvPInfo.Phase = 3
 		task.Response.BaseResponse.Message = "Player has entered battle"
+	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
+		task.Response.Mode = uint32(gamePhase.GameType)
+		task.Response.PvPInfo.Phase = 4
+		task.Response.BaseResponse.Message = "Player is waiting for continue"
 
 	default:
 		task.Response.Mode = 0
