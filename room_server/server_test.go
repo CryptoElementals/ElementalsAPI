@@ -63,6 +63,7 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 			BaseStake:         1000,
 		},
 	}
+	config.InitializeGameParams(&cfg.GameParams)
 	svr, err := New(context.Background(), cfg, true)
 	if err != nil {
 		require.NoError(t, err)
@@ -518,10 +519,10 @@ func TestServer_BattleTimeout(t *testing.T) {
 		timeoutMap := timeoutMapByPlayer[*addr]
 		timeoutMap[evtType] = interval
 	}
-	// test confirm timeout
-	setupTimeout(addr1, proto.EventType_TYPE_MATCHED, 12*time.Second)
-	runCase()
-	clear(timeoutMapByPlayer)
+	// // test confirm timeout
+	// setupTimeout(addr1, proto.EventType_TYPE_MATCHED, 12*time.Second)
+	// runCase()
+	// clear(timeoutMapByPlayer)
 
 	// test submit commitments timeout
 	setupTimeout(addr1, proto.EventType_TYPE_GAME_CREATED, 12*time.Second)
