@@ -524,10 +524,10 @@ func TestServer_BattleTimeout(t *testing.T) {
 	// runCase()
 	// clear(timeoutMapByPlayer)
 
-	// // test submit commitments timeout
-	// setupTimeout(addr1, proto.EventType_TYPE_GAME_CREATED, 12*time.Second)
-	// runCase()
-	// clear(timeoutMapByPlayer)
+	// test submit commitments timeout
+	setupTimeout(addr1, proto.EventType_TYPE_GAME_CREATED, 12*time.Second)
+	runCase()
+	clear(timeoutMapByPlayer)
 
 	// test submit cards timeout
 	setupTimeout(addr1, proto.EventType_TYPE_COMMITMENTS_ON_CHAIN, 12*time.Second)
