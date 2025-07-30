@@ -95,7 +95,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (api.Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerTokenSimple(c.Request.Context(), address)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), address)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user token information"

@@ -110,7 +110,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerTokenSimple(c.Request.Context(), lowercaseAddress)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user token information"
@@ -173,6 +173,6 @@ func RegisterMatchApis() {
 	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
 	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
 	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
-	api.Register(LEAVE_ROOM_LABEL, NewLeaveRoomTask, api.COOKIEAUTH)
+	api.Register(REFUSE_CONTINUE_GAME_LABEL, NewRefuseContinueGameTask, api.COOKIEAUTH)
 	api.Register(CONTINUE_GAME_LABEL, NewContinueGameTask, api.COOKIEAUTH)
 }

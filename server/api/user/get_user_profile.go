@@ -106,7 +106,7 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 		tokenAmount int
 	)
 
-	userToken, err := db.GetPlayerTokenSimple(c.Request.Context(), lowercaseAddress)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
 	if err == nil && userToken != nil {
 		points = int(userToken.Points)
 		tokenAmount = int(userToken.TokenAmount)

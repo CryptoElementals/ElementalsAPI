@@ -111,7 +111,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 	dailyRewardTokens := int32(1000)
 
 	// 更新/创建用户的 Token 记录
-	userToken, err := db.GetPlayerTokenSimple(c.Request.Context(), lowercaseAddress)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
 	if err != nil && err != gorm.ErrRecordNotFound {
 		log.Errorf("%s, failed to get user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
 		return nil, cmnErrors.OperateDbFailed()
