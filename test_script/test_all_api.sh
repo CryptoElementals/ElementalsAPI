@@ -7,7 +7,7 @@ echo "=== 开始自动化API测试 ==="
 
 #重启服务
 echo "重启服务..."
-./restart.sh
+./restart_apiserver.sh
 echo "重启完成"
 
 # 生成以太坊密钥
@@ -385,7 +385,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
     -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
-    -u "" \
     -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
     -n 1 \
     submit-hash 1 2 3
@@ -394,7 +393,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.8 用户2提交哈希..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
     -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
     -n 1 \
@@ -404,7 +402,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.9 用户1提交卡牌..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
     -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
     -n 1 \
@@ -414,11 +411,24 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.10 用户2提交卡牌..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
     -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
     -n 1 \
     submit-cards 2 5 3
+  echo ""
+
+  echo "6.11 获取对战信息..."
+  response=$(curl -s -X POST "http://localhost:8080/" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"Action\": \"GetBattleInfo\",
+      \"GameID\": $game_id,
+      \"Round\": 1,
+      \"TempAddress\": \"$user1_temp_address\"
+    }" \
+    -b ./test/api/users/user_1/cookie.txt)
+  echo "响应:"
+  echo "$response" | jq -C
   echo ""
 
   sleep 5
@@ -437,6 +447,8 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "响应:"
   echo "$response" | jq -C
   echo ""
+
+
 
   echo "6.6 用户2确认对战..."
   response=$(curl -s -X POST "http://localhost:8080/" \
@@ -490,7 +502,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
     -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
-    -u "" \
     -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
     -n 2 \
     submit-hash 1 2 3
@@ -499,7 +510,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.8 用户2提交哈希..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
     -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
     -n 2 \
@@ -509,7 +519,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.9 用户1提交卡牌..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
     -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
     -n 2 \
@@ -519,11 +528,23 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.10 用户2提交卡牌..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
     -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
     -n 2 \
     submit-cards 3 4 2
+  echo ""
+
+    response=$(curl -s -X POST "http://localhost:8080/" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"Action\": \"GetBattleInfo\",
+      \"GameID\": $game_id,
+      \"Round\": 2,
+      \"TempAddress\": \"$user1_temp_address\"
+    }" \
+    -b ./test/api/users/user_1/cookie.txt)
+  echo "响应:"
+  echo "$response" | jq -C
   echo ""
 
   sleep 5
@@ -595,7 +616,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
     -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
-    -u "" \
     -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
     -n 3 \
     submit-hash 1 2 3
@@ -604,7 +624,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.8 用户2提交哈希..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
     -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
     -n 3 \
@@ -614,7 +633,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.9 用户1提交卡牌..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
     -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
     -n 3 \
@@ -624,7 +642,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "6.10 用户2提交卡牌..."
   ./bin/ele-apiserver submitter-test \
     -a "$contract_address" \
-    -u "" \
     -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
     -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
     -n 3 \
@@ -725,7 +742,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
           -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
-          -u "" \
           -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
           -n 1 \
           submit-hash 1 2 3
@@ -734,7 +750,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
         echo "6.20 用户2提交哈希 (第二轮)..."
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
-          -u "" \
           -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
           -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
           -n 1 \
@@ -744,7 +759,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
         echo "6.21 用户1提交卡牌 (第二轮)..."
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
-          -u "" \
           -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
           -p "940d59b61cc683c423f7727fc5e46f943067680965f5fe161b48c76c59b57a78" \
           -n 1 \
@@ -754,7 +768,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
         echo "6.22 用户2提交卡牌 (第二轮)..."
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
-          -u "" \
           -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
           -p "5236f8d7223c6fa1a0087b4a28988974f5fff5a55cfa4140e6a7db279022024d" \
           -n 1 \
