@@ -1,19 +1,71 @@
 #!/bin/bash
 
-APP_NAME="ele-apiserver"
+# 显示使用说明
+show_usage() {
+    echo "Usage: $0 <service>"
+    echo "  service: room-server | api-server | scanner | all"
+    echo ""
+    echo "Examples:"
+    echo "  $0 all                # Stop all services"
+    echo "  $0 room-server        # Stop only room server"
+    echo "  $0 api-server         # Stop only API server"
+    echo "  $0 scanner            # Stop only scanner"
+}
 
-# 查找所有相关进程（排除grep本身和stop.sh本身）
-PIDS=$(ps aux | grep "$APP_NAME" | grep -v grep | grep -v stop.sh | awk '{print $2}')
+# 停止指定进程
+stop_process() {
+    local process_name="$1"
+    local display_name="$2"
+    
+    echo "Stopping $display_name..."
+    PIDS=$(ps aux | grep "$process_name" | grep -v grep | grep -v .log | grep -v stop.sh | awk '{print $2}')
+    
+    if [ -z "$PIDS" ]; then
+        echo "No $display_name process found."
+        return 0
+    fi
+    
+    echo "Killing $display_name processes: $PIDS"
+    for PID in $PIDS; do
+        kill $PID
+        echo "Killed $display_name process $PID"
+    done
+    echo "✓ All $display_name processes stopped."
+}
 
-if [ -z "$PIDS" ]; then
-    echo "No $APP_NAME process found."
-    exit 0
+# 停止所有服务
+stop_all() {
+    echo "Stopping all services..."
+    stop_process "ele-roomserver" "Room Server"
+    stop_process "ele-apiserver" "API Server"
+    stop_process "ele-scanner" "Scanner"
+    echo "✓ All services stopped."
+}
+
+# 检查参数
+if [ $# -eq 0 ]; then
+    echo "Error: No service specified"
+    show_usage
+    exit 1
 fi
 
-echo "Killing $APP_NAME processes: $PIDS"
-for PID in $PIDS; do
-    kill $PID
-    echo "Killed process $PID"
-done
-
-echo "All $APP_NAME processes stopped." 
+# 主逻辑
+case "$1" in
+    "room-server")
+        stop_process "ele-roomserver" "Room Server"
+        ;;
+    "api-server")
+        stop_process "ele-apiserver" "API Server"
+        ;;
+    "scanner")
+        stop_process "ele-scanner" "Scanner"
+        ;;
+    "all")
+        stop_all
+        ;;
+    *)
+        echo "Error: Unknown service '$1'"
+        show_usage
+        exit 1
+        ;;
+esac 

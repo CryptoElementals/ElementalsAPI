@@ -233,7 +233,8 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
-	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000, 10, 10)
+	contractClient := tt.NewMockContractClient(gomock.NewController(t))
+	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000, 10, 10, contractClient)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		WalletAddress:    "1",
@@ -244,6 +245,7 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 		WalletAddress:    "2",
 		TemporaryAddress: "2",
 	}
+
 	player1Handler := tt.NewMockEventHandler(gomock.NewController(t))
 	testWorkerManager.SpwanWorker(context.Background(), playerAddress1.String(), types.WORKER_TYPE_PLAYER, player1Handler)
 	waitChan := make(chan struct{})
@@ -287,6 +289,7 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 func TestGameStateMachine(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
+	contractClient := tt.NewMockContractClient(gomock.NewController(t))
 	compareRound := func(svc *Service, roundNumber int, isLast bool) {
 		roundResult, gameResult, err := svc.GetBattleInfo(context.Background(), 1, uint32(roundNumber))
 		require.NoError(t, err)
@@ -303,7 +306,7 @@ func TestGameStateMachine(t *testing.T) {
 		require.EqualExportedValues(t, gameResult, gameResultDb)
 	}
 	t.Run("1 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 1000, 10, 3)
+		svc := NewService(context.Background(), testWorkerManager, 1000, 10, 3, contractClient)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -312,7 +315,7 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 1, true)
 	})
 	t.Run("2 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 3000, 10, 3)
+		svc := NewService(context.Background(), testWorkerManager, 3000, 10, 3, contractClient)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -322,7 +325,7 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 2, true)
 	})
 	t.Run("3 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 10000, 10, 3)
+		svc := NewService(context.Background(), testWorkerManager, 10000, 10, 3, contractClient)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

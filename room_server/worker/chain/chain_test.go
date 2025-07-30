@@ -29,7 +29,7 @@ var w *wallet.Wallet
 
 var chainID uint64
 
-const roomMamangerAddress = "0x59554b201cFc12E6930a3631060C3d9CDF704F67"
+const roomMamangerAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
 const roomContractAddress = "0x8c21e3B3A6Cc3739f418535FDE4Bf76F4DfF8535"
 
 func TestMain(m *testing.M) {
@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 func TestFilterEvent(t *testing.T) {
 	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0x22d291808a727ff9531c61d38271715370760534ed16d39e171785522580ca9e"))
+		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0xf04a4c037814673c0b182fdf4c6441209c423b8c0cf8bcf6b1e2efb78fe3b97d"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -111,16 +111,6 @@ func TestChainContractInteraction(t *testing.T) {
 	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	ackReceived := make(chan struct{})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.AckEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		close(ackReceived)
-		return nil
-	})
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.ErrorEvent{})).AnyTimes().DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.ErrorEvent)
-		t.Errorf("ErrorEvent should not be sent, err: %v", evt.Err)
-		close(ackReceived)
-		return nil
-	})
 	testWorkerManager.SpwanWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
 
 	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireContractCreationEvent{

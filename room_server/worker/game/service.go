@@ -11,16 +11,35 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+type ContractClient interface {
+	CreateRoomContract(evt *types.RequireContractCreationEvent) error
+	SetRoundReady(evt *types.RequireSetupNewRoundEvent) error
+}
+
+type GameHandler interface {
+	HandleGameContinueEvent(evt *types.GameContinueEvent) error
+	HandleGameCompletedEvent(evt *types.GameCompletedEvent) error
+}
+
+type GameResultSettler interface {
+	GameResultSettlement(event *types.GameCompletedEvent) error
+}
+
 type Service struct {
 	ctx         context.Context
 	gameManager *GameManager
 }
 
-func NewService(ctx context.Context, workerManager *worker.WorkerManager, initialHP int64, roundTimeout int64, maxRounds int64) *Service {
+func NewService(ctx context.Context, workerManager *worker.WorkerManager,
+	initialHP int64, roundTimeout int64, maxRounds int64, chainSvc ContractClient) *Service {
 	return &Service{
 		ctx:         ctx,
-		gameManager: NewGameManager(ctx, workerManager, initialHP, roundTimeout, maxRounds),
+		gameManager: NewGameManager(ctx, workerManager, initialHP, roundTimeout, maxRounds, chainSvc),
 	}
+}
+
+func (s *Service) SetGameResultSettler(settler GameResultSettler) {
+	s.gameManager.gameResultSettler = settler
 }
 
 func (s *Service) Start() error {
@@ -29,10 +48,7 @@ func (s *Service) Start() error {
 
 func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo {
 	gameInfo := s.gameManager.GetActiveGame(playerAddress)
-	if gameInfo == nil {
-		return nil
-	}
-	return conversion.DbGameInfoToProtoGameInfo(gameInfo)
+	return gameInfo
 }
 
 func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
@@ -74,4 +90,16 @@ func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.Pla
 		return proto.PlayerStatus_PLAYER_MATCHED
 	}
 	return proto.PlayerStatus_PLAYER_IN_GAME
+}
+
+func (s *Service) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
+	return s.gameManager.HandleGameMatchedEvent(evt)
+}
+
+func (s *Service) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
+	return s.gameManager.HandleGameContinueEvent(evt)
+}
+
+func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
+	return s.gameManager.GetGamePhase(address)
 }

@@ -20,7 +20,6 @@ import (
 	"github.com/c-bata/go-prompt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/sha3"
@@ -64,6 +63,7 @@ var suggestions = []prompt.Suggest{
 	{Text: "confirm", Description: "confirm game"},
 	//{Text: "submit-commitment", Description: "submit card commitments"},
 	{Text: "submit-cards", Description: "submit cards"},
+	{Text: "continue", Description: "continue game"},
 }
 
 func completer(in prompt.Document) []prompt.Suggest {
@@ -120,10 +120,10 @@ type gameContext struct {
 	rpcClient       *rpc.Client
 
 	gameID          uint
-	players         []types.PlayerAddress
+	players         []*types.PlayerAddress
 	currentRound    uint32
 	contractAddress string
-	myself          types.PlayerAddress
+	myself          *types.PlayerAddress
 	contract        *contract.RoomContract
 	bindOpts        *bind.TransactOpts
 	evtChan         chan *proto.Event
@@ -145,7 +145,7 @@ func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 	}
 	return &gameContext{
 		ctx:             ctx,
-		myself:          types.PlayerAddress{WalletAddress: wallet.GetAddrHex(), TemporaryAddress: temporaryWallet.GetAddrHex()},
+		myself:          types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
 		wallet:          wallet,
 		temporaryWallet: temporaryWallet,
 		evtChan:         make(chan *proto.Event, 10),
@@ -178,7 +178,7 @@ func (c *gameContext) run() error {
 					return
 				case proto.EventType_TYPE_MATCHED:
 					fmt.Println("game matched, please confirm")
-					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, &c.myself)
+					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 						continue
@@ -186,10 +186,7 @@ func (c *gameContext) run() error {
 					c.lock.Lock()
 					c.gameID = uint(phase.PvPInfo.GameID)
 					for _, pp := range phase.Players {
-						player := types.PlayerAddress{
-							WalletAddress:    pp.Address.WalletAddress,
-							TemporaryAddress: pp.Address.TemporaryAddress,
-						}
+						player := types.NewPlayerAddress(pp.Address.WalletAddress, pp.Address.TemporaryAddress)
 						c.players = append(c.players, player)
 					}
 					c.state = playerStateWaittingConfirm
@@ -200,16 +197,18 @@ func (c *gameContext) run() error {
 				case proto.EventType_TYPE_GAME_CREATED:
 					fmt.Println("game created, please submit cards")
 					// get contract
-					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, &c.myself)
+					phase, err := c.rpcClient.RpcClient.GetGamePhase(c.ctx, c.myself)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
 					c.lock.Lock()
+					c.gameID = uint(phase.PvPInfo.GameID)
 					c.contractAddress = phase.PvPInfo.ContractAddress
 					c.contract, err = contract.NewRoomContract(common.HexToAddress(c.contractAddress), c.chainClient)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
+					c.currentRound = 1
 					fmt.Println("contract address: ", c.contractAddress)
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
@@ -249,7 +248,6 @@ func (c *gameContext) run() error {
 					c.lock.Lock()
 					c.state = playerStateIdle
 					c.lock.Unlock()
-					return
 				}
 			}
 		}
@@ -264,7 +262,7 @@ func (c *gameContext) JoinQueue() error {
 		return fmt.Errorf("cannot join queue, invalid state: %s", c.state.String())
 	}
 
-	err := c.rpcClient.RpcClient.JoinQueue(c.ctx, &c.myself)
+	err := c.rpcClient.RpcClient.JoinQueue(c.ctx, c.myself)
 	if err != nil {
 		return err
 	}
@@ -278,7 +276,7 @@ func (c *gameContext) ExitQueue() error {
 	if c.state != playerStateWattingGameMatched {
 		return fmt.Errorf("cannot exit queue, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ExitQueue(c.ctx, &c.myself)
+	err := c.rpcClient.RpcClient.ExitQueue(c.ctx, c.myself)
 	if err != nil {
 		return err
 	}
@@ -292,7 +290,7 @@ func (c *gameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, &c.myself, c.gameID, uint(c.currentRound))
+	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, c.myself, c.gameID, uint(c.currentRound))
 	if err != nil {
 		return err
 	}
@@ -328,6 +326,20 @@ func (c *gameContext) SubmitCards(cards string, salt string) (string, error) {
 	}
 	c.state = playerStateWaittingCardsOnChain
 	return tx.Hash().String(), nil
+}
+
+func (c *gameContext) Continue() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.state != playerStateIdle {
+		return fmt.Errorf("cannot continue, invalid state: %s", c.state.String())
+	}
+	err := c.rpcClient.RpcClient.ContinueGame(c.ctx, c.myself, c.gameID)
+	if err != nil {
+		return err
+	}
+	c.state = playerStateWaittingGameReady
+	return nil
 }
 
 func makeExecutor(ctx *gameContext) func(in string) {
@@ -379,28 +391,18 @@ func makeExecutor(ctx *gameContext) func(in string) {
 				return
 			}
 			fmt.Println("confirm success, waitting for game ready on chain")
-		case "submit-commitment":
-			err := assetArgsNumber(1)
+		case "continue":
+			err := assetArgsNumber(0)
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
-			cardHash, err := hexutil.Decode(blocks[0])
+			err = ctx.Continue()
 			if err != nil {
-				fmt.Println("decode card hash failed, err: ", err)
+				fmt.Println("continue failed, err: ", err)
 				return
 			}
-			if len(cardHash) != 32 {
-				fmt.Println("card hash length must be 32")
-				return
-			}
-			tx, err := ctx.SubmitCommitment(cardHash)
-			if err != nil {
-				fmt.Println("submit commitment failed, err: ", err)
-				return
-			}
-			fmt.Println("submit commitment success, tx hash: ", tx)
-			fmt.Println("waitting for commitment on chain")
+			fmt.Println("continue success, waitting for game ready on chain")
 		case "submit-cards":
 			err := assetArgsNumber(3)
 			if err != nil {

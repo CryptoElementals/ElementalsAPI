@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type RpcClient struct {
@@ -19,6 +20,21 @@ func NewRpcClient(conn *grpc.ClientConn) *RpcClient {
 		client: pb.NewRpcServiceClient(conn),
 		conn:   conn,
 	}
+}
+
+func NewRpcClientWithAddr(addr string) (*RpcClient, error) {
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &RpcClient{
+		client: pb.NewRpcServiceClient(conn),
+		conn:   conn,
+	}, nil
+}
+
+func (c *RpcClient) Close() error {
+	return c.conn.Close()
 }
 
 func (c *RpcClient) JoinQueue(ctx context.Context, addr *types.PlayerAddress) error {
@@ -54,5 +70,13 @@ func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress
 // chain related api
 func (c *RpcClient) SubmitTransactions(ctx context.Context, in *pb.TransactionBatch) error {
 	_, err := c.client.SubmitTransactions(ctx, in)
+	return err
+}
+
+func (c *RpcClient) ContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
+	_, err := c.client.ContinueGame(ctx, &pb.ContinueGameRequest{
+		Player:     addr.ToProto(),
+		LastGameID: uint32(gameID),
+	})
 	return err
 }
