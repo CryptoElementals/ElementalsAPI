@@ -100,7 +100,7 @@ func UpdateUserGameStats(player1Address, player2Address, winner string, multipli
 	player2Profile.OverallGame++
 
 	// 获取 / 创建用户 Token 信息
-	player1Token, err := GetPlayerTokenSimple(context.Background(), player1Address)
+	player1Token, err := GetPlayerToken(context.Background(), player1Address)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
@@ -108,7 +108,7 @@ func UpdateUserGameStats(player1Address, player2Address, winner string, multipli
 		player1Token = &dao.UserToken{WalletAddress: player1Address}
 	}
 
-	player2Token, err := GetPlayerTokenSimple(context.Background(), player2Address)
+	player2Token, err := GetPlayerToken(context.Background(), player2Address)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
