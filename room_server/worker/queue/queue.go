@@ -209,11 +209,14 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 			log.Errorf("handle game matched event failed: %s", err.Error())
 			return err
 		}
-		err = db.SetLockedTokenGameID(q.ctx, player.WalletAddress, player.TemporaryAddress, gid)
-		if err != nil {
-			log.Errorf("set locked token game id failed: %s", err.Error())
-			return err
+		if q.minTokenToJoinQueue > 0 {
+			err = db.SetLockedTokenGameID(q.ctx, player.WalletAddress, player.TemporaryAddress, gid)
+			if err != nil {
+				log.Errorf("set locked token game id failed: %s", err.Error())
+				return err
+			}
 		}
+
 		delete(q.queue, player)
 
 		// might have some corner case here if failed

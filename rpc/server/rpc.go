@@ -18,9 +18,10 @@ type Rpc struct {
 
 func NewRpc(gameHandler GameRequestHandler, chainHandler ChainRequestHandler, playerHandler PlayerRequestHandler, playerTokenHandler PlayerTokenHandler) *Rpc {
 	return &Rpc{
-		gameHandler:   gameHandler,
-		chainHandler:  chainHandler,
-		playerHandler: playerHandler,
+		gameHandler:        gameHandler,
+		chainHandler:       chainHandler,
+		playerHandler:      playerHandler,
+		playerTokenHandler: playerTokenHandler,
 	}
 }
 

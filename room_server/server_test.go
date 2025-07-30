@@ -24,7 +24,7 @@ import (
 var chainRPC = "http://152.32.231.145:8545"
 var svrUrl = "localhost:30011"
 var roomManagerAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
-var fakeRoomAddress = "0x22767b2bA3Cba853AF78c9D91c6c520a2B5Cb428"
+var fakeRoomAddress = "0x22767b2ba3cba853af78c9d91c6c520a2b5cb428"
 
 func setupTestSvc(t *testing.T, timeout ...int64) {
 	tempFile := path.Join(t.TempDir(), "test_wallet_file")
@@ -245,7 +245,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
 	prepareUserTokens(t)
-	setupTestSvc(t)
+	setupTestSvc(t, 12)
 	client, err := rpc.NewClient(svrUrl)
 	require.NoError(t, err)
 	defer client.Close()
@@ -359,6 +359,32 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	require.NotNil(t, battleInfo.RoundResult)
 	require.NotNil(t, battleInfo.GameResult)
 	require.True(t, battleInfo.RoundResult.IsGameOver)
+	token, err := client.RpcClient.GetPlayerToken(ctx, addr1.WalletAddress)
+	require.NoError(t, err)
+	require.NotNil(t, token)
+	chanEvt1 := make(chan *proto.Event, 2)
+	chanErr1 := make(chan error, 2)
+	chanEvt2 := make(chan *proto.Event, 2)
+	chanErr2 := make(chan error, 2)
+	require.NoError(t, client.PubSubClient.Subscribe(addr1.String(), addr1.String(), chanEvt1, chanErr1))
+	require.NoError(t, client.PubSubClient.Subscribe(addr2.String(), addr2.String(), chanEvt2, chanErr2))
+	time.Sleep(1 * time.Second)
+	client.RpcClient.RefuseContinueGame(ctx, addr1, gameID)
+	for i := 0; i < 2; i++ {
+		select {
+		case evt := <-chanEvt1:
+			require.NotNil(t, evt)
+			require.Equal(t, proto.EventType_TYPE_CONTINUE_CANCELED, evt.Type)
+		case evt := <-chanEvt2:
+			require.NotNil(t, evt)
+			require.Equal(t, proto.EventType_TYPE_CONTINUE_CANCELED, evt.Type)
+		case err := <-chanErr1:
+			require.NoError(t, err)
+		case err := <-chanErr2:
+			require.NoError(t, err)
+		}
+	}
+
 }
 
 func TestServer_BattleTimeout(t *testing.T) {
