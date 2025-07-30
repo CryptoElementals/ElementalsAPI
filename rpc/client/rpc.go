@@ -5,6 +5,7 @@ import (
 
 	"github.com/CryptoElementals/common/room_server/worker/types"
 
+	"github.com/CryptoElementals/common/rpc/proto"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -79,4 +80,22 @@ func (c *RpcClient) ContinueGame(ctx context.Context, addr *types.PlayerAddress,
 		LastGameID: uint32(gameID),
 	})
 	return err
+}
+
+func (c *RpcClient) RefuseContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
+	_, err := c.client.RefuseContinueGame(ctx, &pb.RefuseContinueGameRequest{
+		Player:     addr.ToProto(),
+		LastGameID: uint32(gameID),
+	})
+	return err
+}
+
+func (c *RpcClient) GetPlayerToken(ctx context.Context, walletAddress string) (*proto.GetPlayerTokenResponse, error) {
+	token, err := c.client.GetPlayerToken(ctx, &pb.GetPlayerTokenRequest{
+		WalletAddress: walletAddress,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return token, nil
 }
