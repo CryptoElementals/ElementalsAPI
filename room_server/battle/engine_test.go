@@ -33,6 +33,7 @@ func TestExecuteRoundNormal(t *testing.T) {
 				HP:               1500,
 				Cards:            []int{1, 2, 5},
 				LostHP:           500,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -40,6 +41,7 @@ func TestExecuteRoundNormal(t *testing.T) {
 				HP:               1500,
 				Cards:            []int{1, 2, 3},
 				LostHP:           2500,
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -73,21 +75,23 @@ func TestExecuteRoundProto(t *testing.T) {
 	engine := NewBattleEngine()
 
 	protoInput := &pb.RoundInput{
-		RoundNumber: 3,
+		RoundNumber: 1,
 		Players: []*pb.PlayerRoundInput{
 			{
 				WalletAddress:    "player1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
 				Cards:            []int32{4, 1, 3},
 				HP:               3000,
-				LostHP:           2000,
+				LostHP:           0,
+				Commitment:       []byte("dummy"),
 			},
 			{
 				WalletAddress:    "player2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int32{1, 3, 4},
+				Cards:            []int32{},
 				HP:               3000,
-				LostHP:           2000,
+				LostHP:           0,
+				Commitment:       []byte("dummy"),
 			},
 		},
 	}
@@ -205,6 +209,7 @@ func TestExecuteRoundThreePlayers(t *testing.T) {
 				HP:               2800,           // 最高血量，应该获胜
 				Cards:            []int{4, 1, 3}, // Fire, Metal, Water
 				LostHP:           1000,           // 倍率2
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -212,6 +217,7 @@ func TestExecuteRoundThreePlayers(t *testing.T) {
 				HP:               2500,           // 中等血量，输家
 				Cards:            []int{1, 3, 4}, // Metal, Water, Fire
 				LostHP:           2500,           // 倍率5
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "3_address",
@@ -219,6 +225,7 @@ func TestExecuteRoundThreePlayers(t *testing.T) {
 				HP:               2200,           // 最低血量，输家
 				Cards:            []int{3, 4, 1}, // Water, Fire, Metal
 				LostHP:           3500,           // 会在战斗中增加到5500，倍率8
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -320,6 +327,7 @@ func TestExecuteRoundThreePlayersKO(t *testing.T) {
 				HP:               1500,           // 会被打死
 				Cards:            []int{1, 3, 4}, // Metal, Water, Fire
 				LostHP:           4000,           // 会在战斗中增加到6000，倍率9
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -327,6 +335,7 @@ func TestExecuteRoundThreePlayersKO(t *testing.T) {
 				HP:               2500,           // 存活，赢家
 				Cards:            []int{4, 1, 3}, // Fire, Metal, Water
 				LostHP:           1500,           // 倍率3
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "3_address",
@@ -334,6 +343,7 @@ func TestExecuteRoundThreePlayersKO(t *testing.T) {
 				HP:               2000,           // 存活，赢家
 				Cards:            []int{3, 4, 2}, // Water, Fire, Wood
 				LostHP:           2000,           // 倍率4
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -371,6 +381,7 @@ func TestExecuteRoundThreePlayersTie(t *testing.T) {
 				HP:               2500, // 相同血量
 				Cards:            []int{4, 1, 3},
 				LostHP:           1000, // 倍率2
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -378,6 +389,7 @@ func TestExecuteRoundThreePlayersTie(t *testing.T) {
 				HP:               2500, // 相同血量
 				Cards:            []int{1, 3, 4},
 				LostHP:           1500, // 倍率3
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "3_address",
@@ -385,6 +397,7 @@ func TestExecuteRoundThreePlayersTie(t *testing.T) {
 				HP:               2500, // 相同血量
 				Cards:            []int{3, 4, 1},
 				LostHP:           2000, // 倍率4
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -454,6 +467,7 @@ func TestMultipleOfflinePlayers(t *testing.T) {
 				Cards:            []int{1, 2, 3}, // 3张卡，正常
 				HP:               3000,
 				LostHP:           0,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "player2_address",
@@ -461,6 +475,7 @@ func TestMultipleOfflinePlayers(t *testing.T) {
 				Cards:            []int{1, 2}, // 只有1张卡，离线
 				HP:               3000,
 				LostHP:           0,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "player3_address",
@@ -468,6 +483,7 @@ func TestMultipleOfflinePlayers(t *testing.T) {
 				Cards:            []int{2}, // 只有1张卡，离线
 				HP:               3000,
 				LostHP:           4000,
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -504,6 +520,7 @@ func TestAllOfflinePlayers(t *testing.T) {
 				Cards:            []int{1, 3},
 				HP:               3000,
 				LostHP:           0,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "player2_address",
@@ -511,6 +528,7 @@ func TestAllOfflinePlayers(t *testing.T) {
 				Cards:            []int{1}, // 只有1张卡，离线
 				HP:               3000,
 				LostHP:           0,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "player3_address",
@@ -518,6 +536,7 @@ func TestAllOfflinePlayers(t *testing.T) {
 				Cards:            []int{2}, // 只有1张卡，离线
 				HP:               3000,
 				LostHP:           4000,
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -553,6 +572,7 @@ func TestNewOfflinePlayerLogic(t *testing.T) {
 				Cards:            []int{1, 2, 3}, // 3张卡，正常
 				HP:               3000,
 				LostHP:           500, // 有一些失血
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -560,6 +580,7 @@ func TestNewOfflinePlayerLogic(t *testing.T) {
 				Cards:            []int{1}, // 只有1张卡，会被设为离线
 				HP:               2500,
 				LostHP:           4000, // 更多失血，倍率更高
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -595,6 +616,7 @@ func TestAllPlayersOfflineLogic(t *testing.T) {
 				Cards:            []int{1}, // 只有1张卡
 				HP:               3000,     // 血量更高
 				LostHP:           500,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -602,6 +624,7 @@ func TestAllPlayersOfflineLogic(t *testing.T) {
 				Cards:            []int{}, // 只有1张卡
 				HP:               2000,    // 血量更低
 				LostHP:           3500,    // 失血更多，倍率更高
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -637,6 +660,7 @@ func TestAllPlayersOfflineTie(t *testing.T) {
 				Cards:            []int{1}, // 只有1张卡
 				HP:               3000,     // 血量相同
 				LostHP:           500,
+				Commitment:       []byte{1},
 			},
 			{
 				WalletAddress:    "2_address",
@@ -644,6 +668,7 @@ func TestAllPlayersOfflineTie(t *testing.T) {
 				Cards:            []int{2}, // 只有1张卡
 				HP:               3000,     // 血量相同
 				LostHP:           1000,     // 失血更多，倍率更高
+				Commitment:       []byte{1},
 			},
 		},
 	}
@@ -664,7 +689,7 @@ func TestAllPlayersOfflineTie(t *testing.T) {
 }
 
 // go test -v ./room_server/battle/ -run TestExecuteRoundNormal
-// go test -v ./room_server/battle/ -run TestExecuteRoundProto
+// go test -v ./room_server/battle/ -run "^TestExecuteRoundProto$"
 //go test -v ./room_server/battle/ -run "^TestExecuteRoundProtoFromFile$" | tee test/api/battle/test.log
 
 //go test -v ./room_server/battle/ -run TestExecuteRoundThreePlayers

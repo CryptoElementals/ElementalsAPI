@@ -125,14 +125,33 @@ func (em *GlobalEventManager) checkAndReconnectTopics() {
 
 	// 检查每个topic的连接状态
 	for _, topic := range topics {
-		// 这里可以添加连接状态检查逻辑
-		// 如果发现连接异常，发送重连信号
-		select {
-		case em.reconnectChan <- topic:
-		default:
-			// 通道已满，跳过这次重连
+		// 检查连接是否真的断开
+		if em.isTopicConnectionBroken(topic) {
+			log.Warnf("检测到topic %s 连接断开，触发重连", topic)
+			select {
+			case em.reconnectChan <- topic:
+				log.Debugf("发送重连信号给topic: %s", topic)
+			default:
+				// 通道已满，跳过这次重连
+				log.Warnf("重连通道已满，跳过topic: %s", topic)
+			}
 		}
 	}
+}
+
+// isTopicConnectionBroken 检查topic连接是否断开
+func (em *GlobalEventManager) isTopicConnectionBroken(topic string) bool {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+
+	// 检查是否有活跃的订阅
+	if _, exists := em.subscribedTopics[topic]; !exists {
+		// 没有订阅记录，说明连接已断开
+		return true
+	}
+
+	// 有订阅记录，说明连接正常
+	return false
 }
 
 // reconnectTopic 重连指定主题
@@ -144,6 +163,8 @@ func (em *GlobalEventManager) reconnectTopic(topic string) {
 	if clients, exists := em.topicClients[topic]; !exists || len(clients) == 0 {
 		return
 	}
+
+	log.Infof("开始重连topic: %s", topic)
 
 	// 取消旧的订阅
 	if cancel, exists := em.subscribedTopics[topic]; exists {
@@ -161,12 +182,13 @@ func (em *GlobalEventManager) reconnectTopic(topic string) {
 	// 重新订阅
 	if err := em.subscribeToTopic(topic); err != nil {
 		log.Errorf("重连topic失败: %s, 错误: %v", topic, err)
-		// 1秒后重试
+		// 5秒后重试
 		go func() {
-			time.Sleep(1 * time.Second)
+			time.Sleep(5 * time.Second)
 			select {
 			case em.reconnectChan <- topic:
 			default:
+				log.Warnf("重连通道已满，跳过topic: %s的重连请求", topic)
 			}
 		}()
 	} else {
@@ -326,18 +348,13 @@ func (em *GlobalEventManager) handleTopicEvents(ctx context.Context, topic strin
 		}
 		em.mu.Unlock()
 
-		// 如果还有客户端订阅这个topic，触发重连
+		// 如果还有客户端订阅这个topic，记录断开日志
 		em.mu.RLock()
 		hasClients := len(em.topicClients[topic]) > 0
 		em.mu.RUnlock()
 
 		if hasClients {
-			log.Warnf("主题 %s 连接断开，尝试重连", topic)
-			select {
-			case em.reconnectChan <- topic:
-			default:
-				log.Warnf("重连通道已满，跳过主题 %s 的重连请求", topic)
-			}
+			log.Warnf("主题 %s 连接断开", topic)
 		}
 	}()
 

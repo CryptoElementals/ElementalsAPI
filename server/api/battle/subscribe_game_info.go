@@ -23,8 +23,8 @@ const SUBSCRIBE_GAME_INFO_LABEL = "SubscribeGameInfo"
 // SubscribeGameInfoRequest 请求结构体
 type SubscribeGameInfoRequest struct {
 	api.BaseRequest
-	TempAddress string `mapstructure:"TempAddress" validate:"required"`   // 临时地址
-	Duration    int    `mapstructure:"Duration" validate:"min=1,max=600"` // 连接持续时间（秒）
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`     // 临时地址
+	Duration    int    `mapstructure:"Duration" validate:"min=1,max=86400"` // 连接持续时间（秒）
 }
 
 // SubscribeGameInfoResponse 响应结构体
@@ -48,9 +48,9 @@ func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameIn
 		return nil, err
 	}
 	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
-	// 设置默认值为 600秒（10 分钟）
+	// 设置默认值为 86400秒（1天）
 	if req.Duration == 0 {
-		req.Duration = 600
+		req.Duration = 86400
 	}
 	return req, nil
 }
@@ -155,7 +155,7 @@ func (task *SubscribeGameInfoTask) RunSSE(ctx context.Context, c *gin.Context, w
 	defer eventManager.UnsubscribeFromTopic(clientID, game_topic)
 
 	// 发送心跳保持连接
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	// 等待连接结束
@@ -260,6 +260,24 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "gameComplete",
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_TYPE_PLAYER_OFFLINE:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"EventType": "playerOffline",
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_TYPE_CONTINUE_CANCELED:
+		return events.Event{
+			Type: events.EventTypeError,
+			Data: map[string]interface{}{
+				"EventType": "continueCanceled",
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,

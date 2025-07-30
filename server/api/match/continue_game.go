@@ -113,7 +113,6 @@ func (task *ContinueGameTask) Run(c *gin.Context) (api.Response, error) {
 	// 计算可用代币数量：用户数据库里的token减去lock_token表里该address对应记录的token总和
 	availableTokens := userProfile.TokenAmount - totalLockedTokens
 
-	// 要求用户至少有10000个可用代币才能继续游戏
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
 		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to continue game", config.GameParams.TokenThreshold)
