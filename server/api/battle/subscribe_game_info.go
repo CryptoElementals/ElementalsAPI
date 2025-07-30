@@ -273,11 +273,11 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_TYPE_GAME_CONTINUE_FAILED:
+	case proto.EventType_TYPE_CONTINUE_CANCELED:
 		return events.Event{
 			Type: events.EventTypeError,
 			Data: map[string]interface{}{
-				"EventType": "gameContinueFailed",
+				"EventType": "continueCanceled",
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
