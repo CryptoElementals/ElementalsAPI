@@ -81,6 +81,9 @@ func (s *Scanner) Stop() {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	if s.gethClient != nil {
+		s.gethClient.Close()
+	}
 	log.Info("Scanner Stop() called")
 }
 
