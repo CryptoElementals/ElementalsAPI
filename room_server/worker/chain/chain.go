@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
@@ -25,8 +26,6 @@ type batchTxEvent struct {
 	txs       *proto.TransactionBatch
 	blockNum  uint64
 	blockHash []byte
-	done      chan struct{}
-	errChan   chan error
 }
 
 type Chain struct {
@@ -124,7 +123,7 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 		log.Errorf("createRoomContract: create room contract failed: %s", err.Error())
 		return err
 	}
-	txHash := tx.Hash().String()
+	txHash := strings.ToLower(tx.Hash().String())
 	c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), int(time.Hour.Seconds()))
 	createRoomTxModel := &dao.CreateRoomTx{
 		GameID:       gameID,
@@ -146,7 +145,7 @@ func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex s
 	if err != nil {
 		return err
 	}
-	txHash := tx.Hash().String()
+	txHash := strings.ToLower(tx.Hash().String())
 	createRoomTxModel := &dao.SetRoundReadyTx{
 		GameID:          gameID,
 		Status:          dao.TxStatusSent,
@@ -159,10 +158,10 @@ func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex s
 
 func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 	batchTx := &types.EventBatch{}
-	blockHash := hexutil.Encode(evt.blockHash)
+	blockHash := strings.ToLower(hexutil.Encode(evt.blockHash))
 	blockNumber := evt.blockNum
 	for _, protoTx := range evt.txs.Transactions {
-		hash := hexutil.Encode(protoTx.TxHash)
+		hash := strings.ToLower(hexutil.Encode(protoTx.TxHash))
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_RoomContractCreated:
 			// maybe stale event, just skip
@@ -204,7 +203,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			}
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CardsOnChain.Address)
-			log.Infof("cardsOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, address %s", gid, blockHash, blockNumber, hash, address.String())
+			log.Infof("cardsOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, contract address: %s, player address %s", gid, blockHash, blockNumber, hash, tx.CardsOnChain.RoomContractAddress, address.String())
 			c.cardsOnChain(batchTx, gid, hash, blockHash, blockNumber, tx)
 		}
 	}
@@ -212,6 +211,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 }
 
 func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
+	contractAddress = strings.ToLower(contractAddress)
 	gidStr, err := c.gameContractToRoomID.Get(contractAddress)
 	if err == nil {
 		gid, err := strconv.Atoi(gidStr)
@@ -228,7 +228,7 @@ func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
 }
 
 func (c *Chain) contractCreated(batchTx *types.EventBatch, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {
-	roomContract := tx.RoomContractCreated.RoomContractAddress
+	roomContract := strings.ToLower(tx.RoomContractCreated.RoomContractAddress)
 	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
 		GameID:              gameID,
 		RoomContractAddress: roomContract,
@@ -251,7 +251,7 @@ func (c *Chain) roundSetupCompleted(batchTx *types.EventBatch, gameID uint, bloc
 	}, true)
 	batchTx.Add(roundSetupCompletedEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), roundSetupCompletedEvent)
-	return db.UpdateSetRoundReadyTxBlockHashByGameID(gameID, blockHash, blockNumber)
+	return db.UpdateSetRoundReadyTxBlockHashByGameID(gameID, blockHash, blockNumber, roundNumber)
 }
 
 func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentsOnChain) error {

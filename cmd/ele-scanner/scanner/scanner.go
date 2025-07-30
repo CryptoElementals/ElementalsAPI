@@ -81,6 +81,9 @@ func (s *Scanner) Stop() {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	if s.gethClient != nil {
+		s.gethClient.Close()
+	}
 	log.Info("Scanner Stop() called")
 }
 
@@ -271,41 +274,54 @@ func (s *Scanner) CatchUpChain() {
 // orderedSubmitWorker 按顺序提交交易到 roomServer
 func (s *Scanner) orderedSubmitWorker(submitChan <-chan *orderedTxBatch) {
 	pendingBatches := make(map[uint64]*orderedTxBatch)
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
 
-	for batch := range submitChan {
-		log.Debugf("orderedSubmitWorker received batch for block %d", batch.blockNumber)
-		// 先全部丢到 pendingBatches 里
-		pendingBatches[batch.blockNumber] = batch
-		log.Debugf("added block %d to pendingBatches, current size: %d", batch.blockNumber, len(pendingBatches))
+	for {
+		var batch *orderedTxBatch
+		var ok bool
+		select {
+		case <-s.ctx.Done():
+			log.Info("Scanner context done, orderedSubmitWorker exited...")
+			return
+		case batch, ok = <-submitChan:
+			if !ok {
+				return
+			}
+			log.Debugf("orderedSubmitWorker received batch for block %d", batch.blockNumber)
+			pendingBatches[batch.blockNumber] = batch
+			log.Debugf("added block %d to pendingBatches, current size: %d", batch.blockNumber, len(pendingBatches))
+		case <-tick.C:
+			if len(pendingBatches) > 0 {
+				log.Infof("orderedSubmitWorker tick: try to process pendingBatches, toSubmitHeight=%d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
+			} else {
+				log.Debugf("orderedSubmitWorker tick: no pendingBatches, toSubmitHeight=%d", s.toSubmitHeight)
+				continue
+			}
+		}
 
-		// 然后处理 toSubmitHeight 的 block
+		// 每次有新 batch 或 tick 都尝试推进
 		for {
 			if nextBatch, exists := pendingBatches[s.toSubmitHeight]; exists {
 				log.Debugf("processing block %d from pendingBatches", s.toSubmitHeight)
 				var err error
 				if nextBatch.batch != nil {
-					// 有交易需要提交
 					err = s.submitBatch(nextBatch.batch)
 				} else {
-					// 空 batch，没有交易，直接成功
 					err = nil
 				}
 				nextBatch.done <- err
 
 				if err != nil {
-					// 提交失败，不移除 batch，不推进 toSubmitHeight
 					log.Errorf("submit failed for block %d, keeping in pendingBatches for retry", s.toSubmitHeight)
 					break // 退出循环，等待下次重试
 				} else {
-					// 提交成功，移除 batch 并推进 toSubmitHeight
 					delete(pendingBatches, s.toSubmitHeight)
 					s.toSubmitHeight++
 					log.Infof("toSubmitHeight advanced to %d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
 				}
 			} else {
-				// 没有下一个连续的 block，退出循环
 				log.Debugf("waiting for block %d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
-				// 打印 pendingBatches 中的 block numbers 用于调试
 				if len(pendingBatches) > 0 {
 					blockNums := make([]uint64, 0, len(pendingBatches))
 					for bn := range pendingBatches {

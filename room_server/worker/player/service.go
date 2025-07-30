@@ -21,6 +21,7 @@ type Queuer interface {
 	HandleExitQueueEvent(event *types.ExitQueueEvent) error
 	HandleContinueGameEvent(event *types.PlayerContinueEvent) error
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
+	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 }
 
 type Publisher interface {
@@ -86,7 +87,7 @@ func (s *Service) JoinQueue(address types.PlayerAddress) error {
 	defer s.lock.RUnlock()
 	player, ok := s.players[address]
 	if !ok {
-		return errors.New("player not found")
+		return errors.New("player is not subscribing")
 	}
 	return player.joinQueue()
 }
@@ -96,7 +97,7 @@ func (s *Service) ExitQueue(address types.PlayerAddress) error {
 	defer s.lock.RUnlock()
 	player, ok := s.players[address]
 	if !ok {
-		return errors.New("player not found")
+		return errors.New("player is not subscribing")
 	}
 	return player.exitQueue()
 }
@@ -112,7 +113,7 @@ func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundN
 	defer s.lock.RUnlock()
 	player, ok := s.players[address]
 	if !ok {
-		return errors.New("player not found")
+		return errors.New("player is not subscribing")
 	}
 	evt := types.NewEvent(player.address.String(), &types.PlayerReadyEvent{
 		GameId:        gameID,
@@ -129,10 +130,20 @@ func (s *Service) ContinueGame(address types.PlayerAddress, gameID uint) error {
 	defer s.lock.RUnlock()
 	_, ok := s.players[address]
 	if !ok {
-		return errors.New("player not found")
+		return errors.New("player is not subscribing")
 	}
 	return s.queue.HandleContinueGameEvent(&types.PlayerContinueEvent{
 		GameId:        gameID,
 		PlayerAddress: address,
 	})
+}
+
+func (s *Service) RefuseContinueGame(address types.PlayerAddress, gameID uint) error {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	_, ok := s.players[address]
+	if !ok {
+		return errors.New("player is not subscribing")
+	}
+	return s.queue.RefuseContinueGame(address, gameID)
 }

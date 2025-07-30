@@ -12,7 +12,7 @@ import (
 
 // Global HTTP client for connection reuse
 var defaultHTTPClient = &http.Client{
-	Timeout: 10 * time.Second,
+	Timeout: 5 * time.Second,
 }
 
 // OptimismBlock represents a block returned by Optimism JSON-RPC
