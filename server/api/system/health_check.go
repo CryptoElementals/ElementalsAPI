@@ -101,4 +101,6 @@ func (task *HealthCheckTask) Run(c *gin.Context) (api.Response, error) {
 // RegisterSystemApis 注册系统相关API
 func RegisterSystemApis() {
 	api.Register(HEALTH_CHECK_LABEL, NewHealthCheckTask, api.NOAUTH)
+	api.Register(GET_CARDS_LABEL, NewGetAllCardsTask, api.NOAUTH)
+	api.Register(LIST_AVATARS_LABEL, NewListAvatarsTask, api.NOAUTH)
 }

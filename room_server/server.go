@@ -66,18 +66,20 @@ func New(ctx context.Context,
 
 	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, w, c)
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP, cfg.RoundTimeout, cfg.MaxRounds)
+	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP, cfg.RoundTimeout, cfg.MaxRounds, chainSvc)
 	s.gameSvc = gameSvc
+	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold), cfg.ContinueTimeout)
+	s.queueSvc = queueSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc
-	queueSvc := queue.NewService(ctx, s.mgr, c)
-	s.queueSvc = queueSvc
+	gameSvc.SetGameResultSettler(queueSvc)
 	s.pubsub.SetPlayerManager(playerSvc)
 	server := grpc.NewServer()
 	rpcServer := rpc.NewRpc(
 		gameSvc,
 		chainSvc,
 		playerSvc,
+		queueSvc,
 	)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)

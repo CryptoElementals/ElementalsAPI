@@ -29,8 +29,8 @@ func UpdateCreateRoomTxBlockHashAndContractByGameID(gameID uint, blockHash strin
 	}).Error
 }
 
-func UpdateSetRoundReadyTxBlockHashByGameID(gameID uint, blockHash string, blockNumber uint64) error {
-	return db.Model(&dao.SetRoundReadyTx{}).Where("game_id = ?", gameID).Updates(map[string]interface{}{
+func UpdateSetRoundReadyTxBlockHashByGameID(gameID uint, blockHash string, blockNumber uint64, roundNumber uint32) error {
+	return db.Model(&dao.SetRoundReadyTx{}).Where("game_id = ? and round_number = ?", gameID, roundNumber).Updates(map[string]interface{}{
 		"block_hash":   blockHash,
 		"block_number": blockNumber,
 		"status":       dao.TxStatusSuccess,

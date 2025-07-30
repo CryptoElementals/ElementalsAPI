@@ -16,9 +16,23 @@ service RpcService {
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
+    rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
+
+    // token related logic
+    rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
 
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
+}
+message GetPlayerTokenRequest {
+    string WalletAddress = 1;
+}
+
+message GetPlayerTokenResponse {
+    string WalletAddress = 1;
+    uint64 Tokens = 2;
+    uint64 Points = 3;
+    uint64 LockedTokens = 4;
 }
 
 message PlayerAddress {
@@ -31,11 +45,17 @@ message ContinueGameRequest {
     uint32 LastGameID = 2;
 }
 
+message RefuseContinueGameRequest {
+    PlayerAddress player = 1;
+    uint32 LastGameID = 2;
+}
+
 enum PlayerStatus {
     PLAYER_KNOWN = 0;
     PLAYER_IN_QUEUE = 1;
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
+    PLAYER_WAITTING_CONTINUE = 4;
 }
 
 message GamePhasePlayer {

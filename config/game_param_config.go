@@ -39,10 +39,10 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	if gameParams.TiePointRate == 0 {
 		gameParams.TiePointRate = 0.008
 	}
-	if gameParams.TokenThreshold == 0 {
+	if gameParams.TokenThreshold == -1 {
 		gameParams.TokenThreshold = 10000
 	}
-	if gameParams.BaseStake == 0 {
+	if gameParams.BaseStake == -1 {
 		gameParams.BaseStake = 1000
 	}
 

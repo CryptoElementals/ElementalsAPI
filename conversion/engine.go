@@ -6,6 +6,9 @@ import (
 )
 
 func DbRoundToProtoRoundInput(dbRound *dao.Round) *proto.RoundInput {
+	if dbRound == nil {
+		return nil
+	}
 	return &proto.RoundInput{
 		RoundNumber: int32(dbRound.RoundNumber),
 		Players:     DbPlayerRoundInfoToProtoPlayerRoundInput(dbRound.PlayerRoundInfos),
@@ -13,6 +16,9 @@ func DbRoundToProtoRoundInput(dbRound *dao.Round) *proto.RoundInput {
 }
 
 func DbPlayerRoundInfoToProtoPlayerRoundInput(playerRoundInfo []*dao.PlayerRoundInfo) []*proto.PlayerRoundInput {
+	if len(playerRoundInfo) == 0 {
+		return nil
+	}
 	playerRoundInput := make([]*proto.PlayerRoundInput, 0, len(playerRoundInfo))
 	for _, p := range playerRoundInfo {
 		cards := make([]int32, 0, len(p.SubmittedCards))
@@ -22,6 +28,7 @@ func DbPlayerRoundInfoToProtoPlayerRoundInput(playerRoundInfo []*dao.PlayerRound
 		playerRoundInput = append(playerRoundInput, &proto.PlayerRoundInput{
 			WalletAddress:    p.WalletAddress,
 			TemporaryAddress: p.TemporaryAddress,
+			Commitment:       p.SubmittedCommitment,
 			Cards:            cards,
 		})
 	}
@@ -29,6 +36,9 @@ func DbPlayerRoundInfoToProtoPlayerRoundInput(playerRoundInfo []*dao.PlayerRound
 }
 
 func ProtoBattleEffectsToDbCardEffects(protoCardEffects []*proto.BattleEffect) []*dao.CardEffect {
+	if len(protoCardEffects) == 0 {
+		return nil
+	}
 	dbCardEffects := make([]*dao.CardEffect, 0, len(protoCardEffects))
 	for _, effect := range protoCardEffects {
 		dbCardEffects = append(dbCardEffects, &dao.CardEffect{
@@ -43,6 +53,9 @@ func ProtoBattleEffectsToDbCardEffects(protoCardEffects []*proto.BattleEffect) [
 }
 
 func ProtoGameResultToDbGameResult(protoGameResult *proto.GameResult) *dao.GameResult {
+	if protoGameResult == nil {
+		return nil
+	}
 	return &dao.GameResult{
 		Multiplier:             protoGameResult.Multiplier,
 		WinnerWalletAddress:    protoGameResult.WinnerWalletAddress,
@@ -53,6 +66,9 @@ func ProtoGameResultToDbGameResult(protoGameResult *proto.GameResult) *dao.GameR
 }
 
 func ProtoBattleRewardsToDbBattleReward(protoBattleReward *proto.BattleReward) *dao.BattleReward {
+	if protoBattleReward == nil {
+		return nil
+	}
 	return &dao.BattleReward{
 		SystemFee:     protoBattleReward.SystemFee,
 		PlayerRewards: ProtoPlayerRewardsToDbPlayerRewards(protoBattleReward.PlayerRewards),
@@ -60,6 +76,9 @@ func ProtoBattleRewardsToDbBattleReward(protoBattleReward *proto.BattleReward) *
 }
 
 func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerReward) []*dao.PlayerReward {
+	if len(protoPlayerRewards) == 0 {
+		return nil
+	}
 	dbPlayerRewards := make([]*dao.PlayerReward, 0, len(protoPlayerRewards))
 	for _, p := range protoPlayerRewards {
 		dbPlayerRewards = append(dbPlayerRewards, &dao.PlayerReward{
@@ -67,6 +86,7 @@ func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerRewar
 			TemporaryAddress: p.TemporaryAddress,
 			TokenChange:      p.TokenChange,
 			PointChange:      p.PointChange,
+			IsOffline:        p.Offline,
 		})
 	}
 	return dbPlayerRewards

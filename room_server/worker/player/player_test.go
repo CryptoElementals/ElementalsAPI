@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 
 func TestPlayerJoinExitQueue(t *testing.T) {
 	mockGameInfoGetter := tt.NewMockGameInfoGetter(gomock.NewController(t))
-	mockQueueInfoGetter := tt.NewMockQueueInfoGetter(gomock.NewController(t))
+	mockQueueInfoGetter := tt.NewMockQueuer(gomock.NewController(t))
 	mockQueueHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	testWorkerManager.SpwanWorker(context.Background(), types.QUEUE_MANAGER_ID, types.WORKER_TYPE_QUEUE, mockQueueHandler)
 
@@ -109,7 +109,7 @@ func TestPlayerJoinExitQueue(t *testing.T) {
 
 func TestPlayerEventHandler(t *testing.T) {
 	mockGameInfoGetter := tt.NewMockGameInfoGetter(gomock.NewController(t))
-	mockQueueInfoGetter := tt.NewMockQueueInfoGetter(gomock.NewController(t))
+	mockQueueInfoGetter := tt.NewMockQueuer(gomock.NewController(t))
 
 	testService := NewService(context.Background(), testPubsubServer, testWorkerManager, mockGameInfoGetter, mockQueueInfoGetter)
 	testPubsubServer.SetPlayerManager(testService)

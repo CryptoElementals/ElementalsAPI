@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
@@ -128,12 +126,6 @@ func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer ExitQueue failed: " + err.Error()
 		return task.Response, nil
-	}
-
-	// 释放该用户对应特定tempaddress的锁定代币
-	err = db.SoftDeleteLockTokenByAddressAndTempAddress(address, tempAddress)
-	if err != nil {
-		log.Errorf("Failed to soft delete lock token: %v", err)
 	}
 
 	task.Response.BaseResponse.RetCode = 0

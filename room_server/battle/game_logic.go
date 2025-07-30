@@ -36,6 +36,10 @@ func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, 
 
 	// 如果有离线玩家，需要特殊处理
 	if offlineCount > 0 {
+		if offlineCount == len(states) {
+			// 全员未提交 Commitment 或未提交卡牌，直接平局
+			return true, GAME_TIE, "", "", 1
+		}
 		if onlineCount > 0 {
 			// 有在线玩家：在线的是赢家，离线的是输家，应该是normal（血量都大于0）
 			var winners []string
@@ -220,9 +224,14 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 
 	// 然后处理卡牌数量不足的情况（强制设为离线）
 	for idx, p := range input.Players {
+		// 如果未提交 Commitment，则视为离线
+		if len(p.Commitment) == 0 {
+			input.Players[idx].Status = PLAYER_OFFLINE
+		}
+
+		// 如果卡牌数量不足 3，也视为离线（旧逻辑保留）
 		if len(p.Cards) < 3 {
 			input.Players[idx].Status = PLAYER_OFFLINE
-			// 不修改HP和LostHP，保持原值，也就是说不因为掉线将其血量扣为0
 		}
 	}
 

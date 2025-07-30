@@ -35,5 +35,4 @@ config.yaml*
 
 # log file
 *.log
-tj/
 test/
