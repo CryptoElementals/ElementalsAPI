@@ -31,7 +31,6 @@ var (
 	// 命令行参数
 	rpcEndpoint  string
 	contractAddr string
-	userAddr     string
 	tempAddr     string
 	round        uint64
 	privateKey   string
@@ -67,14 +66,12 @@ func init() {
 	// 添加全局标志
 	submitterTestCmd.PersistentFlags().StringVarP(&rpcEndpoint, "rpc", "r", "http://152.32.231.145:8545", "区块链RPC端点")
 	submitterTestCmd.PersistentFlags().StringVarP(&contractAddr, "contract", "a", "", "合约地址")
-	submitterTestCmd.PersistentFlags().StringVarP(&userAddr, "user", "u", "", "用户地址")
 	submitterTestCmd.PersistentFlags().StringVarP(&tempAddr, "temp", "t", "", "临时地址")
 	submitterTestCmd.PersistentFlags().Uint64VarP(&round, "round", "n", 1, "回合数")
 	submitterTestCmd.PersistentFlags().StringVarP(&privateKey, "private-key", "p", "", "钱包私钥")
 
 	// 标记必需参数
 	submitterTestCmd.MarkPersistentFlagRequired("contract")
-	submitterTestCmd.MarkPersistentFlagRequired("user")
 	submitterTestCmd.MarkPersistentFlagRequired("temp")
 	submitterTestCmd.MarkPersistentFlagRequired("private-key")
 }

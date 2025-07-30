@@ -17,7 +17,7 @@ echo "密钥生成完成"
 
 # 多用户登录
 echo "执行多用户登录..."
-./tj/multi_login.sh
+./test_script/multi_login.sh
 echo "多用户登录完成"
 
 echo "=== 开始API测试 ==="
@@ -148,12 +148,12 @@ done
 echo "6. 测试SSE连接 - SubscribeGameInfo..."
 
 # 创建日志目录
-mkdir -p ./tj/logs
+mkdir -p ./test_script/logs
 
 # 清空之前的日志文件
 echo "6.0 清空之前的日志文件..."
-> ./tj/logs/user1_sse.log
-> ./tj/logs/user2_sse.log
+> ./test_script/logs/user1_sse.log
+> ./test_script/logs/user2_sse.log
 echo "日志文件已清空"
 
 # 清理旧的SSE连接
@@ -174,9 +174,9 @@ nohup curl --silent -N -X POST "http://localhost:8080/sse" \
     \"Action\": \"SubscribeGameInfo\",
     \"TempAddress\": \"$user1_temp_address\"
   }" \
-  -b ./test/api/users/user_1/cookie.txt 2>&1  > ./tj/logs/user1_sse.log &
+  -b ./test/api/users/user_1/cookie.txt 2>&1  > ./test_script/logs/user1_sse.log &
 user1_pid=$!
-echo "用户1 SSE连接已启动，PID: $user1_pid，日志文件: ./tj/logs/user1_sse.log"
+echo "用户1 SSE连接已启动，PID: $user1_pid，日志文件: ./test_script/logs/user1_sse.log"
 
 echo "6.2 启动用户2的SSE连接..."
 echo "用户2地址: $user2_temp_address"
@@ -187,9 +187,9 @@ nohup curl --silent -N -X POST "http://localhost:8080/sse" \
     \"Action\": \"SubscribeGameInfo\",
     \"TempAddress\": \"$user2_temp_address\"
   }" \
-  -b ./test/api/users/user_2/cookie.txt 2>&1  > ./tj/logs/user2_sse.log &
+  -b ./test/api/users/user_2/cookie.txt 2>&1  > ./test_script/logs/user2_sse.log &
 user2_pid=$!
-echo "用户2 SSE连接已启动，PID: $user2_pid，日志文件: ./tj/logs/user2_sse.log"
+echo "用户2 SSE连接已启动，PID: $user2_pid，日志文件: ./test_script/logs/user2_sse.log"
 
 echo "6.3 等待SSE连接建立..."
 sleep 3
@@ -209,11 +209,11 @@ fi
 
 echo "6.5 显示最近的日志内容..."
 echo "用户1 SSE日志 (最近10行):"
-tail -n 10 ./tj/logs/user1_sse.log
+tail -n 10 ./test_script/logs/user1_sse.log
 echo ""
 
 echo "用户2 SSE日志 (最近10行):"
-tail -n 10 ./tj/logs/user2_sse.log
+tail -n 10 ./test_script/logs/user2_sse.log
 echo ""
 
 # 6. 匹配和对战API测试
