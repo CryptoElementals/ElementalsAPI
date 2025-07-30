@@ -197,9 +197,19 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 			IsConfirmed: playerInfo.PlayerReady,
 		})
 	}
+	playerStatus := proto.PlayerStatus(0)
+	switch game.Status {
+	case proto.GameStatus_GAME_INIT:
+		playerStatus = proto.PlayerStatus_PLAYER_MATCHED
+	case proto.GameStatus_GAME_RUNNING:
+		playerStatus = proto.PlayerStatus_PLAYER_IN_GAME
+	case proto.GameStatus_GAME_END:
+		playerStatus = proto.PlayerStatus_PLAYER_KNOWN
+	}
+
 	gamePhase.PvPInfo = &proto.PvPInfo{
 		GameID:          uint32(game.ID),
-		Status:          proto.PlayerStatus(game.Status),
+		Status:          playerStatus,
 		ContractAddress: game.RoomContract,
 		BeginAt:         uint64(game.CreatedAt.Unix()),
 		TimeoutDuration: uint64(game.RoundTimeout),

@@ -87,7 +87,7 @@ func (s *Rpc) GetPlayerToken(ctx context.Context, req *pb.GetPlayerTokenRequest)
 
 type GameRequestHandler interface {
 	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, *pb.GameResult, error)
-	GetGamePhase(types.PlayerAddress) (*pb.GamePhase, error)
+	GetGamePhase(playerAddress types.PlayerAddress) (*pb.GamePhase, error)
 }
 
 type PlayerTokenHandler interface {

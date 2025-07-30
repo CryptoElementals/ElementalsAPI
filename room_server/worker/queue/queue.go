@@ -96,10 +96,6 @@ func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID u
 func (m *continueManager) removeGameByID(gameID uint) {
 	m.Lock()
 	defer m.Unlock()
-	m.removeGameByIDNoLock(gameID)
-}
-
-func (m *continueManager) removeGameByIDNoLock(gameID uint) {
 	continueMap, ok := m.continueQueue[gameID]
 	if !ok {
 		return
@@ -109,6 +105,17 @@ func (m *continueManager) removeGameByIDNoLock(gameID uint) {
 		m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
 			GameID: gameID,
 		}))
+	}
+	delete(m.continueQueue, gameID)
+}
+
+func (m *continueManager) removeGameByIDNoSendEvent(gameID uint) {
+	continueMap, ok := m.continueQueue[gameID]
+	if !ok {
+		return
+	}
+	for player := range continueMap {
+		delete(m.playerToContinueQueue, player)
 	}
 	delete(m.continueQueue, gameID)
 }
@@ -134,7 +141,7 @@ func (m *continueManager) handlePlayerGameContinue(playerAddr types.PlayerAddres
 		}
 		allPlayers = append(allPlayers, player)
 	}
-	m.removeGameByIDNoLock(gameID)
+	m.removeGameByIDNoSendEvent(gameID)
 	return allPlayers, true, nil
 }
 
