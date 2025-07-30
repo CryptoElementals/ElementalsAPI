@@ -18,15 +18,16 @@ const queueInfoPrefix = "queue_info"
 const queueInfoVal = "v"
 
 type Queue struct {
-	ctx             context.Context
-	lock            sync.RWMutex
-	queue           map[types.PlayerAddress]struct{}
-	continueManager *continueManager
-	workerManager   *worker.WorkerManager
-	queueCache      cache.Cache
-	closing         bool
-	gameCreator     GameCreator
-	continueTimeout time.Duration
+	ctx                 context.Context
+	lock                sync.RWMutex
+	queue               map[types.PlayerAddress]struct{}
+	continueManager     *continueManager
+	workerManager       *worker.WorkerManager
+	queueCache          cache.Cache
+	closing             bool
+	gameCreator         GameCreator
+	continueTimeout     time.Duration
+	minTokenToJoinQueue int32
 }
 
 type gameContinueInfo struct {
@@ -72,21 +73,22 @@ func (m *continueManager) addGame(game *dao.Game) {
 	}
 }
 
-func (m *continueManager) removeGameByAddress(addr types.PlayerAddress) {
+func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID uint) {
 	m.Lock()
 	defer m.Unlock()
 	gameInfo, ok := m.playerToContinueQueue[addr]
 	if !ok {
 		return
 	}
+	if gameID == 0 || gameInfo.gameID != gameID {
+		return
+	}
 	continueMap := m.continueQueue[gameInfo.gameID]
 	for player := range continueMap {
 		delete(m.playerToContinueQueue, player)
-		if player != addr {
-			m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-				GameID: gameInfo.gameID,
-			}))
-		}
+		m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
+			GameID: gameInfo.gameID,
+		}))
 	}
 	delete(m.continueQueue, gameInfo.gameID)
 }
@@ -182,8 +184,14 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	if _, ok := q.queue[event.PlayerAddress]; ok {
 		return errors.New("player already in queue")
 	}
+	log.Infow("join queue", "wallet address", event.PlayerAddress.WalletAddress, "temporary address", event.PlayerAddress.TemporaryAddress)
+	err := q.lockToken(&event.PlayerAddress)
+	if err != nil {
+		log.Errorf("cannot join queue, err: %s", err.Error())
+		return err
+	}
 	// delete player from continue queue anyway
-	q.continueManager.removeGameByAddress(event.PlayerAddress)
+	q.continueManager.removeGameByAddress(event.PlayerAddress, 0)
 	matched := false
 	for player := range q.queue {
 		// don't match players with same wallet address
@@ -196,9 +204,14 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 		evt := &types.GameMatchedEvent{
 			Players: []types.PlayerAddress{player, event.PlayerAddress},
 		}
-		_, err := q.gameCreator.HandleGameMatchedEvent(evt)
+		gid, err := q.gameCreator.HandleGameMatchedEvent(evt)
 		if err != nil {
 			log.Errorf("handle game matched event failed: %s", err.Error())
+			return err
+		}
+		err = db.SetLockedTokenGameID(q.ctx, player.WalletAddress, player.TemporaryAddress, gid)
+		if err != nil {
+			log.Errorf("set locked token game id failed: %s", err.Error())
 			return err
 		}
 		delete(q.queue, player)
@@ -209,6 +222,7 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 			log.Errorf("delete player from queue cache failed: %s", err.Error())
 			return err
 		}
+
 		matched = true
 	}
 	if !matched {
@@ -253,6 +267,13 @@ func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error 
 	return nil
 }
 
+func (q *Queue) RefuseContinueGame(playerAddress types.PlayerAddress, lastGameID uint) error {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	q.continueManager.removeGameByAddress(playerAddress, lastGameID)
+	return nil
+}
+
 func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -277,4 +298,11 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	defer q.lock.RUnlock()
 	_, ok := q.queue[address]
 	return ok
+}
+
+func (q *Queue) lockToken(address *types.PlayerAddress) error {
+	if q.minTokenToJoinQueue <= 0 {
+		return nil
+	}
+	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
 }

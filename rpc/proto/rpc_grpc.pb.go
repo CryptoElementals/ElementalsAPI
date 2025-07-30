@@ -26,6 +26,8 @@ const (
 	RpcService_GetGamePhase_FullMethodName       = "/rpc.RpcService/GetGamePhase"
 	RpcService_GetBattleInfo_FullMethodName      = "/rpc.RpcService/GetBattleInfo"
 	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
+	RpcService_RefuseContinueGame_FullMethodName = "/rpc.RpcService/RefuseContinueGame"
+	RpcService_GetPlayerToken_FullMethodName     = "/rpc.RpcService/GetPlayerToken"
 	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
 )
 
@@ -40,6 +42,9 @@ type RpcServiceClient interface {
 	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
 	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// token related logic
+	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// chain related api
 	SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -112,6 +117,26 @@ func (c *rpcServiceClient) ConfirmBattle(ctx context.Context, in *ConfirmBattleR
 	return out, nil
 }
 
+func (c *rpcServiceClient) RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_RefuseContinueGame_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPlayerTokenResponse)
+	err := c.cc.Invoke(ctx, RpcService_GetPlayerToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcServiceClient) SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -133,6 +158,9 @@ type RpcServiceServer interface {
 	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
 	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
+	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
+	// token related logic
+	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	// chain related api
 	SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRpcServiceServer()
@@ -162,6 +190,12 @@ func (UnimplementedRpcServiceServer) GetBattleInfo(context.Context, *GetBattleIn
 }
 func (UnimplementedRpcServiceServer) ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmBattle not implemented")
+}
+func (UnimplementedRpcServiceServer) RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RefuseContinueGame not implemented")
+}
+func (UnimplementedRpcServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
 }
 func (UnimplementedRpcServiceServer) SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitTransactions not implemented")
@@ -295,6 +329,42 @@ func _RpcService_ConfirmBattle_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_RefuseContinueGame_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefuseContinueGameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).RefuseContinueGame(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_RefuseContinueGame_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).RefuseContinueGame(ctx, req.(*RefuseContinueGameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RpcService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPlayerTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).GetPlayerToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_GetPlayerToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).GetPlayerToken(ctx, req.(*GetPlayerTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RpcService_SubmitTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TransactionBatch)
 	if err := dec(in); err != nil {
@@ -343,6 +413,14 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ConfirmBattle",
 			Handler:    _RpcService_ConfirmBattle_Handler,
+		},
+		{
+			MethodName: "RefuseContinueGame",
+			Handler:    _RpcService_RefuseContinueGame_Handler,
+		},
+		{
+			MethodName: "GetPlayerToken",
+			Handler:    _RpcService_GetPlayerToken_Handler,
 		},
 		{
 			MethodName: "SubmitTransactions",
