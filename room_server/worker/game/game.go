@@ -235,6 +235,7 @@ func (g *Game) pushStateToContractCreating() error {
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
 	for _, player := range g.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
+		player.roundPlayer.PlayerReady = true
 	}
 	err := g.sendContractCreation(allPlayers)
 	if err != nil {
