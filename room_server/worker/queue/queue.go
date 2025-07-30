@@ -14,7 +14,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
-const queueInfoPrefix = "queue_info:"
+const queueInfoPrefix = "queue_info"
 const queueInfoVal = "v"
 
 type Queue struct {

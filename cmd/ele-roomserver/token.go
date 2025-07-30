@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
@@ -31,6 +32,7 @@ var tokenSetCmd = &cobra.Command{
 			fmt.Printf("init db failed, err: %v\n", err)
 			return
 		}
+		playerAddress = strings.ToLower(playerAddress)
 		ut := dao.UserToken{
 			WalletAddress: playerAddress,
 			Points:        int32(points),
@@ -88,6 +90,6 @@ func init() {
 	tokenCmd.AddCommand(tokenSetCmd)
 	tokenCmd.AddCommand(tokenGetCmd)
 
-	tokenSetCmd.Flags().Int64VarP(&points, "points", "p", 0, "points to set")
-	tokenSetCmd.Flags().Int64VarP(&tokens, "tokens", "t", 0, "tokens to set")
+	tokenSetCmd.Flags().Int64VarP(&points, "points", "", 0, "points to set")
+	tokenSetCmd.Flags().Int64VarP(&tokens, "tokens", "", 0, "tokens to set")
 }

@@ -40,6 +40,7 @@ func (p *PrefixedCache) Set(key string, val string, expire int) error {
 }
 
 func WithPrefix(prefix string, cache Cache) Cache {
+	prefix += ":"
 	return &PrefixedCache{
 		prefix: prefix,
 		cache:  cache,
