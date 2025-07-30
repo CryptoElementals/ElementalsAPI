@@ -4,12 +4,15 @@ import (
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/errors"
+	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
+	"gorm.io/gorm"
+
+	dao "github.com/CryptoElementals/common/models"
 )
 
 const COLLECT_DAILY_REWARD_LABEL = "CollectDailyReward"
@@ -72,13 +75,13 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 	params, ok := _params.(*map[string]interface{})
 	if !ok {
 		log.Errorf("%s, params assert failed", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
+		return nil, cmnErrors.MissingLoginCookie()
 	}
 
 	address, ok := (*params)["Address"].(string)
 	if !ok || address == "" {
 		log.Errorf("%s, no address found in params", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
+		return nil, cmnErrors.MissingLoginCookie()
 	}
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
@@ -88,38 +91,53 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 	collected, err := db.HasCollectedDailyReward(lowercaseAddress)
 	if err != nil {
 		log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.GetUserProfileFailed(lowercaseAddress)
+		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
 	}
 
 	// 如果已经领取过今日奖励，返回错误
 	if collected {
 		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, lowercaseAddress)
-		return nil, errors.ActionError("Daily reward already collected")
+		return nil, cmnErrors.ActionError("Daily reward already collected")
 	}
 
-	// 获取用户档案
-	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
+	// 获取用户档案（仅确保用户存在）
+	_, err = db.GetUserProfileByAddress(lowercaseAddress)
 	if err != nil {
 		log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.GetUserProfileFailed(lowercaseAddress)
+		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
 	}
 
 	// 给用户增加每日奖励token
-	dailyRewardTokens := 1000
-	userProfile.TokenAmount += dailyRewardTokens
+	dailyRewardTokens := int32(1000)
 
-	// 更新用户档案（包括token数量和领取时间）
-	err = db.UpdateUserProfile(userProfile)
+	// 更新/创建用户的 Token 记录
+	userToken, err := db.GetPlayerTokenSimple(c.Request.Context(), lowercaseAddress)
+	if err != nil && err != gorm.ErrRecordNotFound {
+		log.Errorf("%s, failed to get user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
+		return nil, cmnErrors.OperateDbFailed()
+	}
+
+	if userToken == nil {
+		userToken = &dao.UserToken{
+			WalletAddress: lowercaseAddress,
+			Points:        0,
+			TokenAmount:   dailyRewardTokens,
+		}
+	} else {
+		userToken.TokenAmount += dailyRewardTokens
+	}
+
+	err = db.SaveUserToken(*userToken)
 	if err != nil {
-		log.Errorf("%s, failed to update user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.SaveUserProfileFailed()
+		log.Errorf("%s, failed to save user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
+		return nil, cmnErrors.OperateDbFailed()
 	}
 
 	// 更新用户每日奖励领取时间
 	err = db.UpdateDailyRewardCollection(lowercaseAddress)
 	if err != nil {
 		log.Errorf("%s, failed to update daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.SaveUserProfileFailed()
+		return nil, cmnErrors.SaveUserProfileFailed()
 	}
 
 	log.Infof("%s, daily reward collected successfully for address %s", task.Request.RequestUUID, lowercaseAddress)

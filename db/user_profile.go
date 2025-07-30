@@ -1,9 +1,12 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"time"
 
 	dao "github.com/CryptoElementals/common/models"
+	"gorm.io/gorm"
 )
 
 // GetUserProfileByAddress 根据地址获取用户档案
@@ -92,60 +95,75 @@ func UpdateUserGameStats(player1Address, player2Address, winner string, multipli
 	basePoints := 1000
 	baseTokens := 1000
 
-	// 玩家1的统计更新
+	// 更新用户档案中的对局统计信息
 	player1Profile.OverallGame++
-	player1PointsChange := basePoints * int(multiplier)
-	player1Profile.Points += player1PointsChange
-
-	// 玩家2的统计更新
 	player2Profile.OverallGame++
+
+	// 获取 / 创建用户 Token 信息
+	player1Token, err := GetPlayerTokenSimple(context.Background(), player1Address)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if player1Token == nil {
+		player1Token = &dao.UserToken{WalletAddress: player1Address}
+	}
+
+	player2Token, err := GetPlayerTokenSimple(context.Background(), player2Address)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if player2Token == nil {
+		player2Token = &dao.UserToken{WalletAddress: player2Address}
+	}
+
+	// 玩家1、玩家2基础积分变动
+	player1PointsChange := basePoints * int(multiplier)
 	player2PointsChange := basePoints * int(multiplier)
-	player2Profile.Points += player2PointsChange
+
+	player1Token.Points += int32(player1PointsChange)
+	player2Token.Points += int32(player2PointsChange)
 
 	// 根据胜负情况更新胜场数和代币
 	if winner == player1Address {
 		// 玩家1获胜
 		player1Profile.WinCount++
-		player1Profile.WinningRate = float64(player1Profile.WinCount) / float64(player1Profile.OverallGame)
-		player1Profile.TokenAmount += int(float64(baseTokens) * multiplier * 0.98) // 赢家获得98%
-
-		player2Profile.WinningRate = float64(player2Profile.WinCount) / float64(player2Profile.OverallGame)
-		player2Profile.TokenAmount -= int(float64(baseTokens) * multiplier) // 输家扣除100%
-
+		player1Token.TokenAmount += int32(float64(baseTokens) * multiplier * 0.98) // 赢家获得98%
+		player2Token.TokenAmount -= int32(float64(baseTokens) * multiplier)        // 输家扣100%
 	} else if winner == player2Address {
 		// 玩家2获胜
 		player2Profile.WinCount++
-		player2Profile.WinningRate = float64(player2Profile.WinCount) / float64(player2Profile.OverallGame)
-		player2Profile.TokenAmount += int(float64(baseTokens) * multiplier * 0.98) // 赢家获得98%
-
-		player1Profile.WinningRate = float64(player1Profile.WinCount) / float64(player1Profile.OverallGame)
-		player1Profile.TokenAmount -= int(float64(baseTokens) * multiplier) // 输家扣除100%
-
+		player2Token.TokenAmount += int32(float64(baseTokens) * multiplier * 0.98)
+		player1Token.TokenAmount -= int32(float64(baseTokens) * multiplier)
 	} else {
-		// 平局
-		player1Profile.WinningRate = float64(player1Profile.WinCount) / float64(player1Profile.OverallGame)
-		player1Profile.TokenAmount -= int(float64(baseTokens) * 0.005) // 平局双方都扣除0.5%
-
-		player2Profile.WinningRate = float64(player2Profile.WinCount) / float64(player2Profile.OverallGame)
-		player2Profile.TokenAmount -= int(float64(baseTokens) * 0.005) // 平局双方都扣除0.5%
+		// 平局，双方各扣0.5%
+		deduction := int32(float64(baseTokens) * 0.005)
+		player1Token.TokenAmount -= deduction
+		player2Token.TokenAmount -= deduction
 	}
 
-	// 确保代币数量不为负数，实际上不会小于0，因为限制门槛1000，最多扣800
-	if player1Profile.TokenAmount < 0 {
-		player1Profile.TokenAmount = 0
+	// 重新计算胜率
+	player1Profile.WinningRate = float64(player1Profile.WinCount) / float64(player1Profile.OverallGame)
+	player2Profile.WinningRate = float64(player2Profile.WinCount) / float64(player2Profile.OverallGame)
+
+	// 确保代币数量不为负数
+	if player1Token.TokenAmount < 0 {
+		player1Token.TokenAmount = 0
 	}
-	if player2Profile.TokenAmount < 0 {
-		player2Profile.TokenAmount = 0
+	if player2Token.TokenAmount < 0 {
+		player2Token.TokenAmount = 0
 	}
 
-	// 更新数据库
-	err = UpdateUserProfile(player1Profile)
+	// 保存用户 Token 及 Profile
+	err = SaveUserToken(*player1Token, *player2Token)
 	if err != nil {
 		return err
 	}
 
-	err = UpdateUserProfile(player2Profile)
-	if err != nil {
+	// 更新用户档案信息
+	if err := UpdateUserProfile(player1Profile); err != nil {
+		return err
+	}
+	if err := UpdateUserProfile(player2Profile); err != nil {
 		return err
 	}
 

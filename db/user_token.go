@@ -100,3 +100,12 @@ func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error)
 	}
 	return &userToken, nil
 }
+
+func GetPlayerTokenSimple(ctx context.Context, address string) (*dao.UserToken, error) {
+	var userToken dao.UserToken
+	err := Get().Where("wallet_address = ?", address).First(&userToken).Error
+	if err != nil {
+		return nil, err
+	}
+	return &userToken, nil
+}

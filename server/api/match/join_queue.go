@@ -109,15 +109,15 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 检查用户token数量是否足够（使用小写地址查询数据库）
-	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
+	// 检查用户token数量是否足够
+	userToken, err := db.GetPlayerTokenSimple(c.Request.Context(), lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user information"
+		task.Response.BaseResponse.Message = "Failed to get user token information"
 		return task.Response, nil
 	}
 
-	// 获取用户已锁定的代币总数（使用小写地址查询数据库）
+	// 获取用户已锁定的代币总数
 	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(lowercaseAddress)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
@@ -125,8 +125,13 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 		return task.Response, nil
 	}
 
-	// 计算可用代币数量：用户数据库里的token减去lock_token表里该address对应记录的token总和
-	availableTokens := userProfile.TokenAmount - totalLockedTokens
+	var currentTokens int32 = 0
+	if userToken != nil {
+		currentTokens = userToken.TokenAmount
+	}
+
+	// 计算可用代币数量：用户token减去已锁定
+	availableTokens := int(currentTokens) - totalLockedTokens
 
 	// 要求用户至少有10000个可用代币才能加入匹配队列
 	if availableTokens < config.GameParams.TokenThreshold {

@@ -5,20 +5,19 @@ set -e
 
 echo "=== 开始自动化API测试 ==="
 
-#重启服务
-echo "重启服务..."
-./restart_apiserver.sh
-echo "重启完成"
+# #重启服务
+# echo "重启服务..."
+# ./restart_apiserver.sh
+# echo "重启完成"
 
-# 生成以太坊密钥
-echo "生成以太坊密钥..."
-./test/api/tools/generate_eth_keys.sh
-echo "密钥生成完成"
+# # 生成以太坊密钥
+# echo "生成以太坊密钥..."
+# echo "密钥生成完成"
 
-# 多用户登录
-echo "执行多用户登录..."
-./test_script/multi_login.sh
-echo "多用户登录完成"
+# # 多用户登录
+# echo "执行多用户登录..."
+# ./test_script/multi_login.sh
+# echo "多用户登录完成"
 
 echo "=== 开始API测试 ==="
 
@@ -347,7 +346,7 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "$response" | jq -C
   echo ""
 
-  sleep 3
+  sleep 5
 
   echo "查看用户1游戏阶段信息..."
   response=$(curl -s -X POST "http://localhost:8080/" \
@@ -748,7 +747,7 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
           submit-hash 1 2 3
         echo ""
 
-        echo "6.20 用户2提交哈希 (第二轮)..."
+        echo "6.20 用户2提交哈希 (第二场)..."
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
           -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
@@ -757,7 +756,7 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
           submit-hash 2 5 4
         echo ""
 
-        echo "6.21 用户1提交卡牌 (第二轮)..."
+        echo "6.21 用户1提交卡牌 (第二场)..."
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
           -t "0x098C0EE7Bd0DA785bBceE99a5ddb7CEbe697283E" \
@@ -766,7 +765,7 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
           submit-cards 1 2 3
         echo ""
 
-        echo "6.22 用户2提交卡牌 (第二轮)..."
+        echo "6.22 用户2提交卡牌 (第二场)..."
         ./bin/ele-apiserver submitter-test \
           -a "$new_contract_address" \
           -t "0x16f30e7f6B8Ea4c75405cB9ad95B14CCf2Ac518c" \
@@ -777,7 +776,7 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
 
         sleep 5
 
-        echo "6.23 获取第二轮对战信息..."
+        echo "6.23 获取第二场对战信息..."
         response=$(curl -s -X POST "http://localhost:8080/" \
           -H "Content-Type: application/json" \
           -d "{
@@ -791,12 +790,12 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
         echo "$response" | jq -C
         echo ""
 
-        echo "第二轮游戏完成！"
+        echo "第二场游戏完成！"
       else
-        echo "未检测到新的合约地址，跳过第二轮游戏"
+        echo "未检测到新的合约地址，跳过第二场游戏"
       fi
     else
-      echo "未检测到新的游戏ID，跳过第二轮游戏"
+      echo "未检测到新的游戏ID，跳过第二场游戏"
     fi
   else
     echo "游戏未结束，跳过ContinueGame测试"
@@ -806,4 +805,10 @@ else
   echo "未检测到游戏ID，跳过对战相关测试"
 fi
 
+# 清理旧的SSE连接
+echo "6.0.1 清理旧的SSE连接..."
+pkill -f "curl.*sse" 2>/dev/null || true
+echo "旧的SSE连接已清理"
+
 echo "=== API测试完成 ==="
+
