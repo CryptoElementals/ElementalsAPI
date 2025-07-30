@@ -417,6 +417,8 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
     submit-cards 2 5 3
   echo ""
 
+  sleep 5
+
   echo "6.11 获取对战信息..."
   response=$(curl -s -X POST "http://localhost:8080/" \
     -H "Content-Type: application/json" \
@@ -430,8 +432,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "响应:"
   echo "$response" | jq -C
   echo ""
-
-  sleep 5
 
   #round 2
     echo "6.5 用户1确认对战..."
@@ -533,6 +533,8 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
     -n 2 \
     submit-cards 3 4 2
   echo ""
+  
+  sleep 5
 
     response=$(curl -s -X POST "http://localhost:8080/" \
     -H "Content-Type: application/json" \
@@ -547,7 +549,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "$response" | jq -C
   echo ""
 
-  sleep 5
 
   #round 3
     echo "6.5 用户1确认对战..."
