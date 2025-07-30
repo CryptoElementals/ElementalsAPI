@@ -125,21 +125,25 @@ func NewGameFromGameInfo(
 				roundNum = r.RoundNumber
 				g.currentRound = r
 			}
-			for _, roundPlayer := range g.currentRound.PlayerRoundInfos {
-				player, err := g.getGamePlayer(roundPlayer.TemporaryAddress)
-				if err != nil {
-					// should never happen
-					log.Fatalf("getGamePlayer failed, err: %v", err)
-				}
-				player.roundPlayer = roundPlayer
-				if len(player.roundPlayer.SubmittedCards) != 0 {
-					player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
-				}
-				player.totalLostHP += int64(player.roundPlayer.LostHP)
+		}
+		for _, roundPlayer := range g.currentRound.PlayerRoundInfos {
+			player, err := g.getGamePlayer(roundPlayer.TemporaryAddress)
+			if err != nil {
+				// should never happen
+				log.Fatalf("getGamePlayer failed, err: %v", err)
 			}
+			player.roundPlayer = roundPlayer
+			if len(player.roundPlayer.SubmittedCards) != 0 {
+				player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
+			}
+			player.totalLostHP = int64(player.roundPlayer.LostHP)
+		}
+		if g.currentRound.Status == proto.RoundStatus_ROUND_COMPLETED {
+			g.setupNewRound()
+		} else {
+			g.sendTimerEventByCurrentRound()
 		}
 
-		g.sendTimerEventByCurrentRound()
 	} else {
 		g.setupNewRound()
 	}
@@ -231,6 +235,7 @@ func (g *Game) pushStateToContractCreating() error {
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
 	for _, player := range g.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
+		player.roundPlayer.PlayerReady = true
 	}
 	err := g.sendContractCreation(allPlayers)
 	if err != nil {
@@ -549,7 +554,7 @@ func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
 			continue
 		}
 		player.roundPlayer.LostHP = p.LostHP
-		player.totalLostHP += int64(p.LostHP)
+		player.totalLostHP = int64(p.LostHP)
 		for i, card := range p.CardStats {
 			for _, sc := range player.roundPlayer.SubmittedCards {
 				if sc.CardNumber == uint32(card.CardNumber) {

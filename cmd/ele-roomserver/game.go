@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	contract "github.com/CryptoElementals/common/contracts"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -29,6 +30,11 @@ import (
 var gameCmd = &cobra.Command{
 	Use:   "game",
 	Short: "game tools for room server testing",
+}
+
+var gameRunCmd = &cobra.Command{
+	Use:   "run",
+	Short: "game tools for room server testing",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := startGame()
 		if err != nil {
@@ -38,18 +44,51 @@ var gameCmd = &cobra.Command{
 	},
 }
 
+var gameGetCmd = &cobra.Command{
+	Use:   "get",
+	Short: "check game info from db",
+	Run: func(cmd *cobra.Command, args []string) {
+		err := db.Init(&db.Config{
+			Endpoint: endpoint,
+			User:     user,
+			Password: password,
+			DbName:   dbName,
+		})
+		if err != nil {
+			fmt.Printf("init db failed, err: %v\n", err)
+			return
+		}
+		game, err := db.LoadGameByGameID(gameID)
+		if err != nil {
+			fmt.Printf("load game failed, err: %v\n", err)
+			return
+		}
+		fmt.Printf("game info: %s\n", toJsonLoggable(game))
+	},
+}
+
 var chainRpc string
 var roomServerEndpoint string
 var walletPath string
 
+var gameID uint
+
 func init() {
 	rootCmd.AddCommand(gameCmd)
-	gameCmd.Flags().StringVarP(&chainRpc, "chain-rpc", "c", "", "chain rpc endpoint")
-	gameCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
-	gameCmd.Flags().StringVarP(&walletPath, "wallet-path", "w", "", "wallet path")
-	gameCmd.MarkFlagRequired("chain-rpc")
-	gameCmd.MarkFlagRequired("room-server-endpoint")
-	gameCmd.MarkFlagRequired("wallet-path")
+	gameCmd.AddCommand(gameRunCmd)
+	gameCmd.AddCommand(gameGetCmd)
+	gameRunCmd.Flags().StringVarP(&chainRpc, "chain-rpc", "c", "", "chain rpc endpoint")
+	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
+	gameRunCmd.Flags().StringVarP(&walletPath, "wallet-path", "w", "", "wallet path")
+	gameRunCmd.MarkFlagRequired("chain-rpc")
+	gameRunCmd.MarkFlagRequired("room-server-endpoint")
+	gameRunCmd.MarkFlagRequired("wallet-path")
+
+	gameGetCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", "", "endpoint of mysql")
+	gameGetCmd.PersistentFlags().StringVarP(&user, "user", "u", "", "user of mysql")
+	gameGetCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password of mysql")
+	gameGetCmd.PersistentFlags().StringVarP(&dbName, "db-name", "d", "", "db name of mysql")
+	gameGetCmd.PersistentFlags().UintVarP(&gameID, "game-id", "i", 0, "game id")
 }
 
 func toJsonLoggable(obj any) string {

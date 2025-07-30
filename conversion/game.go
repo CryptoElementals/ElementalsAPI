@@ -7,6 +7,9 @@ import (
 )
 
 func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
+	if info == nil {
+		return nil
+	}
 	gameInfo := &proto.GameInfo{
 		GameId:              uint32(info.ID),
 		RoomContractAddress: info.RoomContract,
@@ -29,6 +32,9 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 }
 
 func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
+	if result == nil {
+		return nil
+	}
 	gameResult := &proto.GameResult{
 		Multiplier:             int32(result.Multiplier),
 		WinnerWalletAddress:    result.WinnerWalletAddress,
@@ -40,6 +46,9 @@ func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 }
 
 func DbBattleRewardToProtoBattleReward(battleReward *dao.BattleReward) *proto.BattleReward {
+	if battleReward == nil {
+		return nil
+	}
 	return &proto.BattleReward{
 		PlayerRewards: DbPlayerRewardsToProto(battleReward.PlayerRewards),
 		SystemFee:     int32(battleReward.SystemFee),
@@ -47,6 +56,9 @@ func DbBattleRewardToProtoBattleReward(battleReward *dao.BattleReward) *proto.Ba
 }
 
 func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerReward {
+	if len(playerReward) == 0 {
+		return nil
+	}
 	var playerRewards []*proto.PlayerReward
 	for _, playerReward := range playerReward {
 		playerRewards = append(playerRewards, &proto.PlayerReward{
@@ -61,6 +73,9 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerRew
 }
 
 func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerAddress {
+	if player == nil {
+		return nil
+	}
 	return &proto.PlayerAddress{
 		WalletAddress:    player.WalletAddress,
 		TemporaryAddress: player.TemporaryAddress,
@@ -68,6 +83,9 @@ func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerA
 }
 
 func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
+	if round == nil {
+		return nil
+	}
 	return &proto.Round{
 		Number:           int32(round.RoundNumber),
 		Status:           proto.RoundStatus(round.Status),
@@ -76,6 +94,9 @@ func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
 }
 
 func DbPlayerRoundInfosToProto(playerRoundInfos []*dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
+	if len(playerRoundInfos) == 0 {
+		return nil
+	}
 	var playerRoundInfosProto []*proto.PlayerRoundInfo
 	for _, playerRoundInfo := range playerRoundInfos {
 		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(playerRoundInfo))
@@ -84,6 +105,9 @@ func DbPlayerRoundInfosToProto(playerRoundInfos []*dao.PlayerRoundInfo) []*proto
 }
 
 func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundInfo {
+	if playerRoundInfo == nil {
+		return nil
+	}
 	addr := &proto.PlayerAddress{
 		WalletAddress:    playerRoundInfo.WalletAddress,
 		TemporaryAddress: playerRoundInfo.TemporaryAddress,
@@ -98,6 +122,9 @@ func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.Playe
 }
 
 func DbRoundSubmittedCardsToProto(cards []*dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
+	if len(cards) == 0 {
+		return nil
+	}
 	var cardsProto []*proto.RoundSubmittedCard
 	for _, card := range cards {
 		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(card))
@@ -105,6 +132,9 @@ func DbRoundSubmittedCardsToProto(cards []*dao.RoundSubmittedCard) []*proto.Roun
 	return cardsProto
 }
 func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmittedCard {
+	if card == nil {
+		return nil
+	}
 	return &proto.RoundSubmittedCard{
 		PlayerHealthBefore: card.HealthBefore,
 		PlayerHealthEnd:    card.HealthAfter,
@@ -118,6 +148,9 @@ func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmi
 }
 
 func DbCardEffectsToProto(effects []*dao.CardEffect) []*proto.BattleEffect {
+	if len(effects) == 0 {
+		return nil
+	}
 	var effectsProto []*proto.BattleEffect
 	for _, effect := range effects {
 		effectsProto = append(effectsProto, DbCardEffectToProto(effect))
@@ -126,6 +159,9 @@ func DbCardEffectsToProto(effects []*dao.CardEffect) []*proto.BattleEffect {
 }
 
 func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
+	if effect == nil {
+		return nil
+	}
 	return &proto.BattleEffect{
 		Type:                   effect.Type,
 		Value:                  effect.Value,
@@ -136,6 +172,9 @@ func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
 }
 
 func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
+	if round == nil {
+		return nil
+	}
 	return &proto.RoundResult{
 		Players:     DbPlayerRoundInfosToProtoPlayerRoundStats(round.PlayerRoundInfos),
 		RoundNumber: round.RoundNumber,
@@ -144,6 +183,9 @@ func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
 }
 
 func DbPlayerRoundInfosToProtoPlayerRoundStats(playerRoundInfo []*dao.PlayerRoundInfo) []*proto.PlayerRoundStat {
+	if len(playerRoundInfo) == 0 {
+		return nil
+	}
 	var playerRoundStats []*proto.PlayerRoundStat
 	for _, playerRoundInfo := range playerRoundInfo {
 		playerRoundStats = append(playerRoundStats, DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo))
@@ -152,6 +194,9 @@ func DbPlayerRoundInfosToProtoPlayerRoundStats(playerRoundInfo []*dao.PlayerRoun
 }
 
 func DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundStat {
+	if playerRoundInfo == nil {
+		return nil
+	}
 	return &proto.PlayerRoundStat{
 		WalletAddress:    playerRoundInfo.WalletAddress,
 		TemporaryAddress: playerRoundInfo.TemporaryAddress,
@@ -161,6 +206,9 @@ func DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo *dao.PlayerRoundInf
 }
 
 func DbRoundSubmittedCardToProtoPlayerCardStats(roundSubmittedCard []*dao.RoundSubmittedCard) []*proto.PlayerCardStat {
+	if len(roundSubmittedCard) == 0 {
+		return nil
+	}
 	var playerCardStats []*proto.PlayerCardStat
 	for i, card := range roundSubmittedCard {
 		playerCardStats = append(playerCardStats, DbRoundSubmittedCardToProtoPlayerCardStat(i, card))
@@ -169,6 +217,9 @@ func DbRoundSubmittedCardToProtoPlayerCardStats(roundSubmittedCard []*dao.RoundS
 }
 
 func DbRoundSubmittedCardToProtoPlayerCardStat(i int, card *dao.RoundSubmittedCard) *proto.PlayerCardStat {
+	if card == nil {
+		return nil
+	}
 	return &proto.PlayerCardStat{
 		CardNumber:       int32(i),
 		CardID:           int32(card.CardID),
@@ -183,6 +234,9 @@ func DbRoundSubmittedCardToProtoPlayerCardStat(i int, card *dao.RoundSubmittedCa
 }
 
 func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.GamePhase {
+	if game == nil || currentRound == nil {
+		return nil
+	}
 	gamePhase := &proto.GamePhase{
 		GameType: proto.GameType(game.Type),
 	}
@@ -197,9 +251,19 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 			IsConfirmed: playerInfo.PlayerReady,
 		})
 	}
+	playerStatus := proto.PlayerStatus(0)
+	switch game.Status {
+	case proto.GameStatus_GAME_INIT:
+		playerStatus = proto.PlayerStatus_PLAYER_MATCHED
+	case proto.GameStatus_GAME_RUNNING:
+		playerStatus = proto.PlayerStatus_PLAYER_IN_GAME
+	case proto.GameStatus_GAME_END:
+		playerStatus = proto.PlayerStatus_PLAYER_KNOWN
+	}
+
 	gamePhase.PvPInfo = &proto.PvPInfo{
 		GameID:          uint32(game.ID),
-		Status:          proto.PlayerStatus(game.Status),
+		Status:          playerStatus,
 		ContractAddress: game.RoomContract,
 		BeginAt:         uint64(game.CreatedAt.Unix()),
 		TimeoutDuration: uint64(game.RoundTimeout),

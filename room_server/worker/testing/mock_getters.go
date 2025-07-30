@@ -141,3 +141,17 @@ func (mr *MockQueuerMockRecorder) IsPlayerInQueue(arg0 interface{}) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPlayerInQueue", reflect.TypeOf((*MockQueuer)(nil).IsPlayerInQueue), arg0)
 }
+
+// RefuseContinueGame mocks base method.
+func (m *MockQueuer) RefuseContinueGame(arg0 types.PlayerAddress, arg1 uint) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefuseContinueGame", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RefuseContinueGame indicates an expected call of RefuseContinueGame.
+func (mr *MockQueuerMockRecorder) RefuseContinueGame(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefuseContinueGame", reflect.TypeOf((*MockQueuer)(nil).RefuseContinueGame), arg0, arg1)
+}

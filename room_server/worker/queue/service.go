@@ -4,11 +4,12 @@ import (
 	"context"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type Service struct {
@@ -24,10 +25,12 @@ func NewService(ctx context.Context,
 	minTokenToJoinQueue int32,
 	continueTimeout int64,
 ) *Service {
-	return &Service{
-		ctx:   ctx,
-		queue: NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout),
+	s := &Service{
+		ctx:                 ctx,
+		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout),
+		minTokenToJoinQueue: minTokenToJoinQueue,
 	}
+	return s
 }
 
 func (s *Service) Start() error {
@@ -44,11 +47,6 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 }
 
 func (s *Service) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
-	err := s.lockToken(&event.PlayerAddress)
-	if err != nil {
-		log.Error("lockToken failed, err: ", err)
-		return err
-	}
 	return s.queue.HandleJoinQueueEvent(event)
 }
 
@@ -61,22 +59,19 @@ func (s *Service) HandleContinueGameEvent(event *types.PlayerContinueEvent) erro
 	return s.queue.HandleContinueGameEvent(event)
 }
 
-func (s *Service) GetPlayerToken(address *types.PlayerAddress) *dao.UserToken {
-	userToken, err := db.GetPlayerToken(s.ctx, address.WalletAddress)
+func (s *Service) GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error) {
+	userToken, err := db.GetPlayerToken(s.ctx, walletAddress)
 	if err != nil {
 		log.Error("GetPlayerToken failed, err: ", err)
-		return nil
+		return nil, err
 	}
-	return userToken
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
 }
 
 func (s *Service) GameResultSettlement(event *types.GameCompletedEvent) error {
 	return s.queue.GameResultSettlement(event)
 }
 
-func (s *Service) lockToken(address *types.PlayerAddress) error {
-	if s.minTokenToJoinQueue <= 0 {
-		return nil
-	}
-	return db.LockUserToken(s.ctx, address.WalletAddress, address.TemporaryAddress, s.minTokenToJoinQueue)
+func (s *Service) RefuseContinueGame(playerAddress types.PlayerAddress, lastGameID uint) error {
+	return s.queue.RefuseContinueGame(playerAddress, lastGameID)
 }

@@ -19,7 +19,7 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 func LockUserToken(ctx context.Context, address string, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("Locked").First(userToken).Error
+		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}
@@ -94,9 +94,34 @@ func BattleResultSettlement(game *dao.Game) error {
 
 func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error) {
 	var userToken dao.UserToken
-	err := Get().Where("wallet_address = ?", address).Preload("Locked").First(&userToken).Error
+	err := Get().Where("wallet_address = ?", address).Preload("LockedTokens").First(&userToken).Error
 	if err != nil {
 		return nil, err
 	}
+	// filter locked tokens by time
+	lockedTokens := make([]*dao.LockedUserToken, 0)
+	for _, locked := range userToken.LockedTokens {
+		if time.Since(locked.CreatedAt) < maxLockTime {
+			lockedTokens = append(lockedTokens, locked)
+		}
+	}
+	userToken.LockedTokens = lockedTokens
 	return &userToken, nil
+}
+
+func SetLockedTokenGameID(ctx context.Context, walletAddress, temporaryAddress string, gameID uint) error {
+	return Get().Transaction(func(tx *gorm.DB) error {
+		userToken := &dao.UserToken{}
+		err := tx.Where("wallet_address = ?", walletAddress).Preload("LockedTokens").First(userToken).Error
+		if err != nil {
+			return err
+		}
+		for _, locked := range userToken.LockedTokens {
+			if locked.TemporaryAddress == temporaryAddress {
+				locked.GameID = gameID
+				return tx.Save(locked).Error
+			}
+		}
+		return errors.New("locked token not found")
+	})
 }
