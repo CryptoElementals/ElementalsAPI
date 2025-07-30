@@ -80,7 +80,7 @@ func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID u
 	if !ok {
 		return
 	}
-	if gameID == 0 || gameInfo.gameID != gameID {
+	if gameID != 0 && gameInfo.gameID != gameID {
 		return
 	}
 	continueMap := m.continueQueue[gameInfo.gameID]
