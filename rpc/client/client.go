@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
 
 	"github.com/CryptoElementals/common/log"
 	pb "github.com/CryptoElementals/common/rpc/proto"
@@ -32,14 +31,9 @@ func InitGlobalClients(serverAddress string) error {
 		return nil // 已经初始化过了
 	}
 
-	// 设置连接选项，包括keepalive参数
+	// 设置连接选项
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second, // 每30秒发送keepalive ping
-			Timeout:             5 * time.Second,  // 5秒超时
-			PermitWithoutStream: true,             // 允许在没有活动流时发送keepalive ping
-		}),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB
 			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB
@@ -65,11 +59,11 @@ func InitGlobalClients(serverAddress string) error {
 
 // startHealthCheck 启动健康检查
 func startHealthCheck(serverAddress string) {
-	ticker := time.NewTicker(10 * time.Second) // 改为每10秒检查一次
+	ticker := time.NewTicker(10 * 60 * time.Second) // 每10分钟检查一次
 	defer ticker.Stop()
 
 	var consecutiveFailures int
-	const maxRetries = 5
+	const maxRetries = 3
 
 	for {
 		select {
@@ -128,11 +122,6 @@ func reconnectGlobalClients(serverAddress string) error {
 	// 建立新连接
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second,
-			Timeout:             5 * time.Second,
-			PermitWithoutStream: true,
-		}),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB
 			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB

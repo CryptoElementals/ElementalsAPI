@@ -2,12 +2,8 @@ package match
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
-	"time"
 
-	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
@@ -94,6 +90,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 统一将地址转为小写
 	address = strings.ToLower(address)
+	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
 	rpcClient := client.GetGlobalRpcClient()
@@ -108,7 +105,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 		RoundNumber: uint32(task.Request.Round),
 		PlayerAddress: &proto.PlayerAddress{
 			WalletAddress:    address,
-			TemporaryAddress: task.Request.TempAddress,
+			TemporaryAddress: tempAddress,
 		},
 	}
 
@@ -122,40 +119,4 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully confirmed battle"
 	return task.Response, nil
-}
-
-// publishMatchStatusChange 发布匹配状态变化事件到Redis
-func (task *ConfirmBattleTask) publishMatchStatusChange(matchID string, status string, roomID string) {
-	// 创建Redis连接
-	conn := redis.GetGlobalPool().Get()
-	defer conn.Close()
-
-	// 创建事件数据
-	eventData := map[string]interface{}{
-		"table":     "matches",
-		"operation": "UPDATE",
-		"record_id": matchID,
-		"data": map[string]interface{}{
-			"match_id": matchID,
-			"status":   status,
-			"room_id":  roomID,
-		},
-		"timestamp": time.Now().Unix(),
-	}
-
-	// 序列化事件
-	jsonData, err := json.Marshal(eventData)
-	if err != nil {
-		log.Errorf("Failed to marshal match status change event: %v", err)
-		return
-	}
-
-	// 发布到Redis频道
-	_, err = conn.Do("PUBLISH", "db:matches:changes", string(jsonData))
-	if err != nil {
-		log.Errorf("Failed to publish match status change event: %v", err)
-		return
-	}
-
-	log.Infof("Published match status change event for match %s: %s", matchID, string(jsonData))
 }

@@ -36,6 +36,7 @@ type PlayerRoundInput struct {
 	Cards            []int        `json:"Cards"`
 	HP               int          `json:"HP"`
 	LostHP           int          `json:"LostHP"`
+	Commitment       []byte       `json:"Commitment"`       // 本回合提交的承诺（为空表示未提交）
 	Status           PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
 }
 

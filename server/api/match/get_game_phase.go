@@ -26,6 +26,7 @@ type GetGamePhaseRequest struct {
 type PvPInfo struct {
 	Phase           uint32 `json:"Phase"`           // None, Queueing, Matching, InBattle: 0123
 	GameID          uint32 `json:"GameID"`          // 游戏ID
+	ContractAddress string `json:"ContractAddress"` // 房间合约地址
 	BeginAt         uint64 `json:"BeginAt"`         // 开始时间
 	TimeoutDuration uint64 `json:"TimeoutDuration"` // 超时时间
 }
@@ -128,7 +129,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 
 	task.Response.PvPInfo.BeginAt = gamePhase.PvPInfo.BeginAt
 	task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
-
+	task.Response.PvPInfo.ContractAddress = gamePhase.PvPInfo.ContractAddress
 	if gamePhase.PvPInfo.GameID != 0 {
 		task.Response.PvPInfo.GameID = gamePhase.PvPInfo.GameID
 	}

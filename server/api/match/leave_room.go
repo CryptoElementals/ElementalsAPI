@@ -13,26 +13,26 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const LEAVE_AFTER_GAME_LABEL = "LeaveAfterGame"
+const LEAVE_ROOM_LABEL = "LeaveRoom"
 
-// LeaveAfterGameRequest 请求结构体
-type LeaveAfterGameRequest struct {
+// LeaveRoomRequest 请求结构体
+type LeaveRoomRequest struct {
 	api.BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
 }
 
-// LeaveAfterGameResponse 响应结构体
-type LeaveAfterGameResponse struct {
+// LeaveRoomResponse 响应结构体
+type LeaveRoomResponse struct {
 	api.BaseResponse
 }
 
-type LeaveAfterGameTask struct {
-	Request  *LeaveAfterGameRequest
-	Response *LeaveAfterGameResponse
+type LeaveRoomTask struct {
+	Request  *LeaveRoomRequest
+	Response *LeaveRoomResponse
 }
 
-func NewLeaveAfterGameRequest(data *map[string]interface{}) (*LeaveAfterGameRequest, error) {
-	req := &LeaveAfterGameRequest{}
+func NewLeaveRoomRequest(data *map[string]interface{}) (*LeaveRoomRequest, error) {
+	req := &LeaveRoomRequest{}
 	err := mapstructure.Decode(*data, &req)
 	if err != nil {
 		return nil, err
@@ -41,23 +41,23 @@ func NewLeaveAfterGameRequest(data *map[string]interface{}) (*LeaveAfterGameRequ
 	return req, nil
 }
 
-func NewLeaveAfterGameResponse(sessionId string) *LeaveAfterGameResponse {
-	return &LeaveAfterGameResponse{
+func NewLeaveRoomResponse(sessionId string) *LeaveRoomResponse {
+	return &LeaveRoomResponse{
 		BaseResponse: api.BaseResponse{
-			Action:      LEAVE_AFTER_GAME_LABEL + "Response",
+			Action:      LEAVE_ROOM_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewLeaveAfterGameTask(data *map[string]interface{}) (api.Task, error) {
-	req, err := NewLeaveAfterGameRequest(data)
+func NewLeaveRoomTask(data *map[string]interface{}) (api.Task, error) {
+	req, err := NewLeaveRoomRequest(data)
 	if err != nil {
 		return nil, err
 	}
-	task := &LeaveAfterGameTask{
+	task := &LeaveRoomTask{
 		Request:  req,
-		Response: NewLeaveAfterGameResponse(req.BaseRequest.RequestUUID),
+		Response: NewLeaveRoomResponse(req.BaseRequest.RequestUUID),
 	}
 
 	validate := validator.New()
@@ -69,7 +69,7 @@ func NewLeaveAfterGameTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *LeaveAfterGameTask) Run(c *gin.Context) (api.Response, error) {
+func (task *LeaveRoomTask) Run(c *gin.Context) (api.Response, error) {
 	// 获取玩家地址
 	_params, _ := c.Get("params")
 	params, ok := _params.(*map[string]interface{})
