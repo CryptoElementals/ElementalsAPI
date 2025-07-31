@@ -1,7 +1,10 @@
 package system
 
 import (
+	"fmt"
+
 	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -66,22 +69,17 @@ func NewListAvatarsTask(data *map[string]interface{}) (api.Task, error) {
 
 func (task *ListAvatarsTask) Run(c *gin.Context) (api.Response, error) {
 
-	// 应该改成读取us3，然后返回头像列表
-	defaultAvatarURLs := []string{
-		"https://us3.example.com/avatars/default_avatar_1.png",
-		"https://us3.example.com/avatars/default_avatar_2.png",
-		"https://us3.example.com/avatars/default_avatar_3.png",
-		"https://us3.example.com/avatars/default_avatar_4.png",
-		"https://us3.example.com/avatars/default_avatar_5.png",
-		"https://us3.example.com/avatars/default_avatar_6.png",
-		"https://us3.example.com/avatars/default_avatar_7.png",
-		"https://us3.example.com/avatars/default_avatar_8.png",
-		"https://us3.example.com/avatars/default_avatar_9.png",
-		"https://us3.example.com/avatars/default_avatar_10.png",
+	// 从S3获取头像列表
+	avatarURLs, err := utils.GetAvatarURLs()
+	if err != nil {
+		// 获取失败时返回错误
+		task.Response.BaseResponse.RetCode = -1
+		task.Response.BaseResponse.Message = fmt.Sprintf("Failed to retrieve avatar list: %v", err)
+		return task.Response, err
 	}
 
 	// 设置响应数据
-	task.Response.AvatarURLs = defaultAvatarURLs
+	task.Response.AvatarURLs = avatarURLs
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Avatar list retrieved successfully"
 

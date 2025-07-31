@@ -9,6 +9,7 @@ import (
 )
 
 var RoomServerAddress string
+var GConf ApiServerConfig
 
 // ApiServerConfig represents the complete application configuration structure
 type ApiServerConfig struct {
@@ -18,6 +19,7 @@ type ApiServerConfig struct {
 	ServerCfg         ServerConfig    `mapstructure:"server"`
 	RoomServerAddress string          `mapstructure:"room-server-address"`
 	GameParams        GameParamConfig `mapstructure:"game-params"`
+	S3Config          S3Config        `mapstructure:"s3"`
 }
 
 // LoadApiServerConfig loads the complete application configuration from file
@@ -33,6 +35,9 @@ func LoadApiServerConfig(configPath string) (*ApiServerConfig, error) {
 
 	// 将房间服地址写入全局变量
 	RoomServerAddress = cfg.RoomServerAddress
+
+	// 设置全局配置
+	GConf = *cfg
 
 	// 初始化游戏参数
 	InitializeGameParams(&cfg.GameParams)
@@ -60,6 +65,11 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 	// Validate server configuration
 	if err := validateServerConfig(&cfg.ServerCfg); err != nil {
 		return fmt.Errorf("server config validation failed: %w", err)
+	}
+
+	// Validate S3 configuration
+	if err := validateS3Config(&cfg.S3Config); err != nil {
+		return fmt.Errorf("s3 config validation failed: %w", err)
 	}
 
 	// Validate room server address
@@ -164,6 +174,11 @@ func setDefaultValues(cfg *ApiServerConfig) {
 	// 默认 RoomServer 地址
 	if cfg.RoomServerAddress == "" {
 		cfg.RoomServerAddress = "127.0.0.1:50051"
+	}
+
+	// Set default S3 configuration
+	if cfg.S3Config.PresignExpire == 0 {
+		cfg.S3Config.PresignExpire = 3600 // 1小时过期
 	}
 
 	// 游戏参数的初始化逻辑已移动到 InitializeGameParams 函数中

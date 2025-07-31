@@ -8,6 +8,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -127,13 +128,34 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.UserInfo = UserInfo{
 		Address:       userProfile.Address,
 		Name:          userProfile.Name,
-		AvatarURL:     userProfile.AvatarURL,
-		BackgroundURL: userProfile.BackgroundURL,
+		AvatarURL:     userProfile.AvatarURL,     // 这里存储的是文件名，需要转换为预签名URL
+		BackgroundURL: userProfile.BackgroundURL, // 这里存储的是文件名，需要转换为预签名URL
 		Points:        points,
 		TokenAmount:   tokenAmount,
 		OverallGame:   userProfile.OverallGame,
 		WinningRate:   userProfile.WinningRate,
 		CardStatInfo:  cardStatInfo,
+	}
+
+	// 将文件名转换为预签名URL
+	if userProfile.AvatarURL != "" {
+		avatarURL, err := utils.GetPresignedImageURL(userProfile.AvatarURL)
+		if err != nil {
+			log.Errorf("%s, failed to generate presigned avatar URL for %s: %v", task.Request.RequestUUID, userProfile.AvatarURL, err)
+			// 如果生成失败，保持原文件名
+		} else {
+			task.Response.UserInfo.AvatarURL = avatarURL
+		}
+	}
+
+	if userProfile.BackgroundURL != "" {
+		backgroundURL, err := utils.GetPresignedImageURL(userProfile.BackgroundURL)
+		if err != nil {
+			log.Errorf("%s, failed to generate presigned background URL for %s: %v", task.Request.RequestUUID, userProfile.BackgroundURL, err)
+			// 如果生成失败，保持原文件名
+		} else {
+			task.Response.UserInfo.BackgroundURL = backgroundURL
+		}
 	}
 
 	log.Infof("%s, user profile retrieved successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
