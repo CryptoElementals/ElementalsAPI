@@ -50,9 +50,13 @@ func New(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.LoadWallet(cfg.WalletPath)
-	if err != nil {
-		return nil, err
+	wallets := make([]*wallet.Wallet, 0, len(cfg.WalletPaths))
+	for _, path := range cfg.WalletPaths {
+		w, err := wallet.LoadWallet(path)
+		if err != nil {
+			return nil, err
+		}
+		wallets = append(wallets, w)
 	}
 	var c cache.Cache
 	if len(isDevelop) != 0 && isDevelop[0] {
@@ -64,7 +68,10 @@ func New(ctx context.Context,
 		}
 	}
 
-	chainSvc := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, w, c)
+	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, wallets, c)
+	if err != nil {
+		return nil, err
+	}
 	s.chainSvc = chainSvc
 	gameSvc := game.NewService(ctx, s.mgr, cfg.GameInitialHP, cfg.RoundTimeout, cfg.MaxRounds, chainSvc)
 	s.gameSvc = gameSvc

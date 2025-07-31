@@ -45,7 +45,7 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 				RoomManagerAddress: roomManagerAddress,
 			},
 		},
-		WalletPath:      tempFile,
+		WalletPaths:     []string{tempFile},
 		RoundTimeout:    gametTimeout,
 		ContinueTimeout: gametTimeout,
 		MaxRounds:       3,
