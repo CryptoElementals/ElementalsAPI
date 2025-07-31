@@ -1,9 +1,6 @@
 package api
 
 import (
-	"context"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,12 +15,6 @@ const (
 
 type Task interface {
 	Run(c *gin.Context) (Response, error)
-}
-
-// SSETask interface used for Server-Sent Events
-type SSETask interface {
-	Task
-	RunSSE(ctx context.Context, c *gin.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error
 }
 
 type creator func(data *map[string]interface{}) (Task, error)

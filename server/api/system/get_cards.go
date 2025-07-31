@@ -23,18 +23,18 @@ type GetAllCardsRequest struct {
 // 响应用卡牌结构体
 // 只包含业务需要的字段
 type CardInfo struct {
-	CardID             int    `json:"card_id"`
-	ElementType        string `json:"element_type"`
-	Level              string `json:"level"`
-	LifeForce          int    `json:"life_force"`
-	Attack             int    `json:"attack"`
-	Defense            int    `json:"defense"`
-	NormalImageURL     string `json:"normal_image_url"`
-	ActiveImageURL     string `json:"active_image_url"`
-	BackgroundImageURL string `json:"background_image_url"`
-	IconURL            string `json:"icon_url"`
-	Description        string `json:"description"`
-	Name               string `json:"name"`
+	CardID             int    `json:"CardId"`
+	ElementType        string `json:"ElementType"`
+	Level              string `json:"Level"`
+	LifeForce          int    `json:"LifeForce"`
+	Attack             int    `json:"Attack"`
+	Defense            int    `json:"Defense"`
+	NormalImageURL     string `json:"NormalImageURL"`
+	ActiveImageURL     string `json:"ActiveImageURL"`
+	BackgroundImageURL string `json:"BackgroundImageURL"`
+	IconURL            string `json:"IconURL"`
+	Description        string `json:"Description"`
+	Name               string `json:"Name"`
 }
 
 // 响应结构体

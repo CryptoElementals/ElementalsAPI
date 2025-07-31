@@ -25,6 +25,7 @@ type GetUserProfileRequest struct {
 type UserInfo struct {
 	Address       string            `json:"Address"`
 	Name          string            `json:"Name"`
+	AvatarName    string            `json:"AvatarName"`
 	AvatarURL     string            `json:"AvatarURL"`
 	BackgroundURL string            `json:"BackgroundURL"`
 	Points        int               `json:"Points"`
@@ -128,8 +129,9 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.UserInfo = UserInfo{
 		Address:       userProfile.Address,
 		Name:          userProfile.Name,
-		AvatarURL:     userProfile.AvatarURL,     // 这里存储的是文件名，需要转换为预签名URL
-		BackgroundURL: userProfile.BackgroundURL, // 这里存储的是文件名，需要转换为预签名URL
+		AvatarName:    userProfile.AvatarURL,
+		AvatarURL:     "",
+		BackgroundURL: "",
 		Points:        points,
 		TokenAmount:   tokenAmount,
 		OverallGame:   userProfile.OverallGame,
