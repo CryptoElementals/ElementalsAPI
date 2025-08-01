@@ -38,6 +38,7 @@ func convertProtoRoundInputToInternal(in *pb.RoundInput) *RoundInput {
 			HP:               int(p.GetHP()),
 			LostHP:           int(p.GetLostHP()),
 			Commitment:       p.GetCommitment(),
+			Surrendered:      p.GetSurrendered(),
 			// Status 字段将在 ValidateRoundInput 中设置默认值
 		}
 	}

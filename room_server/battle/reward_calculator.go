@@ -39,8 +39,10 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 			totalDeducted += tokenDeduction
 
 			isOffline := false
+			isSurrendered := false
 			if status, exists := playerStatuses[player.WalletAddress]; exists {
 				isOffline = status == PLAYER_OFFLINE
+				isSurrendered = status == PLAYER_SURRENDERED
 			}
 
 			playerRewards = append(playerRewards, PlayerReward{
@@ -49,6 +51,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 				TokenChange:      -tokenDeduction,
 				PointChange:      pointGain,
 				IsOffline:        isOffline,
+				IsSurrendered:    isSurrendered,
 			})
 		}
 		systemFee = totalDeducted

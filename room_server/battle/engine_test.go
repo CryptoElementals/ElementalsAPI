@@ -693,3 +693,410 @@ func TestAllPlayersOfflineTie(t *testing.T) {
 //go test -v ./room_server/battle/ -run "^TestExecuteRoundProtoFromFile$" | tee test/api/battle/test.log
 
 //go test -v ./room_server/battle/ -run TestExecuteRoundThreePlayers
+
+// 投降功能测试用例
+func TestSurrenderLogic(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：一个玩家投降
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2500,
+				LostHP:           4000,
+				Commitment:       []byte{1},
+				Surrendered:      false, // 玩家2不投降
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
+	}
+
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("投降测试结果 (JSON):\n%s", string(jsonData))
+}
+
+func TestAllPlayersSurrender(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：所有玩家都投降
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2500,
+				LostHP:           4000,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家2也投降
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
+	}
+
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("全员投降测试结果 (JSON):\n%s", string(jsonData))
+}
+
+func TestSurrenderPriorityOverOffline(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：投降优先级高于离线
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1}, // 卡牌不足，会被设为离线
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 但玩家1投降，优先级更高
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2500,
+				LostHP:           4000,
+				Commitment:       []byte{1},
+				Surrendered:      false,
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
+	}
+
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("投降优先级测试结果 (JSON):\n%s", string(jsonData))
+}
+
+// 三人游戏投降测试用例
+
+func TestThreePlayersOneSurrender(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：三人游戏中1人投降
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           2500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2500,
+				LostHP:           1000,
+				Commitment:       []byte{1},
+				Surrendered:      false, // 玩家2不投降
+			},
+			{
+				WalletAddress:    "3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2000,
+				LostHP:           1500,
+				Commitment:       []byte{1},
+				Surrendered:      false, // 玩家3不投降
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
+	}
+
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("三人游戏1人投降测试结果 (JSON):\n%s", string(jsonData))
+}
+
+func TestThreePlayersTwoSurrender(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：三人游戏中2人投降
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2500,
+				LostHP:           3000,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家2也投降
+			},
+			{
+				WalletAddress:    "3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2000,
+				LostHP:           1500,
+				Commitment:       []byte{1},
+				Surrendered:      false, // 玩家3不投降，应该获胜
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
+	}
+
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("三人游戏2人投降测试结果 (JSON):\n%s", string(jsonData))
+}
+
+func TestThreePlayersAllSurrender(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：三人游戏中所有人都投降
+	input := &RoundInput{
+		RoundNumber: 1,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           2500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2500,
+				LostHP:           3000,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家2投降
+			},
+			{
+				WalletAddress:    "3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               2000,
+				LostHP:           1500,
+				Commitment:       []byte{1},
+				Surrendered:      true, // 玩家3也投降
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	if err != nil {
+		t.Fatalf("执行回合失败: %v", err)
+	}
+
+	// 完整打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Errorf("Failed to marshal result to JSON: %v", err)
+		return
+	}
+
+	t.Logf("三人游戏全员投降测试结果 (JSON):\n%s", string(jsonData))
+}
+
+func TestExecuteRoundProtoSurrender(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：使用Proto格式测试2人游戏投降
+	protoInput := &pb.RoundInput{
+		RoundNumber: 1,
+		Players: []*pb.PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int32{1, 2, 3},
+				HP:               3000,
+				LostHP:           8000,
+				Commitment:       []byte("dummy"),
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int32{3, 4, 2},
+				HP:               2500,
+				LostHP:           1500,
+				Commitment:       []byte("dummy"),
+				Surrendered:      true, // 玩家2不投降，应该获胜
+			},
+		},
+	}
+
+	roundResult, gameResult, err := engine.ExecuteRoundProto(protoInput)
+	require.NoError(t, err)
+	require.NotNil(t, roundResult)
+
+	// 打印回合结果
+	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
+
+	// 打印游戏结果（如果有的话）
+	if gameResult != nil {
+		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		t.Logf("GameResult (JSON):\n%s", string(grJSON))
+	}
+}
+
+func TestExecuteRoundProtoThreePlayersSurrender(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：使用Proto格式测试3人游戏投降
+	protoInput := &pb.RoundInput{
+		RoundNumber: 1,
+		Players: []*pb.PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int32{1, 2, 3},
+				HP:               3000,
+				LostHP:           2000,
+				Commitment:       []byte("dummy"),
+				Surrendered:      true, // 玩家1投降
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int32{3, 4, 2},
+				HP:               2500,
+				LostHP:           1500,
+				Commitment:       []byte("dummy"),
+				Surrendered:      false, // 玩家2不投降
+			},
+			{
+				WalletAddress:    "player3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				Cards:            []int32{2, 1, 4},
+				HP:               2000,
+				LostHP:           1000,
+				Commitment:       []byte("dummy"),
+				Surrendered:      false, // 玩家3不投降
+			},
+		},
+	}
+
+	roundResult, gameResult, err := engine.ExecuteRoundProto(protoInput)
+	require.NoError(t, err)
+	require.NotNil(t, roundResult)
+
+	// 打印回合结果
+	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
+
+	// 打印游戏结果（如果有的话）
+	if gameResult != nil {
+		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		t.Logf("GameResult (JSON):\n%s", string(grJSON))
+	}
+}

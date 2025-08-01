@@ -31,14 +31,16 @@ const (
 
 // RoundInput battle input parameters
 type PlayerRoundInput struct {
-	WalletAddress    string       `json:"WalletAddress"`
-	TemporaryAddress string       `json:"TemporaryAddress"`
-	Cards            []int        `json:"Cards"`
-	HP               int          `json:"HP"`
-	LostHP           int          `json:"LostHP"`
-	Commitment       []byte       `json:"Commitment"`       // 本回合提交的承诺（为空表示未提交）
-	Status           PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
-	Surrendered      bool         `json:"Surrendered"`      // 是否投降
+	WalletAddress    string `json:"WalletAddress"`
+	TemporaryAddress string `json:"TemporaryAddress"`
+	Cards            []int  `json:"Cards"`
+	HP               int    `json:"HP"`
+	LostHP           int    `json:"LostHP"`
+	Commitment       []byte `json:"Commitment"`  // 本回合提交的承诺（为空表示未提交）
+	Surrendered      bool   `json:"Surrendered"` // 是否投降
+
+	Status PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
+
 }
 
 type RoundInput struct {

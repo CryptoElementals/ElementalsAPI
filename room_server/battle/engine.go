@@ -96,8 +96,8 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	if !hasOfflinePlayer && !hasSurrenderedPlayer {
 		//目前只有2人对战，这里实际上只会取到i=0,j=1，处理一次card对战
 		//如果3人，应该在每个round的每个card的3次card对战结束后再统一结算effect，包括effect的记录和计算
-		//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有
-		//多人情况下怎么解决合谋作弊问题，即两个人串通让第三个人输？
+		//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有，由于现在不需要前端实现，所以暂时不加
+		//多人情况下怎么解决合谋作弊问题，即两个人串通让第三个人输？未解决这个问题，所以现在游戏里没有3人对战的模式
 		for cardIdx := 0; cardIdx < 3; cardIdx++ {
 			for i := 0; i < playerCount; i++ {
 				for j := i + 1; j < playerCount; j++ {
