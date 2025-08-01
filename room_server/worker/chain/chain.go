@@ -138,6 +138,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 	batchTx := &types.EventBatch{}
 	blockHash := strings.ToLower(hexutil.Encode(evt.blockHash))
 	blockNumber := evt.blockNum
+	blockTime := int64(evt.txs.Timestamp)
 	for _, protoTx := range evt.txs.Transactions {
 		hash := strings.ToLower(hexutil.Encode(protoTx.TxHash))
 		switch tx := protoTx.Tx.(type) {
@@ -154,7 +155,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 				continue
 			}
 			log.Infof("contractCreated: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
-			c.contractCreated(batchTx, uint(gid), blockHash, blockNumber, tx)
+			c.contractCreated(batchTx, blockTime, uint(gid), blockHash, blockNumber, tx)
 		case *proto.Transaction_RoomContractSetupReady:
 			gid, err := c.getRoomIDByContract(tx.RoomContractSetupReady.RoomContractAddress)
 			if err != nil {
@@ -162,7 +163,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 				continue
 			}
 			log.Infof("contractSetupReady: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
-			c.roundSetupCompleted(batchTx, gid, blockHash, blockNumber, tx)
+			c.roundSetupCompleted(batchTx, blockTime, gid, blockHash, blockNumber, tx)
 		case *proto.Transaction_CommitmentsOnChain:
 			gid, err := c.getRoomIDByContract(tx.CommitmentsOnChain.RoomContractAddress)
 			if err != nil {
@@ -172,7 +173,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CommitmentsOnChain.Address)
 			log.Infof("commitmentOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, address %s", gid, blockHash, blockNumber, hash, address.String())
-			c.commitmentOnChain(batchTx, gid, hash, blockHash, blockNumber, tx)
+			c.commitmentOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_CardsOnChain:
 			gid, err := c.getRoomIDByContract(tx.CardsOnChain.RoomContractAddress)
 			if err != nil {
@@ -182,7 +183,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CardsOnChain.Address)
 			log.Infof("cardsOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, contract address: %s, player address %s", gid, blockHash, blockNumber, hash, tx.CardsOnChain.RoomContractAddress, address.String())
-			c.cardsOnChain(batchTx, gid, hash, blockHash, blockNumber, tx)
+			c.cardsOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
 		}
 	}
 	batchTx.Wait()
@@ -205,11 +206,12 @@ func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
 	return dbRoom.GameID, nil
 }
 
-func (c *Chain) contractCreated(batchTx *types.EventBatch, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {
+func (c *Chain) contractCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {
 	roomContract := strings.ToLower(tx.RoomContractCreated.RoomContractAddress)
 	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
 		GameID:              gameID,
 		RoomContractAddress: roomContract,
+		TimeStamp:           blockTime,
 	}, true)
 	batchTx.Add(contractCreatedEvt)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
@@ -221,18 +223,19 @@ func (c *Chain) contractCreated(batchTx *types.EventBatch, gameID uint, blockHas
 	return db.UpdateCreateRoomTxBlockHashAndContractByGameID(gameID, blockHash, blockNumber, roomContract)
 }
 
-func (c *Chain) roundSetupCompleted(batchTx *types.EventBatch, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractSetupReady) error {
+func (c *Chain) roundSetupCompleted(batchTx *types.EventBatch, blockTime int64, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractSetupReady) error {
 	roundNumber := tx.RoomContractSetupReady.RoundNumber
 	roundSetupCompletedEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewRoundSetupComplete{
 		GameID:      gameID,
 		RoundNumber: roundNumber,
+		TimeStamp:   blockTime,
 	}, true)
 	batchTx.Add(roundSetupCompletedEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), roundSetupCompletedEvent)
 	return db.UpdateSetRoundReadyTxBlockHashByGameID(gameID, blockHash, blockNumber, roundNumber)
 }
 
-func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentsOnChain) error {
+func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentsOnChain) error {
 	player := types.PlayerAddress{}
 	player.FromProto(tx.CommitmentsOnChain.Address)
 	roundNumber := tx.CommitmentsOnChain.RoundNumber
@@ -242,6 +245,7 @@ func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, gameID uint, txHash
 		Address:     player,
 		RoundNumber: roundNumber,
 		Commitment:  commitment,
+		TimeStamp:   blockTime,
 	}, true)
 	batchTx.Add(commitmentOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
@@ -258,7 +262,7 @@ func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, gameID uint, txHash
 	})
 }
 
-func (c *Chain) cardsOnChain(batchTx *types.EventBatch, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardsOnChain) error {
+func (c *Chain) cardsOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardsOnChain) error {
 	player := types.PlayerAddress{}
 	player.FromProto(tx.CardsOnChain.Address)
 	roundNumber := tx.CardsOnChain.RoundNumber
@@ -273,6 +277,7 @@ func (c *Chain) cardsOnChain(batchTx *types.EventBatch, gameID uint, txHash stri
 		RoundNumber: roundNumber,
 		Salt:        salt,
 		Cards:       cardsUint,
+		TimeStamp:   blockTime,
 	}, true)
 	batchTx.Add(cardsOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), cardsOnChainEvent)

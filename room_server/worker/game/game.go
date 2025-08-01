@@ -338,6 +338,7 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 	g.gameInfo.RoomContract = evt.RoomContractAddress
 	// just skip setup new round on chain for first round
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
+	g.currentRound.StartedAt = evt.TimeStamp
 	err = g.saveGame()
 	if err != nil {
 		return err
@@ -349,7 +350,7 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 	roundReadyEvt := types.NewEvent(g.workerID(), &types.RoundReadyEvent{
 		GameID:         g.gameInfo.ID,
 		RoundNumber:    g.currentRound.RoundNumber,
-		RoundStartedAt: time.Now().Unix(),
+		RoundStartedAt: evt.TimeStamp,
 		RoundTimeout:   g.gameInfo.RoundTimeout,
 	})
 	g.sendEventsToAllPlayers(gameReadyEvt, roundReadyEvt)
@@ -369,6 +370,7 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 		return nil
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
+	g.currentRound.StartedAt = evt.TimeStamp
 	err = db.SaveRound(g.currentRound)
 	if err != nil {
 		return err
@@ -376,7 +378,7 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundReadyEvent{
 		GameID:         g.gameInfo.ID,
 		RoundNumber:    evt.RoundNumber,
-		RoundStartedAt: time.Now().Unix(),
+		RoundStartedAt: evt.TimeStamp,
 	}))
 	return nil
 }
@@ -600,8 +602,8 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 		return 0
 	}
 	timeout := time.Second * time.Duration(g.gameInfo.RoundTimeout)
-	if !g.currentRound.UpdatedAt.IsZero() {
-		timeout -= time.Since(g.currentRound.UpdatedAt)
+	if g.currentRound.StartedAt != 0 {
+		timeout -= time.Since(time.Unix(g.currentRound.StartedAt, 0))
 	}
 	return timeout
 }

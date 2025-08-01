@@ -12,6 +12,7 @@ message PlayerRoundInput {
     int32 HP = 5;
     int32 LostHP = 6;
     bool Surrendered = 7;
+    
 }
 
 message RoundInput {

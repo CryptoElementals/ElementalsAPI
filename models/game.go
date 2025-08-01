@@ -22,6 +22,7 @@ type Round struct {
 	RoundNumber      uint32             `json:"round_number"`       // 回合数
 	Status           proto.RoundStatus  `json:"status"`             // 状态: waiting, matched, confirmed, cancelled
 	PlayerRoundInfos []*PlayerRoundInfo `json:"player_round_infos"` // 回合玩家记录
+	StartedAt        int64              `json:"started_at"`
 	IsLastRound      bool               `json:"is_last_round"`
 }
 

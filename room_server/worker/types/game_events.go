@@ -22,11 +22,13 @@ type PlayerContinueEvent struct {
 type NewRoundSetupComplete struct {
 	GameID      uint
 	RoundNumber uint32
+	TimeStamp   int64
 }
 
 type RoomContractCreated struct {
 	GameID              uint
 	RoomContractAddress string
+	TimeStamp           int64
 }
 
 type PlayerCommitmentOnChain struct {
@@ -34,6 +36,7 @@ type PlayerCommitmentOnChain struct {
 	Address     PlayerAddress
 	RoundNumber uint32
 	Commitment  []byte
+	TimeStamp   int64
 }
 
 type PlayerCardsOnChain struct {
@@ -42,6 +45,7 @@ type PlayerCardsOnChain struct {
 	RoundNumber uint32
 	Salt        []byte
 	Cards       []uint
+	TimeStamp   int64
 }
 
 type GameTimeout struct {

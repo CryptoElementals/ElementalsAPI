@@ -67,11 +67,7 @@ var gameGetCmd = &cobra.Command{
 	},
 }
 
-var chainRpc string
-var roomServerEndpoint string
-var walletPath string
 
-var gameID uint
 
 func init() {
 	rootCmd.AddCommand(gameCmd)
