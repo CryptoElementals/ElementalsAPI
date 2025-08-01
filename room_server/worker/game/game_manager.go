@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -198,6 +199,10 @@ func (r *GameManager) recoverGames() error {
 		return err
 	}
 	for _, info := range gameInfos {
+		if time.Since(info.CreatedAt) > time.Duration(r.roundTimeout)*time.Second*time.Duration(r.maxRounds) {
+			log.Errorf("game %d expired, skip", info.ID)
+			continue
+		}
 		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
 		players := game.gamePlayers
 		for _, player := range players {

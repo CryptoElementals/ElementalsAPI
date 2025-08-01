@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
-	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -29,14 +28,11 @@ type batchTxEvent struct {
 }
 
 type Chain struct {
-	ctx                        context.Context
-	workerManager              *worker.WorkerManager
-	createRoomTxToGameID       cache.Cache
-	gameContractToRoomID       cache.Cache
-	client                     bind.ContractBackend
-	roomManagerContractAddress common.Address
-
-	bindOpts *bind.TransactOpts
+	ctx                  context.Context
+	workerManager        *worker.WorkerManager
+	createRoomTxToGameID cache.Cache
+	gameContractToRoomID cache.Cache
+	roomMgrClient        *concurrentRoomClient
 }
 
 func NewChain(
@@ -45,29 +41,22 @@ func NewChain(
 	chainID int64,
 	client bind.ContractBackend,
 	roomManagerContractAddressHex string,
-	w *wallet.Wallet,
+	wallets []*wallet.Wallet,
 	dataCache cache.Cache,
 	isDevelop ...bool,
-) *Chain {
-	roomManagerContractAddress := common.HexToAddress(roomManagerContractAddressHex)
-	bindOpts := &bind.TransactOpts{
-		Context: ctx,
-		From:    w.GetAddr(),
-		Signer:  w.BuildTxSinger(big.NewInt(chainID)),
+) (*Chain, error) {
+	roomMgrCli, err := newConcurrentRoomClient(ctx, client, roomManagerContractAddressHex, wallets, chainID)
+	if err != nil {
+		log.Errorf("newConcurrentRoomManagerClient: create room manager client failed: %s", err.Error())
+		return nil, err
 	}
-	if len(isDevelop) != 0 && isDevelop[0] {
-		bindOpts.NoSend = true
-	}
-
 	return &Chain{
-		ctx:                        ctx,
-		workerManager:              workerManager,
-		createRoomTxToGameID:       cache.WithPrefix("create_room_tx_to_game_id", dataCache),
-		gameContractToRoomID:       cache.WithPrefix("game_contract_to_room_id", dataCache),
-		client:                     client,
-		roomManagerContractAddress: roomManagerContractAddress,
-		bindOpts:                   bindOpts,
-	}
+		ctx:                  ctx,
+		workerManager:        workerManager,
+		createRoomTxToGameID: cache.WithPrefix("create_room_tx_to_game_id", dataCache),
+		gameContractToRoomID: cache.WithPrefix("game_contract_to_room_id", dataCache),
+		roomMgrClient:        roomMgrCli,
+	}, nil
 }
 
 func (c *Chain) Start() error {
@@ -105,11 +94,6 @@ func (c *Chain) batchSendTxs(evt *batchTxEvent) {
 }
 
 func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, initialHP int64, roundTimeout int64, maxRounds int64) error {
-	roomManagerContract, err := contract.NewRoomManagerContract(c.roomManagerContractAddress, c.client)
-	if err != nil {
-		log.Errorf("newRoomManagerContract: create room contract failed: %s", err.Error())
-		return err
-	}
 	player1WalletAddress := common.HexToAddress(players[0].WalletAddress)
 	player2WalletAddress := common.HexToAddress(players[1].WalletAddress)
 	player1TemporaryAddress := common.HexToAddress(players[0].TemporaryAddress)
@@ -117,13 +101,12 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 	roundTimeoutBigInt := big.NewInt(roundTimeout)
 	maxRoundsBigInt := big.NewInt(maxRounds)
 	initialHPBigInt := big.NewInt(initialHP)
-	tx, err := roomManagerContract.CreateRoom(c.bindOpts, player1WalletAddress, player2WalletAddress,
-		player1TemporaryAddress, player2TemporaryAddress, roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
+	txHash, err := c.roomMgrClient.sendCreateRoomTx(player1WalletAddress, player2WalletAddress, player1TemporaryAddress, player2TemporaryAddress,
+		roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
 	if err != nil {
-		log.Errorf("createRoomContract: create room contract failed: %s", err.Error())
 		return err
 	}
-	txHash := strings.ToLower(tx.Hash().String())
+	log.Infow("createRoomContract: create room contract success", "tx hash", txHash, "game id", gameID)
 	c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), int(time.Hour.Seconds()))
 	createRoomTxModel := &dao.CreateRoomTx{
 		GameID:       gameID,
@@ -137,23 +120,18 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 
 func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex string) error {
 	roomContractAddress := common.HexToAddress(roomContractHex)
-	roomContract, err := contract.NewRoomContract(roomContractAddress, c.client)
+	txHash, err := c.roomMgrClient.sendStartANewRound(roomContractAddress)
 	if err != nil {
 		return err
 	}
-	tx, err := roomContract.StartANewRound(c.bindOpts)
-	if err != nil {
-		return err
-	}
-	txHash := strings.ToLower(tx.Hash().String())
-	createRoomTxModel := &dao.SetRoundReadyTx{
+	setRoundReadyTxModel := &dao.SetRoundReadyTx{
 		GameID:          gameID,
 		Status:          dao.TxStatusSent,
 		ContractAddress: roomContractHex,
 		RoundNumber:     uint64(roundNumber),
 		TxHash:          txHash,
 	}
-	return db.SaveSetRoundReadyTx(createRoomTxModel)
+	return db.SaveSetRoundReadyTx(setRoundReadyTxModel)
 }
 
 func (c *Chain) handleChainEvents(evt *batchTxEvent) {

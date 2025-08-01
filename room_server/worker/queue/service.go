@@ -51,8 +51,7 @@ func (s *Service) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 }
 
 func (s *Service) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
-	s.queue.HandleExitQueueEvent(event)
-	return nil
+	return s.queue.HandleExitQueueEvent(event)
 }
 
 func (s *Service) HandleContinueGameEvent(event *types.PlayerContinueEvent) error {

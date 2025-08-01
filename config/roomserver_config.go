@@ -17,7 +17,7 @@ type RoomServerConfig struct {
 	ServerCfg       ServerConfig    `mapstructure:"server"`
 	ChainCfg        ChainConfig     `mapstructure:"chain"`
 	GameParams      GameParamConfig `mapstructure:"game-params"`
-	WalletPath      string          `mapstructure:"wallet-path"`
+	WalletPaths     []string        `mapstructure:"wallet-paths"`
 	RoundTimeout    int64           `mapstructure:"round-timeout"`
 	ContinueTimeout int64           `mapstructure:"continue-timeout"`
 	MaxRounds       int64           `mapstructure:"max-rounds"`

@@ -24,6 +24,7 @@ const (
 	RpcService_ExitQueue_FullMethodName          = "/rpc.RpcService/ExitQueue"
 	RpcService_ContinueGame_FullMethodName       = "/rpc.RpcService/ContinueGame"
 	RpcService_GetGamePhase_FullMethodName       = "/rpc.RpcService/GetGamePhase"
+	RpcService_IsPlayerInQueue_FullMethodName    = "/rpc.RpcService/IsPlayerInQueue"
 	RpcService_GetBattleInfo_FullMethodName      = "/rpc.RpcService/GetBattleInfo"
 	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
 	RpcService_RefuseContinueGame_FullMethodName = "/rpc.RpcService/RefuseContinueGame"
@@ -40,6 +41,7 @@ type RpcServiceClient interface {
 	ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContinueGame(ctx context.Context, in *ContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
+	IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error)
 	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -91,6 +93,16 @@ func (c *rpcServiceClient) GetGamePhase(ctx context.Context, in *PlayerAddress, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GamePhase)
 	err := c.cc.Invoke(ctx, RpcService_GetGamePhase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcServiceClient) IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IsPlayerInQueueResponse)
+	err := c.cc.Invoke(ctx, RpcService_IsPlayerInQueue_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +168,7 @@ type RpcServiceServer interface {
 	ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	ContinueGame(context.Context, *ContinueGameRequest) (*emptypb.Empty, error)
 	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
+	IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error)
 	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
@@ -184,6 +197,9 @@ func (UnimplementedRpcServiceServer) ContinueGame(context.Context, *ContinueGame
 }
 func (UnimplementedRpcServiceServer) GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGamePhase not implemented")
+}
+func (UnimplementedRpcServiceServer) IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IsPlayerInQueue not implemented")
 }
 func (UnimplementedRpcServiceServer) GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBattleInfo not implemented")
@@ -289,6 +305,24 @@ func _RpcService_GetGamePhase_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RpcServiceServer).GetGamePhase(ctx, req.(*PlayerAddress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RpcService_IsPlayerInQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlayerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).IsPlayerInQueue(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_IsPlayerInQueue_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).IsPlayerInQueue(ctx, req.(*PlayerAddress))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -405,6 +439,10 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetGamePhase",
 			Handler:    _RpcService_GetGamePhase_Handler,
+		},
+		{
+			MethodName: "IsPlayerInQueue",
+			Handler:    _RpcService_IsPlayerInQueue_Handler,
 		},
 		{
 			MethodName: "GetBattleInfo",

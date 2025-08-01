@@ -22,10 +22,13 @@ func NewService(ctx context.Context,
 	chainID int64,
 	client bind.ContractBackend,
 	roomManagerContractAddress string,
-	wallet *wallet.Wallet,
-	dataCache cache.Cache, isDevelop ...bool) *Service {
-	chain := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallet, dataCache, isDevelop...)
-	return &Service{ctx: ctx, chain: chain}
+	wallets []*wallet.Wallet,
+	dataCache cache.Cache, isDevelop ...bool) (*Service, error) {
+	chain, err := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallets, dataCache, isDevelop...)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{ctx: ctx, chain: chain}, nil
 }
 
 func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {

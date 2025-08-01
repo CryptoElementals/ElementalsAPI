@@ -80,7 +80,7 @@ func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID u
 	if !ok {
 		return
 	}
-	if gameID == 0 || gameInfo.gameID != gameID {
+	if gameID != 0 && gameInfo.gameID != gameID {
 		return
 	}
 	continueMap := m.continueQueue[gameInfo.gameID]
@@ -222,6 +222,11 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 				log.Errorf("set locked token game id failed: %s", err.Error())
 				return err
 			}
+			err = db.SetLockedTokenGameID(q.ctx, event.PlayerAddress.WalletAddress, event.PlayerAddress.TemporaryAddress, gid)
+			if err != nil {
+				log.Errorf("set locked token game id failed: %s", err.Error())
+				return err
+			}
 		}
 
 		delete(q.queue, player)
@@ -284,11 +289,16 @@ func (q *Queue) RefuseContinueGame(playerAddress types.PlayerAddress, lastGameID
 	return nil
 }
 
-func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) {
+func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	delete(q.queue, event.PlayerAddress)
 	q.queueCache.Delete(event.PlayerAddress.String())
+	err := q.unlockToken(&event.PlayerAddress)
+	if err != nil {
+		log.Errorf("unlock user token failed: %s", err.Error())
+	}
+	return err
 }
 
 func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
@@ -315,4 +325,11 @@ func (q *Queue) lockToken(address *types.PlayerAddress) error {
 		return nil
 	}
 	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
+}
+
+func (q *Queue) unlockToken(address *types.PlayerAddress) error {
+	if q.minTokenToJoinQueue <= 0 {
+		return nil
+	}
+	return db.UnlockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress)
 }
