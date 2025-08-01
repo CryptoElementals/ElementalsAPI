@@ -39,8 +39,10 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 			totalDeducted += tokenDeduction
 
 			isOffline := false
+			isSurrendered := false
 			if status, exists := playerStatuses[player.WalletAddress]; exists {
 				isOffline = status == PLAYER_OFFLINE
+				isSurrendered = status == PLAYER_SURRENDERED
 			}
 
 			playerRewards = append(playerRewards, PlayerReward{
@@ -49,6 +51,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 				TokenChange:      -tokenDeduction,
 				PointChange:      pointGain,
 				IsOffline:        isOffline,
+				IsSurrendered:    isSurrendered,
 			})
 		}
 		systemFee = totalDeducted
@@ -90,8 +93,10 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 			// 分配奖励
 			for _, player := range result.Players {
 				isOffline := false
+				isSurrendered := false
 				if status, exists := playerStatuses[player.WalletAddress]; exists {
 					isOffline = status == PLAYER_OFFLINE
+					isSurrendered = status == PLAYER_SURRENDERED
 				}
 
 				if winnerAddresses[player.WalletAddress] {
@@ -102,6 +107,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 						TokenChange:      winnerTokenPerPlayer,
 						PointChange:      winnerPointPerPlayer,
 						IsOffline:        isOffline,
+						IsSurrendered:    isSurrendered,
 					})
 				} else {
 					// 输家
@@ -111,6 +117,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 						TokenChange:      -loserTokenPerPlayer,
 						PointChange:      loserPointPerPlayer,
 						IsOffline:        isOffline,
+						IsSurrendered:    isSurrendered,
 					})
 				}
 			}

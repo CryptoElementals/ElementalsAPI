@@ -24,20 +24,23 @@ type Player struct {
 type PlayerStatus int32
 
 const (
-	PLAYER_ONLINE  PlayerStatus = 0
-	PLAYER_OFFLINE PlayerStatus = 1
+	PLAYER_ONLINE      PlayerStatus = 0
+	PLAYER_OFFLINE     PlayerStatus = 1
+	PLAYER_SURRENDERED PlayerStatus = 2
 )
 
 // RoundInput battle input parameters
-// 支持多玩家
 type PlayerRoundInput struct {
-	WalletAddress    string       `json:"WalletAddress"`
-	TemporaryAddress string       `json:"TemporaryAddress"`
-	Cards            []int        `json:"Cards"`
-	HP               int          `json:"HP"`
-	LostHP           int          `json:"LostHP"`
-	Commitment       []byte       `json:"Commitment"`       // 本回合提交的承诺（为空表示未提交）
-	Status           PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
+	WalletAddress    string `json:"WalletAddress"`
+	TemporaryAddress string `json:"TemporaryAddress"`
+	Cards            []int  `json:"Cards"`
+	HP               int    `json:"HP"`
+	LostHP           int    `json:"LostHP"`
+	Commitment       []byte `json:"Commitment"`  // 本回合提交的承诺（为空表示未提交）
+	Surrendered      bool   `json:"Surrendered"` // 是否投降
+
+	Status PlayerStatus `json:"Status,omitempty"` // 玩家状态，默认 online 为0
+
 }
 
 type RoundInput struct {
@@ -94,6 +97,7 @@ type PlayerReward struct {
 	TokenChange      int    `json:"TokenChange"`      // Token变化
 	PointChange      int    `json:"PointChange"`      // 积分变化
 	IsOffline        bool   `json:"IsOffline"`        // 是否离线
+	IsSurrendered    bool   `json:"IsSurrendered"`    // 是否投降
 }
 
 // 单个玩家每张卡的详细数据

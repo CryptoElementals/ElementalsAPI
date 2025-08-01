@@ -4,6 +4,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -22,18 +23,18 @@ type GetAllCardsRequest struct {
 // 响应用卡牌结构体
 // 只包含业务需要的字段
 type CardInfo struct {
-	CardID             int    `json:"card_id"`
-	ElementType        string `json:"element_type"`
-	Level              string `json:"level"`
-	LifeForce          int    `json:"life_force"`
-	Attack             int    `json:"attack"`
-	Defense            int    `json:"defense"`
-	NormalImageURL     string `json:"normal_image_url"`
-	ActiveImageURL     string `json:"active_image_url"`
-	BackgroundImageURL string `json:"background_image_url"`
-	IconURL            string `json:"icon_url"`
-	Description        string `json:"description"`
-	Name               string `json:"name"`
+	CardID             int    `json:"CardId"`
+	ElementType        string `json:"ElementType"`
+	Level              string `json:"Level"`
+	LifeForce          int    `json:"LifeForce"`
+	Attack             int    `json:"Attack"`
+	Defense            int    `json:"Defense"`
+	NormalImageURL     string `json:"NormalImageURL"`
+	ActiveImageURL     string `json:"ActiveImageURL"`
+	BackgroundImageURL string `json:"BackgroundImageURL"`
+	IconURL            string `json:"IconURL"`
+	Description        string `json:"Description"`
+	Name               string `json:"Name"`
 }
 
 // 响应结构体
@@ -85,6 +86,27 @@ func (t *GetAllCardsTask) Run(c *gin.Context) (api.Response, error) {
 	// 转换为响应格式
 	var cards []CardInfo
 	for _, card := range dbCards {
+		// 为卡牌的四个图片URL生成预签名URL
+		normalImageURL := ""
+		if card.NormalImageURL != "" {
+			normalImageURL, _ = utils.GetPresignedImageURL(card.NormalImageURL)
+		}
+
+		activeImageURL := ""
+		if card.ActiveImageURL != "" {
+			activeImageURL, _ = utils.GetPresignedImageURL(card.ActiveImageURL)
+		}
+
+		backgroundImageURL := ""
+		if card.BackgroundImageURL != "" {
+			backgroundImageURL, _ = utils.GetPresignedImageURL(card.BackgroundImageURL)
+		}
+
+		iconURL := ""
+		if card.IconURL != "" {
+			iconURL, _ = utils.GetPresignedImageURL(card.IconURL)
+		}
+
 		cards = append(cards, CardInfo{
 			CardID:             card.CardID,
 			ElementType:        card.ElementType,
@@ -92,10 +114,10 @@ func (t *GetAllCardsTask) Run(c *gin.Context) (api.Response, error) {
 			LifeForce:          card.LifeForce,
 			Attack:             card.Attack,
 			Defense:            card.Defense,
-			NormalImageURL:     card.NormalImageURL,
-			ActiveImageURL:     card.ActiveImageURL,
-			BackgroundImageURL: card.BackgroundImageURL,
-			IconURL:            card.IconURL,
+			NormalImageURL:     normalImageURL,
+			ActiveImageURL:     activeImageURL,
+			BackgroundImageURL: backgroundImageURL,
+			IconURL:            iconURL,
 			Description:        card.Description,
 			Name:               card.Name,
 		})

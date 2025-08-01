@@ -11,7 +11,6 @@ import (
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 func Handle(c *gin.Context) {
@@ -55,6 +54,14 @@ func Handle(c *gin.Context) {
 		return
 	}
 
+	// 检查是否是 SSE 任务（通过 action 名称判断）
+	if isSSETask(action) {
+		// 切换到 SSE 模式
+		handleSSEMode(c, task, action, requestUUID)
+		return
+	}
+
+	// 普通 HTTP 模式
 	res, err = task.Run(c)
 	if err == nil {
 		resJson, err := json.Marshal(res)
@@ -76,8 +83,20 @@ func Handle(c *gin.Context) {
 	}
 }
 
-// HandleSSE 处理 Server-Sent Events 请求
-func HandleSSE(c *gin.Context) {
+// isSSETask 判断是否是 SSE 任务
+func isSSETask(action string) bool {
+	// 根据 action 名称判断是否是 SSE 任务
+	sseActions := []string{"SubscribeGameInfo", "SSEExample"}
+	for _, sseAction := range sseActions {
+		if action == sseAction {
+			return true
+		}
+	}
+	return false
+}
+
+// handleSSEMode 处理 SSE 模式
+func handleSSEMode(c *gin.Context, task api.Task, action, requestUUID string) {
 	// 设置 SSE 必要的头部
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -93,72 +112,21 @@ func HandleSSE(c *gin.Context) {
 		return
 	}
 
-	// 获取 action 和参数（通过中间件解析）
-	action := c.GetString("action")
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		// 发送错误事件
-		errorEvent := events.Event{
-			Type: events.EventTypeError,
-			Data: map[string]interface{}{
-				"error": "params assert failed",
-			},
-			Timestamp:   time.Now(),
-			RequestUUID: uuid.NewString(),
-		}
-		sendSSEEvent(c.Writer, flusher, errorEvent)
-		return
-	}
-
-	requestUUID := (*params)["RequestUUID"].(string)
 	log.Infof("SSE connection started - Action: %s, RequestUUID: %s", action, requestUUID)
-
-	// 创建任务
-	task, err := api.NewTask(action, params)
-	if err != nil {
-		errorEvent := events.Event{
-			Type: events.EventTypeError,
-			Data: map[string]interface{}{
-				"error": err.Error(),
-			},
-			Timestamp:   time.Now(),
-			RequestUUID: requestUUID,
-		}
-		sendSSEEvent(c.Writer, flusher, errorEvent)
-		return
-	}
-
-	// 检查任务是否支持 SSE
-	sseTask, ok := task.(api.SSETask)
-	if !ok {
-		errorEvent := events.Event{
-			Type: events.EventTypeError,
-			Data: map[string]interface{}{
-				"error": fmt.Sprintf("action %s does not support SSE", action),
-			},
-			Timestamp:   time.Now(),
-			RequestUUID: requestUUID,
-		}
-		sendSSEEvent(c.Writer, flusher, errorEvent)
-		return
-	}
 
 	// 发送连接建立事件
 	startEvent := events.Event{
-		Type: events.EventTypeStatusUpdate,
+		Type: events.EventTypeNotification,
 		Data: map[string]interface{}{
-			"status": "connected",
-			"action": action,
+			"Status": "connecting",
 		},
 		Timestamp:   time.Now(),
 		RequestUUID: requestUUID,
 	}
 	sendSSEEvent(c.Writer, flusher, startEvent)
 
-	// 开始 SSE 流 - 让每个任务自己处理事件管理
-	ctx := c.Request.Context()
-	err = sseTask.RunSSE(ctx, c, c.Writer, flusher, requestUUID)
+	// 开始 SSE 流 - 直接使用 Run 方法
+	_, err := task.Run(c)
 	if err != nil {
 		log.Errorf("SSE error for action %s: %v", action, err)
 		errorEvent := events.Event{

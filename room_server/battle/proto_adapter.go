@@ -38,6 +38,7 @@ func convertProtoRoundInputToInternal(in *pb.RoundInput) *RoundInput {
 			HP:               int(p.GetHP()),
 			LostHP:           int(p.GetLostHP()),
 			Commitment:       p.GetCommitment(),
+			Surrendered:      p.GetSurrendered(),
 			// Status 字段将在 ValidateRoundInput 中设置默认值
 		}
 	}
@@ -132,6 +133,8 @@ func convertInternalRewardToProto(in *BattleReward) *pb.BattleReward {
 			TemporaryAddress: pr.TemporaryAddress,
 			TokenChange:      int32(pr.TokenChange),
 			PointChange:      int32(pr.PointChange),
+			Offline:          pr.IsOffline,
+			Surrendered:      pr.IsSurrendered,
 		}
 	}
 	return &pb.BattleReward{

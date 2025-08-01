@@ -3,6 +3,7 @@ package user
 import (
 	"strings"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
@@ -107,8 +108,8 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
 	}
 
-	// 给用户增加每日奖励token
-	dailyRewardTokens := int32(1000)
+	// 从配置文件获取每日奖励token数量
+	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
 
 	// 更新/创建用户的 Token 记录
 	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
@@ -140,6 +141,6 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
 		return nil, cmnErrors.SaveUserProfileFailed()
 	}
 
-	log.Infof("%s, daily reward collected successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
+	log.Infof("%s, daily reward collected successfully for address %s, tokens: %d", task.Request.RequestUUID, lowercaseAddress, dailyRewardTokens)
 	return task.Response, nil
 }

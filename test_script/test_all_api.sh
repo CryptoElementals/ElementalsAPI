@@ -270,21 +270,42 @@ echo "响应:"
 echo "$response" | jq -C
 echo ""
 
-echo "6.3 等待匹配完成..."
-sleep 5
+# 等待匹配事件
+echo "6.3 等待匹配事件..."
+max_wait_time=60
+wait_count=0
+matched_event_found=false
 
-echo "6.4 检查SSE连接状态..."
-if ps -p $user1_pid > /dev/null; then
-  echo "用户1 SSE连接运行中 (PID: $user1_pid)"
-else
-  echo "用户1 SSE连接已停止"
+while [ "$matched_event_found" = false ] && [ $wait_count -lt $max_wait_time ]; do
+  echo "检查匹配事件 (第$((wait_count + 1))次)..."
+  
+  # 检查用户1的日志 - 获取最近15秒的日志
+  recent_log1=$(tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null)
+  if echo "$recent_log1" | grep -q '"EventType":"matched"'; then
+    echo "在用户1日志中检测到匹配事件"
+    matched_event_found=true
+    break
+  fi
+  
+  # 检查用户2的日志 - 获取最近15秒的日志
+  recent_log2=$(tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null)
+  if echo "$recent_log2" | grep -q '"EventType":"matched"'; then
+    echo "在用户2日志中检测到匹配事件"
+    matched_event_found=true
+    break
+  fi
+  
+  echo "匹配事件尚未出现，等待1秒后重试..."
+  sleep 1
+  wait_count=$((wait_count + 1))
+done
+
+if [ "$matched_event_found" = false ]; then
+  echo "等待超时，未检测到匹配事件"
+  exit 1
 fi
 
-if ps -p $user2_pid > /dev/null; then
-  echo "用户2 SSE连接运行中 (PID: $user2_pid)"
-else
-  echo "用户2 SSE连接已停止"
-fi
+echo "匹配成功！开始获取游戏信息..."
 
 echo "6.4 获取用户1游戏阶段信息..."
 response=$(curl -s -X POST "http://localhost:8080/" \
@@ -309,7 +330,6 @@ response=$(curl -s -X POST "http://localhost:8080/" \
 echo "响应:"
 echo "$response" | jq -C
 echo ""
-
 
 # 从响应中提取GameID（如果存在）
 game_id=$(echo "$response" | jq -r '.PvPInfo.GameID // empty')
@@ -346,9 +366,42 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "$response" | jq -C
   echo ""
 
-  sleep 5
+  # 等待回合创建事件
+  echo "6.6.1 等待回合创建事件..."
+  wait_count=0
+  round_created_event_found=false
+  
+  while [ "$round_created_event_found" = false ] && [ $wait_count -lt $max_wait_time ]; do
+    echo "检查回合创建事件 (第$((wait_count + 1))次)..."
+    
+    # 检查用户1的日志 - 获取最近15秒的日志
+    recent_log1=$(tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null)
+    if echo "$recent_log1" | grep -q '"EventType":"roundReady"'; then
+      echo "在用户1日志中检测到回合准备事件"
+      round_created_event_found=true
+      break
+    fi
+    
+    # 检查用户2的日志 - 获取最近15秒的日志
+    recent_log2=$(tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null)
+    if echo "$recent_log2" | grep -q '"EventType":"roundReady"'; then
+      echo "在用户2日志中检测到回合准备事件"
+      round_created_event_found=true
+      break
+    fi
+    
+    echo "回合准备事件尚未出现，等待1秒后重试..."
+    sleep 1
+    wait_count=$((wait_count + 1))
+  done
+  
+  if [ "$round_created_event_found" = false ]; then
+    echo "等待超时，未检测到回合创建事件"
+    exit 1
+  fi
 
-  echo "查看用户1游戏阶段信息..."
+  # 获取游戏阶段信息以获取合约地址
+  echo "6.6.2 获取游戏阶段信息..."
   response=$(curl -s -X POST "http://localhost:8080/" \
     -H "Content-Type: application/json" \
     -d "{
@@ -356,28 +409,13 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
       \"TempAddress\": \"$user1_temp_address\"
     }" \
     -b ./test/api/users/user_1/cookie.txt)
-  echo "响应:"
-  echo "$response" | jq -C
-  echo ""
-
-  echo "查看用户2游戏阶段信息..."
-  response=$(curl -s -X POST "http://localhost:8080/" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"Action\": \"GetGamePhase\",
-      \"TempAddress\": \"$user2_temp_address\"
-    }" \
-    -b ./test/api/users/user_2/cookie.txt)
-  echo "响应:"
-  echo "$response" | jq -C
-  echo ""
   
-  # 从响应中提取ContractAddress
   contract_address=$(echo "$response" | jq -r '.PvPInfo.ContractAddress // empty')
   if [ -n "$contract_address" ] && [ "$contract_address" != "null" ]; then
     echo "检测到合约地址: $contract_address"
   else
     echo "未检测到合约地址"
+    exit 1
   fi
 
   echo "6.7 用户1提交哈希..."
@@ -447,8 +485,6 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "$response" | jq -C
   echo ""
 
-
-
   echo "6.6 用户2确认对战..."
   response=$(curl -s -X POST "http://localhost:8080/" \
     -H "Content-Type: application/json" \
@@ -463,9 +499,42 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "$response" | jq -C
   echo ""
 
-  sleep 3
+  # 等待回合创建事件
+  echo "6.6.1 等待回合创建事件 (第二回合)..."
+  wait_count=0
+  round_created_event_found=false
+  
+  while [ "$round_created_event_found" = false ] && [ $wait_count -lt $max_wait_time ]; do
+    echo "检查回合创建事件 (第$((wait_count + 1))次)..."
+    
+    # 检查用户1的日志 - 获取最近15秒的日志
+    recent_log1=$(tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null)
+    if echo "$recent_log1" | grep -q '"EventType":"roundReady"'; then
+      echo "在用户1日志中检测到回合准备事件"
+      round_created_event_found=true
+      break
+    fi
+    
+    # 检查用户2的日志 - 获取最近15秒的日志
+    recent_log2=$(tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null)
+    if echo "$recent_log2" | grep -q '"EventType":"roundReady"'; then
+      echo "在用户2日志中检测到回合准备事件"
+      round_created_event_found=true
+      break
+    fi
+    
+    echo "回合准备事件尚未出现，等待1秒后重试..."
+    sleep 1
+    wait_count=$((wait_count + 1))
+  done
+  
+  if [ "$round_created_event_found" = false ]; then
+    echo "等待超时，未检测到回合创建事件"
+    exit 1
+  fi
 
-  echo "查看用户1游戏阶段信息..."
+  # 获取游戏阶段信息以获取合约地址
+  echo "6.6.2 获取游戏阶段信息..."
   response=$(curl -s -X POST "http://localhost:8080/" \
     -H "Content-Type: application/json" \
     -d "{
@@ -473,28 +542,13 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
       \"TempAddress\": \"$user1_temp_address\"
     }" \
     -b ./test/api/users/user_1/cookie.txt)
-  echo "响应:"
-  echo "$response" | jq -C
-  echo ""
-
-  echo "查看用户2游戏阶段信息..."
-  response=$(curl -s -X POST "http://localhost:8080/" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"Action\": \"GetGamePhase\",
-      \"TempAddress\": \"$user2_temp_address\"
-    }" \
-    -b ./test/api/users/user_2/cookie.txt)
-  echo "响应:"
-  echo "$response" | jq -C
-  echo ""
   
-  # 从响应中提取ContractAddress
   contract_address=$(echo "$response" | jq -r '.PvPInfo.ContractAddress // empty')
   if [ -n "$contract_address" ] && [ "$contract_address" != "null" ]; then
     echo "检测到合约地址: $contract_address"
   else
     echo "未检测到合约地址"
+    exit 1
   fi
 
   echo "6.7 用户1提交哈希..."
@@ -578,9 +632,42 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
   echo "$response" | jq -C
   echo ""
 
-  sleep 3
+  # 等待回合创建事件
+  echo "6.6.1 等待回合创建事件 (第三回合)..."
+  wait_count=0
+  round_created_event_found=false
+  
+  while [ "$round_created_event_found" = false ] && [ $wait_count -lt $max_wait_time ]; do
+    echo "检查回合创建事件 (第$((wait_count + 1))次)..."
+    
+    # 检查用户1的日志 - 获取最近15秒的日志
+    recent_log1=$(tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user1_sse.log 2>/dev/null)
+    if echo "$recent_log1" | grep -q '"EventType":"roundReady"'; then
+      echo "在用户1日志中检测到回合准备事件"
+      round_created_event_found=true
+      break
+    fi
+    
+    # 检查用户2的日志 - 获取最近15秒的日志
+    recent_log2=$(tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null | grep -E "$(date -d '15 seconds ago' '+%Y-%m-%d %H:%M:%S')|$(date '+%Y-%m-%d %H:%M:%S')" -A 10 || tail -n 10 ./test_script/logs/user2_sse.log 2>/dev/null)
+    if echo "$recent_log2" | grep -q '"EventType":"roundReady"'; then
+      echo "在用户2日志中检测到回合准备事件"
+      round_created_event_found=true
+      break
+    fi
+    
+    echo "回合准备事件尚未出现，等待1秒后重试..."
+    sleep 1
+    wait_count=$((wait_count + 1))
+  done
+  
+  if [ "$round_created_event_found" = false ]; then
+    echo "等待超时，未检测到回合创建事件"
+    exit 1
+  fi
 
-  echo "查看用户1游戏阶段信息..."
+  # 获取游戏阶段信息以获取合约地址
+  echo "6.6.2 获取游戏阶段信息..."
   response=$(curl -s -X POST "http://localhost:8080/" \
     -H "Content-Type: application/json" \
     -d "{
@@ -588,28 +675,13 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
       \"TempAddress\": \"$user1_temp_address\"
     }" \
     -b ./test/api/users/user_1/cookie.txt)
-  echo "响应:"
-  echo "$response" | jq -C
-  echo ""
-
-  echo "查看用户2游戏阶段信息..."
-  response=$(curl -s -X POST "http://localhost:8080/" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"Action\": \"GetGamePhase\",
-      \"TempAddress\": \"$user2_temp_address\"
-    }" \
-    -b ./test/api/users/user_2/cookie.txt)
-  echo "响应:"
-  echo "$response" | jq -C
-  echo ""
   
-  # 从响应中提取ContractAddress
   contract_address=$(echo "$response" | jq -r '.PvPInfo.ContractAddress // empty')
   if [ -n "$contract_address" ] && [ "$contract_address" != "null" ]; then
     echo "检测到合约地址: $contract_address"
   else
     echo "未检测到合约地址"
+    exit 1
   fi
 
   echo "6.7 用户1提交哈希..."
@@ -791,6 +863,88 @@ if [ -n "$game_id" ] && [ "$game_id" != "null" ]; then
         echo ""
 
         echo "第二场游戏完成！"
+        
+        # 测试RefuseContinueGame场景
+        echo "6.24 开始测试RefuseContinueGame场景..."
+        
+        # 检查第二场游戏是否结束
+        is_game_over_second=$(echo "$response" | jq -r '.RoundResult.IsGameOver // false')
+        echo "第二场游戏是否结束: $is_game_over_second"
+        
+        if [ "$is_game_over_second" = "true" ]; then
+          echo "第二场游戏已结束，执行RefuseContinueGame测试..."
+          
+          echo "6.25 用户1发起继续游戏..."
+          response=$(curl -s -X POST "http://localhost:8080/" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"Action\": \"ContinueGame\",
+              \"GameID\": $new_game_id,
+              \"TempAddress\": \"$user1_temp_address\"
+            }" \
+            -b ./test/api/users/user_1/cookie.txt)
+          echo "响应:"
+          echo "$response" | jq -C
+          echo ""
+
+          echo "6.26 用户2拒绝继续游戏..."
+          response=$(curl -s -X POST "http://localhost:8080/" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"Action\": \"RefuseContinueGame\",
+              \"GameID\": $new_game_id,
+              \"TempAddress\": \"$user2_temp_address\"
+            }" \
+            -b ./test/api/users/user_2/cookie.txt)
+          echo "响应:"
+          echo "$response" | jq -C
+          echo ""
+
+          # echo "6.26 用户2加入匹配..."
+          # response=$(curl -s -X POST "http://localhost:8080/" \
+          #   -H "Content-Type: application/json" \
+          #   -d "{
+          #     \"Action\": \"JoinQueue\",
+          #     \"Mode\": \"PvP\",
+          #     \"TempAddress\": \"$user2_temp_address\"
+          #   }" \
+          #   -b ./test/api/users/user_2/cookie.txt)
+          # echo "响应:"
+          # echo "$response" | jq -C
+          # echo ""
+
+          echo "6.27 等待RefuseContinueGame处理完成..."
+          sleep 3
+
+          echo "6.28 获取用户1游戏阶段信息 (拒绝后)..."
+          response=$(curl -s -X POST "http://localhost:8080/" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"Action\": \"GetGamePhase\",
+              \"TempAddress\": \"$user1_temp_address\"
+            }" \
+            -b ./test/api/users/user_1/cookie.txt)
+          echo "响应:"
+          echo "$response" | jq -C
+          echo ""
+
+          echo "6.29 获取用户2游戏阶段信息 (拒绝后)..."
+          response=$(curl -s -X POST "http://localhost:8080/" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"Action\": \"GetGamePhase\",
+              \"TempAddress\": \"$user2_temp_address\"
+            }" \
+            -b ./test/api/users/user_2/cookie.txt)
+          echo "响应:"
+          echo "$response" | jq -C
+          echo ""
+
+          echo "RefuseContinueGame测试完成！"
+        else
+          echo "第二场游戏未结束，跳过RefuseContinueGame测试"
+        fi
+        
       else
         echo "未检测到新的合约地址，跳过第二场游戏"
       fi

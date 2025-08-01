@@ -76,16 +76,10 @@ func NewSSEExampleTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-// Run 实现普通的 HTTP 响应
+// Run 实现事件驱动的 SSE 流式响应
 func (task *SSEExampleTask) Run(c *gin.Context) (api.Response, error) {
-	task.Response.Message = fmt.Sprintf("SSE Example Task - EventTypes: %v, Duration: %d", task.Request.EventTypes, task.Request.Duration)
-	return task.Response, nil
-}
-
-// RunSSE 实现事件驱动的 SSE 流式响应
-func (task *SSEExampleTask) RunSSE(ctx context.Context, c *gin.Context, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) error {
 	log.Infof("SSE Example started - EventTypes: %v, Duration: %d, RequestUUID: %s",
-		task.Request.EventTypes, task.Request.Duration, requestUUID)
+		task.Request.EventTypes, task.Request.Duration, task.Request.RequestUUID)
 
 	// 发送开始事件
 	startEvent := events.Event{
@@ -95,24 +89,24 @@ func (task *SSEExampleTask) RunSSE(ctx context.Context, c *gin.Context, writer h
 			"eventTypes": task.Request.EventTypes,
 			"duration":   task.Request.Duration,
 		},
-		RequestUUID: requestUUID,
+		RequestUUID: task.Request.RequestUUID,
 	}
-	if err := sendSSEEvent(writer, flusher, startEvent); err != nil {
-		return err
+	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), startEvent); err != nil {
+		return nil, err
 	}
 
 	// 启动只针对当前连接的事件模拟器
 	done := make(chan struct{})
-	task.startEventSimulator(ctx, writer, flusher, requestUUID, done)
+	task.startEventSimulator(c.Request.Context(), c.Writer, c.Writer.(http.Flusher), task.Request.RequestUUID, done)
 
 	// 等待连接结束
 	select {
-	case <-ctx.Done():
-		log.Infof("SSE connection closed by client - RequestUUID: %s", requestUUID)
+	case <-c.Request.Context().Done():
+		log.Infof("SSE connection closed by client - RequestUUID: %s", task.Request.RequestUUID)
 	case <-time.After(time.Duration(task.Request.Duration) * time.Second):
-		log.Infof("SSE connection timeout - RequestUUID: %s", requestUUID)
+		log.Infof("SSE connection timeout - RequestUUID: %s", task.Request.RequestUUID)
 	case <-task.stopChan:
-		log.Infof("SSE connection stopped manually - RequestUUID: %s", requestUUID)
+		log.Infof("SSE connection stopped manually - RequestUUID: %s", task.Request.RequestUUID)
 	}
 
 	// 通知模拟器退出
@@ -124,13 +118,13 @@ func (task *SSEExampleTask) RunSSE(ctx context.Context, c *gin.Context, writer h
 		Data: map[string]interface{}{
 			"status": "completed",
 		},
-		RequestUUID: requestUUID,
+		RequestUUID: task.Request.RequestUUID,
 	}
-	if err := sendSSEEvent(writer, flusher, endEvent); err != nil {
-		return err
+	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), endEvent); err != nil {
+		return nil, err
 	}
 
-	return nil
+	return task.Response, nil
 }
 
 // startEventSimulator 只推送给当前连接

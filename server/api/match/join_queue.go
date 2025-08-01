@@ -175,4 +175,6 @@ func RegisterMatchApis() {
 	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
 	api.Register(REFUSE_CONTINUE_GAME_LABEL, NewRefuseContinueGameTask, api.COOKIEAUTH)
 	api.Register(CONTINUE_GAME_LABEL, NewContinueGameTask, api.COOKIEAUTH)
+	api.Register(IS_PLAYER_IN_QUEUE_LABEL, NewIsPlayerInQueueTask, api.COOKIEAUTH)
+
 }

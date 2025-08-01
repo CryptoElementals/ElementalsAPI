@@ -78,6 +78,29 @@ func validateDatabaseConfig(cfg *db.Config) error {
 	return nil
 }
 
+// validateS3Config validates S3 configuration
+func validateS3Config(cfg *S3Config) error {
+	if cfg.AccessKeyID == "" {
+		return fmt.Errorf("s3 access key ID is required")
+	}
+	if cfg.SecretAccessKey == "" {
+		return fmt.Errorf("s3 secret access key is required")
+	}
+	if cfg.Region == "" {
+		return fmt.Errorf("s3 region is required")
+	}
+	if cfg.Endpoint == "" {
+		return fmt.Errorf("s3 endpoint is required")
+	}
+	if cfg.Bucket == "" {
+		return fmt.Errorf("s3 bucket is required")
+	}
+	if cfg.PresignExpire <= 0 {
+		return fmt.Errorf("s3 presign expire must be greater than 0")
+	}
+	return nil
+}
+
 // ServerConfig defines the configuration for the HTTP server
 type ServerConfig struct {
 	Port               int    `mapstructure:"port"`
@@ -85,4 +108,15 @@ type ServerConfig struct {
 	SessionMaxAge      int    `mapstructure:"session-max-age"`
 	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
 	ServiceName        string `mapstructure:"service-name"`
+}
+
+// S3Config defines the configuration for S3 storage
+type S3Config struct {
+	AccessKeyID     string `mapstructure:"access-key-ID"`
+	SecretAccessKey string `mapstructure:"secret-access-key"`
+	Region          string `mapstructure:"region"`
+	Endpoint        string `mapstructure:"endpoint"`
+	Domain          string `mapstructure:"domain"`
+	Bucket          string `mapstructure:"bucket"`
+	PresignExpire   int    `mapstructure:"presign-expire"`
 }

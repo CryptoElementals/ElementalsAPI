@@ -30,6 +30,7 @@ type PvPInfo struct {
 	ContractAddress string `json:"ContractAddress"` // 房间合约地址
 	BeginAt         uint64 `json:"BeginAt"`         // 开始时间
 	TimeoutDuration uint64 `json:"TimeoutDuration"` // 超时时间
+	Round           uint64 `json:"Round"`           // 回合数
 }
 
 // GetGamePhaseResponse 响应结构体
@@ -131,6 +132,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.PvPInfo.BeginAt = gamePhase.PvPInfo.BeginAt
 	task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
 	task.Response.PvPInfo.ContractAddress = gamePhase.PvPInfo.ContractAddress
+	task.Response.PvPInfo.Round = gamePhase.PvPInfo.RoundNumber
 	if gamePhase.PvPInfo.GameID != 0 {
 		task.Response.PvPInfo.GameID = gamePhase.PvPInfo.GameID
 	}
@@ -170,7 +172,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 			players = append(players, MatchPlayer{
 				Address:          p.Address.WalletAddress,
 				IsMyself:         p.Address.WalletAddress == address,
-				Confirmed:        p.IsConfirmed,
+				IsConfirmed:      p.IsConfirmed,
+				Cards:            p.Cards,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
 				InitialHP:        int32(config.GameParams.MaxHP),
@@ -185,11 +188,12 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 }
 
 type MatchPlayer struct {
-	Address          string `json:"Address"`
-	Name             string `json:"Name"`
-	AvatarURL        string `json:"AvatarURL"`
-	IsMyself         bool   `json:"IsMyself"`
-	Confirmed        bool   `json:"Confirmed"`
-	InitialHP        int32  `json:"InitialHP"`
-	InitialMultipler int32  `json:"InitialMultipler"`
+	Address          string   `json:"Address"`
+	Name             string   `json:"Name"`
+	AvatarURL        string   `json:"AvatarURL"`
+	IsMyself         bool     `json:"IsMyself"`
+	IsConfirmed      bool     `json:"IsConfirmed"`
+	Cards            []uint32 `json:"Cards"`
+	InitialHP        int32    `json:"InitialHP"`
+	InitialMultipler int32    `json:"InitialMultipler"`
 }

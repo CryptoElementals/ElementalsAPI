@@ -7,6 +7,7 @@ import (
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -17,7 +18,7 @@ const SET_USER_PROFILE_LABEL = "SetUserProfile"
 type SetUserProfileRequest struct {
 	api.BaseRequest
 	Name      string `mapstructure:"Name" validate:"required,max=42"`
-	AvatarURL string `mapstructure:"AvatarURL" validate:"max=200"`
+	AvatarURL string `mapstructure:"AvatarURL" validate:"max=100"` // 文件名长度限制
 }
 
 type SetUserProfileResponse struct {
@@ -96,8 +97,15 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 	// 更新用户档案
 	userProfile.Name = task.Request.Name
 	if task.Request.AvatarURL != "" {
-		userProfile.AvatarURL = task.Request.AvatarURL
-		userProfile.BackgroundURL = task.Request.AvatarURL // 后面改成根据AvatarURL构造BackgroundURL
+		// 直接使用传入的文件名
+		avatarFilename := task.Request.AvatarURL
+
+		// 构造对应的背景文件名
+		backgroundFilename := utils.GetBackgroundFilenameFromAvatarFilename(avatarFilename)
+
+		// 存储文件名
+		userProfile.AvatarURL = avatarFilename
+		userProfile.BackgroundURL = backgroundFilename
 	}
 
 	// 保存到数据库
