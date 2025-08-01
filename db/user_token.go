@@ -58,6 +58,31 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 	})
 }
 
+func UnlockUserToken(ctx context.Context, address string, tempAddress string) (err error) {
+	return Get().Transaction(func(tx *gorm.DB) error {
+		userToken := &dao.UserToken{}
+		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		if err != nil {
+			return err
+		}
+		for _, locked := range userToken.LockedTokens {
+			if locked.TemporaryAddress == tempAddress {
+				err = tx.Delete(locked).Error
+				if err != nil {
+					return err
+				}
+			}
+			if time.Since(locked.CreatedAt) > maxLockTime {
+				err = tx.Delete(locked).Error
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
 func BattleResultSettlement(game *dao.Game) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		if game.GameResult == nil {

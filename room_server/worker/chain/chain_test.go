@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 func TestFilterEvent(t *testing.T) {
 	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0xf04a4c037814673c0b182fdf4c6441209c423b8c0cf8bcf6b1e2efb78fe3b97d"))
+		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0x3a9738a38f35ce59fea8d56ef6ca74d81e46e57b99bdf5a8575f92975ce25e98"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -106,7 +106,7 @@ func TestChainContractInteraction(t *testing.T) {
 		TemporaryAddress: "0xabc",
 	}
 
-	svc := NewService(context.Background(), testWorkerManager, int64(chainID), client, roomMamangerAddress, w, cache.NewMemCache(), true)
+	svc, _ := NewService(context.Background(), testWorkerManager, int64(chainID), client, roomMamangerAddress, []*wallet.Wallet{w}, cache.NewMemCache(), true)
 
 	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))

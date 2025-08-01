@@ -267,6 +267,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 		ContractAddress: game.RoomContract,
 		BeginAt:         uint64(game.CreatedAt.Unix()),
 		TimeoutDuration: uint64(game.RoundTimeout),
+		RoundNumber:     uint64(currentRound.RoundNumber),
 	}
 	return gamePhase
 }

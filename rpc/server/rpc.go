@@ -84,6 +84,14 @@ func (s *Rpc) SubmitTransactions(ctx context.Context, req *pb.TransactionBatch) 
 func (s *Rpc) GetPlayerToken(ctx context.Context, req *pb.GetPlayerTokenRequest) (*pb.GetPlayerTokenResponse, error) {
 	return s.playerTokenHandler.GetPlayerToken(req.WalletAddress)
 }
+func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *pb.PlayerAddress) (*pb.IsPlayerInQueueResponse, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req)
+	isInQueue := s.playerHandler.IsPlayerInQueue(addr)
+	return &pb.IsPlayerInQueueResponse{
+		IsInQueue: isInQueue,
+	}, nil
+}
 
 type GameRequestHandler interface {
 	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, *pb.GameResult, error)
@@ -104,4 +112,5 @@ type PlayerRequestHandler interface {
 	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	ContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
+	IsPlayerInQueue(address types.PlayerAddress) bool
 }

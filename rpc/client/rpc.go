@@ -99,3 +99,11 @@ func (c *RpcClient) GetPlayerToken(ctx context.Context, walletAddress string) (*
 	}
 	return token, nil
 }
+
+func (c *RpcClient) IsPlayerInQueue(ctx context.Context, addr types.PlayerAddress) (bool, error) {
+	resp, err := c.client.IsPlayerInQueue(ctx, addr.ToProto())
+	if err != nil {
+		return false, err
+	}
+	return resp.IsInQueue, nil
+}

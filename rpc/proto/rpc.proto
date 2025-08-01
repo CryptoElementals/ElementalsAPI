@@ -14,6 +14,7 @@ service RpcService {
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc ContinueGame(ContinueGameRequest) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
+    rpc IsPlayerInQueue(PlayerAddress) returns (IsPlayerInQueueResponse);
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
     rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
@@ -24,6 +25,11 @@ service RpcService {
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
 }
+
+message IsPlayerInQueueResponse {
+    bool IsInQueue = 1;
+}
+
 message GetPlayerTokenRequest {
     string WalletAddress = 1;
 }
@@ -69,6 +75,7 @@ message PvPInfo {
     string ContractAddress = 3;
     uint64 BeginAt = 4;
     uint64 TimeoutDuration = 5;
+    uint64 RoundNumber = 6;
 } 
 
 message GamePhase {
