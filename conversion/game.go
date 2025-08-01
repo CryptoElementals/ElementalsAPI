@@ -1,6 +1,8 @@
 package conversion
 
 import (
+	"sort"
+
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -67,6 +69,7 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerRew
 			TokenChange:      int32(playerReward.TokenChange),
 			PointChange:      int32(playerReward.PointChange),
 			Offline:          playerReward.IsOffline,
+			Surrendered:      playerReward.Surrendered,
 		})
 	}
 	return playerRewards
@@ -246,9 +249,20 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 			playerInfo.WalletAddress,
 			playerInfo.TemporaryAddress,
 		).ToProto()
+		cards := make([]uint32, 0, len(playerInfo.SubmittedCards))
+		sort.Slice(playerInfo.SubmittedCards, func(i, j int) bool {
+			return playerInfo.SubmittedCards[i].CardNumber < playerInfo.SubmittedCards[j].CardNumber
+		})
+
+		for _, sc := range playerInfo.SubmittedCards {
+			cards = append(cards, uint32(sc.CardID))
+		}
+
 		gamePhase.Players = append(gamePhase.Players, &proto.GamePhasePlayer{
 			Address:     addr,
 			IsConfirmed: playerInfo.PlayerReady,
+			Commitment:  playerInfo.SubmittedCommitment,
+			Cards:       cards,
 		})
 	}
 	playerStatus := proto.PlayerStatus(0)
