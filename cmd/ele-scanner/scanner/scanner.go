@@ -167,10 +167,14 @@ func (s *Scanner) RunCatchUp() {
 				goto RECONNECT
 			case header := <-headers:
 				headNumberOnChain := header.Number.Uint64()
+				if headNumberOnChain <= s.headNumberOnChain { // chain reorged, not allowed
+					log.Warnf("Chain reorged!!! From %d to %d", s.headNumberOnChain, headNumberOnChain)
+				}
 				s.SetHeadNumberOnChain(headNumberOnChain)
 				if headNumberOnChain%10 == 0 {
 					log.Infof("HeadNumberOnChain is %d", headNumberOnChain)
 				}
+
 			}
 		}
 	RECONNECT:
