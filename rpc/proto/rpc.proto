@@ -18,12 +18,18 @@ service RpcService {
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
     rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
+    rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
 
     // token related logic
     rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
 
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
+}
+
+message SurrenderRequest {
+    uint32 GameID = 1;
+    PlayerAddress Address = 2;
 }
 
 message IsPlayerInQueueResponse {
@@ -67,6 +73,8 @@ enum PlayerStatus {
 message GamePhasePlayer {
     PlayerAddress Address = 1;
     bool IsConfirmed = 2;
+    bytes Commitment = 3;
+    repeated uint32 Cards = 4;
 }
 
 message PvPInfo {

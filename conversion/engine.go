@@ -30,6 +30,7 @@ func DbPlayerRoundInfoToProtoPlayerRoundInput(playerRoundInfo []*dao.PlayerRound
 			TemporaryAddress: p.TemporaryAddress,
 			Commitment:       p.SubmittedCommitment,
 			Cards:            cards,
+			Surrendered:      p.Surrendered,
 		})
 	}
 	return playerRoundInput
@@ -87,6 +88,7 @@ func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerRewar
 			TokenChange:      p.TokenChange,
 			PointChange:      p.PointChange,
 			IsOffline:        p.Offline,
+			Surrendered:      p.Surrendered,
 		})
 	}
 	return dbPlayerRewards

@@ -36,6 +36,7 @@ type PlayerRoundInfo struct {
 	LostHP              int32                 `json:"lost_hp"`
 	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
 	SubmittedCards      []*RoundSubmittedCard `json:"submitted_cards"`      // 回合牌面记录
+	Surrendered         bool                  `json:"surrendered"`
 }
 
 // RoundSubmittedCard 回合牌面记录
@@ -78,6 +79,7 @@ type PlayerReward struct {
 	TokenChange      int32
 	PointChange      int32
 	IsOffline        bool
+	Surrendered      bool
 }
 
 type BattleReward struct {

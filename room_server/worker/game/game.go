@@ -217,6 +217,10 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 
 func (g *Game) handleRound(event *types.Event) error {
 	currentRound := g.currentRound
+	if surrentEvt, err := types.AssertInterface[*types.SurrenderEvent](event); err == nil {
+		return g.handleSurrenderEvent(surrentEvt)
+	}
+
 	switch currentRound.Status {
 	case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION:
 		return g.handleWaittingRoundPlayersConfirmed(event)
@@ -243,6 +247,19 @@ func (g *Game) pushStateToContractCreating() error {
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
 	return nil
+}
+
+func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
+	p, err := g.getGamePlayer(event.Address.TemporaryAddress)
+	if err != nil {
+		return err
+	}
+	p.roundPlayer.Surrendered = true
+	err = db.SavePlayerRoundInfo(p.roundPlayer)
+	if err != nil {
+		return err
+	}
+	return g.handleRoundEnd()
 }
 
 func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {

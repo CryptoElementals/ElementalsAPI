@@ -93,6 +93,13 @@ func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *pb.PlayerAddress) (*pb.I
 	}, nil
 }
 
+func (s *Rpc) Surrender(ctx context.Context, req *pb.SurrenderRequest) (*emptypb.Empty, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req.Address)
+	err := s.playerHandler.Surrender(addr, uint(req.GameID))
+	return nil, err
+}
+
 type GameRequestHandler interface {
 	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, *pb.GameResult, error)
 	GetGamePhase(playerAddress types.PlayerAddress) (*pb.GamePhase, error)
@@ -113,4 +120,5 @@ type PlayerRequestHandler interface {
 	ContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
 	IsPlayerInQueue(address types.PlayerAddress) bool
+	Surrender(address types.PlayerAddress, gameID uint) error
 }

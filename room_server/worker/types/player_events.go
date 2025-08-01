@@ -40,10 +40,6 @@ type GameCompletedEvent struct {
 	GameInfo *dao.Game
 }
 
-type GamePurgeEvent struct {
-	GameID uint
-}
-
 type ContinueCanceledEvent struct {
 	GameID uint
 }
