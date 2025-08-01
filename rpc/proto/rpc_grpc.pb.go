@@ -28,6 +28,7 @@ const (
 	RpcService_GetBattleInfo_FullMethodName      = "/rpc.RpcService/GetBattleInfo"
 	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
 	RpcService_RefuseContinueGame_FullMethodName = "/rpc.RpcService/RefuseContinueGame"
+	RpcService_Surrender_FullMethodName          = "/rpc.RpcService/Surrender"
 	RpcService_GetPlayerToken_FullMethodName     = "/rpc.RpcService/GetPlayerToken"
 	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
 )
@@ -45,6 +46,7 @@ type RpcServiceClient interface {
 	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// token related logic
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// chain related api
@@ -139,6 +141,16 @@ func (c *rpcServiceClient) RefuseContinueGame(ctx context.Context, in *RefuseCon
 	return out, nil
 }
 
+func (c *rpcServiceClient) Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_Surrender_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
@@ -172,6 +184,7 @@ type RpcServiceServer interface {
 	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
+	Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error)
 	// token related logic
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	// chain related api
@@ -209,6 +222,9 @@ func (UnimplementedRpcServiceServer) ConfirmBattle(context.Context, *ConfirmBatt
 }
 func (UnimplementedRpcServiceServer) RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RefuseContinueGame not implemented")
+}
+func (UnimplementedRpcServiceServer) Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Surrender not implemented")
 }
 func (UnimplementedRpcServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
@@ -381,6 +397,24 @@ func _RpcService_RefuseContinueGame_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_Surrender_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SurrenderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).Surrender(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_Surrender_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).Surrender(ctx, req.(*SurrenderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RpcService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetPlayerTokenRequest)
 	if err := dec(in); err != nil {
@@ -455,6 +489,10 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RefuseContinueGame",
 			Handler:    _RpcService_RefuseContinueGame_Handler,
+		},
+		{
+			MethodName: "Surrender",
+			Handler:    _RpcService_Surrender_Handler,
 		},
 		{
 			MethodName: "GetPlayerToken",

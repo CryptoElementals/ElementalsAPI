@@ -147,3 +147,22 @@ func (s *Service) RefuseContinueGame(address types.PlayerAddress, gameID uint) e
 	}
 	return s.queue.RefuseContinueGame(address, gameID)
 }
+
+func (s *Service) Surrender(address types.PlayerAddress, gameID uint) error {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	player, ok := s.players[address]
+	if !ok {
+		return errors.New("player is not subscribing")
+	}
+	if player.status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return errors.New("player not in game")
+	}
+	evt := types.NewEvent(player.address.String(), &types.SurrenderEvent{
+		GameID:  gameID,
+		Address: address,
+	}, true)
+	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
+	err := evt.Await()
+	return err
+}

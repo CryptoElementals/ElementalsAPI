@@ -49,3 +49,8 @@ type GameTimeout struct {
 	RoundNumber int
 	Reason      string
 }
+
+type SurrenderEvent struct {
+	GameID  uint
+	Address PlayerAddress
+}
