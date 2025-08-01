@@ -22,7 +22,55 @@ func NewGameLogic() *GameLogic {
 // check if game is over
 // 返回是否结束、游戏结果类型、赢家地址列表（用|分割）、赢家临时地址列表（用|分割）、最终倍率
 func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, GameResultType, string, string, uint32) {
-	// 首先检查离线玩家情况
+	// 首先检查投降玩家情况
+	surrenderedCount := 0
+	for _, state := range states {
+		if state.Status == PLAYER_SURRENDERED {
+			surrenderedCount++
+		}
+	}
+
+	// 如果有投降玩家，需要特殊处理
+	if surrenderedCount > 0 {
+		if surrenderedCount == len(states) {
+			// 全员投降，直接平局
+			return true, GAME_TIE, "", "", 1
+		}
+		if surrenderedCount < len(states) {
+			// 有投降玩家：未投降的是赢家，投降的是输家，应该是KO
+			var winners []string
+			var winnerTemps []string
+			var maxLoserMul uint32 = 1
+
+			for _, state := range states {
+				if state.Status == PLAYER_SURRENDERED {
+					// 投降玩家是输家，更新最大倍率
+					if state.Multiplier > maxLoserMul {
+						maxLoserMul = state.Multiplier
+					}
+				} else {
+					winners = append(winners, state.WalletAddress)
+					winnerTemps = append(winnerTemps, state.TemporaryAddress)
+				}
+			}
+
+			// 拼接赢家地址
+			winnersStr := ""
+			winnerTempsStr := ""
+			if len(winners) > 0 {
+				winnersStr = winners[0]
+				winnerTempsStr = winnerTemps[0]
+				for i := 1; i < len(winners); i++ {
+					winnersStr += "|" + winners[i]
+					winnerTempsStr += "|" + winnerTemps[i]
+				}
+			}
+
+			return true, GAME_KO, winnersStr, winnerTempsStr, maxLoserMul
+		}
+	}
+
+	// 然后检查离线玩家情况
 	onlineCount := 0
 	offlineCount := 0
 
@@ -224,12 +272,18 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 
 	// 然后处理卡牌数量不足的情况（强制设为离线）
 	for idx, p := range input.Players {
+		// 如果玩家投降，设置为投降状态（优先级最高）
+		if p.Surrendered {
+			input.Players[idx].Status = PLAYER_SURRENDERED
+			continue
+		}
+
 		// 如果未提交 Commitment，则视为离线
 		if len(p.Commitment) == 0 {
 			input.Players[idx].Status = PLAYER_OFFLINE
 		}
 
-		// 如果卡牌数量不足 3，也视为离线（旧逻辑保留）
+		// 如果卡牌数量不足 3，也视为离线
 		if len(p.Cards) < 3 {
 			input.Players[idx].Status = PLAYER_OFFLINE
 		}

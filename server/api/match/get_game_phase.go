@@ -172,7 +172,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 			players = append(players, MatchPlayer{
 				Address:          p.Address.WalletAddress,
 				IsMyself:         p.Address.WalletAddress == address,
-				Confirmed:        p.IsConfirmed,
+				IsConfirmed:      p.IsConfirmed,
+				Cards:            p.Cards,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
 				InitialHP:        int32(config.GameParams.MaxHP),
@@ -187,11 +188,12 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 }
 
 type MatchPlayer struct {
-	Address          string `json:"Address"`
-	Name             string `json:"Name"`
-	AvatarURL        string `json:"AvatarURL"`
-	IsMyself         bool   `json:"IsMyself"`
-	Confirmed        bool   `json:"Confirmed"`
-	InitialHP        int32  `json:"InitialHP"`
-	InitialMultipler int32  `json:"InitialMultipler"`
+	Address          string   `json:"Address"`
+	Name             string   `json:"Name"`
+	AvatarURL        string   `json:"AvatarURL"`
+	IsMyself         bool     `json:"IsMyself"`
+	IsConfirmed      bool     `json:"IsConfirmed"`
+	Cards            []uint32 `json:"Cards"`
+	InitialHP        int32    `json:"InitialHP"`
+	InitialMultipler int32    `json:"InitialMultipler"`
 }

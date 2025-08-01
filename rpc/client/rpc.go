@@ -107,3 +107,11 @@ func (c *RpcClient) IsPlayerInQueue(ctx context.Context, addr types.PlayerAddres
 	}
 	return resp.IsInQueue, nil
 }
+
+func (c *RpcClient) Surrender(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
+	_, err := c.client.Surrender(ctx, &pb.SurrenderRequest{
+		GameID:  uint32(gameID),
+		Address: addr.ToProto(),
+	})
+	return err
+}

@@ -132,6 +132,8 @@ func convertInternalRewardToProto(in *BattleReward) *pb.BattleReward {
 			TemporaryAddress: pr.TemporaryAddress,
 			TokenChange:      int32(pr.TokenChange),
 			PointChange:      int32(pr.PointChange),
+			Offline:          pr.IsOffline,
+			Surrendered:      pr.IsSurrendered,
 		}
 	}
 	return &pb.BattleReward{

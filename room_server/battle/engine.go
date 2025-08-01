@@ -39,6 +39,15 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		return nil, fmt.Errorf("at least 2 players required")
 	}
 
+	// 检查是否有玩家投降
+	hasSurrenderedPlayer := false
+	for _, p := range input.Players {
+		if p.Status == PLAYER_SURRENDERED {
+			hasSurrenderedPlayer = true
+			break
+		}
+	}
+
 	// 检查是否有离线玩家
 	hasOfflinePlayer := false
 	for _, p := range input.Players {
@@ -83,8 +92,8 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		}
 	}
 
-	// 如果有离线玩家，直接跳过卡牌对战进入结算
-	if !hasOfflinePlayer {
+	// 如果有离线玩家或投降玩家，直接跳过卡牌对战进入结算
+	if !hasOfflinePlayer && !hasSurrenderedPlayer {
 		//目前只有2人对战，这里实际上只会取到i=0,j=1，处理一次card对战
 		//如果3人，应该在每个round的每个card的3次card对战结束后再统一结算effect，包括effect的记录和计算
 		//3人的情况下可能effect里要加一个source，表示是哪个玩家发起的动作，目前只在description里有
@@ -92,11 +101,6 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		for cardIdx := 0; cardIdx < 3; cardIdx++ {
 			for i := 0; i < playerCount; i++ {
 				for j := i + 1; j < playerCount; j++ {
-					// 跳过离线玩家的对战
-					if states[i].Status == PLAYER_OFFLINE || states[j].Status == PLAYER_OFFLINE {
-						continue
-					}
-
 					p1 := states[i]
 					p2 := states[j]
 					p1Card := playerCards[i][cardIdx]
