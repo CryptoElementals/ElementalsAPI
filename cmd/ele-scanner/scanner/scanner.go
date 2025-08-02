@@ -108,6 +108,8 @@ func (s *Scanner) Run() {
 				s.headNumberOnChain = sync.BlockHeight
 				s.currentScannedHeight = sync.BlockHeight + 1
 				s.toSubmitHeight = sync.BlockHeight + 1
+				log.Infof("Scanner initialized: headNumberOnChain=%d, currentScannedHeight=%d, toSubmitHeight=%d",
+					s.headNumberOnChain, s.currentScannedHeight, s.toSubmitHeight)
 			}
 		}
 		break
@@ -140,9 +142,11 @@ func (s *Scanner) RunCatchUp() {
 
 		if catchupCancel != nil {
 			catchupCancel() // stop old goroutine
+			log.Info("Stopped previous CatchUpChain goroutine")
 		}
 		_, cancel := context.WithCancel(s.ctx)
 		catchupCancel = cancel
+		log.Info("Starting new CatchUpChain goroutine")
 		go s.CatchUpChain()
 
 		headers := make(chan *types.Header)
@@ -200,12 +204,14 @@ func (s *Scanner) CatchUpChain() {
 
 	blockQueue := make(chan uint64, 200)
 
+	log.Infof("CatchUpChain started: currentScannedHeight=%d, headNumberOnChain=%d", s.currentScannedHeight, s.headNumberOnChain)
+
 	// 任务分发协程：基于 toSubmitHeight 控制投递，避免投递过多未处理的区块
 	go func() {
 		for {
 			select {
 			case <-s.ctx.Done():
-				log.Info("Task distributor context done, exiting...")
+				log.Info("Task distributor context done, exited...")
 				return
 			default:
 				if s.currentScannedHeight > s.headNumberOnChain {
@@ -214,13 +220,17 @@ func (s *Scanner) CatchUpChain() {
 				}
 
 				if len(blockQueue) <= blockQueueMax {
+					// 先记录当前要投递的区块号
+					currentBlockToAdd := s.currentScannedHeight
+
 					select {
 					case <-s.ctx.Done():
 						log.Info("Task producer context done while sending to blockQueue, exiting...")
 						return
-					case blockQueue <- s.currentScannedHeight:
-						log.Debugf("Task producer add block height %d to blockQueue, blockQueue len %d", s.currentScannedHeight, len(blockQueue))
-						s.currentScannedHeight++
+					case blockQueue <- currentBlockToAdd:
+						// 只有在成功投递后才增加 currentScannedHeight
+						s.currentScannedHeight = currentBlockToAdd + 1
+						log.Debugf("Task producer add block height %d to blockQueue, blockQueue len %d, currentScannedHeight %d", currentBlockToAdd, len(blockQueue), s.currentScannedHeight)
 					}
 				} else {
 					// 如果投递的区块太多，等待处理
@@ -248,9 +258,12 @@ func (s *Scanner) CatchUpChain() {
 					log.Debugf("Task consumer Worker %d processing block %d", workerID, blockNumber)
 					batch, err := s.getAndProcessBlockToBatch(big.NewInt(int64(blockNumber)))
 					if err != nil {
-						log.Warnf("Worker %d parse block %d err %v", workerID, blockNumber, err.Error())
+						log.Warnf("Worker %d parse block %d err %v, will retry", workerID, blockNumber, err.Error())
 						// 失败重试，重新放回队列
-						go func(bn uint64) { blockQueue <- bn }(blockNumber)
+						go func(bn uint64) {
+							log.Debugf("Worker %d retrying block %d, adding back to queue", workerID, bn)
+							blockQueue <- bn
+						}(blockNumber)
 						time.Sleep(time.Second * 3)
 						continue
 					}
@@ -274,9 +287,12 @@ func (s *Scanner) CatchUpChain() {
 					select {
 					case err := <-orderedBatch.done:
 						if err != nil {
-							log.Errorf("Worker %d submit failed for block %d: %v", workerID, blockNumber, err)
+							log.Errorf("Worker %d submit failed for block %d: %v, will retry", workerID, blockNumber, err)
 							// 失败重试，重新放回队列
-							go func(bn uint64) { blockQueue <- bn }(blockNumber)
+							go func(bn uint64) {
+								log.Debugf("Worker %d retrying submit for block %d, adding back to queue", workerID, bn)
+								blockQueue <- bn
+							}(blockNumber)
 							time.Sleep(time.Second * 3)
 							continue
 						}
