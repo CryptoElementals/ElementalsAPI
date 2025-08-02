@@ -40,21 +40,22 @@ type eventSigHashCache struct {
 
 // Scanner encapsulates the state and logic for block catching up
 type Scanner struct {
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	gethWsRpc            string
-	gethHttpRpc          string
-	roomServerHttpRpc    string
-	gethClient           *ethclient.Client
-	rpcClient            *eleClient.RpcClient
-	roomManagerAddress   string
-	roomManagerAbi       *abi.ABI
-	roomAbi              *abi.ABI
-	currentScannedHeight uint64
-	toSubmitHeight       uint64
-	toSubmitHeightMutex  sync.RWMutex // 添加同步机制
-	headNumberOnChain    uint64
-	eventSigHashCache    eventSigHashCache // 封装后的缓存
+	ctx                       context.Context
+	cancel                    context.CancelFunc
+	gethWsRpc                 string
+	gethHttpRpc               string
+	roomServerHttpRpc         string
+	gethClient                *ethclient.Client
+	rpcClient                 *eleClient.RpcClient
+	roomManagerAddress        string
+	roomManagerAbi            *abi.ABI
+	roomAbi                   *abi.ABI
+	currentScannedHeight      uint64
+	currentScannedHeightMutex sync.RWMutex
+	toSubmitHeight            uint64
+	toSubmitHeightMutex       sync.RWMutex // 添加同步机制
+	headNumberOnChain         uint64
+	eventSigHashCache         eventSigHashCache // 封装后的缓存
 }
 
 // NewScanner creates a new Scanner with its own cancellable context.
@@ -220,18 +221,7 @@ func (s *Scanner) CatchUpChain() {
 				}
 
 				if len(blockQueue) <= blockQueueMax {
-					// 先记录当前要投递的区块号
-					currentBlockToAdd := s.currentScannedHeight
-
-					select {
-					case <-s.ctx.Done():
-						log.Info("Task producer context done while sending to blockQueue, exiting...")
-						return
-					case blockQueue <- currentBlockToAdd:
-						// 只有在成功投递后才增加 currentScannedHeight
-						s.currentScannedHeight = currentBlockToAdd + 1
-						log.Debugf("Task producer add block height %d to blockQueue, blockQueue len %d, currentScannedHeight %d", currentBlockToAdd, len(blockQueue), s.currentScannedHeight)
-					}
+					s.addBlockToQueue(blockQueue)
 				} else {
 					// 如果投递的区块太多，等待处理
 					log.Debugf("Task producer waiting for blockQueue to be consumned, blockQueue len %d", len(blockQueue))
@@ -331,6 +321,23 @@ func (s *Scanner) CatchUpChain() {
 	<-s.ctx.Done()
 	s.rpcClient.Close()
 	log.Info("Scanner context done, CatchUpChain exited...")
+}
+
+func (s *Scanner) addBlockToQueue(blockQueue chan<- uint64) {
+	s.currentScannedHeightMutex.Lock()
+	defer s.currentScannedHeightMutex.Unlock() // 函数结束时释放锁
+
+	currentBlockToAdd := s.currentScannedHeight
+
+	select {
+	case <-s.ctx.Done():
+		return // defer 在这里执行
+	case blockQueue <- currentBlockToAdd:
+		s.currentScannedHeight = currentBlockToAdd + 1 // 在锁保护下
+		log.Debugf("Task producer add block height %d to blockQueue, blockQueue len %d, currentScannedHeight %d",
+			currentBlockToAdd, len(blockQueue), s.currentScannedHeight)
+	}
+	// 函数结束，defer 在这里执行
 }
 
 // orderedSubmitWorker 按顺序提交交易到 roomServer
@@ -626,19 +633,4 @@ func (s *Scanner) initEventSigHashCache() error {
 	}
 
 	return nil
-}
-
-func processCreateRoomTx(ctx context.Context, gethClient *ethclient.Client, tx blockchain.OptimismTx, roomManagerAbi *abi.ABI) (*blockchain.RoomCreatedTx, error) {
-	hash := common.HexToHash(tx.Hash)
-	receipt, err := gethClient.TransactionReceipt(ctx, hash)
-	if err != nil {
-		return nil, err
-	}
-
-	roomCreatedTx, err := blockchain.ParseRoomCreatedEvent(receipt, roomManagerAbi)
-	if err != nil {
-		return nil, err
-	}
-
-	return roomCreatedTx, nil
 }
