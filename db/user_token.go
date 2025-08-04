@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
 
@@ -84,14 +85,18 @@ func UnlockUserToken(ctx context.Context, address string, tempAddress string) (e
 }
 
 func BattleResultSettlement(game *dao.Game) error {
+	// game aborted when init
+	if game.Status == proto.GameStatus_GAME_INIT {
+		return nil
+	}
+	if game.GameResult == nil {
+		return errors.New("game result is nil")
+	}
+	reward := game.GameResult.BattleReward
+	if reward == nil {
+		return errors.New("game result battle reward is nil")
+	}
 	return Get().Transaction(func(tx *gorm.DB) error {
-		if game.GameResult == nil {
-			return errors.New("game result is nil")
-		}
-		reward := game.GameResult.BattleReward
-		if reward == nil {
-			return errors.New("game result battle reward is nil")
-		}
 		for _, pr := range reward.PlayerRewards {
 			userToken := &dao.UserToken{}
 			err := tx.Where("wallet_address = ?", pr.WalletAddress).Preload("LockedTokens").First(userToken).Error

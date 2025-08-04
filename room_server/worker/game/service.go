@@ -84,7 +84,7 @@ func (s *Service) IsPlayerInGame(playerAddress *types.PlayerAddress) bool {
 func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus {
 	gameInfo := s.gameManager.GetActiveGame(playerAddress)
 	if gameInfo == nil {
-		return proto.PlayerStatus_PLAYER_KNOWN
+		return proto.PlayerStatus_PLAYER_UNKNOWN
 	}
 	if gameInfo.Status == proto.GameStatus_GAME_INIT {
 		return proto.PlayerStatus_PLAYER_MATCHED

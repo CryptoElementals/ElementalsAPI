@@ -63,7 +63,7 @@ message RefuseContinueGameRequest {
 }
 
 enum PlayerStatus {
-    PLAYER_KNOWN = 0;
+    PLAYER_UNKNOWN = 0;
     PLAYER_IN_QUEUE = 1;
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
