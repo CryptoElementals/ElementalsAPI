@@ -44,7 +44,7 @@ func (p *Player) createSelf() {
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.status == proto.PlayerStatus_PLAYER_KNOWN {
+	if p.status == proto.PlayerStatus_PLAYER_UNKNOWN {
 		switch evt := event.Data.(type) {
 		case *types.ContinueCanceledEvent:
 			p.handleContinueCanceledEvent(ctx, evt)
@@ -78,7 +78,7 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		p.handleRoundCompletedEvent(p.ctx, evt)
 	case *types.GameCompletedEvent:
 		p.handleGameCompletedEvent(p.ctx, evt)
-		p.status = proto.PlayerStatus_PLAYER_KNOWN
+		p.status = proto.PlayerStatus_PLAYER_UNKNOWN
 	}
 	return nil
 }
@@ -87,7 +87,7 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 func (p *Player) joinQueue() error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.status != proto.PlayerStatus_PLAYER_KNOWN && p.status != proto.PlayerStatus_PLAYER_WAITTING_CONTINUE {
+	if p.status != proto.PlayerStatus_PLAYER_UNKNOWN && p.status != proto.PlayerStatus_PLAYER_WAITTING_CONTINUE {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
 
@@ -111,7 +111,7 @@ func (p *Player) exitQueue() error {
 	p.queue.HandleExitQueueEvent(&types.ExitQueueEvent{
 		PlayerAddress: p.address,
 	})
-	p.status = proto.PlayerStatus_PLAYER_KNOWN
+	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
 	return nil
 }
 
@@ -207,5 +207,5 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 			Type: proto.EventType_TYPE_GAME_COMPLETE,
 		},
 	})
-	p.status = proto.PlayerStatus_PLAYER_KNOWN
+	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
 }
