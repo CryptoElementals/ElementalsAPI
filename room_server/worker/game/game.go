@@ -143,7 +143,6 @@ func NewGameFromGameInfo(
 		} else {
 			g.sendTimerEventByCurrentRound()
 		}
-
 	} else {
 		g.setupNewRound()
 	}
@@ -186,9 +185,35 @@ func (g *Game) GetGamePhase() *proto.GamePhase {
 }
 
 func (g *Game) saveGame() error {
+	// won't save game until it's running
+	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+		return nil
+	}
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
 		log.Errorf("SaveGame failed, err: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
+	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+		return nil
+	}
+	err := db.SavePlayerRoundInfo(roundPlayer)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g *Game) saveRound(round *dao.Round) error {
+	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+		return nil
+	}
+	err := db.SaveRound(round)
+	if err != nil {
 		return err
 	}
 	return nil
@@ -255,7 +280,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 		return err
 	}
 	p.roundPlayer.Surrendered = true
-	err = db.SavePlayerRoundInfo(p.roundPlayer)
+	err = g.savePlayerRoundInfo(p.roundPlayer)
 	if err != nil {
 		return err
 	}
@@ -289,8 +314,9 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		RoundNumber:  uint32(g.currentRound.RoundNumber),
 		ReadyAddress: player.PlayerAddress(),
 	}))
-	if !allPlayersReady {
-		return db.SavePlayerRoundInfo(player.roundPlayer)
+	// for the first round we don't record any thing until both players confirmed
+	if !allPlayersReady && g.currentRound.RoundNumber == 1 {
+		return g.savePlayerRoundInfo(player.roundPlayer)
 	}
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
 	for _, player := range g.gamePlayers {
@@ -371,7 +397,7 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
 	g.currentRound.SetupOnChainAt = evt.TimeStamp
-	err = db.SaveRound(g.currentRound)
+	err = g.saveRound(g.currentRound)
 	if err != nil {
 		return err
 	}
@@ -406,10 +432,10 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		}
 	}
 	if !allCommitmentsOnChain {
-		return db.SavePlayerRoundInfo(player.roundPlayer)
+		return g.savePlayerRoundInfo(player.roundPlayer)
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
-	err = db.SaveRound(g.currentRound)
+	err = g.saveRound(g.currentRound)
 	if err != nil {
 		return err
 	}
@@ -452,7 +478,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		}
 	}
 	if !allCardsOnChain {
-		return db.SavePlayerRoundInfo(player.roundPlayer)
+		return g.savePlayerRoundInfo(player.roundPlayer)
 	}
 	return g.handleRoundEnd()
 }
@@ -480,6 +506,28 @@ func (g *Game) handleGameEnd() error {
 		return err
 	}
 	g.lock.Lock()
+	g.sendEventsToAllPlayers(gameCompletedEvt)
+	g.stopWorker()
+	return nil
+}
+
+// can go into game end from any other status
+func (g *Game) handleGameAbortInit() error {
+	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
+		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
+	}
+	completeEvt := &types.GameCompletedEvent{
+		GameID:   g.gameInfo.ID,
+		GameInfo: g.gameInfo,
+	}
+	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
+	// we need a deterministic sequence for locks
+	g.lock.Unlock()
+	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+		return err
+	}
+	g.lock.Lock()
+	// we need a deterministic sequence for locks
 	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopWorker()
 	return nil
@@ -595,12 +643,13 @@ func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
 }
 
 func (g *Game) timeoutFromCurentRound() time.Duration {
-	if g.gameInfo.Status == proto.GameStatus_GAME_END {
-		return time.Second * 20
-	}
 	if g.gameInfo.RoundTimeout == 0 {
 		return 0
 	}
+	if g.gameInfo.Status == proto.GameStatus_GAME_END {
+		return time.Second * 20
+	}
+
 	timeout := time.Second * time.Duration(g.gameInfo.RoundTimeout)
 	if g.currentRound.SetupOnChainAt != 0 {
 		timeout -= time.Since(time.Unix(g.currentRound.SetupOnChainAt, 0))
@@ -637,7 +686,10 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	}
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-		g.handleRoundEnd()
+		err := g.handleGameAbortInit()
+		if err != nil {
+			log.Errorf("abort game failed, err: %s", err.Error())
+		}
 		return
 	}
 	switch g.currentRound.Status {

@@ -58,3 +58,6 @@ type SurrenderEvent struct {
 	GameID  uint
 	Address PlayerAddress
 }
+
+type AbortGame struct {
+}

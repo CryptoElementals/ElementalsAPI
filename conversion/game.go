@@ -272,7 +272,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 	case proto.GameStatus_GAME_RUNNING:
 		playerStatus = proto.PlayerStatus_PLAYER_IN_GAME
 	case proto.GameStatus_GAME_END:
-		playerStatus = proto.PlayerStatus_PLAYER_KNOWN
+		playerStatus = proto.PlayerStatus_PLAYER_UNKNOWN
 	}
 
 	gamePhase.PvPInfo = &proto.PvPInfo{

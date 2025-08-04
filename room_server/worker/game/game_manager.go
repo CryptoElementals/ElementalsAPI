@@ -199,11 +199,16 @@ func (r *GameManager) recoverGames() error {
 		return err
 	}
 	for _, info := range gameInfos {
+		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
 		if time.Since(info.CreatedAt) > time.Duration(r.roundTimeout)*time.Second*time.Duration(r.maxRounds) {
-			log.Errorf("game %d expired, skip", info.ID)
+			log.Errorf("game %d expired, terminate", info.ID)
+			err := game.handleRoundEnd()
+			if err != nil {
+				log.Errorf("expired game terminate failed, game: %d, err %s", info.ID, err)
+			}
 			continue
 		}
-		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
+
 		players := game.gamePlayers
 		for _, player := range players {
 			addr := player.PlayerAddress()
