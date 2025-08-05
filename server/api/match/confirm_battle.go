@@ -17,7 +17,7 @@ const CONFIRM_BATTLE_LABEL = "ConfirmBattle"
 // ConfirmBattleRequest 请求结构体
 type ConfirmBattleRequest struct {
 	api.BaseRequest
-	GameID      uint32 `mapstructure:"GameId" validate:"required"`
+	GameID      uint32 `mapstructure:"GameID" validate:"required"`
 	Round       uint   `mapstructure:"Round" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 }
