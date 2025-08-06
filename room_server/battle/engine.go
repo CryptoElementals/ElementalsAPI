@@ -228,7 +228,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		// 构建玩家状态映射
 		playerStatuses := make(map[string]PlayerStatus)
 		for _, st := range states {
-			playerStatuses[st.WalletAddress] = st.Status
+			playerStatuses[st.TemporaryAddress] = st.Status
 		}
 
 		// 计算奖励并填充

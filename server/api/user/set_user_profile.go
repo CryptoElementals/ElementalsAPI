@@ -17,8 +17,8 @@ const SET_USER_PROFILE_LABEL = "SetUserProfile"
 
 type SetUserProfileRequest struct {
 	api.BaseRequest
-	Name      string `mapstructure:"Name" validate:"required,max=42"`
-	AvatarURL string `mapstructure:"AvatarURL" validate:"max=100"` // 文件名长度限制
+	Name   string `mapstructure:"Name" validate:"required,max=42"`
+	Avatar string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
 }
 
 type SetUserProfileResponse struct {
@@ -96,9 +96,9 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 
 	// 更新用户档案
 	userProfile.Name = task.Request.Name
-	if task.Request.AvatarURL != "" {
+	if task.Request.Avatar != "" {
 		// 直接使用传入的文件名
-		avatarFilename := task.Request.AvatarURL
+		avatarFilename := task.Request.Avatar
 
 		// 构造对应的背景文件名
 		backgroundFilename := utils.GetBackgroundFilenameFromAvatarFilename(avatarFilename)

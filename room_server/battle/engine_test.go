@@ -708,19 +708,19 @@ func TestSurrenderLogic(t *testing.T) {
 			{
 				WalletAddress:    "1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				Cards:            []int{1, 2, 3},
+				Cards:            []int{},
 				HP:               3000,
 				LostHP:           500,
-				Commitment:       []byte{1},
+				Commitment:       []byte{},
 				Surrendered:      true, // 玩家1投降
 			},
 			{
-				WalletAddress:    "2_address",
+				WalletAddress:    "1_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int{1, 2, 3},
+				Cards:            []int{},
 				HP:               2500,
 				LostHP:           4000,
-				Commitment:       []byte{1},
+				Commitment:       []byte{},
 				Surrendered:      false, // 玩家2不投降
 			},
 		},

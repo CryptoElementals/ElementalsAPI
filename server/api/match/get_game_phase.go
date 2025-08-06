@@ -170,8 +170,9 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
 				continue
 			}
 			players = append(players, MatchPlayer{
-				Address:          p.Address.WalletAddress,
-				IsMyself:         p.Address.WalletAddress == address,
+				Address: p.Address.WalletAddress,
+				// IsMyself:         p.Address.WalletAddress == address,
+				IsMyself:         p.Address.TemporaryAddress == tempAddress && p.Address.WalletAddress == address,
 				IsConfirmed:      p.IsConfirmed,
 				Cards:            p.Cards,
 				Name:             userProfile.Name,
