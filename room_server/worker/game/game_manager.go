@@ -79,16 +79,23 @@ func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) er
 			return err
 		}
 	}
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	game := r.gamesMap[evt.GameID]
-	if game == nil {
-		return fmt.Errorf("game not found, game id: %d", evt.GameID)
-	}
-	delete(r.gamesMap, evt.GameID)
-	for _, player := range game.gamePlayers {
-		delete(r.playerToGameMap, *player.addr)
-	}
+	// do this async for not getting deadlock
+	go func() {
+		r.lock.Lock()
+		defer r.lock.Unlock()
+		game := r.gamesMap[evt.GameID]
+		if game == nil {
+			log.Errorf("game not found, game id: %d", evt.GameID)
+			return
+		}
+		delete(r.gamesMap, evt.GameID)
+		for _, player := range game.gamePlayers {
+			if player == nil {
+				continue
+			}
+			delete(r.playerToGameMap, *player.addr)
+		}
+	}()
 	return nil
 }
 
