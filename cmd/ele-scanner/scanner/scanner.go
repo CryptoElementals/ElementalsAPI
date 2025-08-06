@@ -30,6 +30,7 @@ const (
 	SubmitCardsHashEventName = "submitCardsHash"
 	SubmitCardsEventName     = "submitCards"
 	StartANewRoundName       = "startANewRound"
+	rpcSubmitTimeout         = 3 * time.Second
 )
 
 type eventSigHashCache struct {
@@ -426,7 +427,10 @@ func (s *Scanner) submitBatch(batch *proto.TransactionBatch) error {
 		log.Debugf("RoomServer mocked, skipping submit for block %d", batch.BlockNumber)
 		return nil
 	}
-	err := s.rpcClient.SubmitTransactions(s.ctx, batch)
+
+	submitCtx, cancel := context.WithTimeout(s.ctx, rpcSubmitTimeout)
+	defer cancel()
+	err := s.rpcClient.SubmitTransactions(submitCtx, batch)
 	if err != nil {
 		log.Errorf("submit transactions to roomServer failed, err %s, BlockNumber %d, BlockHash %x, Timestamp %d",
 			err.Error(), batch.BlockNumber, batch.BlockHash, batch.Timestamp)
