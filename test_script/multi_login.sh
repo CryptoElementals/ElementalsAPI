@@ -4,7 +4,7 @@
 # 一次性测试多个用户的登录流程
 
 # 配置参数
-SERVER_URL="http://localhost:8080"
+SERVER_URL="http://localhost:6000"
 
 # 自动收集所有用户信息
 users=()

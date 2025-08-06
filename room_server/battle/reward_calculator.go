@@ -26,6 +26,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 	gr := result.GameResult
 	baseStake := rc.BaseStake
 	finalMultiplier := float64(gr.Multiplier)
+
 	var playerRewards []PlayerReward
 	var systemFee int
 
@@ -40,7 +41,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 
 			isOffline := false
 			isSurrendered := false
-			if status, exists := playerStatuses[player.WalletAddress]; exists {
+			if status, exists := playerStatuses[player.TemporaryAddress]; exists {
 				isOffline = status == PLAYER_OFFLINE
 				isSurrendered = status == PLAYER_SURRENDERED
 			}
@@ -59,16 +60,17 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 	case GAME_NORMAL, GAME_KO:
 		if gr.WinnerWalletAddress != "" {
 			// 解析赢家地址列表
-			winnerAddresses := make(map[string]bool)
-			winnerList := []string{gr.WinnerWalletAddress}
-			if gr.WinnerWalletAddress != "" {
-				winnerList = strings.Split(gr.WinnerWalletAddress, "|")
-				for _, addr := range winnerList {
-					winnerAddresses[addr] = true
+
+			winnerTemporaryAddresses := make(map[string]bool)
+			winnerTemporaryList := []string{gr.WinnerTemporaryAddress}
+			if gr.WinnerTemporaryAddress != "" {
+				winnerTemporaryList = strings.Split(gr.WinnerTemporaryAddress, "|")
+				for _, addr := range winnerTemporaryList {
+					winnerTemporaryAddresses[addr] = true
 				}
 			}
 
-			winnerCount := len(winnerList)
+			winnerCount := len(winnerTemporaryList)
 			loserCount := len(result.Players) - winnerCount
 			totalPool := int(float64(baseStake) * finalMultiplier)
 
@@ -94,13 +96,16 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 			for _, player := range result.Players {
 				isOffline := false
 				isSurrendered := false
-				if status, exists := playerStatuses[player.WalletAddress]; exists {
+				if status, exists := playerStatuses[player.TemporaryAddress]; exists {
 					isOffline = status == PLAYER_OFFLINE
 					isSurrendered = status == PLAYER_SURRENDERED
 				}
 
-				if winnerAddresses[player.WalletAddress] {
+				isWinner := winnerTemporaryAddresses[player.TemporaryAddress]
+
+				if isWinner {
 					// 赢家
+
 					playerRewards = append(playerRewards, PlayerReward{
 						WalletAddress:    player.WalletAddress,
 						TemporaryAddress: player.TemporaryAddress,
@@ -111,6 +116,7 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 					})
 				} else {
 					// 输家
+
 					playerRewards = append(playerRewards, PlayerReward{
 						WalletAddress:    player.WalletAddress,
 						TemporaryAddress: player.TemporaryAddress,

@@ -59,6 +59,8 @@ func GetPresignedImageURL(filename string) (string, error) {
 	internalURL := fmt.Sprintf("http://%s.%s", config.GConf.S3Config.Bucket, strings.TrimPrefix(config.GConf.S3Config.Endpoint, "http://"))
 	url = strings.Replace(url, internalURL, config.GConf.S3Config.Domain, 1)
 
+	url = strings.Replace(url, "https://", "http://", 1)
+
 	return url, nil
 }
 
