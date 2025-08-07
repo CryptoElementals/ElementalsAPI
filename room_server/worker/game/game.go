@@ -283,7 +283,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 	if err != nil {
 		return err
 	}
-	return g.handleRoundEnd()
+	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER)
 }
 
 func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
@@ -487,7 +487,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		GameID:      g.gameInfo.ID,
 		RoundNumber: evt.RoundNumber,
 	}))
-	return g.handleRoundEnd()
+	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL)
 }
 
 // can go into game end from any other status
@@ -581,9 +581,11 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 	}
 }
 
-func (g *Game) handleRoundEnd() error {
+func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
+	g.currentRound.CompleteReason = reason
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
+	input.Reason = reason
 	for _, p := range input.Players {
 		player, err := g.getGamePlayer(p.TemporaryAddress)
 		if err != nil {
@@ -701,10 +703,13 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		// do nothing
 	case proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
 		log.Errorf("setup on chain timeout, current round: %d, gameid: %d", event.currentRound, g.gameInfo.ID)
-	case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
-		proto.RoundStatus_ROUND_WAITTING_COMMITMENTS,
-		proto.RoundStatus_ROUND_WAITTING_CARDS:
-		g.handleRoundEnd()
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT)
+	case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION:
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_CONFIRMATION_TIMEOUT)
+	case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_COMMITMENTS_TIMEOUT)
+	case proto.RoundStatus_ROUND_WAITTING_CARDS:
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_CARDS_TIMEOUT)
 	}
 }
 

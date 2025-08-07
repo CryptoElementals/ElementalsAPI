@@ -209,7 +209,7 @@ func (r *GameManager) recoverGames() error {
 		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
 		if time.Since(info.CreatedAt) > time.Duration(r.roundTimeout)*time.Second*time.Duration(r.maxRounds) {
 			log.Errorf("game %d expired, terminate", info.ID)
-			err := game.handleRoundEnd()
+			err := game.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT)
 			if err != nil {
 				log.Errorf("expired game terminate failed, game: %d, err %s", info.ID, err)
 			}
