@@ -585,7 +585,6 @@ func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 	g.currentRound.CompleteReason = reason
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
-	input.Reason = reason
 	for _, p := range input.Players {
 		player, err := g.getGamePlayer(p.TemporaryAddress)
 		if err != nil {
