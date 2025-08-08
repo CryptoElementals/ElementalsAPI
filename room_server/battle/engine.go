@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/CryptoElementals/common/config"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
 type BattleEngine struct {
@@ -37,6 +38,13 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	playerCount := len(input.Players)
 	if playerCount < 2 {
 		return nil, fmt.Errorf("at least 2 players required")
+	}
+
+	// 检查是否是服务器超时导致的回合结束
+	if input.Reason == pb.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT ||
+		input.Reason == pb.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT {
+		// 直接返回游戏结果，双方算作平局，token为0，point为0
+		return be.gameLogic.handleServerTimeoutRound(input, playerCount)
 	}
 
 	// 检查是否有玩家投降

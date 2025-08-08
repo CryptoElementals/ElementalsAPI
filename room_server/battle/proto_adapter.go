@@ -45,6 +45,7 @@ func convertProtoRoundInputToInternal(in *pb.RoundInput) *RoundInput {
 	return &RoundInput{
 		RoundNumber: uint32(in.GetRoundNumber()),
 		Players:     players,
+		Reason:      in.GetReason(),
 	}
 }
 
