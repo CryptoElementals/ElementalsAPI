@@ -134,6 +134,7 @@ func runClient(t *testing.T,
 	chanErr := make(chan error)
 
 	go func() {
+		defer fmt.Println("palyer quit", addr)
 		defer wg.Done()
 		gameID := uint(0)
 		round := uint(1)
@@ -227,6 +228,7 @@ func runClient(t *testing.T,
 					if !battleInfo.RoundResult.IsGameOver {
 						round++
 						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
+						t.Logf("confirm submitted, addr: %s, round %d, game: %d", addr.String(), round, gameID)
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
 					t.Log("game complete")
@@ -239,13 +241,14 @@ func runClient(t *testing.T,
 		}
 	}()
 	require.NoError(t, client.PubSubClient.Subscribe(addr.String(), addr.String(), chanEvt, chanErr))
+	time.Sleep(1 * time.Second)
 }
 
 func TestServer_BattleFullLogic(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
 	prepareUserTokens(t)
-	setupTestSvc(t, 12)
+	setupTestSvc(t)
 	client, err := rpc.NewClient(svrUrl)
 	require.NoError(t, err)
 	defer client.Close()

@@ -12,12 +12,12 @@ message PlayerRoundInput {
     int32 HP = 5;
     int32 LostHP = 6;
     bool Surrendered = 7;
-    
 }
 
 message RoundInput {
     int32 RoundNumber = 1;
     repeated PlayerRoundInput Players = 2;
+    RoundCompleteReason reason = 3;
 }
 
 enum ElementRelation {
@@ -92,4 +92,14 @@ message BattleEffect {
     string TargetWalletAddress = 3;      // target player address
     string TargetTemporaryAddress = 4;      // target player address
     string Description = 5; // effect description
+}
+
+enum RoundCompleteReason {
+    ROUND_COMPLETE_NORMAL = 0;
+    ROUND_COMPLETE_PLAYER_CONFIRMATION_TIMEOUT = 1;
+    ROUND_COMPLETE_PLAYER_COMMITMENTS_TIMEOUT = 2;
+    ROUND_COMPLETE_PLAYER_CARDS_TIMEOUT = 3;
+    ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT = 4;
+    ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT = 5;
+    ROUND_COMPLETE_PLAYER_SURRENDER = 6;
 }

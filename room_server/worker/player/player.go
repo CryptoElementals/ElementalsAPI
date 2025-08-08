@@ -74,6 +74,8 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		p.handleRoundPartialReadyEvent(p.ctx, evt)
 	case *types.CommitmentsOnChainEvent:
 		p.handleCommitmentsOnChainEvent(p.ctx, evt)
+	case *types.CardsOnChainEvent:
+		p.handleCardsOnChainEvent(p.ctx, evt)
 	case *types.RoundCompletedEvent:
 		p.handleRoundCompletedEvent(p.ctx, evt)
 	case *types.GameCompletedEvent:
@@ -164,6 +166,15 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 	})
 }
 
+func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) {
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_CARDS_ON_CHAIN,
+		},
+	})
+}
+
 func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.ContinueCanceledEvent) {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
@@ -177,24 +188,12 @@ func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.Round
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
-			Type: proto.EventType_TYPE_CARDS_ON_CHAIN,
-		},
-	})
-	p.publisher.Publish(ctx, &proto.PublishRequest{
-		Topic: p.address.String(),
-		Event: &proto.Event{
 			Type: proto.EventType_TYPE_ROUND_COMPLETE,
 		},
 	})
 }
 
 func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCompletedEvent) {
-	p.publisher.Publish(ctx, &proto.PublishRequest{
-		Topic: p.address.String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_CARDS_ON_CHAIN,
-		},
-	})
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
