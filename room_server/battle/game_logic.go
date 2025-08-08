@@ -342,3 +342,63 @@ func (gl *GameLogic) validateCardElements(cardIDs []int, playerName string) erro
 
 	return nil
 }
+
+// handleServerTimeoutRound 处理服务器超时导致的回合结束
+func (gl *GameLogic) handleServerTimeoutRound(input *RoundInput, playerCount int) (*RoundResult, error) {
+	// 构建玩家回合数据（空的卡牌统计）
+	playerStats := make([]PlayerRoundStat, playerCount)
+	for i, p := range input.Players {
+		playerStats[i] = PlayerRoundStat{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+			LostHP:           p.LostHP,
+			CardStats:        []PlayerCardStat{}, // 空的卡牌统计
+		}
+	}
+
+	// 创建游戏结果 - 平局，token为0，point为0
+	gameRes := &GameResult{
+		Multiplier:             0,        // 倍率为0
+		WinnerWalletAddress:    "",       // 平局，无胜者
+		WinnerTemporaryAddress: "",       // 平局，无胜者
+		GameResultType:         GAME_TIE, // 平局类型
+		Reward: BattleReward{
+			PlayerRewards: make([]PlayerReward, playerCount),
+			SystemFee:     0, // 系统手续费为0
+		},
+	}
+
+	// 为每个玩家设置奖励（token为0，point为0）
+	for i, p := range input.Players {
+		// 根据玩家的状态设置 IsOffline 和 IsSurrendered
+		isOffline := false
+		isSurrendered := false
+
+		// 如果玩家投降，设置为投降状态
+		if p.Surrendered {
+			isSurrendered = true
+		} else if len(p.Commitment) == 0 || len(p.Cards) < 3 {
+			// 如果未提交 Commitment 或卡牌数量不足，则视为离线
+			isOffline = true
+		}
+
+		gameRes.Reward.PlayerRewards[i] = PlayerReward{
+			WalletAddress:    p.WalletAddress,
+			TemporaryAddress: p.TemporaryAddress,
+			TokenChange:      0, // token变化为0
+			PointChange:      0, // point变化为0
+			IsOffline:        isOffline,
+			IsSurrendered:    isSurrendered,
+		}
+	}
+
+	// 构建回合结果
+	roundRes := &RoundResult{
+		Players:     playerStats,
+		RoundNumber: input.RoundNumber,
+		IsGameOver:  true, // 游戏结束
+		GameResult:  gameRes,
+	}
+
+	return roundRes, nil
+}

@@ -1,5 +1,7 @@
 package battle
 
+import pb "github.com/CryptoElementals/common/rpc/proto"
+
 // Card card structure
 type Card struct {
 	ID          int    `json:"ID"`          // Card ID
@@ -44,8 +46,9 @@ type PlayerRoundInput struct {
 }
 
 type RoundInput struct {
-	RoundNumber uint32             `json:"RoundNumber"`
-	Players     []PlayerRoundInput `json:"Players"`
+	RoundNumber uint32                 `json:"RoundNumber"`
+	Players     []PlayerRoundInput     `json:"Players"`
+	Reason      pb.RoundCompleteReason `json:"Reason,omitempty"` // 回合完成原因
 }
 
 // BattleResult battle result

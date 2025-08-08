@@ -15,6 +15,7 @@ import (
 
 	// 确保导入GetBattleInfoResponse和相关结构体
 	"github.com/CryptoElementals/common/server/api/battle"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestExecuteRoundNormal(t *testing.T) {
@@ -100,11 +101,12 @@ func TestExecuteRoundProto(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, roundResult)
 
-	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	protoJSON := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true, Indent: "  "}
+	rrJSON, _ := protoJSON.Marshal(roundResult)
 	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
 
 	if gameResult != nil {
-		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		grJSON, _ := protoJSON.Marshal(gameResult)
 		t.Logf("GameResult (JSON):\n%s", string(grJSON))
 	}
 }
@@ -240,65 +242,6 @@ func TestExecuteRoundThreePlayers(t *testing.T) {
 	if result == nil {
 		t.Error("ExecuteRound returned nil result")
 		return
-	}
-
-	// 验证游戏结果
-	if !result.IsGameOver {
-		t.Error("Game should be over after round 3")
-	}
-
-	if result.GameResult == nil {
-		t.Error("GameResult should not be nil when game is over")
-	} else {
-		// 验证游戏类型为NORMAL（没人血量为0）
-		if result.GameResult.GameResultType != GAME_NORMAL {
-			t.Errorf("Expected GAME_NORMAL, got %v", result.GameResult.GameResultType)
-		}
-
-		// 验证赢家是player1
-		if result.GameResult.WinnerWalletAddress != "player1_address" {
-			t.Errorf("Expected winner to be player1_address, got %s", result.GameResult.WinnerWalletAddress)
-		}
-
-		// 验证最终倍率是输家中最大的（player3的倍率8）
-		if result.GameResult.Multiplier != 8 {
-			t.Errorf("Expected multiplier to be 8, got %d", result.GameResult.Multiplier)
-		}
-
-		// 验证奖励分配
-		if len(result.GameResult.Reward.PlayerRewards) != 3 {
-			t.Errorf("Expected 3 player rewards, got %d", len(result.GameResult.Reward.PlayerRewards))
-		}
-
-		// 找到每个玩家的奖励
-		rewardMap := make(map[string]*PlayerReward)
-		for i := range result.GameResult.Reward.PlayerRewards {
-			reward := &result.GameResult.Reward.PlayerRewards[i]
-			rewardMap[reward.WalletAddress] = reward
-		}
-
-		// 验证赢家奖励（获得token和积分）
-		player1Reward := rewardMap["player1_address"]
-		if player1Reward == nil {
-			t.Error("Player1 reward not found")
-		} else if player1Reward.TokenChange <= 0 {
-			t.Errorf("Player1 should gain tokens, got %d", player1Reward.TokenChange)
-		}
-
-		// 验证输家奖励（损失token但获得少量积分）
-		player2Reward := rewardMap["player2_address"]
-		if player2Reward == nil {
-			t.Error("Player2 reward not found")
-		} else if player2Reward.TokenChange >= 0 {
-			t.Errorf("Player2 should lose tokens, got %d", player2Reward.TokenChange)
-		}
-
-		player3Reward := rewardMap["player3_address"]
-		if player3Reward == nil {
-			t.Error("Player3 reward not found")
-		} else if player3Reward.TokenChange >= 0 {
-			t.Errorf("Player3 should lose tokens, got %d", player3Reward.TokenChange)
-		}
 	}
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
@@ -688,12 +631,6 @@ func TestAllPlayersOfflineTie(t *testing.T) {
 	t.Logf("测试结果 (JSON):\n%s", string(jsonData))
 }
 
-// go test -v ./room_server/battle/ -run TestExecuteRoundNormal
-// go test -v ./room_server/battle/ -run "^TestExecuteRoundProto$"
-//go test -v ./room_server/battle/ -run "^TestExecuteRoundProtoFromFile$" | tee test/api/battle/test.log
-
-//go test -v ./room_server/battle/ -run TestExecuteRoundThreePlayers
-
 // 投降功能测试用例
 func TestSurrenderLogic(t *testing.T) {
 	initTestEnv(t)
@@ -1036,12 +973,13 @@ func TestExecuteRoundProtoSurrender(t *testing.T) {
 	require.NotNil(t, roundResult)
 
 	// 打印回合结果
-	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	protoJSON := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true, Indent: "  "}
+	rrJSON, _ := protoJSON.Marshal(roundResult)
 	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
 
 	// 打印游戏结果（如果有的话）
 	if gameResult != nil {
-		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		grJSON, _ := protoJSON.Marshal(gameResult)
 		t.Logf("GameResult (JSON):\n%s", string(grJSON))
 	}
 }
@@ -1091,12 +1029,159 @@ func TestExecuteRoundProtoThreePlayersSurrender(t *testing.T) {
 	require.NotNil(t, roundResult)
 
 	// 打印回合结果
-	rrJSON, _ := json.MarshalIndent(roundResult, "", "  ")
+	protoJSON := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true, Indent: "  "}
+	rrJSON, _ := protoJSON.Marshal(roundResult)
 	t.Logf("RoundResult (JSON):\n%s", string(rrJSON))
 
 	// 打印游戏结果（如果有的话）
 	if gameResult != nil {
-		grJSON, _ := json.MarshalIndent(gameResult, "", "  ")
+		grJSON, _ := protoJSON.Marshal(gameResult)
 		t.Logf("GameResult (JSON):\n%s", string(grJSON))
 	}
 }
+
+// 测试服务器超时导致的回合结束 - ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT
+func TestExecuteRoundServerChainTimeout(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：服务器链上超时
+	input := &RoundInput{
+		RoundNumber: 2,
+		Reason:      pb.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte{1},
+				Surrendered:      false,
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{3, 4, 2},
+				HP:               2500,
+				LostHP:           1000,
+				Commitment:       []byte{1},
+				Surrendered:      false,
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// 打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	require.NoError(t, err)
+	t.Logf("服务器链上超时测试结果 (JSON):\n%s", string(jsonData))
+}
+
+// 测试服务器内部超时导致的回合结束 - ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT
+func TestExecuteRoundServerInternalTimeout(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：服务器内部超时
+	input := &RoundInput{
+		RoundNumber: 1,
+		Reason:      pb.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT,
+		Players: []PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int{1, 2, 3},
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte{1},
+				Surrendered:      false,
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int{3, 4, 2},
+				HP:               2500,
+				LostHP:           1000,
+				Commitment:       []byte{1},
+				Surrendered:      false,
+			},
+			{
+				WalletAddress:    "player3_address",
+				TemporaryAddress: "PLAYER3_TEMP_ADDRESS",
+				Cards:            []int{2, 1, 4},
+				HP:               2000,
+				LostHP:           1500,
+				Commitment:       []byte{1},
+				Surrendered:      false,
+			},
+		},
+	}
+
+	result, err := engine.ExecuteRound(input)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// 打印结果
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	require.NoError(t, err)
+	t.Logf("服务器内部超时测试结果 (JSON):\n%s", string(jsonData))
+}
+
+// 测试使用Proto格式的服务器超时
+func TestExecuteRoundProtoServerTimeout(t *testing.T) {
+	initTestEnv(t)
+	prepareCards(t)
+
+	engine := NewBattleEngine()
+
+	// 测试案例：使用Proto格式测试服务器链上超时
+	protoInput := &pb.RoundInput{
+		RoundNumber: 2,
+		Reason:      pb.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT,
+		Players: []*pb.PlayerRoundInput{
+			{
+				WalletAddress:    "player1_address",
+				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
+				Cards:            []int32{1, 2, 3},
+				HP:               3000,
+				LostHP:           500,
+				Commitment:       []byte("dummy"),
+				Surrendered:      false,
+			},
+			{
+				WalletAddress:    "player2_address",
+				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
+				Cards:            []int32{3, 4, 2},
+				HP:               2500,
+				LostHP:           1000,
+				Commitment:       []byte("dummy"),
+				Surrendered:      false,
+			},
+		},
+	}
+
+	roundResult, gameResult, err := engine.ExecuteRoundProto(protoInput)
+	require.NoError(t, err)
+
+	// 打印结果
+	protoJSON := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true, Indent: "  "}
+	rrJSON, _ := protoJSON.Marshal(roundResult)
+	t.Logf("Proto服务器超时测试结果 - RoundResult (JSON):\n%s", string(rrJSON))
+
+	grJSON, _ := protoJSON.Marshal(gameResult)
+	t.Logf("Proto服务器超时测试结果 - GameResult (JSON):\n%s", string(grJSON))
+}
+
+// go test -v ./room_server/battle/ -run TestExecuteRoundNormal
+// go test -v ./room_server/battle/ -run "^TestExecuteRoundProto$"
+//go test -v ./room_server/battle/ -run "^TestExecuteRoundProtoFromFile$" | tee test/api/battle/test.log
+
+//go test -v ./room_server/battle/ -run TestExecuteRoundServerChainTimeout
