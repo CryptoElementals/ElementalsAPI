@@ -12,6 +12,7 @@ func DbRoundToProtoRoundInput(dbRound *dao.Round) *proto.RoundInput {
 	return &proto.RoundInput{
 		RoundNumber: int32(dbRound.RoundNumber),
 		Players:     DbPlayerRoundInfoToProtoPlayerRoundInput(dbRound.PlayerRoundInfos),
+		Reason:      dbRound.CompleteReason,
 	}
 }
 

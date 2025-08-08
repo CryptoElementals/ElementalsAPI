@@ -202,9 +202,9 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	matched := false
 	for player := range q.queue {
 		// don't match players with same wallet address
-		if player.WalletAddress == event.PlayerAddress.WalletAddress {
-			continue
-		}
+		// if player.WalletAddress == event.PlayerAddress.WalletAddress {
+		// 	continue
+		// }
 		if player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
 			continue
 		}

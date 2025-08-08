@@ -18,12 +18,13 @@ type Game struct {
 // Round 回合记录
 type Round struct {
 	BaseModel
-	GameID           uint               `json:"game_id"`            // 匹配唯一ID
-	RoundNumber      uint32             `json:"round_number"`       // 回合数
-	Status           proto.RoundStatus  `json:"status"`             // 状态: waiting, matched, confirmed, cancelled
-	PlayerRoundInfos []*PlayerRoundInfo `json:"player_round_infos"` // 回合玩家记录
-	SetupOnChainAt   int64              `json:"setup_on_chain_at"`
-	IsLastRound      bool               `json:"is_last_round"`
+	GameID           uint                      `json:"game_id"`            // 匹配唯一ID
+	RoundNumber      uint32                    `json:"round_number"`       // 回合数
+	Status           proto.RoundStatus         `json:"status"`             // 状态: waiting, matched, confirmed, cancelled
+	PlayerRoundInfos []*PlayerRoundInfo        `json:"player_round_infos"` // 回合玩家记录
+	SetupOnChainAt   int64                     `json:"setup_on_chain_at"`
+	IsLastRound      bool                      `json:"is_last_round"`
+	CompleteReason   proto.RoundCompleteReason `json:"complete_reason"`
 }
 
 // PlayerRoundInfo 回合玩家记录

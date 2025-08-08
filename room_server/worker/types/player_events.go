@@ -28,7 +28,11 @@ type RoundReadyEvent struct {
 type CommitmentsOnChainEvent struct {
 	GameID      uint
 	RoundNumber uint32
-	
+}
+
+type CardsOnChainEvent struct {
+	GameID      uint
+	RoundNumber uint32
 }
 
 type RoundCompletedEvent struct {

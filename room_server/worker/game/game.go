@@ -185,10 +185,9 @@ func (g *Game) GetGamePhase() *proto.GamePhase {
 }
 
 func (g *Game) saveGame() error {
-	// won't save game until it's running
-	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-		return nil
-	}
+	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+	// 	return nil
+	// }
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
 		log.Errorf("SaveGame failed, err: %v", err)
@@ -198,9 +197,9 @@ func (g *Game) saveGame() error {
 }
 
 func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
-	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-		return nil
-	}
+	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+	// 	return nil
+	// }
 	err := db.SavePlayerRoundInfo(roundPlayer)
 	if err != nil {
 		return err
@@ -209,9 +208,9 @@ func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
-	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-		return nil
-	}
+	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
+	// 	return nil
+	// }
 	err := db.SaveRound(round)
 	if err != nil {
 		return err
@@ -284,7 +283,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 	if err != nil {
 		return err
 	}
-	return g.handleRoundEnd()
+	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER)
 }
 
 func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
@@ -315,7 +314,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		ReadyAddress: player.PlayerAddress(),
 	}))
 	// for the first round we don't record any thing until both players confirmed
-	if !allPlayersReady && g.currentRound.RoundNumber == 1 {
+	if !allPlayersReady {
 		return g.savePlayerRoundInfo(player.roundPlayer)
 	}
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
@@ -477,10 +476,18 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 			break
 		}
 	}
-	if !allCardsOnChain {
-		return g.savePlayerRoundInfo(player.roundPlayer)
+	err = g.savePlayerRoundInfo(player.roundPlayer)
+	if err != nil {
+		return err
 	}
-	return g.handleRoundEnd()
+	if !allCardsOnChain {
+		return nil
+	}
+	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.CardsOnChainEvent{
+		GameID:      g.gameInfo.ID,
+		RoundNumber: evt.RoundNumber,
+	}))
+	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL)
 }
 
 // can go into game end from any other status
@@ -500,12 +507,9 @@ func (g *Game) handleGameEnd() error {
 	if err != nil {
 		return err
 	}
-	// we need a deterministic sequence for locks
-	g.lock.Unlock()
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
 		return err
 	}
-	g.lock.Lock()
 	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopWorker()
 	return nil
@@ -577,7 +581,8 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 	}
 }
 
-func (g *Game) handleRoundEnd() error {
+func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
+	g.currentRound.CompleteReason = reason
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
 	for _, p := range input.Players {
@@ -697,13 +702,13 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		// do nothing
 	case proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
 		log.Errorf("setup on chain timeout, current round: %d, gameid: %d", event.currentRound, g.gameInfo.ID)
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT)
 	case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION:
-		g.handleRoundEnd()
-		fallthrough
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_CONFIRMATION_TIMEOUT)
 	case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
-		fallthrough
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_COMMITMENTS_TIMEOUT)
 	case proto.RoundStatus_ROUND_WAITTING_CARDS:
-		g.handleRoundEnd()
+		g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_CARDS_TIMEOUT)
 	}
 }
 
