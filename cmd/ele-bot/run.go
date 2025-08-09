@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -37,11 +36,11 @@ func runBotServer() {
 	if err != nil {
 		panic("init logger failed: " + err.Error())
 	}
-	svr, err := botserver.NewService(context.Background(), config.BotCfg.WalletPaths, config.BotCfg.ChainCfg.HttpRpc, config.BotCfg.RoomServerEndpoint)
+	svr := botserver.NewBotServer(&config.BotCfg)
+	err = svr.Start()
 	if err != nil {
-		log.Fatalw("cannot init bot server", "err", err)
+		log.Fatalw("start bot server failed", "err", err)
 	}
-	svr.Start()
 	log.Info("start bot server success")
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

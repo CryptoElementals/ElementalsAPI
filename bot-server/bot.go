@@ -112,13 +112,6 @@ func NewBot(
 	}
 }
 
-func (b *Bot) run() {
-	b.client.PubSubClient.Subscribe(b.addr.String(), b.addr.String(), b.chanEvt, b.chanErr)
-	for range b.newGameChan {
-		b.runGameLoop()
-	}
-}
-
 func (b *Bot) runGameLoop() {
 	for {
 		select {

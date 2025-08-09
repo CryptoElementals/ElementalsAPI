@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package battle;
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+import "rpc/proto/rpc.proto";
+
+service  BotService {
+    rpc AnddNewBot(AddNewBotRequest) returns (AddNewBotResponse);
+}
+
+message AddNewBotRequest {
+
+}
+
+message AddNewBotResponse {
+    rpc.PlayerAddress PlayerAddress =1;
+}

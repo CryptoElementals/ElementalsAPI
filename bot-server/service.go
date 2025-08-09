@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	rpc "github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -12,7 +13,7 @@ import (
 type Service struct {
 	ctx         context.Context
 	ccl         context.CancelFunc
-	bots        []*Bot
+	bots        chan *Bot
 	chainClient *ethclient.Client
 	rpcClient   *rpc.Client
 	newGameChan chan struct{}
@@ -53,19 +54,18 @@ func NewService(
 		return nil, err
 	}
 	newGameChan := make(chan struct{})
-	bots := make([]*Bot, 0, len(walletPaths))
+	bots := make(chan *Bot, len(walletPaths))
 	for _, path := range walletPaths {
 		p, err := parseWallet(path)
 		if err != nil {
 			return nil, err
 		}
 		b := NewBot(ctx, p, rpcClient, chainClient, chainID, newGameChan)
-		bots = append(bots, b)
+		bots <- b
 	}
 	return &Service{
 		ctx:         ctx,
 		ccl:         ccl,
-		bots:        bots,
 		chainClient: chainClient,
 		rpcClient:   rpcClient,
 		newGameChan: newGameChan,
@@ -73,13 +73,6 @@ func NewService(
 }
 
 func (s *Service) Start() {
-	s.wg.Add(len(s.bots))
-	for _, b := range s.bots {
-		go func() {
-			defer s.wg.Done()
-			b.run()
-		}()
-	}
 }
 
 func (s *Service) Stop() {
@@ -87,6 +80,13 @@ func (s *Service) Stop() {
 	s.wg.Wait()
 }
 
-func (s *Service) DispatchNewBot() {
-	s.newGameChan <- struct{}{}
+func (s *Service) AddBot() *proto.PlayerAddress {
+	b := <-s.bots
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		b.runGameLoop()
+		s.bots <- b
+	}()
+	return b.addr.ToProto()
 }
