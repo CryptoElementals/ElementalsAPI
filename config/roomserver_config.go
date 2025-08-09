@@ -14,7 +14,6 @@ type RoomServerConfig struct {
 	LogCfg          log.Config      `mapstructure:"log"`
 	RedisCfg        redis.Config    `mapstructure:"redis"`
 	DbCfg           db.Config       `mapstructure:"database"`
-	ServerCfg       ServerConfig    `mapstructure:"server"`
 	ChainCfg        ChainConfig     `mapstructure:"chain"`
 	GameParams      GameParamConfig `mapstructure:"game-params"`
 	WalletPaths     []string        `mapstructure:"wallet-paths"`
