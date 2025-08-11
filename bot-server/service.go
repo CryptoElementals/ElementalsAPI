@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
@@ -18,16 +19,15 @@ type Service struct {
 	addresses   []*types.PlayerAddress
 	chainClient *ethclient.Client
 	rpcClient   *rpc.Client
-	newGameChan chan struct{}
 	wg          sync.WaitGroup
 }
 
-func parseWallet(walletPath string) (*playerWallet, error) {
-	tempWallet, err := wallet.LoadWallet(walletPath)
+func parseWallet(path config.WalletPath) (*playerWallet, error) {
+	accountWallet, err := wallet.NewWallet(path.AccountWallet)
 	if err != nil {
 		return nil, err
 	}
-	accountWallet, err := wallet.NewWallet("")
+	tempWallet, err := wallet.LoadWallet(path.TemporaryWallet)
 	if err != nil {
 		return nil, err
 	}
@@ -39,11 +39,11 @@ func parseWallet(walletPath string) (*playerWallet, error) {
 
 func NewService(
 	ctx context.Context,
-	walletPaths []string,
+	walletPaths []config.WalletPath,
 	chainEndpoint string,
 	roomServerEndpoint string) (*Service, error) {
 	ctx, ccl := context.WithCancel(ctx)
-	chainClient, err := ethclient.DialContext(ctx, chainEndpoint)
+	chainClient, err := ethclient.Dial(chainEndpoint)
 	if err != nil {
 		return nil, err
 	}

@@ -8,9 +8,8 @@ import (
 )
 
 type BotServer struct {
-	cfg        *config.BotConfig
-	svc        *Service
-	listenPort int
+	cfg *config.BotConfig
+	svc *Service
 }
 
 func NewBotServer(cfg *config.BotConfig) *BotServer {

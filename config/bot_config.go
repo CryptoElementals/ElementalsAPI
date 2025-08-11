@@ -5,12 +5,16 @@ import (
 	"github.com/spf13/viper"
 )
 
+type WalletPath struct {
+	AccountWallet   string `mapstructure:"account-wallet"`
+	TemporaryWallet string `mapstructure:"temporary-wallet"`
+}
+
 type BotConfig struct {
-	LogCfg             log.Config  `mapstructure:"log"`
-	ChainCfg           ChainConfig `mapstructure:"chain"`
-	RoomServerEndpoint string
-	WalletPaths        []string
-	ListenPort         int
+	LogCfg             log.Config   `mapstructure:"log"`
+	ChainCfg           ChainConfig  `mapstructure:"chain"`
+	RoomServerEndpoint string       `mapstructure:"room-server-endpoint"`
+	WalletPaths        []WalletPath `mapstructure:"wallet-paths"`
 }
 
 var BotCfg BotConfig
