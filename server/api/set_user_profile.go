@@ -18,8 +18,9 @@ func init() {
 
 type SetUserProfileRequest struct {
 	BaseRequest
-	Name   string `mapstructure:"Name" validate:"required,max=42"`
-	Avatar string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	Name    string `mapstructure:"Name" validate:"required,max=42"`
+	Avatar  string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	Address string `mapstructure:"Address"`
 }
 
 type SetUserProfileResponse struct {
@@ -71,17 +72,10 @@ func NewSetUserProfileTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
-	// 从请求参数中获取用户地址（由中间件设置）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		log.Errorf("%s, params assert failed", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
-		log.Errorf("%s, no address found in params", task.Request.RequestUUID)
+	// 从请求中获取用户地址（由中间件设置）
+	address := task.Request.Address
+	if address == "" {
+		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
 		return nil, errors.MissingLoginCookie()
 	}
 

@@ -21,6 +21,7 @@ type SurrenderRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`      // 游戏ID
+	Address     string `mapstructure:"Address"`
 }
 
 // SurrenderResponse 响应结构体
@@ -78,15 +79,9 @@ func init() {
 
 // Run 执行任务
 func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("parameter parsing failed")
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		return nil, fmt.Errorf("failed to get player address")
 	}
 

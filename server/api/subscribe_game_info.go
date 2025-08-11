@@ -25,6 +25,7 @@ type SubscribeGameInfoRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`     // 临时地址
 	Duration    int    `mapstructure:"Duration" validate:"min=1,max=86400"` // 连接持续时间（秒）
+	Address     string `mapstructure:"Address"`
 }
 
 // SubscribeGameInfoResponse 响应结构体
@@ -86,15 +87,9 @@ func NewSubscribeGameInfoTask(data *map[string]interface{}) (Task, error) {
 
 // Run 实现事件驱动的 SSE 流式响应
 func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("parameter parsing failed")
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		return nil, fmt.Errorf("failed to get player address")
 	}
 
