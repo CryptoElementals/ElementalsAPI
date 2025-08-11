@@ -9,7 +9,6 @@ import (
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
@@ -20,7 +19,7 @@ const queueInfoVal = "v"
 type Queue struct {
 	ctx                 context.Context
 	lock                sync.RWMutex
-	queue               map[types.PlayerAddress]struct{}
+	queue               map[types.PlayerAddress]time.Time
 	continueManager     *continueManager
 	workerManager       *worker.WorkerManager
 	queueCache          cache.Cache
@@ -28,121 +27,8 @@ type Queue struct {
 	gameCreator         GameCreator
 	continueTimeout     time.Duration
 	minTokenToJoinQueue int32
-}
 
-type gameContinueInfo struct {
-	gameID  uint
-	endTime time.Time
-}
-
-type continueManager struct {
-	continueQueue         map[uint]map[types.PlayerAddress]bool
-	playerToContinueQueue map[types.PlayerAddress]*gameContinueInfo
-	workerManager         *worker.WorkerManager
-	continueTimeout       time.Duration
-	sync.RWMutex
-}
-
-func newContinueManager(workerManager *worker.WorkerManager, continueTimeout time.Duration) *continueManager {
-	return &continueManager{
-		continueQueue:         make(map[uint]map[types.PlayerAddress]bool),
-		playerToContinueQueue: make(map[types.PlayerAddress]*gameContinueInfo),
-		workerManager:         workerManager,
-		continueTimeout:       continueTimeout,
-	}
-}
-
-func (m *continueManager) addGame(game *dao.Game) {
-	m.Lock()
-	defer m.Unlock()
-	continuePlayers := make(map[types.PlayerAddress]bool)
-	for _, player := range game.Players {
-		playerAddr := types.NewPlayerAddress(player.WalletAddress, player.TemporaryAddress)
-		continuePlayers[*playerAddr] = false
-		info := gameContinueInfo{
-			gameID:  game.ID,
-			endTime: time.Now(),
-		}
-		m.playerToContinueQueue[*playerAddr] = &info
-	}
-	m.continueQueue[game.ID] = continuePlayers
-	if m.continueTimeout != 0 {
-		time.AfterFunc(m.continueTimeout, func() {
-			m.removeGameByID(game.ID)
-		})
-	}
-}
-
-func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID uint) {
-	m.Lock()
-	defer m.Unlock()
-	gameInfo, ok := m.playerToContinueQueue[addr]
-	if !ok {
-		return
-	}
-	if gameID != 0 && gameInfo.gameID != gameID {
-		return
-	}
-	continueMap := m.continueQueue[gameInfo.gameID]
-	for player := range continueMap {
-		delete(m.playerToContinueQueue, player)
-		m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-			GameID: gameInfo.gameID,
-		}))
-	}
-	delete(m.continueQueue, gameInfo.gameID)
-}
-
-func (m *continueManager) removeGameByID(gameID uint) {
-	m.Lock()
-	defer m.Unlock()
-	continueMap, ok := m.continueQueue[gameID]
-	if !ok {
-		return
-	}
-	for player := range continueMap {
-		delete(m.playerToContinueQueue, player)
-		m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-			GameID: gameID,
-		}))
-	}
-	delete(m.continueQueue, gameID)
-}
-
-func (m *continueManager) removeGameByIDNoSendEvent(gameID uint) {
-	continueMap, ok := m.continueQueue[gameID]
-	if !ok {
-		return
-	}
-	for player := range continueMap {
-		delete(m.playerToContinueQueue, player)
-	}
-	delete(m.continueQueue, gameID)
-}
-
-// if game ready, return all players in the game, and purge continue info
-func (m *continueManager) handlePlayerGameContinue(playerAddr types.PlayerAddress, gameID uint) ([]types.PlayerAddress, bool, error) {
-	m.Lock()
-	defer m.Unlock()
-	gameInfo, ok := m.playerToContinueQueue[playerAddr]
-	if !ok || gameInfo == nil {
-		return nil, false, errors.New("player not in continue queue")
-	}
-
-	if gameInfo.gameID != gameID {
-		return nil, false, errors.New("game id not match")
-	}
-	continueMap := m.continueQueue[gameInfo.gameID]
-	continueMap[playerAddr] = true
-	var allPlayers []types.PlayerAddress
-	for player, ok := range continueMap {
-		if !ok {
-			return nil, false, nil
-		}
-		allPlayers = append(allPlayers, player)
-	}
-	m.removeGameByIDNoSendEvent(gameID)
-	return allPlayers, true, nil
+	botsSet Set[types.PlayerAddress]
 }
 
 type GameCreator interface {
@@ -154,7 +40,7 @@ func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	q := &Queue{
 		ctx:             ctx,
-		queue:           make(map[types.PlayerAddress]struct{}),
+		queue:           make(map[types.PlayerAddress]time.Time),
 		workerManager:   workerManager,
 		queueCache:      queueCache,
 		gameCreator:     gameCreator,
@@ -174,8 +60,9 @@ func (q *Queue) start() error {
 		if err := player.Parse(key); err != nil {
 			return err
 		}
-		q.queue[player] = struct{}{}
+		q.queue[player] = time.Now()
 	}
+	q.addBotRoutine()
 	return nil
 }
 
@@ -184,6 +71,8 @@ func (q *Queue) close() {
 	defer q.lock.Unlock()
 	q.closing = true
 }
+
+
 
 func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.lock.Lock()
@@ -208,40 +97,15 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 		if player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
 			continue
 		}
-		evt := &types.GameMatchedEvent{
-			Players: []types.PlayerAddress{player, event.PlayerAddress},
-		}
-		gid, err := q.gameCreator.HandleGameMatchedEvent(evt)
+
+		err := q.matchPlayers([]types.PlayerAddress{event.PlayerAddress, player})
 		if err != nil {
-			log.Errorf("handle game matched event failed: %s", err.Error())
 			return err
 		}
-		if q.minTokenToJoinQueue > 0 {
-			err = db.SetLockedTokenGameID(q.ctx, player.WalletAddress, player.TemporaryAddress, gid)
-			if err != nil {
-				log.Errorf("set locked token game id failed: %s", err.Error())
-				return err
-			}
-			err = db.SetLockedTokenGameID(q.ctx, event.PlayerAddress.WalletAddress, event.PlayerAddress.TemporaryAddress, gid)
-			if err != nil {
-				log.Errorf("set locked token game id failed: %s", err.Error())
-				return err
-			}
-		}
-
-		delete(q.queue, player)
-
-		// might have some corner case here if failed
-		err = q.queueCache.Delete(player.String())
-		if err != nil {
-			log.Errorf("delete player from queue cache failed: %s", err.Error())
-			return err
-		}
-
 		matched = true
 	}
 	if !matched {
-		q.queue[event.PlayerAddress] = struct{}{}
+		q.queue[event.PlayerAddress] = time.Now()
 		err := q.queueCache.Set(event.PlayerAddress.String(), queueInfoVal, 0)
 		if err != nil {
 			log.Errorf("set player to queue cache failed: %s", err.Error())
@@ -250,42 +114,32 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	return nil
 }
 
-func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	if q.closing {
-		return errors.New("queue is closing")
+func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
+	evt := &types.GameMatchedEvent{}
+	for _, p := range players {
+		evt.Players = append(evt.Players, p)
 	}
-
-	_, ok := q.queue[event.PlayerAddress]
-	if ok {
-		return errors.New("player is in queue")
-	}
-
-	allPlayers, ok, err := q.continueManager.handlePlayerGameContinue(event.PlayerAddress, event.GameId)
+	gid, err := q.gameCreator.HandleGameMatchedEvent(evt)
 	if err != nil {
+		log.Errorf("handle game matched event failed: %s", err.Error())
 		return err
 	}
 
-	if !ok {
-		return nil
+	for _, p := range players {
+		if q.minTokenToJoinQueue > 0 {
+			err = db.SetLockedTokenGameID(q.ctx, p.WalletAddress, p.TemporaryAddress, gid)
+			if err != nil {
+				log.Errorf("set locked token game id failed: %s", err.Error())
+				return err
+			}
+		}
+		delete(q.queue, p)
+		err = q.queueCache.Delete(p.String())
+		if err != nil {
+			log.Errorf("delete player from queue cache failed: %s", err.Error())
+			return err
+		}
 	}
-
-	evt := &types.GameContinueEvent{
-		Players: allPlayers,
-	}
-	err = q.gameCreator.HandleGameContinueEvent(evt)
-	if err != nil {
-		log.Errorf("handle game continue event failed: %s", err.Error())
-		return err
-	}
-	return nil
-}
-
-func (q *Queue) RefuseContinueGame(playerAddress types.PlayerAddress, lastGameID uint) error {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	q.continueManager.removeGameByAddress(playerAddress, lastGameID)
 	return nil
 }
 

@@ -4,16 +4,17 @@ import (
 	"context"
 
 	"github.com/CryptoElementals/common/room_server/worker/types"
-	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Rpc struct {
-	pb.UnimplementedRpcServiceServer
+	proto.UnimplementedRpcServiceServer
 	gameHandler        GameRequestHandler
 	chainHandler       ChainRequestHandler
 	playerHandler      PlayerRequestHandler
 	playerTokenHandler PlayerTokenHandler
+	botHandler         BotHandler
 }
 
 func NewRpc(gameHandler GameRequestHandler, chainHandler ChainRequestHandler, playerHandler PlayerRequestHandler, playerTokenHandler PlayerTokenHandler) *Rpc {
@@ -25,55 +26,55 @@ func NewRpc(gameHandler GameRequestHandler, chainHandler ChainRequestHandler, pl
 	}
 }
 
-func (s *Rpc) JoinQueue(ctx context.Context, req *pb.PlayerAddress) (*emptypb.Empty, error) {
+func (s *Rpc) JoinQueue(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req)
 	return &emptypb.Empty{}, s.playerHandler.JoinQueue(addr)
 }
 
-func (s *Rpc) ExitQueue(ctx context.Context, req *pb.PlayerAddress) (*emptypb.Empty, error) {
+func (s *Rpc) ExitQueue(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req)
 	return &emptypb.Empty{}, s.playerHandler.ExitQueue(addr)
 }
 
-func (s *Rpc) GetGamePhase(ctx context.Context, req *pb.PlayerAddress) (*pb.GamePhase, error) {
+func (s *Rpc) GetGamePhase(ctx context.Context, req *proto.PlayerAddress) (*proto.GamePhase, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req)
 	return s.gameHandler.GetGamePhase(addr)
 }
 
-func (s *Rpc) GetBattleInfo(ctx context.Context, req *pb.GetBattleInfoRequest) (*pb.GetBattleInfoResponse, error) {
+func (s *Rpc) GetBattleInfo(ctx context.Context, req *proto.GetBattleInfoRequest) (*proto.GetBattleInfoResponse, error) {
 	roundResult, gameResult, err := s.gameHandler.GetBattleInfo(ctx, req.GameID, req.RoundNumber)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.GetBattleInfoResponse{
+	return &proto.GetBattleInfoResponse{
 		RoundResult: roundResult,
 		GameResult:  gameResult,
 	}, nil
 }
 
-func (s *Rpc) ConfirmBattle(ctx context.Context, req *pb.ConfirmBattleRequest) (*emptypb.Empty, error) {
+func (s *Rpc) ConfirmBattle(ctx context.Context, req *proto.ConfirmBattleRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.PlayerAddress)
 	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber)
 }
 
-func (s *Rpc) ContinueGame(ctx context.Context, req *pb.ContinueGameRequest) (*emptypb.Empty, error) {
+func (s *Rpc) ContinueGame(ctx context.Context, req *proto.ContinueGameRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.Player)
 	return &emptypb.Empty{}, s.playerHandler.ContinueGame(addr, uint(req.LastGameID))
 }
 
-func (s *Rpc) RefuseContinueGame(ctx context.Context, req *pb.RefuseContinueGameRequest) (*emptypb.Empty, error) {
+func (s *Rpc) RefuseContinueGame(ctx context.Context, req *proto.RefuseContinueGameRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.Player)
 	return &emptypb.Empty{}, s.playerHandler.RefuseContinueGame(addr, uint(req.LastGameID))
 }
 
 // chain related api
-func (s *Rpc) SubmitTransactions(ctx context.Context, req *pb.TransactionBatch) (*emptypb.Empty, error) {
+func (s *Rpc) SubmitTransactions(ctx context.Context, req *proto.TransactionBatch) (*emptypb.Empty, error) {
 	err := s.chainHandler.SubmitTransactions(req)
 	if err != nil {
 		return nil, err
@@ -81,36 +82,63 @@ func (s *Rpc) SubmitTransactions(ctx context.Context, req *pb.TransactionBatch) 
 	return &emptypb.Empty{}, nil
 }
 
-func (s *Rpc) GetPlayerToken(ctx context.Context, req *pb.GetPlayerTokenRequest) (*pb.GetPlayerTokenResponse, error) {
+func (s *Rpc) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {
 	return s.playerTokenHandler.GetPlayerToken(req.WalletAddress)
 }
-func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *pb.PlayerAddress) (*pb.IsPlayerInQueueResponse, error) {
+func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*proto.IsPlayerInQueueResponse, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req)
 	isInQueue := s.playerHandler.IsPlayerInQueue(addr)
-	return &pb.IsPlayerInQueueResponse{
+	return &proto.IsPlayerInQueueResponse{
 		IsInQueue: isInQueue,
 	}, nil
 }
 
-func (s *Rpc) Surrender(ctx context.Context, req *pb.SurrenderRequest) (*emptypb.Empty, error) {
+func (s *Rpc) Surrender(ctx context.Context, req *proto.SurrenderRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.Address)
 	err := s.playerHandler.Surrender(addr, uint(req.GameID))
-	return nil, err
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Rpc) RegisterBots(ctx context.Context, req *proto.RegisterBotsRequest) (*emptypb.Empty, error) {
+	botsAddrs := make([]*types.PlayerAddress, len(req.PlayerAddresses))
+	for i := range req.PlayerAddresses {
+		botAddr := &types.PlayerAddress{}
+		botAddr.FromProto(req.PlayerAddresses[i])
+		botsAddrs[i] = botAddr
+	}
+	err := s.botHandler.RegisterBots(botsAddrs...)
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *Rpc) RegisterBot(ctx context.Context, req *proto.RegisterBotRequest) (*emptypb.Empty, error) {
+	botAddr := &types.PlayerAddress{}
+	botAddr.FromProto(req.PlayerAddress)
+	err := s.botHandler.RegisterBots(botAddr)
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
 
 type GameRequestHandler interface {
-	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*pb.RoundResult, *pb.GameResult, error)
-	GetGamePhase(playerAddress types.PlayerAddress) (*pb.GamePhase, error)
+	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
+	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
 }
 
 type PlayerTokenHandler interface {
-	GetPlayerToken(walletAddress string) (*pb.GetPlayerTokenResponse, error)
+	GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error)
 }
 
 type ChainRequestHandler interface {
-	SubmitTransactions(req *pb.TransactionBatch) error
+	SubmitTransactions(req *proto.TransactionBatch) error
 }
 
 type PlayerRequestHandler interface {
@@ -121,4 +149,8 @@ type PlayerRequestHandler interface {
 	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
 	IsPlayerInQueue(address types.PlayerAddress) bool
 	Surrender(address types.PlayerAddress, gameID uint) error
+}
+
+type BotHandler interface {
+	RegisterBots(...*types.PlayerAddress) error
 }

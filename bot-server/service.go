@@ -4,8 +4,9 @@ import (
 	"context"
 	"sync"
 
+	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -13,7 +14,8 @@ import (
 type Service struct {
 	ctx         context.Context
 	ccl         context.CancelFunc
-	bots        chan *Bot
+	bots        []*Bot
+	addresses   []*types.PlayerAddress
 	chainClient *ethclient.Client
 	rpcClient   *rpc.Client
 	newGameChan chan struct{}
@@ -53,40 +55,60 @@ func NewService(
 	if err != nil {
 		return nil, err
 	}
-	newGameChan := make(chan struct{})
-	bots := make(chan *Bot, len(walletPaths))
+	bots := make([]*Bot, 0, len(walletPaths))
+	addresses := make([]*types.PlayerAddress, 0, len(walletPaths))
 	for _, path := range walletPaths {
 		p, err := parseWallet(path)
 		if err != nil {
 			return nil, err
 		}
-		b := NewBot(ctx, p, rpcClient, chainClient, chainID, newGameChan)
-		bots <- b
+		b := NewBot(ctx, p, rpcClient, chainClient, chainID)
+		bots = append(bots, b)
+		addresses = append(addresses, p.address())
 	}
 	return &Service{
 		ctx:         ctx,
 		ccl:         ccl,
 		chainClient: chainClient,
 		rpcClient:   rpcClient,
-		newGameChan: newGameChan,
+		bots:        bots,
+		addresses:   addresses,
 	}, nil
 }
 
-func (s *Service) Start() {
+func (s *Service) Start() error {
+	err := s.rpcClient.RpcClient.RegisterBots(s.ctx, s.addresses)
+	if err != nil {
+		return err
+	}
+	for _, b := range s.bots {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			for {
+				select {
+				case <-s.ctx.Done():
+					return
+				default:
+					err := b.runGameLoop()
+					if err != nil {
+						log.Errorw("start bot failed", "err", err, "addr", b.addr)
+						return
+					}
+					err = s.rpcClient.RpcClient.RegisterBot(s.ctx, b.addr)
+					if err != nil {
+						log.Errorw("register bot failed", "err", err, "addr", b.addr)
+						return
+					}
+				}
+			}
+
+		}()
+	}
+	return nil
 }
 
 func (s *Service) Stop() {
 	s.ccl()
 	s.wg.Wait()
-}
-
-func (s *Service) AddBot() *proto.PlayerAddress {
-	b := <-s.bots
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		b.runGameLoop()
-		s.bots <- b
-	}()
-	return b.addr.ToProto()
 }

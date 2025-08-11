@@ -115,3 +115,22 @@ func (c *RpcClient) Surrender(ctx context.Context, addr *types.PlayerAddress, ga
 	})
 	return err
 }
+
+func (c *RpcClient) RegisterBots(ctx context.Context, addrs []*types.PlayerAddress) error {
+	protoAddrs := make([]*proto.PlayerAddress, len(addrs))
+	for i := range addrs {
+		protoAddrs[i] = addrs[i].ToProto()
+	}
+	_, err := c.client.RegisterBots(ctx, &pb.RegisterBotsRequest{
+		PlayerAddresses: protoAddrs,
+	})
+	return err
+}
+
+func (c *RpcClient) RegisterBot(ctx context.Context, addr *types.PlayerAddress) error {
+	protoAddr := addr.ToProto()
+	_, err := c.client.RegisterBot(ctx, &pb.RegisterBotRequest{
+		PlayerAddress: protoAddr,
+	})
+	return err
+}

@@ -3,6 +3,7 @@ package botserver
 import (
 	"context"
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"math/rand/v2"
@@ -23,6 +24,10 @@ import (
 type playerWallet struct {
 	accountWallet *wallet.Wallet
 	tempWallet    *wallet.Wallet
+}
+
+func (w *playerWallet) address() *types.PlayerAddress {
+	return types.NewPlayerAddress(w.accountWallet.GetAddrHex(), w.tempWallet.GetAddrHex())
 }
 
 type roundInfo struct {
@@ -91,7 +96,6 @@ func NewBot(
 	client *rpc.Client,
 	ethClient *ethclient.Client,
 	chainID *big.Int,
-	newGameChan chan struct{},
 ) *Bot {
 	addr := types.NewPlayerAddress(playerWallet.accountWallet.GetAddrHex(), playerWallet.tempWallet.GetAddrHex())
 	opt := &bind.TransactOpts{
@@ -100,19 +104,22 @@ func NewBot(
 		Signer:  playerWallet.tempWallet.BuildTxSinger(chainID),
 	}
 	return &Bot{
-		ctx:         ctx,
-		w:           playerWallet,
-		addr:        addr,
-		client:      client,
-		ethClient:   ethClient,
-		bindOpt:     opt,
-		chanEvt:     make(chan *proto.Event),
-		chanErr:     make(chan error),
-		newGameChan: newGameChan,
+		ctx:       ctx,
+		w:         playerWallet,
+		addr:      addr,
+		client:    client,
+		ethClient: ethClient,
+		bindOpt:   opt,
+		chanEvt:   make(chan *proto.Event),
+		chanErr:   make(chan error),
 	}
 }
 
-func (b *Bot) runGameLoop() {
+func (b *Bot) runGameLoop() error {
+	err := b.client.PubSubClient.Subscribe(b.addr.String(), b.addr.String(), b.chanEvt, b.chanErr)
+	if err != nil {
+		return err
+	}
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -124,7 +131,7 @@ func (b *Bot) runGameLoop() {
 			switch evt.Type {
 			case proto.EventType_TYPE_KNOWN:
 				log.Errorf("unhandled event type from: %s", b.addr)
-				return
+				return errors.New("bot received unexpected event: proto.EventType_TYPE_KNOWN")
 			case proto.EventType_TYPE_MATCHED:
 				log.Info("player matched")
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
@@ -205,7 +212,7 @@ func (b *Bot) runGameLoop() {
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Info("game complete", "game id", b.currentGame.id)
-				return
+				return nil
 			}
 		case err := <-b.chanErr:
 			log.Errorw("received error", "err", err)
