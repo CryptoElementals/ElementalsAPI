@@ -8,6 +8,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+const SESSION_ADDR_KEY = "addr"
+
 type AnyRequest[T any] struct {
 	BaseRequest `mapstructure:",squash"`
 	Body        T `mapstructure:",squash"`
