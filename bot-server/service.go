@@ -77,6 +77,7 @@ func NewService(
 }
 
 func (s *Service) Start() error {
+	log.Infow("register bots", types.ToJsonLoggable(s.addresses))
 	err := s.rpcClient.RpcClient.RegisterBots(s.ctx, s.addresses)
 	if err != nil {
 		return err
@@ -111,6 +112,7 @@ func (s *Service) Start() error {
 func (s *Service) Stop() {
 	s.ccl()
 	s.wg.Wait()
+	log.Infow("unregister bots", types.ToJsonLoggable(s.addresses))
 	err := s.rpcClient.RpcClient.UnregisterBots(context.Background(), s.addresses)
 	if err != nil {
 		log.Errorw("cannot unregister bots", "err", err)

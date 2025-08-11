@@ -64,11 +64,12 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 	// also notify players
 	for _, player := range evt.Players {
 		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:  gameID,
-			Players: evt.Players,
+			GameID:         gameID,
+			Players:        evt.Players,
+			IsContinueGame: true,
 		}))
 	}
-	log.Infof("gameContinue: gameID %d", gameID)
+	log.Infof("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
 	return nil
 }
 
@@ -114,7 +115,7 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 		})
 		r.workerManager.SendEvent(player.String(), evt)
 	}
-	log.Infof("gameMatched: gameID %d", gameID)
+	log.Infow("gameMatched", "game id", gameID, "players")
 	return gameID, nil
 }
 

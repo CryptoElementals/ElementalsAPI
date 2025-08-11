@@ -63,6 +63,7 @@ func (s Set[T]) PopRandom() (T, bool) {
 func (q *Queue) RegisterBots(addrs ...*types.PlayerAddress) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	log.Infow("register bots", "bots", types.ToJsonLoggable(addrs))
 	for _, addr := range addrs {
 		q.botsSet.Add(*addr)
 		err := q.lockToken(addr)
@@ -76,6 +77,7 @@ func (q *Queue) RegisterBots(addrs ...*types.PlayerAddress) error {
 func (q *Queue) UnregisterBots(addrs ...*types.PlayerAddress) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	log.Infow("unregister bots", "bots", types.ToJsonLoggable(addrs))
 	for _, addr := range addrs {
 		if !q.botsSet.Contains(*addr) {
 			continue
@@ -102,8 +104,10 @@ func (q *Queue) addBotRoutine() {
 					if q.botsSet.Size() == 0 {
 						break
 					}
-					if time.Since(joinQueueTime) >= 30*time.Second {
+					waittingTime := time.Since(joinQueueTime)
+					if waittingTime >= 30*time.Second {
 						botPlayer, _ := q.botsSet.PopRandom()
+						log.Infow("find long waitting player, dispatch a bot", "player", player.String(), "waitting seconds", int(waittingTime.Seconds()), "bot", botPlayer.String())
 						err := q.matchPlayers([]types.PlayerAddress{botPlayer, player})
 						if err != nil {
 							log.Errorw("error match bot with player", "err", err, "bot", botPlayer.String(), "player", player.String())

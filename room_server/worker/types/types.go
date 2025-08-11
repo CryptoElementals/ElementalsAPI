@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -136,4 +137,9 @@ func (b *EventBatch) Wait() {
 	for _, e := range b.evt {
 		e.Await()
 	}
+}
+
+func ToJsonLoggable(obj any) string {
+	res, _ := json.Marshal(obj)
+	return string(res)
 }

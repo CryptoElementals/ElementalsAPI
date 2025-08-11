@@ -3,8 +3,9 @@ package types
 import dao "github.com/CryptoElementals/common/models"
 
 type GameCreatedEvent struct {
-	GameID  uint
-	Players []PlayerAddress
+	GameID         uint
+	Players        []PlayerAddress
+	IsContinueGame bool
 }
 
 type GameReadyEvent struct {

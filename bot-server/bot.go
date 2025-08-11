@@ -73,8 +73,6 @@ type gameInfo struct {
 	currentRound        roundInfo
 	gameContractAddress string
 	gameContract        *contract.RoomContract
-	rivalWallet         string
-	rivalTemp           string
 }
 
 type Bot struct {
@@ -87,7 +85,6 @@ type Bot struct {
 	bindOpt     *bind.TransactOpts
 	chanEvt     chan *proto.Event
 	chanErr     chan error
-	newGameChan chan struct{}
 }
 
 func NewBot(
@@ -120,6 +117,7 @@ func (b *Bot) runGameLoop() error {
 	if err != nil {
 		return err
 	}
+	log.Infow("bot start, waitting for task", "addr", b.addr.String())
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -133,7 +131,7 @@ func (b *Bot) runGameLoop() error {
 				log.Errorf("unhandled event type from: %s", b.addr)
 				return errors.New("bot received unexpected event: proto.EventType_TYPE_KNOWN")
 			case proto.EventType_TYPE_MATCHED:
-				log.Info("player matched")
+				log.Info("bot matched")
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
 					log.Errorw("error get game phase", "err", err)
@@ -212,6 +210,7 @@ func (b *Bot) runGameLoop() error {
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Info("game complete", "game id", b.currentGame.id)
+				b.currentGame = nil
 				return nil
 			}
 		case err := <-b.chanErr:
