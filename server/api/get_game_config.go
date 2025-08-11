@@ -1,6 +1,8 @@
 package api
 
 import (
+	"strings"
+
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/gin-gonic/gin"
@@ -15,7 +17,6 @@ func init() {
 
 type GetGameConfigRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address" validate:"required"`
 }
 
 type GetGameConfigResponse struct {
@@ -67,34 +68,53 @@ func NewGetGameConfigTask(data *map[string]interface{}) (Task, error) {
 	return task, nil
 }
 
-func (t *GetGameConfigTask) Run(c *gin.Context) (Response, error) {
+func (task *GetGameConfigTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件设置的params中获取）
+	_params, _ := c.Get("params")
+	params, ok := _params.(*map[string]interface{})
+	if !ok {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "Parameter parsing failed"
+		return task.Response, nil
+	}
+
+	address, ok := (*params)["Address"].(string)
+	if !ok || address == "" {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "Failed to get player address"
+		return task.Response, nil
+	}
+
+	// 将地址转换为小写，确保与数据库中存储的格式一致
+	address = strings.ToLower(address)
+
+	// 获取游戏配置
 	policy := config.GameParams.KeygenPolicy
-	t.Response.KeygenPolicy = policy
+	task.Response.KeygenPolicy = policy
 	if policy != 1 {
-		return t.Response, nil
+		return task.Response, nil
 	}
 
 	// 策略1：后端从数据库为该地址分配临时私钥与地址
-	addr := t.Request.Address
 	// 已绑定的直接返回
-	if rec, err := db.GetDevTempKeyByAddress(addr); err == nil && rec != nil {
-		t.Response.TempPrivateKey = rec.TempPrivateKey
-		t.Response.TempAddress = rec.TempAddress
-		return t.Response, nil
+	if rec, err := db.GetDevTempKeyByAddress(address); err == nil && rec != nil {
+		task.Response.TempPrivateKey = rec.TempPrivateKey
+		task.Response.TempAddress = rec.TempAddress
+		return task.Response, nil
 	}
 	// 未绑定则分配一个空闲记录
-	rec, err := db.AssignNextAvailableDevTempKey(addr)
+	rec, err := db.AssignNextAvailableDevTempKey(address)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// 无可用临时密钥
-			t.Response.RetCode = 8454
-			t.Response.Message = "No available temporary key"
-			return t.Response, nil
+			task.Response.RetCode = 8454
+			task.Response.Message = "No available temporary key"
+			return task.Response, nil
 		}
 		return nil, err
 	}
 	// 返回分配结果
-	t.Response.TempPrivateKey = rec.TempPrivateKey
-	t.Response.TempAddress = rec.TempAddress
-	return t.Response, nil
+	task.Response.TempPrivateKey = rec.TempPrivateKey
+	task.Response.TempAddress = rec.TempAddress
+	return task.Response, nil
 }
