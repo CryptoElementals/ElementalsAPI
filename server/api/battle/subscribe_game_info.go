@@ -148,7 +148,7 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (api.Response, error) {
 	}
 
 	// 发送心跳保持连接
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
 	// 等待连接结束
