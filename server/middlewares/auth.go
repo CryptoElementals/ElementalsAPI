@@ -7,7 +7,7 @@ import (
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/api/login"
+
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -37,7 +37,7 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 		case api.COOKIEAUTH:
 			session := sessions.Default(c)
 			//从服务器的会话（session）中查找该 Cookie 是否存在。如果 Cookie 不存在或无效，返回错误响应，表示认证失败。
-			addr := session.Get(login.SESSION_ADDR_KEY)
+			addr := session.Get(api.SESSION_ADDR_KEY)
 			if addr == nil {
 				res := api.MakeErrorResponse(errors.LoginCookieInvalid(""))
 				res.SetSession(requestUUID)

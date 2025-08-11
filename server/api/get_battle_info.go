@@ -1,4 +1,4 @@
-package battle
+package api
 
 import (
 	"context"
@@ -6,21 +6,21 @@ import (
 
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const (
-	GET_BATTLE_INFO_LABEL = "GetBattleInfo"
-)
+func init() {
+	Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, COOKIEAUTH)
+}
 
 // GetBattleInfoRequest 请求结构体
 type GetBattleInfoRequest struct {
-	api.BaseRequest
-	GameID uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
-	Round  uint32 `mapstructure:"Round" validate:"required"`  // 回合号
+	BaseRequest
+	GameID  uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
+	Round   uint32 `mapstructure:"Round" validate:"required"`  // 回合号
+	Address string `mapstructure:"Address"`
 }
 
 // PlayerCardStat 玩家卡牌统计信息
@@ -72,7 +72,7 @@ type RoundResult struct {
 
 // GetBattleInfoResponse 响应结构体
 type GetBattleInfoResponse struct {
-	api.BaseResponse
+	BaseResponse
 	RoundResult *RoundResult `json:"RoundResult"`          // 回合结果
 	GameResult  *GameResult  `json:"GameResult,omitempty"` // 游戏结果（仅在游戏结束时包含）
 }
@@ -95,14 +95,14 @@ func NewGetBattleInfoRequest(data *map[string]interface{}) (*GetBattleInfoReques
 
 func NewGetBattleInfoResponse(sessionId string) *GetBattleInfoResponse {
 	return &GetBattleInfoResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      GET_BATTLE_INFO_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewGetBattleInfoTask(data *map[string]interface{}) (api.Task, error) {
+func NewGetBattleInfoTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewGetBattleInfoRequest(data)
 	if err != nil {
 		return nil, err
@@ -121,18 +121,10 @@ func NewGetBattleInfoTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Parameter parsing failed"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil
@@ -229,12 +221,4 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully retrieved battle info"
 	return task.Response, nil
-}
-
-// RegisterBattleApis 注册对战相关API
-func RegisterBattleApis() {
-	api.Register(GET_BATTLE_INFO_LABEL, NewGetBattleInfoTask, api.COOKIEAUTH)
-	api.Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, api.COOKIEAUTH)
-	api.Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, api.NOAUTH)
-	api.Register(SURRENDER_LABEL, NewSurrenderTask, api.COOKIEAUTH)
 }

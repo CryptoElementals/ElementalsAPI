@@ -11,6 +11,7 @@ type GameParamConfig struct {
 	TokenThreshold    int     `mapstructure:"token-threshold"`     // 加入匹配所需最低可用代币
 	BaseStake         int     `mapstructure:"base-stake"`          // 计算奖励时使用的基准赌注
 	DailyRewardTokens int     `mapstructure:"daily-reward-tokens"` // 每日奖励代币数量
+	KeygenPolicy      uint    `mapstructure:"keygen-policy"`       // 1-后端生成(调试)，2-前端生成(生产)
 }
 
 // 全局可读的游戏参数
@@ -48,6 +49,9 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	}
 	if gameParams.DailyRewardTokens == 0 {
 		gameParams.DailyRewardTokens = 1000
+	}
+	if gameParams.KeygenPolicy == 0 {
+		gameParams.KeygenPolicy = 2
 	}
 
 	// 赋值给全局变量

@@ -1,4 +1,4 @@
-package login
+package api
 
 import (
 	"math/rand"
@@ -8,20 +8,23 @@ import (
 	"regexp"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
+func init() {
+	Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, NOAUTH)
+}
+
 type GetLoginCodeRequest struct {
-	api.BaseRequest
+	BaseRequest
 	Address string `mapstructure:"Address" validate:"required"`
 }
 
 type GetLoginCodeResponse struct {
-	api.BaseResponse
+	BaseResponse
 
 	Nonce     int    `mapstructure:"Nonce"`
 	LoginCode string `mapstructure:"LoginCode"`
@@ -45,14 +48,14 @@ func NewGetLoginCodeRequest(data *map[string]interface{}) (*GetLoginCodeRequest,
 
 func NewGetLoginCodeResponse(sessionId string) *GetLoginCodeResponse {
 	return &GetLoginCodeResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      GET_LOGIN_CODE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewGetLoginCodeTask(data *map[string]interface{}) (api.Task, error) {
+func NewGetLoginCodeTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewGetLoginCodeRequest(data)
 	if err != nil {
 		return nil, err
@@ -70,11 +73,11 @@ func NewGetLoginCodeTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *GetLoginCodeTask) Run(c *gin.Context) (api.Response, error) {
+func (task *GetLoginCodeTask) Run(c *gin.Context) (Response, error) {
 	var nonce int
 	// save nonce redis, set TTL
 	session := sessions.Default(c)
-	key := api.MakeAddrNonceKey(task.Request.Address)
+	key := MakeAddrNonceKey(task.Request.Address)
 	v := session.Get(key)
 	if v == nil {
 		r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))

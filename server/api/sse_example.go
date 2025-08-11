@@ -1,4 +1,4 @@
-package battle
+package api
 
 import (
 	"context"
@@ -8,25 +8,24 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const (
-	SSE_EXAMPLE_LABEL = "SSEExample"
-)
+func init() {
+	Register(SSE_EXAMPLE_LABEL, NewSSEExampleTask, NOAUTH)
+}
 
 type SSEExampleRequest struct {
-	api.BaseRequest
+	BaseRequest
 	EventTypes []string `mapstructure:"EventTypes" validate:"required"`              // 订阅的事件类型
 	Duration   int      `mapstructure:"Duration" validate:"required,min=1,max=3600"` // 连接持续时间（秒）
 }
 
 type SSEExampleResponse struct {
-	api.BaseResponse
+	BaseResponse
 	Message string `json:"message"`
 }
 
@@ -49,14 +48,14 @@ func NewSSEExampleRequest(data *map[string]interface{}) (*SSEExampleRequest, err
 
 func NewSSEExampleResponse(sessionId string) *SSEExampleResponse {
 	return &SSEExampleResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      SSE_EXAMPLE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewSSEExampleTask(data *map[string]interface{}) (api.Task, error) {
+func NewSSEExampleTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewSSEExampleRequest(data)
 	if err != nil {
 		return nil, err
@@ -77,7 +76,7 @@ func NewSSEExampleTask(data *map[string]interface{}) (api.Task, error) {
 }
 
 // Run 实现事件驱动的 SSE 流式响应
-func (task *SSEExampleTask) Run(c *gin.Context) (api.Response, error) {
+func (task *SSEExampleTask) Run(c *gin.Context) (Response, error) {
 	log.Infof("SSE Example started - EventTypes: %v, Duration: %d, RequestUUID: %s",
 		task.Request.EventTypes, task.Request.Duration, task.Request.RequestUUID)
 

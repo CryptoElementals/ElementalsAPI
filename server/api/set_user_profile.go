@@ -1,4 +1,4 @@
-package user
+package api
 
 import (
 	"strings"
@@ -6,23 +6,25 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const SET_USER_PROFILE_LABEL = "SetUserProfile"
+func init() {
+	Register(SET_USER_PROFILE_LABEL, NewSetUserProfileTask, COOKIEAUTH)
+}
 
 type SetUserProfileRequest struct {
-	api.BaseRequest
-	Name   string `mapstructure:"Name" validate:"required,max=42"`
-	Avatar string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	BaseRequest
+	Name    string `mapstructure:"Name" validate:"required,max=42"`
+	Avatar  string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	Address string `mapstructure:"Address"`
 }
 
 type SetUserProfileResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type SetUserProfileTask struct {
@@ -43,14 +45,14 @@ func NewSetUserProfileRequest(data *map[string]interface{}) (*SetUserProfileRequ
 
 func NewSetUserProfileResponse(sessionId string) *SetUserProfileResponse {
 	return &SetUserProfileResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      SET_USER_PROFILE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewSetUserProfileTask(data *map[string]interface{}) (api.Task, error) {
+func NewSetUserProfileTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewSetUserProfileRequest(data)
 	if err != nil {
 		return nil, err
@@ -69,18 +71,11 @@ func NewSetUserProfileTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
-	// 从请求参数中获取用户地址（由中间件设置）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		log.Errorf("%s, params assert failed", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
-		log.Errorf("%s, no address found in params", task.Request.RequestUUID)
+func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
+	// 从请求中获取用户地址（由中间件设置）
+	address := task.Request.Address
+	if address == "" {
+		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
 		return nil, errors.MissingLoginCookie()
 	}
 
@@ -117,12 +112,4 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
 
 	log.Infof("%s, user profile updated successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
 	return task.Response, nil
-}
-
-// RegisterUserApis 注册用户相关API
-func RegisterUserApis() {
-	api.Register(SET_USER_PROFILE_LABEL, NewSetUserProfileTask, api.COOKIEAUTH)
-	api.Register(GET_USER_PROFILE_LABEL, NewGetUserProfileTask, api.NOAUTH)
-	api.Register(HAS_COLLECTED_DAILY_REWARD_LABEL, NewHasCollectedDailyRewardTask, api.COOKIEAUTH)
-	api.Register(COLLECT_DAILY_REWARD_LABEL, NewCollectDailyRewardTask, api.COOKIEAUTH)
 }

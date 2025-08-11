@@ -10,11 +10,7 @@ import (
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api/battle"
-	"github.com/CryptoElementals/common/server/api/login"
-	"github.com/CryptoElementals/common/server/api/match"
-	"github.com/CryptoElementals/common/server/api/system"
-	"github.com/CryptoElementals/common/server/api/user"
+	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/handler"
 	"github.com/CryptoElementals/common/server/middlewares"
 	"github.com/gin-contrib/gzip"
@@ -78,12 +74,10 @@ func New(cfg *config.ServerConfig, store sessions.Store, refreshTokenCache cache
 	if cfg.ServiceName != "" {
 		sessionName = cfg.ServiceName
 	}
-	err := login.InitLoginApi(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge, sessionName, refreshTokenCache)
+	err := api.InitLoginApi(cfg.SessionMaxAge, cfg.RefreshTokenMaxAge, sessionName, refreshTokenCache)
 	if err != nil {
 		log.Fatal("login api initiation failed: %s", err.Error())
 	}
-	// 统一注册所有API
-	registerAllApis()
 	r := newRouter(wg, cfg.ServerMode, sessionName, store)
 	return &Server{
 		cfg: cfg,
@@ -195,18 +189,4 @@ func ginWaitGroup(wg *sync.WaitGroup) gin.HandlerFunc {
 func ginLogger() gin.HandlerFunc {
 	w := log.GlobalLogger().Writer()
 	return gin.LoggerWithWriter(w)
-}
-
-// registerAllApis 统一注册所有API
-func registerAllApis() {
-	// 注册登录相关API
-	login.RegisterLoginApis()
-	// 注册用户相关API
-	user.RegisterUserApis()
-	// 注册匹配相关API
-	match.RegisterMatchApis()
-	// 注册对战相关API
-	battle.RegisterBattleApis()
-	// 注册系统相关API
-	system.RegisterSystemApis()
 }

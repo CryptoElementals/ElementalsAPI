@@ -1,20 +1,23 @@
-package login
+package api
 
 import (
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
+func init() {
+	Register(IS_WALLET_LOGGED_IN_LABEL, NewIsWalletLoggedInTask, VERIFYAUTH)
+}
+
 type IsWalletLoggedInRequest struct {
-	api.BaseRequest
+	BaseRequest
 	RefreshToken string `mapstructure:"RefreshToken" validate:"required"`
 }
 
 type IsWalletLoggedInResponse struct {
-	api.BaseResponse
+	BaseResponse
 	WalletLoggedIn bool   `json:"WalletLoggedIn"`
 	Address        string `json:"Address,omitempty"`
 }
@@ -38,14 +41,14 @@ func NewIsWalletLoggedInRequest(data *map[string]interface{}) (*IsWalletLoggedIn
 
 func NewIsWalletLoggedInResponse(sessionId string) *IsWalletLoggedInResponse {
 	return &IsWalletLoggedInResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      IS_WALLET_LOGGED_IN_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewIsWalletLoggedInTask(data *map[string]interface{}) (api.Task, error) {
+func NewIsWalletLoggedInTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewIsWalletLoggedInRequest(data)
 	if err != nil {
 		return nil, err
@@ -64,7 +67,7 @@ func NewIsWalletLoggedInTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *IsWalletLoggedInTask) Run(c *gin.Context) (api.Response, error) {
+func (task *IsWalletLoggedInTask) Run(c *gin.Context) (Response, error) {
 	refreshToken := task.Request.RefreshToken
 
 	// 验证 RefreshToken 是否有效

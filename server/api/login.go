@@ -1,4 +1,4 @@
-package login
+package api
 
 import (
 	goerrs "errors"
@@ -11,7 +11,6 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-contrib/sessions"
@@ -34,17 +33,13 @@ NONCE`
 
 var codeTemplate = fmt.Sprintf(codeTemplateTemplate, "DILL", "DILL")
 
-const (
-	GET_LOGIN_CODE_LABEL      = "GetLoginCode"
-	LOGIN_DILL_LABEL          = "LoginWeb3"
-	REFRESH_LABEL             = "RefreshTokens"
-	SESSION_ADDR_KEY          = "addr"
-	IS_WALLET_LOGGED_IN_LABEL = "IsWalletLoggedIn"
-)
-
 var globalSessionMaxAge int
 var globalRefreshTokenMaxAge int
 var globalRefreshTokenCache cache.Cache
+
+func init() {
+	Register(LOGIN_DILL_LABEL, NewLoginDillTask, VERIFYAUTH)
+}
 
 func InitLoginApi(sessionMaxAge, refreshTokenMaxAge int, serviceName string, refreshTokenCache cache.Cache) error {
 	if sessionMaxAge == 0 {
@@ -63,10 +58,6 @@ func InitLoginApi(sessionMaxAge, refreshTokenMaxAge int, serviceName string, ref
 	globalRefreshTokenMaxAge = refreshTokenMaxAge
 	codeTemplate = fmt.Sprintf(codeTemplateTemplate, serviceName, serviceName)
 	globalRefreshTokenCache = refreshTokenCache
-	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
-	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
-	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
-	api.Register(IS_WALLET_LOGGED_IN_LABEL, NewIsWalletLoggedInTask, api.VERIFYAUTH)
 	return nil
 }
 
@@ -77,14 +68,14 @@ func GetSigningData(addr string, nonce int) string {
 }
 
 type LoginDillRequest struct {
-	api.BaseRequest
+	BaseRequest
 	Signature string `mapstructure:"Signature" validate:"required"`
 	Address   string `mapstructure:"Address" validate:"required"`
 	Nonce     int    `mapstructure:"Nonce" validate:"required"`
 }
 
 type LoginDillResponse struct {
-	api.BaseResponse
+	BaseResponse
 	RefreshToken               string
 	RefreshTokenExpirationTime int64 // timestamp
 }
@@ -108,14 +99,14 @@ func NewLoginDillRequest(data *map[string]interface{}) (*LoginDillRequest, error
 
 func NewLoginDillResponse(sessionId string) *LoginDillResponse {
 	return &LoginDillResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      LOGIN_DILL_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewLoginDillTask(data *map[string]interface{}) (api.Task, error) {
+func NewLoginDillTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewLoginDillRequest(data)
 	if err != nil {
 		return nil, err
@@ -134,13 +125,13 @@ func NewLoginDillTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *LoginDillTask) Run(c *gin.Context) (api.Response, error) {
+func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 	// 验证 nonce 是否存在于 Session 中
 	session := sessions.Default(c)
 	session.Options(sessions.Options{
 		MaxAge: globalSessionMaxAge,
 	})
-	key := api.MakeAddrNonceKey(task.Request.Address)
+	key := MakeAddrNonceKey(task.Request.Address)
 	v := session.Get(key)
 	if v == nil {
 		log.Errorf("%s, key %s has no nonce", task.Request.RequestUUID, key)
@@ -218,12 +209,4 @@ func withRetry(retryCount int, do func(retryTime int) error) error {
 	}
 	// return the last error
 	return err
-}
-
-// RegisterLoginApis 注册登录相关API
-func RegisterLoginApis() {
-	api.Register(GET_LOGIN_CODE_LABEL, NewGetLoginCodeTask, api.NOAUTH)
-	api.Register(LOGIN_DILL_LABEL, NewLoginDillTask, api.VERIFYAUTH)
-	api.Register(REFRESH_LABEL, NewRefreshDillTask, api.VERIFYAUTH)
-	api.Register(IS_WALLET_LOGGED_IN_LABEL, NewIsWalletLoggedInTask, api.VERIFYAUTH)
 }

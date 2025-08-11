@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -9,18 +9,20 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const GET_GAME_PHASE_LABEL = "GetGamePhase"
+func init() {
+	Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, COOKIEAUTH)
+}
 
 // GetGamePhaseRequest 请求结构体
 type GetGamePhaseRequest struct {
-	api.BaseRequest
+	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
+	Address     string `mapstructure:"Address"`
 }
 
 // PvPInfo PvP对战信息
@@ -35,7 +37,7 @@ type PvPInfo struct {
 
 // GetGamePhaseResponse 响应结构体
 type GetGamePhaseResponse struct {
-	api.BaseResponse
+	BaseResponse
 	Mode    uint32        `json:"Mode"`              // 0:None, 1:PvP
 	PvPInfo *PvPInfo      `json:"PvPInfo"`           // PvP对战信息
 	Players []MatchPlayer `json:"Players,omitempty"` // 新增，集成对战玩家信息
@@ -59,7 +61,7 @@ func NewGetGamePhaseRequest(data *map[string]interface{}) (*GetGamePhaseRequest,
 
 func NewGetGamePhaseResponse(sessionId string) *GetGamePhaseResponse {
 	return &GetGamePhaseResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      GET_GAME_PHASE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
@@ -69,7 +71,7 @@ func NewGetGamePhaseResponse(sessionId string) *GetGamePhaseResponse {
 	}
 }
 
-func NewGetGamePhaseTask(data *map[string]interface{}) (api.Task, error) {
+func NewGetGamePhaseTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewGetGamePhaseRequest(data)
 	if err != nil {
 		return nil, err
@@ -88,18 +90,10 @@ func NewGetGamePhaseTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *GetGamePhaseTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Parameter parsing failed"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil

@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -9,24 +9,26 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const CONTINUE_GAME_LABEL = "ContinueGame"
+func init() {
+	Register(CONTINUE_GAME_LABEL, NewContinueGameTask, COOKIEAUTH)
+}
 
 // ContinueGameRequest 请求结构体
 type ContinueGameRequest struct {
-	api.BaseRequest
+	BaseRequest
 	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
+	Address     string `mapstructure:"Address"`
 }
 
 // ContinueGameResponse 响应结构体
 type ContinueGameResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type ContinueGameTask struct {
@@ -47,14 +49,14 @@ func NewContinueGameRequest(data *map[string]interface{}) (*ContinueGameRequest,
 
 func NewContinueGameResponse(sessionId string) *ContinueGameResponse {
 	return &ContinueGameResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      CONTINUE_GAME_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewContinueGameTask(data *map[string]interface{}) (api.Task, error) {
+func NewContinueGameTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewContinueGameRequest(data)
 	if err != nil {
 		return nil, err
@@ -73,20 +75,12 @@ func NewContinueGameTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *ContinueGameTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
+func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Parameter parsing failed"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil
 	}
 

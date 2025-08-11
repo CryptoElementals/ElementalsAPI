@@ -1,4 +1,4 @@
-package user
+package api
 
 import (
 	"strings"
@@ -6,20 +6,22 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const HAS_COLLECTED_DAILY_REWARD_LABEL = "HasCollectedDailyReward"
+func init() {
+	Register(HAS_COLLECTED_DAILY_REWARD_LABEL, NewHasCollectedDailyRewardTask, COOKIEAUTH)
+}
 
 type HasCollectedDailyRewardRequest struct {
-	api.BaseRequest
+	BaseRequest
+	Address string `mapstructure:"Address"`
 }
 
 type HasCollectedDailyRewardResponse struct {
-	api.BaseResponse
+	BaseResponse
 	Collected bool `json:"Collected"`
 }
 
@@ -41,14 +43,14 @@ func NewHasCollectedDailyRewardRequest(data *map[string]interface{}) (*HasCollec
 
 func NewHasCollectedDailyRewardResponse(sessionId string) *HasCollectedDailyRewardResponse {
 	return &HasCollectedDailyRewardResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      HAS_COLLECTED_DAILY_REWARD_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (api.Task, error) {
+func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewHasCollectedDailyRewardRequest(data)
 	if err != nil {
 		return nil, err
@@ -67,18 +69,11 @@ func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (api.Task, err
 	return task, nil
 }
 
-func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (api.Response, error) {
-	// 从请求参数中获取用户地址（由中间件设置）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		log.Errorf("%s, params assert failed", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
-		log.Errorf("%s, no address found in params", task.Request.RequestUUID)
+func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
+	// 从请求中获取用户地址（由中间件设置）
+	address := task.Request.Address
+	if address == "" {
+		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
 		return nil, errors.MissingLoginCookie()
 	}
 

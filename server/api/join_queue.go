@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -9,24 +9,26 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const JOIN_QUEUE_LABEL = "JoinQueue"
+func init() {
+	Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, COOKIEAUTH)
+}
 
 // JoinQueueRequest 请求结构体
 type JoinQueueRequest struct {
-	api.BaseRequest
+	BaseRequest
 	Mode        string `mapstructure:"Mode" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
+	Address     string `mapstructure:"Address"`
 }
 
 // JoinQueueResponse 响应结构体
 type JoinQueueResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type JoinQueueTask struct {
@@ -47,14 +49,14 @@ func NewJoinQueueRequest(data *map[string]interface{}) (*JoinQueueRequest, error
 
 func NewJoinQueueResponse(sessionId string) *JoinQueueResponse {
 	return &JoinQueueResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      JOIN_QUEUE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewJoinQueueTask(data *map[string]interface{}) (api.Task, error) {
+func NewJoinQueueTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewJoinQueueRequest(data)
 	if err != nil {
 		return nil, err
@@ -73,18 +75,10 @@ func NewJoinQueueTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Parameter parsing failed"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil
@@ -165,16 +159,4 @@ func (task *JoinQueueTask) Run(c *gin.Context) (api.Response, error) {
 	task.Response.BaseResponse.Message = "Successfully joined match queue"
 
 	return task.Response, nil
-}
-
-// RegisterMatchApis 注册匹配相关API
-func RegisterMatchApis() {
-	api.Register(JOIN_QUEUE_LABEL, NewJoinQueueTask, api.COOKIEAUTH)
-	api.Register(EXIT_QUEUE_LABEL, NewExitQueueTask, api.COOKIEAUTH)
-	api.Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, api.COOKIEAUTH)
-	api.Register(GET_GAME_PHASE_LABEL, NewGetGamePhaseTask, api.COOKIEAUTH)
-	api.Register(REFUSE_CONTINUE_GAME_LABEL, NewRefuseContinueGameTask, api.COOKIEAUTH)
-	api.Register(CONTINUE_GAME_LABEL, NewContinueGameTask, api.COOKIEAUTH)
-	api.Register(IS_PLAYER_IN_QUEUE_LABEL, NewIsPlayerInQueueTask, api.COOKIEAUTH)
-
 }

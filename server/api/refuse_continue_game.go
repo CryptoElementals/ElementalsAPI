@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -7,24 +7,26 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const REFUSE_CONTINUE_GAME_LABEL = "RefuseContinueGame"
+func init() {
+	Register(REFUSE_CONTINUE_GAME_LABEL, NewRefuseContinueGameTask, COOKIEAUTH)
+}
 
 // RefuseContinueGameRequest 请求结构体
 type RefuseContinueGameRequest struct {
-	api.BaseRequest
+	BaseRequest
 	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
+	Address     string `mapstructure:"Address"`
 }
 
 // RefuseContinueGameResponse 响应结构体
 type RefuseContinueGameResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type RefuseContinueGameTask struct {
@@ -44,14 +46,14 @@ func NewRefuseContinueGameRequest(data *map[string]interface{}) (*RefuseContinue
 
 func NewRefuseContinueGameResponse(sessionId string) *RefuseContinueGameResponse {
 	return &RefuseContinueGameResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      REFUSE_CONTINUE_GAME_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewRefuseContinueGameTask(data *map[string]interface{}) (api.Task, error) {
+func NewRefuseContinueGameTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewRefuseContinueGameRequest(data)
 	if err != nil {
 		return nil, err
@@ -70,18 +72,10 @@ func NewRefuseContinueGameTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *RefuseContinueGameTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Parameter parsing failed"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil

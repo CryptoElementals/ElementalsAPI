@@ -11,10 +11,11 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/server/api"
 	"github.com/stretchr/testify/require"
 
 	// 确保导入GetBattleInfoResponse和相关结构体
-	"github.com/CryptoElementals/common/server/api/battle"
+
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -135,23 +136,23 @@ func TestExecuteRoundProtoFromFile(t *testing.T) {
 			// 确保使用正确的字段名称
 
 			// 将结果转换为GetBattleInfoResponse格式
-			response := &battle.GetBattleInfoResponse{
-				RoundResult: &battle.RoundResult{
+			response := &api.GetBattleInfoResponse{
+				RoundResult: &api.RoundResult{
 					Round:      roundResult.RoundNumber,
 					IsGameOver: roundResult.IsGameOver,
-					Players:    make([]battle.PlayerRoundStat, len(roundResult.Players)),
+					Players:    make([]api.PlayerRoundStat, len(roundResult.Players)),
 				},
 			}
 
 			for i, player := range roundResult.Players {
-				response.RoundResult.Players[i] = battle.PlayerRoundStat{
+				response.RoundResult.Players[i] = api.PlayerRoundStat{
 					PlayerAddress: player.WalletAddress,
 					IsSelf:        false,
-					CardStats:     make([]battle.PlayerCardStat, len(player.CardStats)),
+					CardStats:     make([]api.PlayerCardStat, len(player.CardStats)),
 				}
 
 				for j, cardStat := range player.CardStats {
-					response.RoundResult.Players[i].CardStats[j] = battle.PlayerCardStat{
+					response.RoundResult.Players[i].CardStats[j] = api.PlayerCardStat{
 						CardNumber:       cardStat.CardNumber,
 						CardID:           cardStat.CardID,
 						HPBefore:         cardStat.HPBefore,
@@ -165,18 +166,18 @@ func TestExecuteRoundProtoFromFile(t *testing.T) {
 			}
 
 			if gameResult != nil {
-				response.GameResult = &battle.GameResult{
+				response.GameResult = &api.GameResult{
 					Winner:              gameResult.WinnerWalletAddress,
 					GameResultType:      uint32(gameResult.GameResultType),
 					GameFinalMultiplier: uint32(gameResult.Multiplier),
-					Reward: &battle.BattleReward{
-						PlayerRewards: make([]battle.PlayerReward, len(gameResult.Reward.PlayerRewards)),
+					Reward: &api.BattleReward{
+						PlayerRewards: make([]api.PlayerReward, len(gameResult.Reward.PlayerRewards)),
 						SystemFee:     int32(gameResult.Reward.SystemFee),
 					},
 				}
 
 				for i, reward := range gameResult.Reward.PlayerRewards {
-					response.GameResult.Reward.PlayerRewards[i] = battle.PlayerReward{
+					response.GameResult.Reward.PlayerRewards[i] = api.PlayerReward{
 						PlayerAddress: reward.WalletAddress,
 						TokenChange:   int32(reward.TokenChange),
 						PointChange:   int32(reward.PointChange),

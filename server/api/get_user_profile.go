@@ -1,4 +1,4 @@
-package user
+package api
 
 import (
 	"strings"
@@ -7,17 +7,18 @@ import (
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const GET_USER_PROFILE_LABEL = "GetUserProfile"
+func init() {
+	Register(GET_USER_PROFILE_LABEL, NewGetUserProfileTask, NOAUTH)
+}
 
 type GetUserProfileRequest struct {
-	api.BaseRequest
+	BaseRequest
 	Address string `mapstructure:"Address" validate:"required"`
 }
 
@@ -36,7 +37,7 @@ type UserInfo struct {
 }
 
 type GetUserProfileResponse struct {
-	api.BaseResponse
+	BaseResponse
 	UserInfo UserInfo `json:"UserInfo"`
 }
 
@@ -58,14 +59,14 @@ func NewGetUserProfileRequest(data *map[string]interface{}) (*GetUserProfileRequ
 
 func NewGetUserProfileResponse(sessionId string) *GetUserProfileResponse {
 	return &GetUserProfileResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      GET_USER_PROFILE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewGetUserProfileTask(data *map[string]interface{}) (api.Task, error) {
+func NewGetUserProfileTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewGetUserProfileRequest(data)
 	if err != nil {
 		return nil, err
@@ -84,7 +85,7 @@ func NewGetUserProfileTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *GetUserProfileTask) Run(c *gin.Context) (api.Response, error) {
+func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	// 从请求参数中获取用户地址
 	address := task.Request.Address
 	if address == "" {

@@ -1,4 +1,4 @@
-package battle
+package api
 
 import (
 	"context"
@@ -7,24 +7,26 @@ import (
 
 	"github.com/CryptoElementals/common/rpc/client"
 	pb "github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const SURRENDER_LABEL = "Surrender"
+func init() {
+	Register(SURRENDER_LABEL, NewSurrenderTask, COOKIEAUTH)
+}
 
 // SurrenderRequest 请求结构体
 type SurrenderRequest struct {
-	api.BaseRequest
+	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`      // 游戏ID
+	Address     string `mapstructure:"Address"`
 }
 
 // SurrenderResponse 响应结构体
 type SurrenderResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type SurrenderTask struct {
@@ -45,14 +47,14 @@ func NewSurrenderRequest(data *map[string]interface{}) (*SurrenderRequest, error
 
 func NewSurrenderResponse(sessionId string) *SurrenderResponse {
 	return &SurrenderResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      SURRENDER_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewSurrenderTask(data *map[string]interface{}) (api.Task, error) {
+func NewSurrenderTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewSurrenderRequest(data)
 	if err != nil {
 		return nil, err
@@ -71,17 +73,15 @@ func NewSurrenderTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-// Run 执行任务
-func (task *SurrenderTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("parameter parsing failed")
-	}
+func init() {
+	Register(SURRENDER_LABEL, NewSurrenderTask, COOKIEAUTH)
+}
 
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+// Run 执行任务
+func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		return nil, fmt.Errorf("failed to get player address")
 	}
 

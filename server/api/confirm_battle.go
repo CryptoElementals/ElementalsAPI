@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -6,25 +6,27 @@ import (
 
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const CONFIRM_BATTLE_LABEL = "ConfirmBattle"
+func init() {
+	Register(CONFIRM_BATTLE_LABEL, NewConfirmBattleTask, COOKIEAUTH)
+}
 
 // ConfirmBattleRequest 请求结构体
 type ConfirmBattleRequest struct {
-	api.BaseRequest
+	BaseRequest
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`
 	Round       uint   `mapstructure:"Round" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
+	Address     string `mapstructure:"Address"`
 }
 
 // ConfirmBattleResponse 响应结构体
 type ConfirmBattleResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type ConfirmBattleTask struct {
@@ -45,14 +47,14 @@ func NewConfirmBattleRequest(data *map[string]interface{}) (*ConfirmBattleReques
 
 func NewConfirmBattleResponse(sessionId string) *ConfirmBattleResponse {
 	return &ConfirmBattleResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      CONFIRM_BATTLE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewConfirmBattleTask(data *map[string]interface{}) (api.Task, error) {
+func NewConfirmBattleTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewConfirmBattleRequest(data)
 	if err != nil {
 		return nil, err
@@ -71,18 +73,10 @@ func NewConfirmBattleTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *ConfirmBattleTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to parse parameters"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil

@@ -13,6 +13,40 @@ const (
 	COOKIEAUTH          // 使用cookie认证
 )
 
+// 统一的 API Label 定义
+const (
+	// 登录与会话
+	GET_LOGIN_CODE_LABEL      = "GetLoginCode"
+	LOGIN_DILL_LABEL          = "LoginWeb3"
+	REFRESH_LABEL             = "RefreshTokens"
+	IS_WALLET_LOGGED_IN_LABEL = "IsWalletLoggedIn"
+
+	// 系统与资源
+	HEALTH_CHECK_LABEL = "HealthCheck"
+	GET_CARDS_LABEL    = "GetCards"
+	LIST_AVATARS_LABEL = "ListAvatars"
+
+	// 用户相关
+	SET_USER_PROFILE_LABEL           = "SetUserProfile"
+	GET_USER_PROFILE_LABEL           = "GetUserProfile"
+	HAS_COLLECTED_DAILY_REWARD_LABEL = "HasCollectedDailyReward"
+	COLLECT_DAILY_REWARD_LABEL       = "CollectDailyReward"
+
+	// 匹配与对战
+	JOIN_QUEUE_LABEL           = "JoinQueue"
+	EXIT_QUEUE_LABEL           = "ExitQueue"
+	CONFIRM_BATTLE_LABEL       = "ConfirmBattle"
+	GET_GAME_PHASE_LABEL       = "GetGamePhase"
+	REFUSE_CONTINUE_GAME_LABEL = "RefuseContinueGame"
+	CONTINUE_GAME_LABEL        = "ContinueGame"
+	IS_PLAYER_IN_QUEUE_LABEL   = "IsPlayerInQueue"
+	GET_BATTLE_INFO_LABEL      = "GetBattleInfo"
+	SUBSCRIBE_GAME_INFO_LABEL  = "SubscribeGameInfo"
+	SSE_EXAMPLE_LABEL          = "SSEExample"
+	SURRENDER_LABEL            = "Surrender"
+	GET_GAME_CONFIG_LABEL      = "GetGameConfig"
+)
+
 type Task interface {
 	Run(c *gin.Context) (Response, error)
 }

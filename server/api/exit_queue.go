@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -6,26 +6,26 @@ import (
 
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const (
-	EXIT_QUEUE_LABEL = "ExitQueue"
-)
+func init() {
+	Register(EXIT_QUEUE_LABEL, NewExitQueueTask, COOKIEAUTH)
+}
 
 // ExitQueueRequest 请求结构体
 type ExitQueueRequest struct {
-	api.BaseRequest
+	BaseRequest
 	Mode        string `mapstructure:"Mode" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
+	Address     string `mapstructure:"Address"`
 }
 
 // ExitQueueResponse 响应结构体
 type ExitQueueResponse struct {
-	api.BaseResponse
+	BaseResponse
 }
 
 type ExitQueueTask struct {
@@ -46,14 +46,14 @@ func NewExitQueueRequest(data *map[string]interface{}) (*ExitQueueRequest, error
 
 func NewExitQueueResponse(sessionId string) *ExitQueueResponse {
 	return &ExitQueueResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      EXIT_QUEUE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewExitQueueTask(data *map[string]interface{}) (api.Task, error) {
+func NewExitQueueTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewExitQueueRequest(data)
 	if err != nil {
 		return nil, err
@@ -72,18 +72,10 @@ func NewExitQueueTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *ExitQueueTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Parameter parsing failed"
-		return task.Response, nil
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address"
 		return task.Response, nil

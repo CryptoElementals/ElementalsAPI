@@ -1,4 +1,4 @@
-package match
+package api
 
 import (
 	"context"
@@ -7,23 +7,25 @@ import (
 
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const IS_PLAYER_IN_QUEUE_LABEL = "IsPlayerInQueue"
+func init() {
+	Register(IS_PLAYER_IN_QUEUE_LABEL, NewIsPlayerInQueueTask, COOKIEAUTH)
+}
 
 // IsPlayerInQueueRequest 请求结构体
 type IsPlayerInQueueRequest struct {
-	api.BaseRequest
+	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
+	Address     string `mapstructure:"Address"`
 }
 
 // IsPlayerInQueueResponse 响应结构体
 type IsPlayerInQueueResponse struct {
-	api.BaseResponse
+	BaseResponse
 	IsInQueue bool `json:"IsInQueue"` // 是否在队列中
 }
 
@@ -45,14 +47,14 @@ func NewIsPlayerInQueueRequest(data *map[string]interface{}) (*IsPlayerInQueueRe
 
 func NewIsPlayerInQueueResponse(sessionId string) *IsPlayerInQueueResponse {
 	return &IsPlayerInQueueResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      IS_PLAYER_IN_QUEUE_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewIsPlayerInQueueTask(data *map[string]interface{}) (api.Task, error) {
+func NewIsPlayerInQueueTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewIsPlayerInQueueRequest(data)
 	if err != nil {
 		return nil, err
@@ -72,16 +74,10 @@ func NewIsPlayerInQueueTask(data *map[string]interface{}) (api.Task, error) {
 }
 
 // Run 执行任务
-func (task *IsPlayerInQueueTask) Run(c *gin.Context) (api.Response, error) {
-	// 获取玩家地址（从认证中间件设置的params中获取）
-	_params, _ := c.Get("params")
-	params, ok := _params.(*map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("parameter parsing failed")
-	}
-
-	address, ok := (*params)["Address"].(string)
-	if !ok || address == "" {
+func (task *IsPlayerInQueueTask) Run(c *gin.Context) (Response, error) {
+	// 获取玩家地址（从认证中间件填充到请求结构）
+	address := task.Request.Address
+	if address == "" {
 		return nil, fmt.Errorf("failed to get player address")
 	}
 

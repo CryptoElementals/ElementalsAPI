@@ -1,4 +1,4 @@
-package login
+package api
 
 import (
 	"time"
@@ -6,7 +6,6 @@ import (
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -14,13 +13,17 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+func init() {
+	Register(REFRESH_LABEL, NewRefreshDillTask, VERIFYAUTH)
+}
+
 type RefreshDillRequest struct {
-	api.BaseRequest
+	BaseRequest
 	RefreshToken string
 }
 
 type RefreshDillResponse struct {
-	api.BaseResponse
+	BaseResponse
 	RefreshToken               string
 	RefreshTokenExpirationTime int64 // timestamp
 }
@@ -44,14 +47,14 @@ func NewRefreshDillRequest(data *map[string]interface{}) (*RefreshDillRequest, e
 
 func NewRefreshDillResponse(sessionId string) *RefreshDillResponse {
 	return &RefreshDillResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      REFRESH_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewRefreshDillTask(data *map[string]interface{}) (api.Task, error) {
+func NewRefreshDillTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewRefreshDillRequest(data)
 	if err != nil {
 		return nil, err
@@ -70,7 +73,7 @@ func NewRefreshDillTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *RefreshDillTask) Run(c *gin.Context) (api.Response, error) {
+func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	// 验证 nonce 是否存在于 Session 中
 	session := sessions.Default(c)
 	session.Options(sessions.Options{

@@ -1,23 +1,21 @@
-package system
+package api
 
 import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-// API标签常量
-const (
-	GET_CARDS_LABEL = "GetCards"
-)
+func init() {
+	Register(GET_CARDS_LABEL, NewGetAllCardsTask, NOAUTH)
+}
 
 // 请求结构体
 type GetAllCardsRequest struct {
-	api.BaseRequest
+	BaseRequest
 }
 
 // 响应用卡牌结构体
@@ -39,7 +37,7 @@ type CardInfo struct {
 
 // 响应结构体
 type GetAllCardsResponse struct {
-	api.BaseResponse
+	BaseResponse
 	Cards []CardInfo `json:"Cards"`
 }
 
@@ -50,7 +48,7 @@ type GetAllCardsTask struct {
 }
 
 // 任务创建函数
-func NewGetAllCardsTask(data *map[string]interface{}) (api.Task, error) {
+func NewGetAllCardsTask(data *map[string]interface{}) (Task, error) {
 	req := &GetAllCardsRequest{}
 	err := mapstructure.Decode(*data, &req)
 	if err != nil {
@@ -67,7 +65,7 @@ func NewGetAllCardsTask(data *map[string]interface{}) (api.Task, error) {
 	return &GetAllCardsTask{
 		Request: req,
 		Response: &GetAllCardsResponse{
-			BaseResponse: api.BaseResponse{
+			BaseResponse: BaseResponse{
 				Action:      GET_CARDS_LABEL + "Response",
 				RequestUUID: req.RequestUUID,
 			},
@@ -76,7 +74,7 @@ func NewGetAllCardsTask(data *map[string]interface{}) (api.Task, error) {
 }
 
 // 任务执行函数
-func (t *GetAllCardsTask) Run(c *gin.Context) (api.Response, error) {
+func (t *GetAllCardsTask) Run(c *gin.Context) (Response, error) {
 	// 获取所有卡牌
 	dbCards, err := db.GetAllCards()
 	if err != nil {

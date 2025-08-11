@@ -1,25 +1,26 @@
-package system
+package api
 
 import (
 	"fmt"
 
-	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 )
 
-const LIST_AVATARS_LABEL = "ListAvatars"
+func init() {
+	Register(LIST_AVATARS_LABEL, NewListAvatarsTask, NOAUTH)
+}
 
 // ListAvatarsRequest 请求结构体
 type ListAvatarsRequest struct {
-	api.BaseRequest
+	BaseRequest
 }
 
 // ListAvatarsResponse 响应结构体
 type ListAvatarsResponse struct {
-	api.BaseResponse
+	BaseResponse
 	Avatars []AvatarData `json:"Avatars"`
 }
 
@@ -48,14 +49,14 @@ func NewListAvatarsRequest(data *map[string]interface{}) (*ListAvatarsRequest, e
 
 func NewListAvatarsResponse(sessionId string) *ListAvatarsResponse {
 	return &ListAvatarsResponse{
-		BaseResponse: api.BaseResponse{
+		BaseResponse: BaseResponse{
 			Action:      LIST_AVATARS_LABEL + "Response",
 			RequestUUID: sessionId,
 		},
 	}
 }
 
-func NewListAvatarsTask(data *map[string]interface{}) (api.Task, error) {
+func NewListAvatarsTask(data *map[string]interface{}) (Task, error) {
 	req, err := NewListAvatarsRequest(data)
 	if err != nil {
 		return nil, err
@@ -74,7 +75,7 @@ func NewListAvatarsTask(data *map[string]interface{}) (api.Task, error) {
 	return task, nil
 }
 
-func (task *ListAvatarsTask) Run(c *gin.Context) (api.Response, error) {
+func (task *ListAvatarsTask) Run(c *gin.Context) (Response, error) {
 
 	// 从S3获取头像列表
 	avatarFiles, err := utils.ListAvatarFiles()
