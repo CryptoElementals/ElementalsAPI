@@ -25,7 +25,7 @@ func InitBotConfig(configPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := viper.Unmarshal(&RSGConf); err != nil {
+	if err := viper.Unmarshal(&BotCfg); err != nil {
 		return err
 	}
 

@@ -46,6 +46,7 @@ func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.
 		gameCreator:     gameCreator,
 		continueManager: newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
 		continueTimeout: time.Duration(continueTimeout) * time.Second,
+		botsSet:         NewSet[types.PlayerAddress](),
 	}
 	return q
 }
@@ -71,8 +72,6 @@ func (q *Queue) close() {
 	defer q.lock.Unlock()
 	q.closing = true
 }
-
-
 
 func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.lock.Lock()
