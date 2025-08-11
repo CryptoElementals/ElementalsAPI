@@ -73,6 +73,22 @@ func (q *Queue) RegisterBots(addrs ...*types.PlayerAddress) error {
 	return nil
 }
 
+func (q *Queue) UnregisterBots(addrs ...*types.PlayerAddress) error {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	for _, addr := range addrs {
+		if !q.botsSet.Contains(*addr) {
+			continue
+		}
+		q.botsSet.Remove(*addr)
+		err := q.unlockToken(addr)
+		if err != nil {
+			return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
+		}
+	}
+	return nil
+}
+
 func (q *Queue) addBotRoutine() {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)

@@ -111,4 +111,8 @@ func (s *Service) Start() error {
 func (s *Service) Stop() {
 	s.ccl()
 	s.wg.Wait()
+	err := s.rpcClient.RpcClient.UnregisterBots(context.Background(), s.addresses)
+	if err != nil {
+		log.Errorw("cannot unregister bots", "err", err)
+	}
 }

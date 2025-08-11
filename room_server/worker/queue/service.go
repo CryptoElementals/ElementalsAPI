@@ -74,3 +74,11 @@ func (s *Service) GameResultSettlement(event *types.GameCompletedEvent) error {
 func (s *Service) RefuseContinueGame(playerAddress types.PlayerAddress, lastGameID uint) error {
 	return s.queue.RefuseContinueGame(playerAddress, lastGameID)
 }
+
+func (s *Service) RegisterBots(addrs ...*types.PlayerAddress) error {
+	return s.queue.RegisterBots(addrs...)
+}
+
+func (s *Service) UnregisterBots(addrs ...*types.PlayerAddress) error {
+	return s.queue.UnregisterBots(addrs...)
+}

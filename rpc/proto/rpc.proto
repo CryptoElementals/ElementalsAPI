@@ -30,6 +30,8 @@ service RpcService {
     rpc RegisterBot(RegisterBotRequest) returns (google.protobuf.Empty);
 
     rpc RegisterBots(RegisterBotsRequest) returns (google.protobuf.Empty);
+
+    rpc UnregisterBots(UnregisterBotsRequest) returns (google.protobuf.Empty);
 }
 
 message RegisterBotRequest {
@@ -40,6 +42,9 @@ message RegisterBotsRequest {
     repeated rpc.PlayerAddress PlayerAddresses =1;
 }
 
+message UnregisterBotsRequest {
+    repeated rpc.PlayerAddress PlayerAddresses =1;
+}
 
 message SurrenderRequest {
     uint32 GameID = 1;

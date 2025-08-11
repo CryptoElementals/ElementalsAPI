@@ -134,3 +134,14 @@ func (c *RpcClient) RegisterBot(ctx context.Context, addr *types.PlayerAddress) 
 	})
 	return err
 }
+
+func (c *RpcClient) UnregisterBots(ctx context.Context, addrs []*types.PlayerAddress) error {
+	protoAddrs := make([]*proto.PlayerAddress, len(addrs))
+	for i := range addrs {
+		protoAddrs[i] = addrs[i].ToProto()
+	}
+	_, err := c.client.UnregisterBots(ctx, &pb.UnregisterBotsRequest{
+		PlayerAddresses: protoAddrs,
+	})
+	return err
+}

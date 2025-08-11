@@ -87,6 +87,7 @@ func New(ctx context.Context,
 		chainSvc,
 		playerSvc,
 		queueSvc,
+		queueSvc,
 	)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)

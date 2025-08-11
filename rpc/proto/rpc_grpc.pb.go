@@ -33,6 +33,7 @@ const (
 	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
 	RpcService_RegisterBot_FullMethodName        = "/rpc.RpcService/RegisterBot"
 	RpcService_RegisterBots_FullMethodName       = "/rpc.RpcService/RegisterBots"
+	RpcService_UnregisterBots_FullMethodName     = "/rpc.RpcService/UnregisterBots"
 )
 
 // RpcServiceClient is the client API for RpcService service.
@@ -56,6 +57,7 @@ type RpcServiceClient interface {
 	// bot server related api
 	RegisterBot(ctx context.Context, in *RegisterBotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RegisterBots(ctx context.Context, in *RegisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UnregisterBots(ctx context.Context, in *UnregisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type rpcServiceClient struct {
@@ -196,6 +198,16 @@ func (c *rpcServiceClient) RegisterBots(ctx context.Context, in *RegisterBotsReq
 	return out, nil
 }
 
+func (c *rpcServiceClient) UnregisterBots(ctx context.Context, in *UnregisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_UnregisterBots_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RpcServiceServer is the server API for RpcService service.
 // All implementations must embed UnimplementedRpcServiceServer
 // for forward compatibility.
@@ -217,6 +229,7 @@ type RpcServiceServer interface {
 	// bot server related api
 	RegisterBot(context.Context, *RegisterBotRequest) (*emptypb.Empty, error)
 	RegisterBots(context.Context, *RegisterBotsRequest) (*emptypb.Empty, error)
+	UnregisterBots(context.Context, *UnregisterBotsRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRpcServiceServer()
 }
 
@@ -265,6 +278,9 @@ func (UnimplementedRpcServiceServer) RegisterBot(context.Context, *RegisterBotRe
 }
 func (UnimplementedRpcServiceServer) RegisterBots(context.Context, *RegisterBotsRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterBots not implemented")
+}
+func (UnimplementedRpcServiceServer) UnregisterBots(context.Context, *UnregisterBotsRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UnregisterBots not implemented")
 }
 func (UnimplementedRpcServiceServer) mustEmbedUnimplementedRpcServiceServer() {}
 func (UnimplementedRpcServiceServer) testEmbeddedByValue()                    {}
@@ -521,6 +537,24 @@ func _RpcService_RegisterBots_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_UnregisterBots_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnregisterBotsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).UnregisterBots(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_UnregisterBots_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).UnregisterBots(ctx, req.(*UnregisterBotsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RpcService_ServiceDesc is the grpc.ServiceDesc for RpcService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -579,6 +613,10 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterBots",
 			Handler:    _RpcService_RegisterBots_Handler,
+		},
+		{
+			MethodName: "UnregisterBots",
+			Handler:    _RpcService_UnregisterBots_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

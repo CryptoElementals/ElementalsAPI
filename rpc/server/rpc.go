@@ -17,12 +17,19 @@ type Rpc struct {
 	botHandler         BotHandler
 }
 
-func NewRpc(gameHandler GameRequestHandler, chainHandler ChainRequestHandler, playerHandler PlayerRequestHandler, playerTokenHandler PlayerTokenHandler) *Rpc {
+func NewRpc(
+	gameHandler GameRequestHandler,
+	chainHandler ChainRequestHandler,
+	playerHandler PlayerRequestHandler,
+	playerTokenHandler PlayerTokenHandler,
+	botHandler BotHandler,
+) *Rpc {
 	return &Rpc{
 		gameHandler:        gameHandler,
 		chainHandler:       chainHandler,
 		playerHandler:      playerHandler,
 		playerTokenHandler: playerTokenHandler,
+		botHandler:         botHandler,
 	}
 }
 
@@ -153,4 +160,5 @@ type PlayerRequestHandler interface {
 
 type BotHandler interface {
 	RegisterBots(...*types.PlayerAddress) error
+	UnregisterBots(...*types.PlayerAddress) error
 }
