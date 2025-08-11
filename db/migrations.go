@@ -29,6 +29,7 @@ func Migrate() error {
 		&dao.BlockSync{},
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
+		&dao.DevTempKey{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -60,6 +61,7 @@ func MigrateMemDb() error {
 		&dao.BlockSync{},
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
+		&dao.DevTempKey{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

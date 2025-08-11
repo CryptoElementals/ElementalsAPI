@@ -44,6 +44,7 @@ const (
 	SUBSCRIBE_GAME_INFO_LABEL  = "SubscribeGameInfo"
 	SSE_EXAMPLE_LABEL          = "SSEExample"
 	SURRENDER_LABEL            = "Surrender"
+	GET_GAME_CONFIG_LABEL      = "GetGameConfig"
 )
 
 type Task interface {
