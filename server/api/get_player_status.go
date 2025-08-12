@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -111,15 +112,16 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 		// 匹配中 -> Status=1
 		task.Response.Status = 1
 		task.Response.BaseResponse.RetCode = 0
-		task.Response.BaseResponse.Message = "matching"
+		task.Response.BaseResponse.Message = "Player is in match queue"
 		return task.Response, nil
 	}
 
 	// 2) 不在队列中，则调用 GetGamePhase 判定 phase
 	gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
+	log.Infof("gamePhase: %v, err: %v", gamePhase, err)
 	if err != nil {
-		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer GetGamePhase failed: " + err.Error()
+		task.Response.BaseResponse.RetCode = 0
+		task.Response.BaseResponse.Message = "Player is not participating in any game"
 		return task.Response, nil
 	}
 
@@ -129,19 +131,19 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 	case proto.PlayerStatus_PLAYER_MATCHED:
 		// confirming
 		task.Response.Status = 2
-		task.Response.BaseResponse.Message = "confirming"
+		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		// inbattle
 		task.Response.Status = 3
-		task.Response.BaseResponse.Message = "inbattle"
+		task.Response.BaseResponse.Message = "Player has entered battle"
 	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
 		// waitingcontinue
 		task.Response.Status = 4
-		task.Response.BaseResponse.Message = "waitingcontinue"
+		task.Response.BaseResponse.Message = "Player is waiting for continue"
 	default:
 		// 不在队列且 phase 为 0 -> default
 		task.Response.Status = 0
-		task.Response.BaseResponse.Message = "default"
+		task.Response.BaseResponse.Message = "Player is not participating in any game"
 	}
 
 	task.Response.BaseResponse.RetCode = 0

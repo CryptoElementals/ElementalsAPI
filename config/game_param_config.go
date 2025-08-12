@@ -21,7 +21,7 @@ var GameParams = GameParamConfig{}
 func InitializeGameParams(gameParams *GameParamConfig) {
 	// 设置默认值
 	if gameParams.MaxHP == 0 {
-		gameParams.MaxHP = 3000
+		gameParams.MaxHP = 5000
 	}
 	if gameParams.InitialMultiplier == 0 {
 		gameParams.InitialMultiplier = 1
