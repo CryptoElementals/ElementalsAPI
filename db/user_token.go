@@ -3,8 +3,10 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
@@ -22,7 +24,14 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 		userToken := &dao.UserToken{}
 		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
-			return err
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
+			// save a record if locked token is zero
+			// mostly used in test
+			if tokenAmount == 0 {
+				tx.Save(userToken)
+			}
 		}
 		lockedAmount := int32(0)
 		lockedNum := 0
@@ -87,6 +96,12 @@ func UnlockUserToken(ctx context.Context, address string, tempAddress string) (e
 func BattleResultSettlement(game *dao.Game) error {
 	// game aborted when init
 	if game.Status == proto.GameStatus_GAME_INIT {
+		for _, pr := range game.Players {
+			err := UnlockUserToken(context.Background(), pr.WalletAddress, pr.TemporaryAddress)
+			if err != nil {
+				log.Errorw("cannot unlock user token", "err", err, "wallet addr", pr.WalletAddress, "temp address", pr.TemporaryAddress)
+			}
+		}
 		return nil
 	}
 	if game.GameResult == nil {
@@ -101,7 +116,7 @@ func BattleResultSettlement(game *dao.Game) error {
 			userToken := &dao.UserToken{}
 			err := tx.Where("wallet_address = ?", pr.WalletAddress).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
-				return err
+				return fmt.Errorf("find user token record from db failed, game id: %d, address: %s, err: %w", game.ID, pr.WalletAddress, err)
 			}
 			userToken.TokenAmount += pr.TokenChange
 			userToken.Points += pr.PointChange

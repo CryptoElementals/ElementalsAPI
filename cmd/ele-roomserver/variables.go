@@ -10,7 +10,8 @@ var (
 	dbName             string
 	chainRpc           string
 	roomServerEndpoint string
-	walletPath         string
+	accountWalletPath  string
+	tempWalletPath     string
 	gameID             uint
 	tempAddress        string
 )

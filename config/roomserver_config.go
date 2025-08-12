@@ -14,7 +14,6 @@ type RoomServerConfig struct {
 	LogCfg          log.Config      `mapstructure:"log"`
 	RedisCfg        redis.Config    `mapstructure:"redis"`
 	DbCfg           db.Config       `mapstructure:"database"`
-	ServerCfg       ServerConfig    `mapstructure:"server"`
 	ChainCfg        ChainConfig     `mapstructure:"chain"`
 	GameParams      GameParamConfig `mapstructure:"game-params"`
 	WalletPaths     []string        `mapstructure:"wallet-paths"`
@@ -23,6 +22,7 @@ type RoomServerConfig struct {
 	MaxRounds       int64           `mapstructure:"max-rounds"`
 	GameInitialHP   int64           `mapstructure:"game-initial-hp"`
 	ListenPort      int64           `mapstructure:"listen-port"`
+	BotWaitTime     int64           `mapstructure:"bot-wait-time"`
 }
 
 func InitRSConfig(configPath string) error {

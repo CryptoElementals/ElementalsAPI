@@ -49,11 +49,12 @@ func init() {
 
 	gameRunCmd.Flags().StringVarP(&chainRpc, "chain-rpc", "c", "", "chain rpc endpoint")
 	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
-	gameRunCmd.Flags().StringVarP(&walletPath, "wallet-path", "w", "", "wallet path")
+	gameRunCmd.Flags().StringVarP(&accountWalletPath, "account-wallet-path", "a", "", "account wallet path")
+	gameRunCmd.Flags().StringVarP(&tempWalletPath, "temp-wallet-path", "t", "", "temp wallet path")
 	gameRunCmd.MarkFlagRequired("chain-rpc")
 	gameRunCmd.MarkFlagRequired("room-server-endpoint")
-	gameRunCmd.MarkFlagRequired("wallet-path")
-
+	gameRunCmd.MarkFlagRequired("account-wallet-path")
+	gameRunCmd.MarkFlagRequired("temp-wallet-path")
 }
 
 func toJsonLoggable(obj any) string {
@@ -450,18 +451,18 @@ func startGame() error {
 		return err
 	}
 	var wTemp *wallet.Wallet
-
-	wTemp, err = wallet.LoadWallet(walletPath)
+	var wAccount *wallet.Wallet
+	wTemp, err = wallet.LoadWallet(tempWalletPath)
 	if err != nil {
 		return err
 	}
 	fmt.Println("using temp account, address: ", wTemp.GetAddrHex())
-	w, err := wallet.NewWallet("")
+	wAccount, err = wallet.LoadWallet(accountWalletPath)
 	if err != nil {
 		return err
 	}
-	fmt.Println("using generated account, address: ", w.GetAddrHex())
-	gameContext, err := newGameContext(context.Background(), w, wTemp, chainClient, client)
+	fmt.Println("using wallet account, address: ", wAccount.GetAddrHex())
+	gameContext, err := newGameContext(context.Background(), wAccount, wTemp, chainClient, client)
 	if err != nil {
 		return err
 	}

@@ -30,6 +30,7 @@ const (
 	SubmitCardsHashEventName = "submitCardsHash"
 	SubmitCardsEventName     = "submitCards"
 	StartANewRoundName       = "startANewRound"
+	rpcSubmitTimeout         = 3 * time.Second
 )
 
 type eventSigHashCache struct {
@@ -40,20 +41,22 @@ type eventSigHashCache struct {
 
 // Scanner encapsulates the state and logic for block catching up
 type Scanner struct {
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	gethWsRpc            string
-	gethHttpRpc          string
-	roomServerHttpRpc    string
-	gethClient           *ethclient.Client
-	rpcClient            *eleClient.RpcClient
-	roomManagerAddress   string
-	roomManagerAbi       *abi.ABI
-	roomAbi              *abi.ABI
-	currentScannedHeight uint64
-	toSubmitHeight       uint64
-	headNumberOnChain    uint64
-	eventSigHashCache    eventSigHashCache // 封装后的缓存
+	ctx                       context.Context
+	cancel                    context.CancelFunc
+	gethWsRpc                 string
+	gethHttpRpc               string
+	roomServerHttpRpc         string
+	gethClient                *ethclient.Client
+	rpcClient                 *eleClient.RpcClient
+	roomManagerAddress        string
+	roomManagerAbi            *abi.ABI
+	roomAbi                   *abi.ABI
+	currentScannedHeight      uint64
+	currentScannedHeightMutex sync.RWMutex
+	toSubmitHeight            uint64
+	toSubmitHeightMutex       sync.RWMutex // 添加同步机制
+	headNumberOnChain         uint64
+	eventSigHashCache         eventSigHashCache // 封装后的缓存
 }
 
 // NewScanner creates a new Scanner with its own cancellable context.
@@ -107,6 +110,8 @@ func (s *Scanner) Run() {
 				s.headNumberOnChain = sync.BlockHeight
 				s.currentScannedHeight = sync.BlockHeight + 1
 				s.toSubmitHeight = sync.BlockHeight + 1
+				log.Infof("Scanner initialized: headNumberOnChain=%d, currentScannedHeight=%d, toSubmitHeight=%d",
+					s.headNumberOnChain, s.currentScannedHeight, s.toSubmitHeight)
 			}
 		}
 		break
@@ -139,9 +144,11 @@ func (s *Scanner) RunCatchUp() {
 
 		if catchupCancel != nil {
 			catchupCancel() // stop old goroutine
+			log.Info("Stopped previous CatchUpChain goroutine")
 		}
 		_, cancel := context.WithCancel(s.ctx)
 		catchupCancel = cancel
+		log.Info("Starting new CatchUpChain goroutine")
 		go s.CatchUpChain()
 
 		headers := make(chan *types.Header)
@@ -166,10 +173,14 @@ func (s *Scanner) RunCatchUp() {
 				goto RECONNECT
 			case header := <-headers:
 				headNumberOnChain := header.Number.Uint64()
+				if headNumberOnChain <= s.headNumberOnChain { // chain reorged, not allowed
+					log.Warnf("Chain reorged!!! From %d to %d", s.headNumberOnChain, headNumberOnChain)
+				}
 				s.SetHeadNumberOnChain(headNumberOnChain)
 				if headNumberOnChain%10 == 0 {
 					log.Infof("HeadNumberOnChain is %d", headNumberOnChain)
 				}
+
 			}
 		}
 	RECONNECT:
@@ -190,29 +201,33 @@ type orderedTxBatch struct {
 
 func (s *Scanner) CatchUpChain() {
 	const maxWorkers = 100
+	const blockQueueMax = 50
 	submitChan := make(chan *orderedTxBatch, 100)
 
 	blockQueue := make(chan uint64, 200)
 
+	log.Infof("CatchUpChain started: currentScannedHeight=%d, headNumberOnChain=%d", s.currentScannedHeight, s.headNumberOnChain)
+
 	// 任务分发协程：基于 toSubmitHeight 控制投递，避免投递过多未处理的区块
 	go func() {
 		for {
-			if s.currentScannedHeight > s.headNumberOnChain {
-				time.Sleep(time.Millisecond * 200)
-				continue
-			}
-			// 只投递 toSubmitHeight 附近的区块，避免投递过多
-			// 但确保有足够的工作给 worker 做
-			if s.currentScannedHeight <= s.toSubmitHeight+50 {
-				blockQueue <- s.currentScannedHeight
-				s.currentScannedHeight++
-				if s.currentScannedHeight%10 == 0 {
-					log.Debugf("Task distributor: currentScannedHeight=%d, toSubmitHeight=%d", s.currentScannedHeight, s.toSubmitHeight)
+			select {
+			case <-s.ctx.Done():
+				log.Info("Task distributor context done, exited...")
+				return
+			default:
+				if s.currentScannedHeight > s.headNumberOnChain {
+					time.Sleep(time.Millisecond * 200)
+					continue
 				}
-			} else {
-				// 如果投递的区块太多，等待处理
-				log.Debugf("Task distributor waiting: currentScannedHeight=%d, toSubmitHeight=%d", s.currentScannedHeight, s.toSubmitHeight)
-				time.Sleep(time.Millisecond * 100)
+
+				if len(blockQueue) <= blockQueueMax {
+					s.addBlockToQueue(blockQueue)
+				} else {
+					// 如果投递的区块太多，等待处理
+					log.Debugf("Task producer waiting for blockQueue to be consumned, blockQueue len %d", len(blockQueue))
+					time.Sleep(time.Millisecond * 100)
+				}
 			}
 		}
 	}()
@@ -220,44 +235,82 @@ func (s *Scanner) CatchUpChain() {
 	// worker 并发消费 blockNumber，失败重试，不跳过
 	for i := 0; i < maxWorkers; i++ {
 		go func(workerID int) {
-			for blockNumber := range blockQueue {
-				log.Debugf("Worker %d processing block %d", workerID, blockNumber)
-				batch, err := s.getAndProcessBlockToBatch(big.NewInt(int64(blockNumber)))
-				if err != nil {
-					log.Warnf("Worker %d parse block %d err %v", workerID, blockNumber, err.Error())
-					// 失败重试，重新放回队列
-					go func(bn uint64) { blockQueue <- bn }(blockNumber)
-					time.Sleep(time.Second * 3)
-					continue
-				}
-
-				log.Debugf("Worker %d sending block %d to submitChan", workerID, blockNumber)
-				orderedBatch := &orderedTxBatch{
-					blockNumber: blockNumber,
-					batch:       batch,
-					done:        make(chan error, 1),
-				}
-				submitChan <- orderedBatch
-				if err := <-orderedBatch.done; err != nil {
-					log.Errorf("Worker %d submit failed for block %d: %v", workerID, blockNumber, err)
-					// 失败重试，重新放回队列
-					go func(bn uint64) { blockQueue <- bn }(blockNumber)
-					time.Sleep(time.Second * 3)
-					continue
-				}
-
-				if blockNumber%10 == 0 {
-					err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: blockNumber})
-					if err != nil {
-						log.Errorf("Worker %d Insert head block sync to db err %v, blockNumber %d. Don't update now!!！", workerID, err.Error(), blockNumber)
-						// 失败重试，重新放回队列
-						//go func(bn uint64) { blockQueue <- bn }(blockNumber)
-						//time.Sleep(time.Second * 5)
-					} else {
-						log.Infof("Worker %d Block %d handled successfully, s.toSubmitHeight %d, s.currentScannedHeight %d", workerID, blockNumber, s.toSubmitHeight, s.currentScannedHeight)
+			for {
+				select {
+				case <-s.ctx.Done():
+					log.Infof("Worker %d context done, exiting...", workerID)
+					return
+				case blockNumber, ok := <-blockQueue:
+					if !ok {
+						log.Infof("Worker %d blockQueue closed, exiting...", workerID)
+						return
 					}
-				} else {
-					log.Infof("Worker %d Block %d handled successfully(not save to db), s.toSubmitHeight %d, s.currentScannedHeight %d", workerID, blockNumber, s.toSubmitHeight, s.currentScannedHeight)
+
+					log.Debugf("Task consumer Worker %d processing block %d", workerID, blockNumber)
+					batch, err := s.getAndProcessBlockToBatch(big.NewInt(int64(blockNumber)))
+					if err != nil {
+						log.Warnf("Worker %d parse block %d err %v, will retry", workerID, blockNumber, err.Error())
+						// 失败重试，重新放回队列
+						go func(bn uint64) {
+							log.Debugf("Worker %d retrying block %d, adding back to queue", workerID, bn)
+							blockQueue <- bn
+						}(blockNumber)
+						time.Sleep(time.Second * 3)
+						continue
+					}
+
+					log.Debugf("Worker %d sending block %d to submitChan", workerID, blockNumber)
+					orderedBatch := &orderedTxBatch{
+						blockNumber: blockNumber,
+						batch:       batch,
+						done:        make(chan error, 1),
+					}
+
+					// 使用 select 避免在 context 取消时阻塞
+					select {
+					case submitChan <- orderedBatch:
+					case <-s.ctx.Done():
+						log.Infof("Worker %d context done while sending to submitChan, exiting...", workerID)
+						return
+					}
+
+					// 等待结果，但也要响应 context 取消
+					select {
+					case err := <-orderedBatch.done:
+						if err != nil {
+							log.Errorf("Worker %d submit failed for block %d: %v, will retry", workerID, blockNumber, err)
+							// 失败重试，重新放回队列
+							go func(bn uint64) {
+								log.Debugf("Worker %d retrying submit for block %d, adding back to queue", workerID, bn)
+								blockQueue <- bn
+							}(blockNumber)
+							time.Sleep(time.Second * 3)
+							continue
+						}
+					case <-s.ctx.Done():
+						log.Infof("Worker %d context done while waiting for result, exiting...", workerID)
+						return
+					}
+
+					if blockNumber%10 == 0 {
+						err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: blockNumber})
+						if err != nil {
+							log.Errorf("Worker %d Insert head block sync to db err %v, blockNumber %d. Don't update now!!！", workerID, err.Error(), blockNumber)
+							// 失败重试，重新放回队列
+							//go func(bn uint64) { blockQueue <- bn }(blockNumber)
+							//time.Sleep(time.Second * 5)
+						} else {
+							s.toSubmitHeightMutex.RLock()
+							currentToSubmitHeight := s.toSubmitHeight
+							s.toSubmitHeightMutex.RUnlock()
+							log.Infof("Worker %d Block %d handled successfully, s.toSubmitHeight %d, s.currentScannedHeight %d", workerID, blockNumber, currentToSubmitHeight, s.currentScannedHeight)
+						}
+					} else {
+						s.toSubmitHeightMutex.RLock()
+						currentToSubmitHeight := s.toSubmitHeight
+						s.toSubmitHeightMutex.RUnlock()
+						log.Infof("Worker %d Block %d handled successfully(not save to db), s.toSubmitHeight %d, s.currentScannedHeight %d", workerID, blockNumber, currentToSubmitHeight, s.currentScannedHeight)
+					}
 				}
 			}
 		}(i)
@@ -269,6 +322,23 @@ func (s *Scanner) CatchUpChain() {
 	<-s.ctx.Done()
 	s.rpcClient.Close()
 	log.Info("Scanner context done, CatchUpChain exited...")
+}
+
+func (s *Scanner) addBlockToQueue(blockQueue chan<- uint64) {
+	s.currentScannedHeightMutex.Lock()
+	defer s.currentScannedHeightMutex.Unlock() // 函数结束时释放锁
+
+	currentBlockToAdd := s.currentScannedHeight
+
+	select {
+	case <-s.ctx.Done():
+		return // defer 在这里执行
+	case blockQueue <- currentBlockToAdd:
+		s.currentScannedHeight = currentBlockToAdd + 1 // 在锁保护下
+		log.Debugf("Task producer add block height %d to blockQueue, blockQueue len %d, currentScannedHeight %d",
+			currentBlockToAdd, len(blockQueue), s.currentScannedHeight)
+	}
+	// 函数结束，defer 在这里执行
 }
 
 // orderedSubmitWorker 按顺序提交交易到 roomServer
@@ -302,26 +372,38 @@ func (s *Scanner) orderedSubmitWorker(submitChan <-chan *orderedTxBatch) {
 
 		// 每次有新 batch 或 tick 都尝试推进
 		for {
-			if nextBatch, exists := pendingBatches[s.toSubmitHeight]; exists {
-				log.Debugf("processing block %d from pendingBatches", s.toSubmitHeight)
+			s.toSubmitHeightMutex.RLock()
+			currentToSubmitHeight := s.toSubmitHeight
+			s.toSubmitHeightMutex.RUnlock()
+
+			if nextBatch, exists := pendingBatches[currentToSubmitHeight]; exists {
+				log.Debugf("processing block %d from pendingBatches", currentToSubmitHeight)
 				var err error
 				if nextBatch.batch != nil {
 					err = s.submitBatch(nextBatch.batch)
 				} else {
 					err = nil
 				}
-				nextBatch.done <- err
+				// 使用非阻塞方式发送结果，防止死锁
+				select {
+				case nextBatch.done <- err:
+				default:
+					log.Warnf("failed to send result to batch %d", currentToSubmitHeight)
+				}
 
 				if err != nil {
-					log.Errorf("submit failed for block %d, keeping in pendingBatches for retry", s.toSubmitHeight)
+					log.Errorf("submit failed for block %d, keeping in pendingBatches for retry", currentToSubmitHeight)
 					break // 退出循环，等待下次重试
 				} else {
-					delete(pendingBatches, s.toSubmitHeight)
+					delete(pendingBatches, currentToSubmitHeight)
+					s.toSubmitHeightMutex.Lock()
 					s.toSubmitHeight++
-					log.Infof("toSubmitHeight advanced to %d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
+					newToSubmitHeight := s.toSubmitHeight
+					s.toSubmitHeightMutex.Unlock()
+					log.Infof("toSubmitHeight advanced to %d, pendingBatches size: %d", newToSubmitHeight, len(pendingBatches))
 				}
 			} else {
-				log.Debugf("waiting for block %d, pendingBatches size: %d", s.toSubmitHeight, len(pendingBatches))
+				log.Debugf("waiting for block %d, pendingBatches size: %d", currentToSubmitHeight, len(pendingBatches))
 				if len(pendingBatches) > 0 {
 					blockNums := make([]uint64, 0, len(pendingBatches))
 					for bn := range pendingBatches {
@@ -345,7 +427,10 @@ func (s *Scanner) submitBatch(batch *proto.TransactionBatch) error {
 		log.Debugf("RoomServer mocked, skipping submit for block %d", batch.BlockNumber)
 		return nil
 	}
-	err := s.rpcClient.SubmitTransactions(s.ctx, batch)
+
+	submitCtx, cancel := context.WithTimeout(s.ctx, rpcSubmitTimeout)
+	defer cancel()
+	err := s.rpcClient.SubmitTransactions(submitCtx, batch)
 	if err != nil {
 		log.Errorf("submit transactions to roomServer failed, err %s, BlockNumber %d, BlockHash %x, Timestamp %d",
 			err.Error(), batch.BlockNumber, batch.BlockHash, batch.Timestamp)
@@ -552,19 +637,4 @@ func (s *Scanner) initEventSigHashCache() error {
 	}
 
 	return nil
-}
-
-func processCreateRoomTx(ctx context.Context, gethClient *ethclient.Client, tx blockchain.OptimismTx, roomManagerAbi *abi.ABI) (*blockchain.RoomCreatedTx, error) {
-	hash := common.HexToHash(tx.Hash)
-	receipt, err := gethClient.TransactionReceipt(ctx, hash)
-	if err != nil {
-		return nil, err
-	}
-
-	roomCreatedTx, err := blockchain.ParseRoomCreatedEvent(receipt, roomManagerAbi)
-	if err != nil {
-		return nil, err
-	}
-
-	return roomCreatedTx, nil
 }

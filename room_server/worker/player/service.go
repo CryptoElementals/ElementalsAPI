@@ -22,6 +22,8 @@ type Queuer interface {
 	HandleContinueGameEvent(event *types.PlayerContinueEvent) error
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
 	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
+	RegisterBots(addrs ...*types.PlayerAddress) error
+	UnregisterBots(addrs ...*types.PlayerAddress) error
 }
 
 type Publisher interface {
@@ -56,6 +58,34 @@ func NewService(ctx context.Context,
 func (s *Service) AddPlayer(address types.PlayerAddress) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	return s.addPlayer(address)
+}
+
+func (s *Service) RemovePlayer(address types.PlayerAddress) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.removePlayer(address)
+}
+
+func (s *Service) AddBotPlayer(address types.PlayerAddress) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	err := s.addPlayer(address)
+	if err != nil {
+		return err
+	}
+	s.queue.RegisterBots(&address)
+	return nil
+}
+
+func (s *Service) RemoveBotPlayer(address types.PlayerAddress) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.removePlayer(address)
+	s.queue.UnregisterBots(&address)
+}
+
+func (s *Service) addPlayer(address types.PlayerAddress) error {
 	if _, ok := s.players[address]; ok {
 		return errors.New("player already exists: " + address.String())
 	}
@@ -71,9 +101,7 @@ func (s *Service) AddPlayer(address types.PlayerAddress) error {
 	return nil
 }
 
-func (s *Service) RemovePlayer(address types.PlayerAddress) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+func (s *Service) removePlayer(address types.PlayerAddress) {
 	player := s.players[address]
 	if player == nil {
 		return
