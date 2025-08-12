@@ -17,10 +17,11 @@ var data = "Welcome to PINEX!\n\nThis request will not trigger a blockchain tran
 // 0xac2195dfd7c50a82fce2b3683ad66b29aed47dffa7a5087605d0adff9d94392566f8c7fca50e988f981aa43729e43dfb7ceca5252831a2742862ed3bad3406371c
 
 func TestNewWallet(t *testing.T) {
-	w, err := NewWallet(privatePath)
+	w, err := NewWallet("")
 	if err != nil {
 		t.Fatalf("NewWallet err %s", err.Error())
 	}
+	fmt.Printf("priv key: %v\n", w.GetPrivateKeyHex())
 	fmt.Printf("wallet address: %v\n", w.address)
 }
 

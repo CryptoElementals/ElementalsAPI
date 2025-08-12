@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 
 	"sync"
 	"time"
@@ -19,6 +20,8 @@ import (
 type PlayerManager interface {
 	AddPlayer(address types.PlayerAddress) error
 	RemovePlayer(address types.PlayerAddress)
+	AddBotPlayer(address types.PlayerAddress) error
+	RemoveBotPlayer(address types.PlayerAddress)
 }
 
 type PubSub struct {
@@ -131,7 +134,6 @@ func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_Sub
 	if err != nil {
 		return status.Error(codes.InvalidArgument, "topic is invalid, topic should be in 'walletAddress_temporaryAddress' format")
 	}
-	s.playerManager.AddPlayer(addr)
 
 	s.mu.Lock()
 	topic, exists := s.topics[req.Topic]
@@ -143,6 +145,12 @@ func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_Sub
 		s.topics[req.Topic] = topic
 	}
 	s.mu.Unlock()
+
+	if strings.HasPrefix(req.SubscriberId, "bot") {
+		s.playerManager.AddBotPlayer(addr)
+	} else {
+		s.playerManager.AddPlayer(addr)
+	}
 
 	ctx, cancel := context.WithCancel(stream.Context())
 	subscriber := &Subscriber{
@@ -190,7 +198,11 @@ func (s *PubSub) Unsubscribe(ctx context.Context, req *pb.UnsubscribeRequest) (*
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "topic is invalid, topic should be in 'walletAddress_temporaryAddress' format")
 	}
-	s.playerManager.RemovePlayer(addr)
+	if strings.HasPrefix(req.SubscriberId, "bot") {
+		s.playerManager.RemoveBotPlayer(addr)
+	} else {
+		s.playerManager.RemovePlayer(addr)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

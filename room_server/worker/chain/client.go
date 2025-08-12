@@ -28,7 +28,6 @@ func newConcurrentRoomClient(
 	chainID int64,
 	isDevelop ...bool,
 ) (*concurrentRoomClient, error) {
-
 	roomCtr, err := contract.NewRoomManagerContract(common.HexToAddress(roomMgrAddress), client)
 	if err != nil {
 		return nil, fmt.Errorf("newRoomManagerContract: create room contract failed: %s", err.Error())

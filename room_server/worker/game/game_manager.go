@@ -64,11 +64,12 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 	// also notify players
 	for _, player := range evt.Players {
 		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:  gameID,
-			Players: evt.Players,
+			GameID:         gameID,
+			Players:        evt.Players,
+			IsContinueGame: true,
 		}))
 	}
-	log.Infof("gameContinue: gameID %d", gameID)
+	log.Infof("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
 	return nil
 }
 
@@ -85,6 +86,7 @@ func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) er
 		defer r.lock.Unlock()
 		game := r.gamesMap[evt.GameID]
 		if game == nil {
+			// stale event or server bootstrap event
 			log.Errorf("game not found, game id: %d", evt.GameID)
 			return
 		}
@@ -114,7 +116,7 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 		})
 		r.workerManager.SendEvent(player.String(), evt)
 	}
-	log.Infof("gameMatched: gameID %d", gameID)
+	log.Infow("gameMatched", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
 	return gameID, nil
 }
 
@@ -208,10 +210,17 @@ func (r *GameManager) recoverGames() error {
 	for _, info := range gameInfos {
 		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
 		if time.Since(info.CreatedAt) > time.Duration(r.roundTimeout)*time.Second*time.Duration(r.maxRounds) {
-			log.Errorf("game %d expired, terminate", info.ID)
-			err := game.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT)
-			if err != nil {
-				log.Errorf("expired game terminate failed, game: %d, err %s", info.ID, err)
+			log.Errorw("game expired, terminate", "game id", info.ID, "status", game.gameInfo.Status)
+			if game.gameInfo.Status == proto.GameStatus_GAME_INIT {
+				err := game.handleGameAbortInit()
+				if err != nil {
+					log.Errorf("expired game abort failed, game: %d, err %s", info.ID, err)
+				}
+			} else {
+				err := game.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT)
+				if err != nil {
+					log.Errorf("expired game terminate failed, game: %d, err %s", info.ID, err)
+				}
 			}
 			continue
 		}

@@ -25,6 +25,25 @@ service RpcService {
 
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
+
+    // bot server related api
+    rpc RegisterBot(RegisterBotRequest) returns (google.protobuf.Empty);
+
+    rpc RegisterBots(RegisterBotsRequest) returns (google.protobuf.Empty);
+
+    rpc UnregisterBots(UnregisterBotsRequest) returns (google.protobuf.Empty);
+}
+
+message RegisterBotRequest {
+    rpc.PlayerAddress PlayerAddress =1;
+}
+
+message RegisterBotsRequest {
+    repeated rpc.PlayerAddress PlayerAddresses =1;
+}
+
+message UnregisterBotsRequest {
+    repeated rpc.PlayerAddress PlayerAddresses =1;
 }
 
 message SurrenderRequest {

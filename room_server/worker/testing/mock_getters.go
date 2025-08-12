@@ -155,3 +155,39 @@ func (mr *MockQueuerMockRecorder) RefuseContinueGame(arg0, arg1 interface{}) *go
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefuseContinueGame", reflect.TypeOf((*MockQueuer)(nil).RefuseContinueGame), arg0, arg1)
 }
+
+// RegisterBots mocks base method.
+func (m *MockQueuer) RegisterBots(arg0 ...*types.PlayerAddress) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{}
+	for _, a := range arg0 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RegisterBots", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RegisterBots indicates an expected call of RegisterBots.
+func (mr *MockQueuerMockRecorder) RegisterBots(arg0 ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterBots", reflect.TypeOf((*MockQueuer)(nil).RegisterBots), arg0...)
+}
+
+// UnregisterBots mocks base method.
+func (m *MockQueuer) UnregisterBots(arg0 ...*types.PlayerAddress) error {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{}
+	for _, a := range arg0 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UnregisterBots", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnregisterBots indicates an expected call of UnregisterBots.
+func (mr *MockQueuerMockRecorder) UnregisterBots(arg0 ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterBots", reflect.TypeOf((*MockQueuer)(nil).UnregisterBots), arg0...)
+}

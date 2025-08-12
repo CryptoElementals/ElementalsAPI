@@ -36,6 +36,20 @@ func (m *MockPlayerManager) EXPECT() *MockPlayerManagerMockRecorder {
 	return m.recorder
 }
 
+// AddBotPlayer mocks base method.
+func (m *MockPlayerManager) AddBotPlayer(arg0 types.PlayerAddress) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddBotPlayer", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddBotPlayer indicates an expected call of AddBotPlayer.
+func (mr *MockPlayerManagerMockRecorder) AddBotPlayer(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddBotPlayer", reflect.TypeOf((*MockPlayerManager)(nil).AddBotPlayer), arg0)
+}
+
 // AddPlayer mocks base method.
 func (m *MockPlayerManager) AddPlayer(arg0 types.PlayerAddress) error {
 	m.ctrl.T.Helper()
@@ -48,6 +62,18 @@ func (m *MockPlayerManager) AddPlayer(arg0 types.PlayerAddress) error {
 func (mr *MockPlayerManagerMockRecorder) AddPlayer(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddPlayer", reflect.TypeOf((*MockPlayerManager)(nil).AddPlayer), arg0)
+}
+
+// RemoveBotPlayer mocks base method.
+func (m *MockPlayerManager) RemoveBotPlayer(arg0 types.PlayerAddress) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RemoveBotPlayer", arg0)
+}
+
+// RemoveBotPlayer indicates an expected call of RemoveBotPlayer.
+func (mr *MockPlayerManagerMockRecorder) RemoveBotPlayer(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveBotPlayer", reflect.TypeOf((*MockPlayerManager)(nil).RemoveBotPlayer), arg0)
 }
 
 // RemovePlayer mocks base method.
@@ -86,18 +112,34 @@ func (m *MockGameRequestHandler) EXPECT() *MockGameRequestHandlerMockRecorder {
 }
 
 // GetBattleInfo mocks base method.
-func (m *MockGameRequestHandler) GetBattleInfo(arg0 context.Context, arg1, arg2 uint32) (*proto.RoundResult, error) {
+func (m *MockGameRequestHandler) GetBattleInfo(arg0 context.Context, arg1, arg2 uint32) (*proto.RoundResult, *proto.GameResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBattleInfo", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*proto.RoundResult)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(*proto.GameResult)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // GetBattleInfo indicates an expected call of GetBattleInfo.
 func (mr *MockGameRequestHandlerMockRecorder) GetBattleInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBattleInfo", reflect.TypeOf((*MockGameRequestHandler)(nil).GetBattleInfo), arg0, arg1, arg2)
+}
+
+// GetGamePhase mocks base method.
+func (m *MockGameRequestHandler) GetGamePhase(arg0 types.PlayerAddress) (*proto.GamePhase, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGamePhase", arg0)
+	ret0, _ := ret[0].(*proto.GamePhase)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGamePhase indicates an expected call of GetGamePhase.
+func (mr *MockGameRequestHandlerMockRecorder) GetGamePhase(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGamePhase", reflect.TypeOf((*MockGameRequestHandler)(nil).GetGamePhase), arg0)
 }
 
 // MockChainRequestHandler is a mock of ChainRequestHandler interface.
@@ -174,6 +216,20 @@ func (mr *MockPlayerRequestHandlerMockRecorder) ConfirmBattle(arg0, arg1, arg2 i
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmBattle", reflect.TypeOf((*MockPlayerRequestHandler)(nil).ConfirmBattle), arg0, arg1, arg2)
 }
 
+// ContinueGame mocks base method.
+func (m *MockPlayerRequestHandler) ContinueGame(arg0 types.PlayerAddress, arg1 uint) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ContinueGame", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ContinueGame indicates an expected call of ContinueGame.
+func (mr *MockPlayerRequestHandlerMockRecorder) ContinueGame(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ContinueGame", reflect.TypeOf((*MockPlayerRequestHandler)(nil).ContinueGame), arg0, arg1)
+}
+
 // ExitQueue mocks base method.
 func (m *MockPlayerRequestHandler) ExitQueue(arg0 types.PlayerAddress) error {
 	m.ctrl.T.Helper()
@@ -188,19 +244,18 @@ func (mr *MockPlayerRequestHandlerMockRecorder) ExitQueue(arg0 interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExitQueue", reflect.TypeOf((*MockPlayerRequestHandler)(nil).ExitQueue), arg0)
 }
 
-// GetGamePhase mocks base method.
-func (m *MockPlayerRequestHandler) GetGamePhase(arg0 types.PlayerAddress) (*proto.GamePhase, error) {
+// IsPlayerInQueue mocks base method.
+func (m *MockPlayerRequestHandler) IsPlayerInQueue(arg0 types.PlayerAddress) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGamePhase", arg0)
-	ret0, _ := ret[0].(*proto.GamePhase)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "IsPlayerInQueue", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
 }
 
-// GetGamePhase indicates an expected call of GetGamePhase.
-func (mr *MockPlayerRequestHandlerMockRecorder) GetGamePhase(arg0 interface{}) *gomock.Call {
+// IsPlayerInQueue indicates an expected call of IsPlayerInQueue.
+func (mr *MockPlayerRequestHandlerMockRecorder) IsPlayerInQueue(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGamePhase", reflect.TypeOf((*MockPlayerRequestHandler)(nil).GetGamePhase), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPlayerInQueue", reflect.TypeOf((*MockPlayerRequestHandler)(nil).IsPlayerInQueue), arg0)
 }
 
 // JoinQueue mocks base method.
@@ -215,4 +270,32 @@ func (m *MockPlayerRequestHandler) JoinQueue(arg0 types.PlayerAddress) error {
 func (mr *MockPlayerRequestHandlerMockRecorder) JoinQueue(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "JoinQueue", reflect.TypeOf((*MockPlayerRequestHandler)(nil).JoinQueue), arg0)
+}
+
+// RefuseContinueGame mocks base method.
+func (m *MockPlayerRequestHandler) RefuseContinueGame(arg0 types.PlayerAddress, arg1 uint) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefuseContinueGame", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RefuseContinueGame indicates an expected call of RefuseContinueGame.
+func (mr *MockPlayerRequestHandlerMockRecorder) RefuseContinueGame(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefuseContinueGame", reflect.TypeOf((*MockPlayerRequestHandler)(nil).RefuseContinueGame), arg0, arg1)
+}
+
+// Surrender mocks base method.
+func (m *MockPlayerRequestHandler) Surrender(arg0 types.PlayerAddress, arg1 uint) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Surrender", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Surrender indicates an expected call of Surrender.
+func (mr *MockPlayerRequestHandlerMockRecorder) Surrender(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Surrender", reflect.TypeOf((*MockPlayerRequestHandler)(nil).Surrender), arg0, arg1)
 }

@@ -44,28 +44,10 @@ func (p *Player) createSelf() {
 func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if p.status == proto.PlayerStatus_PLAYER_UNKNOWN {
-		switch evt := event.Data.(type) {
-		case *types.ContinueCanceledEvent:
-			p.handleContinueCanceledEvent(ctx, evt)
-		case *types.GameCreatedEvent:
-			p.status = proto.PlayerStatus_PLAYER_IN_GAME
-		}
-	}
-	if p.status == proto.PlayerStatus_PLAYER_IN_QUEUE {
-		evt, ok := event.Data.(*types.GameCreatedEvent)
-		if !ok {
-			return fmt.Errorf("player not in queue, but got event type %d", reflect.TypeOf(event.Data))
-		}
-		p.handleNewGameEvent(p.ctx, evt)
-		p.status = proto.PlayerStatus_PLAYER_IN_GAME
-	}
-
-	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(event.Data))
-	}
 
 	switch evt := event.Data.(type) {
+	case *types.GameCreatedEvent:
+		return p.handleNewGameEvent(p.ctx, evt)
 	case *types.GameReadyEvent:
 		p.handleGameReadyEvent(p.ctx, evt)
 	case *types.RoundReadyEvent:
@@ -80,7 +62,8 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		p.handleRoundCompletedEvent(p.ctx, evt)
 	case *types.GameCompletedEvent:
 		p.handleGameCompletedEvent(p.ctx, evt)
-		p.status = proto.PlayerStatus_PLAYER_UNKNOWN
+	case *types.ContinueCanceledEvent:
+		p.handleContinueCanceledEvent(ctx, evt)
 	}
 	return nil
 }
@@ -117,28 +100,40 @@ func (p *Player) exitQueue() error {
 	return nil
 }
 
-func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedEvent) {
-	p.publisher.Publish(ctx, &proto.PublishRequest{
-		Topic: p.address.String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_MATCHED,
-		},
-	})
+func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedEvent) error {
+	if p.status != proto.PlayerStatus_PLAYER_IN_QUEUE && p.status != proto.PlayerStatus_PLAYER_UNKNOWN {
+		return fmt.Errorf("cannot handle new game event, player status %s", p.status)
+	}
+	// send nothing if continued game
+	if !evt.IsContinueGame {
+		p.publisher.Publish(ctx, &proto.PublishRequest{
+			Topic: p.address.String(),
+			Event: &proto.Event{
+				Type: proto.EventType_TYPE_MATCHED,
+			},
+		})
+		p.status = proto.PlayerStatus_PLAYER_MATCHED
+	} else {
+		p.status = proto.PlayerStatus_PLAYER_IN_GAME
+	}
+	return nil
 }
 
-func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) {
+func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) error {
+	p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_GAME_CREATED,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.RoundPartialReadyEvent) {
+func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.RoundPartialReadyEvent) error {
 	// don't send event to itself
 	if p.address == evt.ReadyAddress {
-		return
+		return nil
 	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
@@ -146,54 +141,75 @@ func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.Ro
 			Type: proto.EventType_TYPE_PART_CONFIRMED,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) {
+func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) error {
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_ROUND_READY,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) {
+func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) error {
+	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_COMMITMENTS_ON_CHAIN,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) {
+func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) error {
+	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_CARDS_ON_CHAIN,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.ContinueCanceledEvent) {
+func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.ContinueCanceledEvent) error {
+	if p.status != proto.PlayerStatus_PLAYER_UNKNOWN {
+		return fmt.Errorf("player status not match, event type %d", reflect.TypeOf(evt))
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_CONTINUE_CANCELED,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.RoundCompletedEvent) {
+func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.RoundCompletedEvent) error {
+	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_ROUND_COMPLETE,
 		},
 	})
+	return nil
 }
 
-func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCompletedEvent) {
+func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCompletedEvent) error {
+	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -207,4 +223,5 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 		},
 	})
 	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
+	return nil
 }
