@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -168,6 +169,10 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
 		if q.botMgr.isInGame(*addr) {
 			q.botMgr.releaseInGameBot(*addr)
+			err := q.lockToken(addr)
+			if err != nil {
+				return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
+			}
 		}
 	}
 	q.continueManager.addGame(event.GameInfo)
@@ -182,9 +187,11 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
+	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
 }
 
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
+	log.Infow("unlock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.UnlockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress)
 }

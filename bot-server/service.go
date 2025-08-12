@@ -24,7 +24,7 @@ type Service struct {
 }
 
 func parseWallet(path config.WalletPath) (*playerWallet, error) {
-	accountWallet, err := wallet.NewWallet(path.AccountWallet)
+	accountWallet, err := wallet.LoadWallet(path.AccountWallet)
 	if err != nil {
 		return nil, err
 	}

@@ -492,9 +492,6 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 
 // can go into game end from any other status
 func (g *Game) handleGameEnd() error {
-	if g.gameInfo.Status == proto.GameStatus_GAME_END {
-		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
-	}
 	completeEvt := &types.GameCompletedEvent{
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
