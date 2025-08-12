@@ -219,7 +219,7 @@ func (b *Bot) runGameLoop() error {
 				if !battleInfo.RoundResult.IsGameOver {
 					b.currentGame.currentRound.prepareNewRound()
 					b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
-					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound, b.currentGame.id)
+					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound.roundNum, b.currentGame.id)
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Infow("game complete", "game id", b.currentGame.id)

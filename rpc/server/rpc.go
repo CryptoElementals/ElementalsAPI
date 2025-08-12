@@ -48,7 +48,7 @@ func (s *Rpc) ExitQueue(ctx context.Context, req *proto.PlayerAddress) (*emptypb
 func (s *Rpc) GetGamePhase(ctx context.Context, req *proto.PlayerAddress) (*proto.GamePhase, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req)
-	return s.gameHandler.GetGamePhase(addr)
+	return s.playerHandler.GetGamePhase(addr)
 }
 
 func (s *Rpc) GetBattleInfo(ctx context.Context, req *proto.GetBattleInfoRequest) (*proto.GetBattleInfoResponse, error) {
@@ -137,7 +137,6 @@ func (s *Rpc) RegisterBot(ctx context.Context, req *proto.RegisterBotRequest) (*
 
 type GameRequestHandler interface {
 	GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
-	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
 }
 
 type PlayerTokenHandler interface {
@@ -156,6 +155,7 @@ type PlayerRequestHandler interface {
 	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
 	IsPlayerInQueue(address types.PlayerAddress) bool
 	Surrender(address types.PlayerAddress, gameID uint) error
+	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
 }
 
 type BotHandler interface {
