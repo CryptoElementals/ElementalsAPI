@@ -27,7 +27,7 @@ type GetGamePhaseRequest struct {
 
 // PvPInfo PvP对战信息
 type PvPInfo struct {
-	Phase           uint32 `json:"Phase"`           // None, Queueing, Matching, InBattle: 0123
+	Phase           uint32 `json:"Phase"`           // None, Confirming, InBattle, WaitingContinue: 0123
 	GameID          uint32 `json:"GameID"`          // 游戏ID
 	ContractAddress string `json:"ContractAddress"` // 房间合约地址
 	BeginAt         uint64 `json:"BeginAt"`         // 开始时间
@@ -133,21 +133,21 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	}
 	log.Infof("gamePhase.PvPInfo.Status: %v (type: %T)", gamePhase.PvPInfo.Status, gamePhase.PvPInfo.Status)
 	switch gamePhase.PvPInfo.Status {
-	case proto.PlayerStatus_PLAYER_IN_QUEUE:
-		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 1
-		task.Response.BaseResponse.Message = "Player is in match queue"
+	// case proto.PlayerStatus_PLAYER_IN_QUEUE:
+	// 	task.Response.Mode = uint32(gamePhase.GameType)
+	// 	task.Response.PvPInfo.Phase = 1
+	// 	task.Response.BaseResponse.Message = "Player is in match queue"
 	case proto.PlayerStatus_PLAYER_MATCHED:
 		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 2
+		task.Response.PvPInfo.Phase = 1
 		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 3
+		task.Response.PvPInfo.Phase = 2
 		task.Response.BaseResponse.Message = "Player has entered battle"
 	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
 		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 4
+		task.Response.PvPInfo.Phase = 3
 		task.Response.BaseResponse.Message = "Player is waiting for continue"
 
 	default:
