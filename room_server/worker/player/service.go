@@ -14,6 +14,7 @@ import (
 type GameInfoGetter interface {
 	GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
+	GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error)
 }
 
 type Queuer interface {
@@ -193,4 +194,39 @@ func (s *Service) Surrender(address types.PlayerAddress, gameID uint) error {
 	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
 	err := evt.Await()
 	return err
+}
+
+func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	var status proto.PlayerStatus
+	player, ok := s.players[address]
+	if ok {
+		status = player.status
+	} else {
+		if s.queue.IsPlayerInQueue(address) {
+			status = proto.PlayerStatus_PLAYER_IN_QUEUE
+		} else {
+			status = s.gameInfoGetter.GetPlayerGameInfo(address)
+		}
+	}
+	switch status {
+	case proto.PlayerStatus_PLAYER_IN_GAME, proto.PlayerStatus_PLAYER_MATCHED:
+		return s.gameInfoGetter.GetGamePhase(address)
+	case proto.PlayerStatus_PLAYER_IN_QUEUE:
+		return &proto.GamePhase{
+			GameType: proto.GameType_PVP,
+			PvPInfo: &proto.PvPInfo{
+				Status: proto.PlayerStatus_PLAYER_IN_QUEUE,
+			},
+		}, nil
+	case proto.PlayerStatus_PLAYER_UNKNOWN:
+		return &proto.GamePhase{
+			GameType: proto.GameType_PVP,
+			PvPInfo: &proto.PvPInfo{
+				Status: proto.PlayerStatus_PLAYER_UNKNOWN,
+			},
+		}, nil
+	}
+	return nil, fmt.Errorf("unknonw player status, %s", status)
 }

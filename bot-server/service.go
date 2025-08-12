@@ -148,10 +148,4 @@ func (s *Service) runBots() error {
 func (s *Service) Stop() {
 	s.ccl()
 	s.wg.Wait()
-	// unregister all bots anyway
-	log.Infow("unregister bots", types.ToJsonLoggable(s.addresses))
-	err := s.rpcClient.RpcClient.UnregisterBots(context.Background(), s.addresses)
-	if err != nil {
-		log.Errorw("cannot unregister bots", "err", err)
-	}
 }

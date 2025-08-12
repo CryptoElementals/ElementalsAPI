@@ -69,7 +69,7 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 			IsContinueGame: true,
 		}))
 	}
-	log.Infof("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
+	log.Infow("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
 	return nil
 }
 

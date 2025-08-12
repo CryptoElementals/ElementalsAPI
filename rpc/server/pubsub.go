@@ -67,7 +67,7 @@ func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 	if req.Event == nil {
 		return nil, status.Error(codes.InvalidArgument, "event is required")
 	}
-
+	log.Debugw("publish event", "topic", req.Topic, "event type", req.Event.Type.String())
 	s.mu.Lock()
 	topic, exists := s.topics[req.Topic]
 	if !exists {
@@ -103,6 +103,7 @@ func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 	for _, subscriber := range topic.subscribers {
 		subscriber.mu.Lock()
 		if subscriber.stream != nil {
+			log.Debugw("send event to subscriber", "topic", req.Topic, "event type", req.Event.Type.String(), "sub id", subscriber.id)
 			err := subscriber.stream.Send(message)
 			if err != nil {
 				log.Errorf("Failed to send message to subscriber %s: %v", subscriber.id, err)

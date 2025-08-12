@@ -207,8 +207,8 @@ func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.Round
 }
 
 func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCompletedEvent) error {
-	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
+	if p.status != proto.PlayerStatus_PLAYER_IN_GAME && p.status != proto.PlayerStatus_PLAYER_MATCHED {
+		return fmt.Errorf("player not in game or matched, but got event type %d", reflect.TypeOf(evt))
 	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
