@@ -172,11 +172,11 @@ func (b *Bot) runGameLoop() error {
 			case proto.EventType_TYPE_PART_CONFIRMED:
 				log.Infow("player part confirmed", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 			case proto.EventType_TYPE_GAME_CREATED:
-				log.Infow("game created", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("game created", "game id", b.currentGame.id)
 				// get contract
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
-					log.Errorw("get game phase failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+					log.Errorw("get game phase failed", "err", err, "game id", b.currentGame.id)
 				}
 
 				c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
@@ -187,33 +187,31 @@ func (b *Bot) runGameLoop() error {
 				b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
 				b.currentGame.gameContract = c
 			case proto.EventType_TYPE_ROUND_READY:
-				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				// submit commitments
 				b.currentGame.currentRound.prepareCards()
 				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
 				if err != nil {
-					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", b.currentGame.gameContractAddress)
+					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
 				}
-				log.Infow("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
+				log.Infow("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
 					"contract", b.currentGame.gameContractAddress, "hash", hexutil.Encode(b.currentGame.currentRound.commitment[:]), "txHash", tx.Hash().String())
 			case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
-				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				// submit cards
 				tx, err := b.currentGame.gameContract.SubmitCards(b.bindOpt, b.currentGame.currentRound.cards, b.currentGame.currentRound.salt, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
 				if err != nil {
-					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", b.currentGame.gameContractAddress)
+					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
 				}
-				log.Infow("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
+				log.Infow("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
 					"contract", b.currentGame.gameContractAddress, "cards", b.currentGame.currentRound.cards, "txHash", tx.Hash().String())
 			case proto.EventType_TYPE_CARDS_ON_CHAIN:
-				log.Info("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
-				// skip
-
+				log.Infow("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 			case proto.EventType_TYPE_ROUND_COMPLETE:
-				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				battleInfo, err := b.client.RpcClient.GetBattleInfo(b.ctx, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
-					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 					continue
 				}
 				if !battleInfo.RoundResult.IsGameOver {

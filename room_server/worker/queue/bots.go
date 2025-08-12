@@ -160,7 +160,7 @@ func (q *Queue) addBotRoutine() {
 					waittingTime := time.Since(joinQueueTime)
 					if waittingTime >= q.botWaitTime {
 						botPlayer, _ := q.botMgr.popBotForMatch()
-						log.Infow("find long waitting player, dispatch a bot", "player", player.String(), "waitting seconds", int(waittingTime.Seconds()), "bot", botPlayer.String())
+						log.Infow("found long waitting player, dispatch a bot", "player", player.String(), "waitting seconds", int(waittingTime.Seconds()), "bot", botPlayer.String())
 						err := q.matchPlayers([]types.PlayerAddress{botPlayer, player})
 						if err != nil {
 							log.Errorw("error match bot with player", "err", err, "bot", botPlayer.String(), "player", player.String())

@@ -199,11 +199,18 @@ func (s *Service) Surrender(address types.PlayerAddress, gameID uint) error {
 func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
+	var status proto.PlayerStatus
 	player, ok := s.players[address]
-	if !ok {
-		return nil, errors.New("player is not subscribing")
+	if ok {
+		status = player.status
+	} else {
+		if s.queue.IsPlayerInQueue(address) {
+			status = proto.PlayerStatus_PLAYER_IN_QUEUE
+		} else {
+			status = s.gameInfoGetter.GetPlayerGameInfo(address)
+		}
 	}
-	switch player.status {
+	switch status {
 	case proto.PlayerStatus_PLAYER_IN_GAME, proto.PlayerStatus_PLAYER_MATCHED:
 		return s.gameInfoGetter.GetGamePhase(address)
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
@@ -221,5 +228,5 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 			},
 		}, nil
 	}
-	return nil, fmt.Errorf("unknonw player status, %s", player.status)
+	return nil, fmt.Errorf("unknonw player status, %s", status)
 }
