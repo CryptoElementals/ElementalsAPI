@@ -22,6 +22,7 @@ type RoomServerConfig struct {
 	MaxRounds       int64           `mapstructure:"max-rounds"`
 	GameInitialHP   int64           `mapstructure:"game-initial-hp"`
 	ListenPort      int64           `mapstructure:"listen-port"`
+	BotWaitTime     int64           `mapstructure:"bot-wait-time"`
 }
 
 func InitRSConfig(configPath string) error {

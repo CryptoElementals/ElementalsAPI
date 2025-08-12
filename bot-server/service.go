@@ -13,13 +13,14 @@ import (
 )
 
 type Service struct {
-	ctx         context.Context
-	ccl         context.CancelFunc
-	bots        []*Bot
-	addresses   []*types.PlayerAddress
-	chainClient *ethclient.Client
-	rpcClient   *rpc.Client
-	wg          sync.WaitGroup
+	ctx          context.Context
+	ccl          context.CancelFunc
+	mimicPlayers bool
+	bots         []*Bot
+	addresses    []*types.PlayerAddress
+	chainClient  *ethclient.Client
+	rpcClient    *rpc.Client
+	wg           sync.WaitGroup
 }
 
 func parseWallet(path config.WalletPath) (*playerWallet, error) {
@@ -41,7 +42,9 @@ func NewService(
 	ctx context.Context,
 	walletPaths []config.WalletPath,
 	chainEndpoint string,
-	roomServerEndpoint string) (*Service, error) {
+	roomServerEndpoint string,
+	mimicPlayers bool,
+) (*Service, error) {
 	ctx, ccl := context.WithCancel(ctx)
 	chainClient, err := ethclient.Dial(chainEndpoint)
 	if err != nil {
@@ -62,27 +65,65 @@ func NewService(
 		if err != nil {
 			return nil, err
 		}
-		b := NewBot(ctx, p, rpcClient, chainClient, chainID)
+		b := NewBot(ctx, p, rpcClient, chainClient, chainID, mimicPlayers)
 		bots = append(bots, b)
 		addresses = append(addresses, p.address())
 	}
 	return &Service{
-		ctx:         ctx,
-		ccl:         ccl,
-		chainClient: chainClient,
-		rpcClient:   rpcClient,
-		bots:        bots,
-		addresses:   addresses,
+		ctx:          ctx,
+		ccl:          ccl,
+		mimicPlayers: mimicPlayers,
+		chainClient:  chainClient,
+		rpcClient:    rpcClient,
+		bots:         bots,
+		addresses:    addresses,
 	}, nil
 }
 
 func (s *Service) Start() error {
-	log.Infow("register bots", types.ToJsonLoggable(s.addresses))
-	err := s.rpcClient.RpcClient.RegisterBots(s.ctx, s.addresses)
-	if err != nil {
-		return err
+	if s.mimicPlayers {
+		return s.runPlayers()
+	} else {
+		return s.runBots()
 	}
+}
+
+func (s *Service) runPlayers() error {
+	log.Infow("run players", types.ToJsonLoggable(s.addresses))
 	for _, b := range s.bots {
+		err := b.client.PubSubClient.Subscribe(b.addr.String(), b.formatBotID(), b.chanEvt, b.chanErr)
+		if err != nil {
+			return err
+		}
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			defer b.client.PubSubClient.Unsubscribe(b.addr.String(), b.formatBotID())
+			for {
+				select {
+				case <-s.ctx.Done():
+					return
+				default:
+					err := b.runGameLoop()
+					if err != nil {
+						log.Errorw("run bot failed", "err", err, "addr", b.addr)
+						return
+					}
+				}
+			}
+
+		}()
+	}
+	return nil
+}
+
+func (s *Service) runBots() error {
+	log.Infow("run bots", types.ToJsonLoggable(s.addresses))
+	for _, b := range s.bots {
+		err := b.client.PubSubClient.Subscribe(b.addr.String(), b.formatBotID(), b.chanEvt, b.chanErr)
+		if err != nil {
+			return err
+		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
@@ -96,11 +137,6 @@ func (s *Service) Start() error {
 						log.Errorw("start bot failed", "err", err, "addr", b.addr)
 						return
 					}
-					err = s.rpcClient.RpcClient.RegisterBot(s.ctx, b.addr)
-					if err != nil {
-						log.Errorw("register bot failed", "err", err, "addr", b.addr)
-						return
-					}
 				}
 			}
 
@@ -112,6 +148,7 @@ func (s *Service) Start() error {
 func (s *Service) Stop() {
 	s.ccl()
 	s.wg.Wait()
+	// unregister all bots anyway
 	log.Infow("unregister bots", types.ToJsonLoggable(s.addresses))
 	err := s.rpcClient.RpcClient.UnregisterBots(context.Background(), s.addresses)
 	if err != nil {

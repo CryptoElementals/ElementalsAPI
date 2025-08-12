@@ -16,6 +16,7 @@ type Service struct {
 	ctx                 context.Context
 	queue               *Queue
 	minTokenToJoinQueue int32
+	botWaitTime         int64
 }
 
 func NewService(ctx context.Context,
@@ -24,11 +25,13 @@ func NewService(ctx context.Context,
 	gameCreator GameCreator,
 	minTokenToJoinQueue int32,
 	continueTimeout int64,
+	botWaitTime int64,
 ) *Service {
 	s := &Service{
 		ctx:                 ctx,
-		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout),
+		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, botWaitTime),
 		minTokenToJoinQueue: minTokenToJoinQueue,
+		botWaitTime:         botWaitTime,
 	}
 	return s
 }

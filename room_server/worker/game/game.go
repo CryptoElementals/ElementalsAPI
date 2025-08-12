@@ -517,6 +517,7 @@ func (g *Game) handleGameEnd() error {
 
 // can go into game end from any other status
 func (g *Game) handleGameAbortInit() error {
+	log.Infow("game aborted", "game id", g.gameInfo.ID)
 	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
@@ -526,11 +527,9 @@ func (g *Game) handleGameAbortInit() error {
 	}
 	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
 	// we need a deterministic sequence for locks
-	g.lock.Unlock()
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
 		return err
 	}
-	g.lock.Lock()
 	// we need a deterministic sequence for locks
 	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopWorker()
@@ -652,7 +651,7 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 		return 0
 	}
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
-		return time.Second * 20
+		return 0
 	}
 
 	timeout := time.Second * time.Duration(g.gameInfo.RoundTimeout)
@@ -678,6 +677,11 @@ func (g *Game) sendTimerEventByCurrentRound() {
 }
 
 func (g *Game) handleTimerEvent(event *timerEvent) {
+	log.Infow("handle timer event",
+		"game id", g.gameInfo.ID,
+		"round", g.currentRound.RoundNumber,
+		"round status", g.currentRound.Status,
+		"game status", g.gameInfo.Status)
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
 		return
 	}

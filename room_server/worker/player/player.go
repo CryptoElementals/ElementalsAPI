@@ -112,16 +112,15 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 				Type: proto.EventType_TYPE_MATCHED,
 			},
 		})
+		p.status = proto.PlayerStatus_PLAYER_MATCHED
+	} else {
+		p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	}
-	// but always set status to PLAYER_IN_GAME
-	p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	return nil
 }
 
 func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) error {
-	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
-	}
+	p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -132,9 +131,6 @@ func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyE
 }
 
 func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.RoundPartialReadyEvent) error {
-	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
-	}
 	// don't send event to itself
 	if p.address == evt.ReadyAddress {
 		return nil
@@ -149,9 +145,6 @@ func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.Ro
 }
 
 func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) error {
-	if p.status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return fmt.Errorf("player not in game, but got event type %d", reflect.TypeOf(evt))
-	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{

@@ -60,12 +60,65 @@ func (s Set[T]) PopRandom() (T, bool) {
 	return *new(T), false
 }
 
+type botManager struct {
+	idle   Set[types.PlayerAddress]
+	inGame Set[types.PlayerAddress]
+}
+
+func newBotManager() *botManager {
+	return &botManager{
+		idle:   make(Set[types.PlayerAddress]),
+		inGame: make(Set[types.PlayerAddress]),
+	}
+}
+
+func (m *botManager) addBot(addr types.PlayerAddress) {
+	m.idle.Add(addr)
+}
+
+func (m *botManager) removeBot(addr types.PlayerAddress) {
+	m.idle.Remove(addr)
+	m.inGame.Remove(addr)
+}
+
+func (m *botManager) popBotForMatch() (types.PlayerAddress, bool) {
+	addr, ok := m.idle.PopRandom()
+	if !ok {
+		return addr, ok
+	}
+	m.inGame.Add(addr)
+	return addr, ok
+}
+
+func (m *botManager) releaseInGameBot(addr types.PlayerAddress) {
+	if m.inGame.Contains(addr) {
+		m.inGame.Remove(addr)
+		m.idle.Add(addr)
+	}
+}
+
+func (m *botManager) inGameCount() int {
+	return m.inGame.Size()
+}
+
+func (m *botManager) idleCount() int {
+	return m.idle.Size()
+}
+
+func (m *botManager) isIdle(addr types.PlayerAddress) bool {
+	return m.idle.Contains(addr)
+}
+
+func (m *botManager) isInGame(addr types.PlayerAddress) bool {
+	return m.inGame.Contains(addr)
+}
+
 func (q *Queue) RegisterBots(addrs ...*types.PlayerAddress) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	log.Infow("register bots", "bots", types.ToJsonLoggable(addrs))
 	for _, addr := range addrs {
-		q.botsSet.Add(*addr)
+		q.botMgr.addBot(*addr)
 		err := q.lockToken(addr)
 		if err != nil {
 			return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
@@ -79,21 +132,21 @@ func (q *Queue) UnregisterBots(addrs ...*types.PlayerAddress) error {
 	defer q.lock.Unlock()
 	log.Infow("unregister bots", "bots", types.ToJsonLoggable(addrs))
 	for _, addr := range addrs {
-		if !q.botsSet.Contains(*addr) {
-			continue
+		if q.botMgr.isIdle(*addr) {
+			err := q.unlockToken(addr)
+			if err != nil {
+				log.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
+			}
 		}
-		q.botsSet.Remove(*addr)
-		err := q.unlockToken(addr)
-		if err != nil {
-			return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
-		}
+		q.botMgr.removeBot(*addr)
+
 	}
 	return nil
 }
 
 func (q *Queue) addBotRoutine() {
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(q.botWaitTime)
 		for {
 			select {
 			case <-q.ctx.Done():
@@ -101,12 +154,12 @@ func (q *Queue) addBotRoutine() {
 			case <-ticker.C:
 				q.lock.Lock()
 				for player, joinQueueTime := range q.queue {
-					if q.botsSet.Size() == 0 {
+					if q.botMgr.idleCount() == 0 {
 						break
 					}
 					waittingTime := time.Since(joinQueueTime)
-					if waittingTime >= 30*time.Second {
-						botPlayer, _ := q.botsSet.PopRandom()
+					if waittingTime >= q.botWaitTime {
+						botPlayer, _ := q.botMgr.popBotForMatch()
 						log.Infow("find long waitting player, dispatch a bot", "player", player.String(), "waitting seconds", int(waittingTime.Seconds()), "bot", botPlayer.String())
 						err := q.matchPlayers([]types.PlayerAddress{botPlayer, player})
 						if err != nil {

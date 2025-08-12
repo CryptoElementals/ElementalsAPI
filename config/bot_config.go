@@ -15,6 +15,7 @@ type BotConfig struct {
 	ChainCfg           ChainConfig  `mapstructure:"chain"`
 	RoomServerEndpoint string       `mapstructure:"room-server-endpoint"`
 	WalletPaths        []WalletPath `mapstructure:"wallet-paths"`
+	MimicPlayers       bool         `mapstructure:"mimic-player"`
 }
 
 var BotCfg BotConfig

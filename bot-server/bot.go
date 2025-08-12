@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"time"
 
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/log"
@@ -48,7 +49,7 @@ func (i *roundInfo) prepareCards() {
 	// select random cards
 	cards := make([]uint32, 5)
 	for i := range cards {
-		cards[i] = uint32(i - 1)
+		cards[i] = uint32(i + 1)
 	}
 	rand.Shuffle(5, func(i, j int) {
 		cards[i], cards[j] = cards[j], cards[i]
@@ -78,6 +79,7 @@ type gameInfo struct {
 type Bot struct {
 	ctx         context.Context
 	w           *playerWallet
+	mimicPlayer bool
 	currentGame *gameInfo
 	addr        *types.PlayerAddress
 	client      *rpc.Client
@@ -93,6 +95,7 @@ func NewBot(
 	client *rpc.Client,
 	ethClient *ethclient.Client,
 	chainID *big.Int,
+	mimicPlayer bool,
 ) *Bot {
 	addr := types.NewPlayerAddress(playerWallet.accountWallet.GetAddrHex(), playerWallet.tempWallet.GetAddrHex())
 	opt := &bind.TransactOpts{
@@ -101,27 +104,37 @@ func NewBot(
 		Signer:  playerWallet.tempWallet.BuildTxSinger(chainID),
 	}
 	return &Bot{
-		ctx:       ctx,
-		w:         playerWallet,
-		addr:      addr,
-		client:    client,
-		ethClient: ethClient,
-		bindOpt:   opt,
-		chanEvt:   make(chan *proto.Event),
-		chanErr:   make(chan error),
+		ctx:         ctx,
+		w:           playerWallet,
+		mimicPlayer: mimicPlayer,
+		addr:        addr,
+		client:      client,
+		ethClient:   ethClient,
+		bindOpt:     opt,
+		chanEvt:     make(chan *proto.Event),
+		chanErr:     make(chan error),
 	}
 }
 
+func (b *Bot) formatBotID() string {
+	return fmt.Sprintf("bot_%s", b.addr.String())
+}
+
 func (b *Bot) runGameLoop() error {
-	err := b.client.PubSubClient.Subscribe(b.addr.String(), b.addr.String(), b.chanEvt, b.chanErr)
-	if err != nil {
-		return err
+	if b.mimicPlayer {
+		err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
+		if err != nil {
+			return err
+		}
+		log.Infow("bot start, join queue", "addr", b.addr.String())
+	} else {
+		log.Infow("bot start, waitting for task", "addr", b.addr.String())
 	}
-	log.Infow("bot start, waitting for task", "addr", b.addr.String())
 	for {
 		select {
 		case <-b.ctx.Done():
 			log.Infof("context done, bot exit")
+			return nil
 		case evt, ok := <-b.chanEvt:
 			if !ok {
 				break
@@ -131,7 +144,7 @@ func (b *Bot) runGameLoop() error {
 				log.Errorf("unhandled event type from: %s", b.addr)
 				return errors.New("bot received unexpected event: proto.EventType_TYPE_KNOWN")
 			case proto.EventType_TYPE_MATCHED:
-				log.Info("bot matched")
+				log.Infow("bot matched")
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
 					log.Errorw("error get game phase", "err", err)
@@ -159,7 +172,7 @@ func (b *Bot) runGameLoop() error {
 			case proto.EventType_TYPE_PART_CONFIRMED:
 				log.Infow("player part confirmed", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 			case proto.EventType_TYPE_GAME_CREATED:
-				log.Info("game created", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("game created", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 				// get contract
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
@@ -174,30 +187,30 @@ func (b *Bot) runGameLoop() error {
 				b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
 				b.currentGame.gameContract = c
 			case proto.EventType_TYPE_ROUND_READY:
-				log.Info("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 				// submit commitments
 				b.currentGame.currentRound.prepareCards()
 				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
 				if err != nil {
 					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", b.currentGame.gameContractAddress)
 				}
-				log.Info("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
+				log.Infow("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
 					"contract", b.currentGame.gameContractAddress, "hash", hexutil.Encode(b.currentGame.currentRound.commitment[:]), "txHash", tx.Hash().String())
 			case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
-				log.Info("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 				// submit cards
 				tx, err := b.currentGame.gameContract.SubmitCards(b.bindOpt, b.currentGame.currentRound.cards, b.currentGame.currentRound.salt, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
 				if err != nil {
 					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", b.currentGame.gameContractAddress)
 				}
-				log.Info("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
+				log.Infow("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
 					"contract", b.currentGame.gameContractAddress, "cards", b.currentGame.currentRound.cards, "txHash", tx.Hash().String())
 			case proto.EventType_TYPE_CARDS_ON_CHAIN:
 				log.Info("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 				// skip
 
 			case proto.EventType_TYPE_ROUND_COMPLETE:
-				log.Info("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 				battleInfo, err := b.client.RpcClient.GetBattleInfo(b.ctx, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
 					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
@@ -209,12 +222,16 @@ func (b *Bot) runGameLoop() error {
 					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound, b.currentGame.id)
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
-				log.Info("game complete", "game id", b.currentGame.id)
+				log.Infow("game complete", "game id", b.currentGame.id)
 				b.currentGame = nil
 				return nil
 			}
-		case err := <-b.chanErr:
+		case err, ok := <-b.chanErr:
+			if !ok {
+				break
+			}
 			log.Errorw("received error", "err", err)
+			time.Sleep(time.Second * 5)
 		}
 	}
 }

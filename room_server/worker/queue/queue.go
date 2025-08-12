@@ -28,7 +28,8 @@ type Queue struct {
 	continueTimeout     time.Duration
 	minTokenToJoinQueue int32
 
-	botsSet Set[types.PlayerAddress]
+	botMgr      *botManager
+	botWaitTime time.Duration
 }
 
 type GameCreator interface {
@@ -36,7 +37,7 @@ type GameCreator interface {
 	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 }
 
-func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64) *Queue {
+func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64, botWaitTime int64) *Queue {
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	q := &Queue{
 		ctx:             ctx,
@@ -46,7 +47,8 @@ func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.
 		gameCreator:     gameCreator,
 		continueManager: newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
 		continueTimeout: time.Duration(continueTimeout) * time.Second,
-		botsSet:         NewSet[types.PlayerAddress](),
+		botMgr:          newBotManager(),
+		botWaitTime:     time.Duration(botWaitTime) * time.Second,
 	}
 	return q
 }
@@ -162,6 +164,12 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	}
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	for _, p := range event.GameInfo.Players {
+		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
+		if q.botMgr.isInGame(*addr) {
+			q.botMgr.releaseInGameBot(*addr)
+		}
+	}
 	q.continueManager.addGame(event.GameInfo)
 	return nil
 }
@@ -174,15 +182,9 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
-	if q.minTokenToJoinQueue <= 0 {
-		return nil
-	}
 	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
 }
 
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
-	if q.minTokenToJoinQueue <= 0 {
-		return nil
-	}
 	return db.UnlockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress)
 }
