@@ -185,9 +185,6 @@ func (g *Game) GetGamePhase() *proto.GamePhase {
 }
 
 func (g *Game) saveGame() error {
-	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-	// 	return nil
-	// }
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
 		log.Errorf("SaveGame failed, err: %v", err)
@@ -197,9 +194,6 @@ func (g *Game) saveGame() error {
 }
 
 func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
-	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-	// 	return nil
-	// }
 	err := db.SavePlayerRoundInfo(roundPlayer)
 	if err != nil {
 		return err
@@ -208,9 +202,6 @@ func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
-	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-	// 	return nil
-	// }
 	err := db.SaveRound(round)
 	if err != nil {
 		return err
@@ -674,11 +665,10 @@ func (g *Game) sendTimerEventByCurrentRound() {
 }
 
 func (g *Game) handleTimerEvent(event *timerEvent) {
-	log.Infow("handle timer event",
+	log.Debugw("received timer event",
 		"game id", g.gameInfo.ID,
-		"round", g.currentRound.RoundNumber,
-		"round status", g.currentRound.Status,
-		"game status", g.gameInfo.Status)
+		"round", event.currentRound,
+		"round status", event.currentRoundStatus)
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
 		return
 	}
@@ -690,6 +680,11 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	if g.currentRound.Status != event.currentRoundStatus {
 		return
 	}
+	log.Infow("timer event triggered",
+		"game id", g.gameInfo.ID,
+		"round", g.currentRound.RoundNumber,
+		"round status", g.currentRound.Status,
+		"game status", g.gameInfo.Status)
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
 		err := g.handleGameAbortInit()
