@@ -93,10 +93,10 @@ func (p *Player) exitQueue() error {
 	if p.status != proto.PlayerStatus_PLAYER_IN_QUEUE {
 		return fmt.Errorf("join queue failed, player status %s", p.status)
 	}
+	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
 	p.queue.HandleExitQueueEvent(&types.ExitQueueEvent{
 		PlayerAddress: p.address,
 	})
-	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
 	return nil
 }
 
@@ -106,13 +106,13 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 	}
 	// send nothing if continued game
 	if !evt.IsContinueGame {
+		p.status = proto.PlayerStatus_PLAYER_MATCHED
 		p.publisher.Publish(ctx, &proto.PublishRequest{
 			Topic: p.address.String(),
 			Event: &proto.Event{
 				Type: proto.EventType_TYPE_MATCHED,
 			},
 		})
-		p.status = proto.PlayerStatus_PLAYER_MATCHED
 	} else {
 		p.status = proto.PlayerStatus_PLAYER_IN_GAME
 	}
@@ -210,6 +210,7 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 	if p.status != proto.PlayerStatus_PLAYER_IN_GAME && p.status != proto.PlayerStatus_PLAYER_MATCHED {
 		return fmt.Errorf("player not in game or matched, but got event type %d", reflect.TypeOf(evt))
 	}
+	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -222,6 +223,6 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 			Type: proto.EventType_TYPE_GAME_COMPLETE,
 		},
 	})
-	p.status = proto.PlayerStatus_PLAYER_UNKNOWN
+
 	return nil
 }

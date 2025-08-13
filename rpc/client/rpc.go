@@ -6,19 +6,19 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 
 	"github.com/CryptoElementals/common/rpc/proto"
-	pb "github.com/CryptoElementals/common/rpc/proto"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type RpcClient struct {
-	client pb.RpcServiceClient
+	client proto.RpcServiceClient
 	conn   *grpc.ClientConn
 }
 
 func NewRpcClient(conn *grpc.ClientConn) *RpcClient {
 	return &RpcClient{
-		client: pb.NewRpcServiceClient(conn),
+		client: proto.NewRpcServiceClient(conn),
 		conn:   conn,
 	}
 }
@@ -29,7 +29,7 @@ func NewRpcClientWithAddr(addr string) (*RpcClient, error) {
 		return nil, err
 	}
 	return &RpcClient{
-		client: pb.NewRpcServiceClient(conn),
+		client: proto.NewRpcServiceClient(conn),
 		conn:   conn,
 	}, nil
 }
@@ -48,19 +48,19 @@ func (c *RpcClient) ExitQueue(ctx context.Context, addr *types.PlayerAddress) er
 	return err
 }
 
-func (c *RpcClient) GetGamePhase(ctx context.Context, addr *types.PlayerAddress) (*pb.GamePhase, error) {
+func (c *RpcClient) GetGamePhase(ctx context.Context, addr *types.PlayerAddress) (*proto.GamePhase, error) {
 	return c.client.GetGamePhase(ctx, addr.ToProto())
 }
 
-func (c *RpcClient) GetBattleInfo(ctx context.Context, gameID, roundNumber uint) (*pb.GetBattleInfoResponse, error) {
-	return c.client.GetBattleInfo(ctx, &pb.GetBattleInfoRequest{
+func (c *RpcClient) GetBattleInfo(ctx context.Context, gameID, roundNumber uint) (*proto.GetBattleInfoResponse, error) {
+	return c.client.GetBattleInfo(ctx, &proto.GetBattleInfoRequest{
 		GameID:      uint32(gameID),
 		RoundNumber: uint32(roundNumber),
 	})
 }
 
 func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress, gameID, roundNumber uint) error {
-	_, err := c.client.ConfirmBattle(ctx, &pb.ConfirmBattleRequest{
+	_, err := c.client.ConfirmBattle(ctx, &proto.ConfirmBattleRequest{
 		PlayerAddress: addr.ToProto(),
 		GameID:        uint32(gameID),
 		RoundNumber:   uint32(roundNumber),
@@ -69,13 +69,13 @@ func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress
 }
 
 // chain related api
-func (c *RpcClient) SubmitTransactions(ctx context.Context, in *pb.TransactionBatch) error {
+func (c *RpcClient) SubmitTransactions(ctx context.Context, in *proto.TransactionBatch) error {
 	_, err := c.client.SubmitTransactions(ctx, in)
 	return err
 }
 
 func (c *RpcClient) ContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
-	_, err := c.client.ContinueGame(ctx, &pb.ContinueGameRequest{
+	_, err := c.client.ContinueGame(ctx, &proto.ContinueGameRequest{
 		Player:     addr.ToProto(),
 		LastGameID: uint32(gameID),
 	})
@@ -83,7 +83,7 @@ func (c *RpcClient) ContinueGame(ctx context.Context, addr *types.PlayerAddress,
 }
 
 func (c *RpcClient) RefuseContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
-	_, err := c.client.RefuseContinueGame(ctx, &pb.RefuseContinueGameRequest{
+	_, err := c.client.RefuseContinueGame(ctx, &proto.RefuseContinueGameRequest{
 		Player:     addr.ToProto(),
 		LastGameID: uint32(gameID),
 	})
@@ -91,7 +91,7 @@ func (c *RpcClient) RefuseContinueGame(ctx context.Context, addr *types.PlayerAd
 }
 
 func (c *RpcClient) GetPlayerToken(ctx context.Context, walletAddress string) (*proto.GetPlayerTokenResponse, error) {
-	token, err := c.client.GetPlayerToken(ctx, &pb.GetPlayerTokenRequest{
+	token, err := c.client.GetPlayerToken(ctx, &proto.GetPlayerTokenRequest{
 		WalletAddress: walletAddress,
 	})
 	if err != nil {
@@ -109,39 +109,9 @@ func (c *RpcClient) IsPlayerInQueue(ctx context.Context, addr types.PlayerAddres
 }
 
 func (c *RpcClient) Surrender(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
-	_, err := c.client.Surrender(ctx, &pb.SurrenderRequest{
+	_, err := c.client.Surrender(ctx, &proto.SurrenderRequest{
 		GameID:  uint32(gameID),
 		Address: addr.ToProto(),
-	})
-	return err
-}
-
-func (c *RpcClient) RegisterBots(ctx context.Context, addrs []*types.PlayerAddress) error {
-	protoAddrs := make([]*proto.PlayerAddress, len(addrs))
-	for i := range addrs {
-		protoAddrs[i] = addrs[i].ToProto()
-	}
-	_, err := c.client.RegisterBots(ctx, &pb.RegisterBotsRequest{
-		PlayerAddresses: protoAddrs,
-	})
-	return err
-}
-
-func (c *RpcClient) RegisterBot(ctx context.Context, addr *types.PlayerAddress) error {
-	protoAddr := addr.ToProto()
-	_, err := c.client.RegisterBot(ctx, &pb.RegisterBotRequest{
-		PlayerAddress: protoAddr,
-	})
-	return err
-}
-
-func (c *RpcClient) UnregisterBots(ctx context.Context, addrs []*types.PlayerAddress) error {
-	protoAddrs := make([]*proto.PlayerAddress, len(addrs))
-	for i := range addrs {
-		protoAddrs[i] = addrs[i].ToProto()
-	}
-	_, err := c.client.UnregisterBots(ctx, &pb.UnregisterBotsRequest{
-		PlayerAddresses: protoAddrs,
 	})
 	return err
 }

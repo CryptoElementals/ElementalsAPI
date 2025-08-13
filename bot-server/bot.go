@@ -221,7 +221,13 @@ func (b *Bot) runGameLoop() error {
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Infow("game complete", "game id", b.currentGame.id)
+				err := b.client.RpcClient.RefuseContinueGame(b.ctx, b.addr, b.currentGame.id)
+				if err != nil {
+					log.Errorw("error refuse continue game", "err", err)
+				}
 				b.currentGame = nil
+				// skip continue
+
 				return nil
 			}
 		case err, ok := <-b.chanErr:

@@ -83,11 +83,8 @@ func New(ctx context.Context,
 	s.pubsub.SetPlayerManager(playerSvc)
 	server := grpc.NewServer()
 	rpcServer := rpc.NewRpc(
-		gameSvc,
 		chainSvc,
 		playerSvc,
-		queueSvc,
-		queueSvc,
 	)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)

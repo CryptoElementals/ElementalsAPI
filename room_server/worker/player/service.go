@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/CryptoElementals/common/conversion"
+	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -15,6 +18,7 @@ type GameInfoGetter interface {
 	GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 	GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error)
+	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
 }
 
 type Queuer interface {
@@ -229,4 +233,17 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 		}, nil
 	}
 	return nil, fmt.Errorf("unknonw player status, %s", status)
+}
+
+func (s *Service) GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
+	return s.gameInfoGetter.GetBattleInfo(ctx, gameid, roundNum)
+}
+
+func (s *Service) GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error) {
+	userToken, err := db.GetPlayerToken(s.ctx, walletAddress)
+	if err != nil {
+		log.Error("GetPlayerToken failed, err: ", err)
+		return nil, err
+	}
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
 }

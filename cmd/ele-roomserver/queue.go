@@ -98,9 +98,7 @@ func init() {
 	queueCmd.MarkPersistentFlagRequired("temp-addr")
 	queueCmd.MarkPersistentFlagRequired("address")
 	queueCmd.MarkPersistentFlagRequired("room-server-endpoint")
-	queueCmd.MarkFlagRequired("room-server-endpoint")
 	queueCmd.AddCommand(queueJoinCmd)
 	queueCmd.AddCommand(queueExitCmd)
 	queueCmd.AddCommand(queueCheckCmd)
-
 }
