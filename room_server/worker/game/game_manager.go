@@ -229,7 +229,7 @@ func (r *GameManager) recoverGames() error {
 		for _, player := range players {
 			addr := player.PlayerAddress()
 			if _, ok := r.playerToGameMap[addr]; ok {
-				log.Fatalf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)
+				log.Errorf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)
 			}
 			r.playerToGameMap[addr] = game
 		}
