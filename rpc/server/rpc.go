@@ -102,6 +102,10 @@ func (s *Rpc) Surrender(ctx context.Context, req *proto.SurrenderRequest) (*empt
 	return &emptypb.Empty{}, nil
 }
 
+func (s *Rpc) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*proto.TimeoutConfig, error) {
+	return s.playerHandler.GetTimeoutConfig()
+}
+
 type ChainRequestHandler interface {
 	SubmitTransactions(req *proto.TransactionBatch) error
 }
@@ -118,4 +122,5 @@ type PlayerRequestHandler interface {
 	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
 	GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error)
+	GetTimeoutConfig() (*proto.TimeoutConfig, error)
 }

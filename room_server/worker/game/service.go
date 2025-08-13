@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -30,11 +32,29 @@ type Service struct {
 	gameManager *GameManager
 }
 
-func NewService(ctx context.Context, workerManager *worker.WorkerManager,
-	initialHP int64, roundTimeout int64, maxRounds int64, chainSvc ContractClient) *Service {
+func NewService(
+	ctx context.Context,
+	workerManager *worker.WorkerManager,
+	gameConfig *config.GameParamConfig,
+	chainSvc ContractClient,
+	shouldRecover bool) *Service {
+	gameArgs := dao.GameArgs{
+		MaxRounds: gameConfig.MaxRounds,
+		InitialHP: gameConfig.InitialHP,
+
+		GameMatchTimeout:    gameConfig.GameMatchTimeout,
+		RoundConfirmTimeout: gameConfig.RoundConfirmTimeout,
+		RoundTimeout:        gameConfig.RoundTimeout,
+		ContinueTimeout:     gameConfig.ContinueTimeout,
+
+		GameMatchTimeoutRedundancy:    gameConfig.GameMatchTimeoutRedundancy,
+		RoundConfirmTimeoutRedundancy: gameConfig.RoundConfirmTimeoutRedundancy,
+		RoundTimeoutRedundancy:        gameConfig.RoundTimeoutRedundancy,
+		ContinueTimeoutRedundancy:     gameConfig.ContinueTimeoutRedundancy,
+	}
 	return &Service{
 		ctx:         ctx,
-		gameManager: NewGameManager(ctx, workerManager, initialHP, roundTimeout, maxRounds, chainSvc),
+		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover),
 	}
 }
 

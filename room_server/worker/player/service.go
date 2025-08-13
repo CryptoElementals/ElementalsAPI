@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -93,7 +94,7 @@ func (s *Service) RemoveBotPlayer(address types.PlayerAddress) {
 func (s *Service) JoinQueue(address types.PlayerAddress) error {
 	status := s.getPlayerStatus(address)
 	if status != proto.PlayerStatus_PLAYER_UNKNOWN {
-		return nil
+		return fmt.Errorf("player cannot join queue, player status: %s", status)
 	}
 	return s.queue.HandleJoinQueueEvent(&types.JoinQueueEvent{
 		PlayerAddress: address,
@@ -101,6 +102,10 @@ func (s *Service) JoinQueue(address types.PlayerAddress) error {
 }
 
 func (s *Service) ExitQueue(address types.PlayerAddress) error {
+	status := s.getPlayerStatus(address)
+	if status != proto.PlayerStatus_PLAYER_IN_QUEUE {
+		return nil
+	}
 	s.queue.HandleExitQueueEvent(&types.ExitQueueEvent{
 		PlayerAddress: address,
 	})
@@ -177,6 +182,16 @@ func (s *Service) GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenRes
 		return nil, err
 	}
 	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+}
+
+func (s *Service) GetTimeoutConfig() (*proto.TimeoutConfig, error) {
+	cfg := &proto.TimeoutConfig{
+		GameMatchTimeout:    config.GameParams.GameMatchTimeout,
+		RoundConfirmTimeout: config.GameParams.RoundConfirmTimeout,
+		RoundTimeout:        config.GameParams.RoundTimeout,
+		ContinueTimeout:     config.GameParams.ContinueTimeout,
+	}
+	return cfg, nil
 }
 
 func (s *Service) addPlayer(address types.PlayerAddress) error {

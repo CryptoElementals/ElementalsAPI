@@ -19,6 +19,7 @@ service RpcService {
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
     rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
+    rpc GetGameTimeoutConfig(google.protobuf.Empty)returns(TimeoutConfig);
 
     // token related logic
     rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
@@ -27,12 +28,11 @@ service RpcService {
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
 }
 
-message RegisterBotRequest {
-    rpc.PlayerAddress PlayerAddress =1;
-}
-
-message RegisterBotsRequest {
-    repeated rpc.PlayerAddress PlayerAddresses =1;
+message TimeoutConfig {
+    int64 GameMatchTimeout = 1;
+	int64 RoundConfirmTimeout = 2;
+	int64 RoundTimeout = 3;
+	int64 ContinueTimeout = 4;
 }
 
 message UnregisterBotsRequest {
@@ -88,6 +88,7 @@ message GamePhasePlayer {
     bytes Commitment = 3;
     repeated uint32 Cards = 4;
 }
+
 
 message PvPInfo {
     uint32 GameID = 1;

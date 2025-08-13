@@ -266,15 +266,32 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 		})
 	}
 	playerStatus := proto.PlayerStatus(0)
+	timeoutDuration := int64(0)
+	beginAt := uint64(currentRound.SetupOnChainAt)
 	switch game.Status {
 	case proto.GameStatus_GAME_INIT:
 		playerStatus = proto.PlayerStatus_PLAYER_MATCHED
+		// game waitting confirmed for the first round
+		timeoutDuration = game.GameArgs.GameMatchTimeout
 	case proto.GameStatus_GAME_RUNNING:
 		playerStatus = proto.PlayerStatus_PLAYER_IN_GAME
+		switch currentRound.Status {
+		case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
+			proto.RoundStatus_ROUND_COMPLETED,
+			proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
+			// waitting for confimation
+			timeoutDuration = game.GameArgs.RoundConfirmTimeout
+		case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS, proto.RoundStatus_ROUND_WAITTING_CARDS:
+			// round submitting cards
+			timeoutDuration = game.GameArgs.RoundTimeout
+		}
 	case proto.GameStatus_GAME_END:
 		playerStatus = proto.PlayerStatus_PLAYER_UNKNOWN
+		// round continue
+		timeoutDuration = game.ContinueTimeout
+		beginAt = uint64(game.UpdatedAt.Unix())
 	}
-	beginAt := uint64(currentRound.SetupOnChainAt)
+
 	if beginAt == 0 {
 		beginAt = uint64(currentRound.CreatedAt.Unix())
 	}
@@ -284,7 +301,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 		Status:          playerStatus,
 		ContractAddress: game.RoomContract,
 		BeginAt:         beginAt,
-		TimeoutDuration: uint64(game.RoundTimeout),
+		TimeoutDuration: uint64(timeoutDuration),
 		RoundNumber:     uint64(currentRound.RoundNumber),
 	}
 	return gamePhase

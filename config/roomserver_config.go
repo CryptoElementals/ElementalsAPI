@@ -11,18 +11,15 @@ var RSGConf = RoomServerConfig{}
 
 // RoomServerConfig represents the complete application configuration structure
 type RoomServerConfig struct {
-	LogCfg          log.Config      `mapstructure:"log"`
-	RedisCfg        redis.Config    `mapstructure:"redis"`
-	DbCfg           db.Config       `mapstructure:"database"`
-	ChainCfg        ChainConfig     `mapstructure:"chain"`
-	GameParams      GameParamConfig `mapstructure:"game-params"`
-	WalletPaths     []string        `mapstructure:"wallet-paths"`
-	RoundTimeout    int64           `mapstructure:"round-timeout"`
-	ContinueTimeout int64           `mapstructure:"continue-timeout"`
-	MaxRounds       int64           `mapstructure:"max-rounds"`
-	GameInitialHP   int64           `mapstructure:"game-initial-hp"`
-	ListenPort      int64           `mapstructure:"listen-port"`
-	BotWaitTime     int64           `mapstructure:"bot-wait-time"`
+	LogCfg            log.Config      `mapstructure:"log"`
+	RedisCfg          redis.Config    `mapstructure:"redis"`
+	DbCfg             db.Config       `mapstructure:"database"`
+	ChainCfg          ChainConfig     `mapstructure:"chain"`
+	GameParams        GameParamConfig `mapstructure:"game-params"`
+	WalletPaths       []string        `mapstructure:"wallet-paths"`
+	ListenPort        int64           `mapstructure:"listen-port"`
+	BotWaitTime       int64           `mapstructure:"bot-wait-time"`
+	ShouldRecverGames bool            `mapstructure:"should-recover-games"`
 }
 
 func InitRSConfig(configPath string) error {

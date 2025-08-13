@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type RpcClient struct {
@@ -114,4 +115,12 @@ func (c *RpcClient) Surrender(ctx context.Context, addr *types.PlayerAddress, ga
 		Address: addr.ToProto(),
 	})
 	return err
+}
+
+func (c *RpcClient) GetRoundTimeoutConfig(ctx context.Context) (*proto.TimeoutConfig, error) {
+	timeoutCfg, err := c.client.GetGameTimeoutConfig(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+	return timeoutCfg, nil
 }

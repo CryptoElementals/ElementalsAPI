@@ -20,17 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RpcService_JoinQueue_FullMethodName          = "/rpc.RpcService/JoinQueue"
-	RpcService_ExitQueue_FullMethodName          = "/rpc.RpcService/ExitQueue"
-	RpcService_ContinueGame_FullMethodName       = "/rpc.RpcService/ContinueGame"
-	RpcService_GetGamePhase_FullMethodName       = "/rpc.RpcService/GetGamePhase"
-	RpcService_IsPlayerInQueue_FullMethodName    = "/rpc.RpcService/IsPlayerInQueue"
-	RpcService_GetBattleInfo_FullMethodName      = "/rpc.RpcService/GetBattleInfo"
-	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
-	RpcService_RefuseContinueGame_FullMethodName = "/rpc.RpcService/RefuseContinueGame"
-	RpcService_Surrender_FullMethodName          = "/rpc.RpcService/Surrender"
-	RpcService_GetPlayerToken_FullMethodName     = "/rpc.RpcService/GetPlayerToken"
-	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
+	RpcService_JoinQueue_FullMethodName            = "/rpc.RpcService/JoinQueue"
+	RpcService_ExitQueue_FullMethodName            = "/rpc.RpcService/ExitQueue"
+	RpcService_ContinueGame_FullMethodName         = "/rpc.RpcService/ContinueGame"
+	RpcService_GetGamePhase_FullMethodName         = "/rpc.RpcService/GetGamePhase"
+	RpcService_IsPlayerInQueue_FullMethodName      = "/rpc.RpcService/IsPlayerInQueue"
+	RpcService_GetBattleInfo_FullMethodName        = "/rpc.RpcService/GetBattleInfo"
+	RpcService_ConfirmBattle_FullMethodName        = "/rpc.RpcService/ConfirmBattle"
+	RpcService_RefuseContinueGame_FullMethodName   = "/rpc.RpcService/RefuseContinueGame"
+	RpcService_Surrender_FullMethodName            = "/rpc.RpcService/Surrender"
+	RpcService_GetGameTimeoutConfig_FullMethodName = "/rpc.RpcService/GetGameTimeoutConfig"
+	RpcService_GetPlayerToken_FullMethodName       = "/rpc.RpcService/GetPlayerToken"
+	RpcService_SubmitTransactions_FullMethodName   = "/rpc.RpcService/SubmitTransactions"
 )
 
 // RpcServiceClient is the client API for RpcService service.
@@ -47,6 +48,7 @@ type RpcServiceClient interface {
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error)
 	// token related logic
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// chain related api
@@ -151,6 +153,16 @@ func (c *rpcServiceClient) Surrender(ctx context.Context, in *SurrenderRequest, 
 	return out, nil
 }
 
+func (c *rpcServiceClient) GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TimeoutConfig)
+	err := c.cc.Invoke(ctx, RpcService_GetGameTimeoutConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
@@ -185,6 +197,7 @@ type RpcServiceServer interface {
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
 	Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error)
+	GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error)
 	// token related logic
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	// chain related api
@@ -225,6 +238,9 @@ func (UnimplementedRpcServiceServer) RefuseContinueGame(context.Context, *Refuse
 }
 func (UnimplementedRpcServiceServer) Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Surrender not implemented")
+}
+func (UnimplementedRpcServiceServer) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetGameTimeoutConfig not implemented")
 }
 func (UnimplementedRpcServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
@@ -415,6 +431,24 @@ func _RpcService_Surrender_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_GetGameTimeoutConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).GetGameTimeoutConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_GetGameTimeoutConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).GetGameTimeoutConfig(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RpcService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetPlayerTokenRequest)
 	if err := dec(in); err != nil {
@@ -493,6 +527,10 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Surrender",
 			Handler:    _RpcService_Surrender_Handler,
+		},
+		{
+			MethodName: "GetGameTimeoutConfig",
+			Handler:    _RpcService_GetGameTimeoutConfig_Handler,
 		},
 		{
 			MethodName: "GetPlayerToken",
