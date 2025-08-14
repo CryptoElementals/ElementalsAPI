@@ -1,7 +1,6 @@
 package queue
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
@@ -119,10 +118,6 @@ func (q *Queue) RegisterBots(addrs ...*types.PlayerAddress) error {
 	log.Infow("register bots", "bots", types.ToJsonLoggable(addrs))
 	for _, addr := range addrs {
 		q.botMgr.addBot(*addr)
-		err := q.lockToken(addr)
-		if err != nil {
-			return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
-		}
 	}
 	return nil
 }
@@ -132,14 +127,7 @@ func (q *Queue) UnregisterBots(addrs ...*types.PlayerAddress) error {
 	defer q.lock.Unlock()
 	log.Infow("unregister bots", "bots", types.ToJsonLoggable(addrs))
 	for _, addr := range addrs {
-		if q.botMgr.isIdle(*addr) {
-			err := q.unlockToken(addr)
-			if err != nil {
-				log.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
-			}
-		}
 		q.botMgr.removeBot(*addr)
-
 	}
 	return nil
 }
