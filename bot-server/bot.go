@@ -120,6 +120,44 @@ func (b *Bot) formatBotID() string {
 	return fmt.Sprintf("bot_%s", b.addr.String())
 }
 
+func (b *Bot) run() error {
+	subId := b.formatBotID()
+	if b.mimicPlayer {
+		subId = b.addr.String()
+	}
+	err := b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	if err != nil {
+		return err
+	}
+	needReconnect := false
+	for {
+		select {
+		case <-b.ctx.Done():
+			log.Infow("bot canceled", "addr", b.addr.String())
+			return nil
+		default:
+		}
+		if needReconnect {
+			time.Sleep(10 * time.Second)
+			err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
+			if err != nil {
+				continue
+			}
+			err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+			if err != nil {
+				continue
+			}
+		}
+
+		err = b.runGameLoop()
+		if err != nil {
+			needReconnect = true
+			continue
+		}
+		needReconnect = false
+	}
+}
+
 func (b *Bot) runGameLoop() error {
 	if b.mimicPlayer {
 		err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
@@ -234,8 +272,7 @@ func (b *Bot) runGameLoop() error {
 			if !ok {
 				break
 			}
-			log.Errorw("received error", "err", err)
-			time.Sleep(time.Second * 5)
+			return err
 		}
 	}
 }
