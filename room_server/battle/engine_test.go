@@ -77,22 +77,22 @@ func TestExecuteRoundProto(t *testing.T) {
 	engine := NewBattleEngine()
 
 	protoInput := &pb.RoundInput{
-		RoundNumber: 2,
+		RoundNumber: 3,
 		Players: []*pb.PlayerRoundInput{
 			{
 				WalletAddress:    "player1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				Cards:            []int32{1, 2, 3},
-				HP:               2500,
-				LostHP:           500,
-				Commitment:       []byte("dummy"),
+				Cards:            []int32{},
+				HP:               500,
+				LostHP:           4000,
+				Commitment:       []byte(""),
 			},
 			{
 				WalletAddress:    "player2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int32{3, 4, 2},
-				HP:               500,
-				LostHP:           2500,
+				Cards:            []int32{},
+				HP:               1500,
+				LostHP:           8000,
 				Commitment:       []byte("dummy"),
 			},
 		},
@@ -374,7 +374,7 @@ func initTestEnv(t *testing.T) {
 	}
 
 	// 加载配置文件（只加载一次）
-	if config.GameParams.MaxHP == 0 {
+	if config.GameParams.InitialHP == 0 {
 		cfgPath := "../../config.yaml" // 相对路径：从 room_server/battle 到项目根目录
 		if err := config.InitRSConfig(cfgPath); err != nil {
 			t.Fatalf("failed to load config: %v", err)

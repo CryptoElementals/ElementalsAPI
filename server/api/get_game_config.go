@@ -81,9 +81,10 @@ func (task *GetGameConfigTask) Run(c *gin.Context) (Response, error) {
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	address = strings.ToLower(address)
 
-	// 获取游戏配置
+	// 获取并填充基础游戏配置
 	policy := config.GameParams.KeygenPolicy
 	task.Response.KeygenPolicy = policy
+
 	if policy != 1 {
 		return task.Response, nil
 	}
