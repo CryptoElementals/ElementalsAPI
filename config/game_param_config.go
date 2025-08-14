@@ -1,7 +1,6 @@
 package config
 
 type GameParamConfig struct {
-	InitialHP         int     `mapstructure:"initial-hp"`
 	InitialMultiplier int     `mapstructure:"initial-multiplier"`
 	SystemFeeRate     float64 `mapstructure:"system-fee-rate"`     // 系统抽水比例，例如 0.016 表示 1.6%
 	WinnerPointRate   float64 `mapstructure:"winner-point-rate"`   // 获胜者积分倍率

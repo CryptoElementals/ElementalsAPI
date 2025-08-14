@@ -124,8 +124,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	task.Response.PvPInfo.BeginAt = gamePhase.PvPInfo.BeginAt
-	// task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
-	task.Response.PvPInfo.TimeoutDuration = 20
+	task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
+	// task.Response.PvPInfo.TimeoutDuration = 20
 	task.Response.PvPInfo.ContractAddress = gamePhase.PvPInfo.ContractAddress
 	task.Response.PvPInfo.Round = gamePhase.PvPInfo.RoundNumber
 	if gamePhase.PvPInfo.GameID != 0 {

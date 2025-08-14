@@ -166,8 +166,8 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 						damage1 = 0
 					}
 					p1.LostHP += damage1
-					if p1.LostHP > config.GameParams.InitialHP {
-						p1.LostHP = config.GameParams.InitialHP
+					if p1.LostHP > int(config.GameParams.InitialHP) {
+						p1.LostHP = int(config.GameParams.InitialHP)
 					}
 
 					damage2 := p2BeforeHP - p2.HP
@@ -175,8 +175,8 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 						damage2 = 0
 					}
 					p2.LostHP += damage2
-					if p2.LostHP > config.GameParams.InitialHP {
-						p2.LostHP = config.GameParams.InitialHP
+					if p2.LostHP > int(config.GameParams.InitialHP) {
+						p2.LostHP = int(config.GameParams.InitialHP)
 					}
 					p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
 					p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
