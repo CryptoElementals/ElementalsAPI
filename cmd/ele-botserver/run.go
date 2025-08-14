@@ -37,10 +37,7 @@ func runBotServer() {
 		panic("init logger failed: " + err.Error())
 	}
 	svr := botserver.NewBotServer(&config.BotCfg)
-	err = svr.Start()
-	if err != nil {
-		log.Fatalw("start bot server failed", "err", err)
-	}
+	svr.Start()
 	log.Info("start bot server success")
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
