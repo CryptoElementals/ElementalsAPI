@@ -2,7 +2,6 @@ package battle
 
 import (
 	"fmt"
-	"log"
 )
 
 // GameEndState 用于游戏结束判定的玩家状态
@@ -84,8 +83,6 @@ func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, 
 			offlineCount++
 		}
 	}
-	log.Println("onlineCount", onlineCount)
-	log.Println("offlineCount", offlineCount)
 	// 如果有离线玩家，需要特殊处理
 	if offlineCount > 0 {
 		if offlineCount == len(states) {
