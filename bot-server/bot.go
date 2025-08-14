@@ -160,7 +160,7 @@ func (b *Bot) run() error {
 		}
 		if needReconnect {
 			// make sure the old game expires
-			err := b.resubscribe(subId, time.Second*120)
+			err := b.resubscribe(subId, time.Second*90)
 			if err != nil {
 				log.Errorw("cannot resubscribe", "err", err)
 				time.Sleep(time.Second * 10)
