@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -20,28 +20,26 @@ type GameManager struct {
 	gamesMap          map[uint]*Game
 	playerToGameMap   map[types.PlayerAddress]*Game
 	workerManager     *worker.WorkerManager
-	gameInitialHP     int64
-	roundTimeout      int64
-	maxRounds         int64
 	chainSvc          ContractClient
 	gameResultSettler GameResultSettler
+	args              dao.GameArgs
+	noRecover         bool
 }
 
 func NewGameManager(ctx context.Context,
 	workerManagerService *worker.WorkerManager,
-	gameInitialHP int64,
-	roundTimeout int64,
-	maxRounds int64,
-	chainSvc ContractClient) *GameManager {
+	gameArgs dao.GameArgs,
+	chainSvc ContractClient,
+	noRecover bool,
+) *GameManager {
 	m := &GameManager{
 		ctx:             ctx,
 		gamesMap:        make(map[uint]*Game),
 		playerToGameMap: make(map[types.PlayerAddress]*Game),
 		workerManager:   workerManagerService,
-		gameInitialHP:   gameInitialHP,
-		maxRounds:       maxRounds,
-		roundTimeout:    roundTimeout,
 		chainSvc:        chainSvc,
+		args:            gameArgs,
+		noRecover:       noRecover,
 	}
 	return m
 }
@@ -163,7 +161,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, r.gameInitialHP, r.roundTimeout, r.maxRounds)
+	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, &r.args)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -186,7 +184,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, r.gameInitialHP, r.roundTimeout, r.maxRounds)
+	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, &r.args)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -200,7 +198,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 }
 
 func (r *GameManager) recoverGames() error {
-	if r.roundTimeout == 0 {
+	if r.noRecover {
 		return nil
 	}
 	gameInfos, err := db.GetAllActiveGames()
@@ -209,19 +207,7 @@ func (r *GameManager) recoverGames() error {
 	}
 	for _, info := range gameInfos {
 		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
-		if time.Since(info.CreatedAt) > time.Duration(r.roundTimeout)*time.Second*time.Duration(r.maxRounds) {
-			log.Errorw("game expired, terminate", "game id", info.ID, "status", game.gameInfo.Status)
-			if game.gameInfo.Status == proto.GameStatus_GAME_INIT {
-				err := game.handleGameAbortInit()
-				if err != nil {
-					log.Errorf("expired game abort failed, game: %d, err %s", info.ID, err)
-				}
-			} else {
-				err := game.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT)
-				if err != nil {
-					log.Errorf("expired game terminate failed, game: %d, err %s", info.ID, err)
-				}
-			}
+		if game == nil {
 			continue
 		}
 
@@ -229,7 +215,7 @@ func (r *GameManager) recoverGames() error {
 		for _, player := range players {
 			addr := player.PlayerAddress()
 			if _, ok := r.playerToGameMap[addr]; ok {
-				log.Fatalf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)
+				log.Errorf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)
 			}
 			r.playerToGameMap[addr] = game
 		}

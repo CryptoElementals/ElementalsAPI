@@ -45,12 +45,9 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 				RoomManagerAddress: roomManagerAddress,
 			},
 		},
-		WalletPaths:     []string{tempFile},
-		RoundTimeout:    gametTimeout,
-		ContinueTimeout: gametTimeout,
-		MaxRounds:       3,
-		GameInitialHP:   3000,
-		ListenPort:      30011,
+		WalletPaths: []string{tempFile},
+
+		ListenPort: 30011,
 		GameParams: config.GameParamConfig{
 			TokenThreshold:    1000,
 			MaxHP:             3000,
@@ -61,6 +58,10 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 			TieTokenRate:      0.008,
 			TiePointRate:      0.008,
 			BaseStake:         1000,
+			RoundTimeout:      gametTimeout,
+			ContinueTimeout:   gametTimeout,
+			MaxRounds:         3,
+			InitialHP:         3000,
 		},
 	}
 	config.InitializeGameParams(&cfg.GameParams)

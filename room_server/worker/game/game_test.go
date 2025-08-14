@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -15,6 +16,11 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
+
+var testGameArgs = dao.GameArgs{
+	MaxRounds: 3,
+	InitialHP: 3000,
+}
 
 var testWorkerManager *worker.WorkerManager
 
@@ -234,7 +240,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, 3000, 10, 10, contractClient)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		WalletAddress:    "1",
@@ -306,7 +312,10 @@ func TestGameStateMachine(t *testing.T) {
 		require.EqualExportedValues(t, gameResult, gameResultDb)
 	}
 	t.Run("1 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 1000, 10, 3, contractClient)
+		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
+			MaxRounds: 3,
+			InitialHP: 1000,
+		}, contractClient, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -315,7 +324,10 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 1, true)
 	})
 	t.Run("2 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 3000, 10, 3, contractClient)
+		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
+			MaxRounds: 3,
+			InitialHP: 3000,
+		}, contractClient, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -325,7 +337,10 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 2, true)
 	})
 	t.Run("3 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, 10000, 10, 3, contractClient)
+		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
+			MaxRounds: 3,
+			InitialHP: 10000,
+		}, contractClient, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

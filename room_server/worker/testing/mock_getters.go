@@ -5,6 +5,7 @@
 package testing
 
 import (
+	context "context"
 	reflect "reflect"
 
 	types "github.com/CryptoElementals/common/room_server/worker/types"
@@ -47,6 +48,22 @@ func (m *MockGameInfoGetter) GetActiveGameInfo(arg0 types.PlayerAddress) *proto.
 func (mr *MockGameInfoGetterMockRecorder) GetActiveGameInfo(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActiveGameInfo", reflect.TypeOf((*MockGameInfoGetter)(nil).GetActiveGameInfo), arg0)
+}
+
+// GetBattleInfo mocks base method.
+func (m *MockGameInfoGetter) GetBattleInfo(arg0 context.Context, arg1, arg2 uint32) (*proto.RoundResult, *proto.GameResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBattleInfo", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*proto.RoundResult)
+	ret1, _ := ret[1].(*proto.GameResult)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetBattleInfo indicates an expected call of GetBattleInfo.
+func (mr *MockGameInfoGetterMockRecorder) GetBattleInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBattleInfo", reflect.TypeOf((*MockGameInfoGetter)(nil).GetBattleInfo), arg0, arg1, arg2)
 }
 
 // GetGamePhase mocks base method.

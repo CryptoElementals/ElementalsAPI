@@ -120,6 +120,44 @@ func (b *Bot) formatBotID() string {
 	return fmt.Sprintf("bot_%s", b.addr.String())
 }
 
+func (b *Bot) run() error {
+	subId := b.formatBotID()
+	if b.mimicPlayer {
+		subId = b.addr.String()
+	}
+	err := b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	if err != nil {
+		return err
+	}
+	needReconnect := false
+	for {
+		select {
+		case <-b.ctx.Done():
+			log.Infow("bot canceled", "addr", b.addr.String())
+			return nil
+		default:
+		}
+		if needReconnect {
+			time.Sleep(10 * time.Second)
+			err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
+			if err != nil {
+				continue
+			}
+			err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+			if err != nil {
+				continue
+			}
+		}
+
+		err = b.runGameLoop()
+		if err != nil {
+			needReconnect = true
+			continue
+		}
+		needReconnect = false
+	}
+}
+
 func (b *Bot) runGameLoop() error {
 	if b.mimicPlayer {
 		err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
@@ -221,15 +259,20 @@ func (b *Bot) runGameLoop() error {
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Infow("game complete", "game id", b.currentGame.id)
+				err := b.client.RpcClient.RefuseContinueGame(b.ctx, b.addr, b.currentGame.id)
+				if err != nil {
+					log.Errorw("error refuse continue game", "err", err)
+				}
 				b.currentGame = nil
+				// skip continue
+
 				return nil
 			}
 		case err, ok := <-b.chanErr:
 			if !ok {
 				break
 			}
-			log.Errorw("received error", "err", err)
-			time.Sleep(time.Second * 5)
+			return err
 		}
 	}
 }

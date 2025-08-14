@@ -60,9 +60,7 @@ func NewGame(
 	workerMangerService *worker.WorkerManager,
 	chainSvc ContractClient,
 	gameContinuer GameHandler,
-	initialHP int64,
-	roundTimeout int64,
-	maxRounds int64) *Game {
+	gameArgs *dao.GameArgs) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
 	for _, player := range players {
@@ -70,18 +68,16 @@ func NewGame(
 		daoPlayers = append(daoPlayers, daoPlayer)
 		gamePlayers[player.TemporaryAddress] = &gamePlayer{
 			player:    daoPlayer,
-			currentHP: initialHP,
+			currentHP: gameArgs.InitialHP,
 			addr:      &player,
 		}
 	}
 	game := &Game{
 		ctx: ctx,
 		gameInfo: &dao.Game{
-			Players:      daoPlayers,
-			Type:         types.GameTypePVP,
-			InitialHP:    initialHP,
-			MaxRounds:    maxRounds,
-			RoundTimeout: roundTimeout,
+			Players:  daoPlayers,
+			Type:     types.GameTypePVP,
+			GameArgs: *gameArgs,
 		},
 		gamePlayers:         gamePlayers,
 		workerMangerService: workerMangerService,
@@ -105,6 +101,25 @@ func NewGameFromGameInfo(
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
+	}
+
+	var terminateGame = func() {
+		log.Errorw("game expired, terminate", "game id", gameInfo.ID, "status", gameInfo.Status)
+		if gameInfo.Status == proto.GameStatus_GAME_INIT {
+			err := g.handleGameAbortInit()
+			if err != nil {
+				log.Errorf("expired game abort failed, game: %d, err %s", gameInfo.ID, err)
+			}
+		} else {
+			err := g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT)
+			if err != nil {
+				log.Errorf("expired game terminate failed, game: %d, err %s", gameInfo.ID, err)
+			}
+		}
+	}
+	shouldTerminate := false
+	if time.Since(gameInfo.CreatedAt) > time.Duration(gameInfo.GameArgs.RoundTimeout)*time.Second*time.Duration(gameInfo.GameArgs.MaxRounds) {
+		shouldTerminate = true
 	}
 
 	for _, playerInfo := range g.gameInfo.Players {
@@ -137,6 +152,10 @@ func NewGameFromGameInfo(
 				player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
 			}
 			player.totalLostHP = int64(player.roundPlayer.LostHP)
+		}
+		if shouldTerminate {
+			terminateGame()
+			return nil
 		}
 		if g.currentRound.Status == proto.RoundStatus_ROUND_COMPLETED {
 			g.setupNewRound()
@@ -185,9 +204,6 @@ func (g *Game) GetGamePhase() *proto.GamePhase {
 }
 
 func (g *Game) saveGame() error {
-	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-	// 	return nil
-	// }
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
 		log.Errorf("SaveGame failed, err: %v", err)
@@ -197,9 +213,6 @@ func (g *Game) saveGame() error {
 }
 
 func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
-	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-	// 	return nil
-	// }
 	err := db.SavePlayerRoundInfo(roundPlayer)
 	if err != nil {
 		return err
@@ -208,9 +221,6 @@ func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
-	// if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-	// 	return nil
-	// }
 	err := db.SaveRound(round)
 	if err != nil {
 		return err
@@ -644,14 +654,30 @@ func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
 }
 
 func (g *Game) timeoutFromCurentRound() time.Duration {
-	if g.gameInfo.RoundTimeout == 0 {
-		return 0
-	}
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
 		return 0
 	}
+	timeoutDuration := int64(0)
+	switch g.gameInfo.Status {
+	case proto.GameStatus_GAME_INIT:
+		// game waitting confirmed for the first round
+		timeoutDuration = g.gameInfo.GameArgs.GameMatchTimeout + g.gameInfo.GameArgs.GameMatchTimeoutRedundancy
+	case proto.GameStatus_GAME_RUNNING:
+		switch g.currentRound.Status {
+		case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
+			proto.RoundStatus_ROUND_COMPLETED,
+			proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
+			// waitting for confimation
+			timeoutDuration = g.gameInfo.GameArgs.RoundConfirmTimeout + g.gameInfo.GameArgs.RoundConfirmTimeoutRedundancy
+		case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS, proto.RoundStatus_ROUND_WAITTING_CARDS:
+			// round submitting cards
+			timeoutDuration = g.gameInfo.GameArgs.RoundTimeout + g.gameInfo.GameArgs.RoundTimeoutRedundancy
+		}
+	case proto.GameStatus_GAME_END:
+		return 0
+	}
 
-	timeout := time.Second * time.Duration(g.gameInfo.RoundTimeout)
+	timeout := time.Second * time.Duration(timeoutDuration)
 	if g.currentRound.SetupOnChainAt != 0 {
 		timeout -= time.Since(time.Unix(g.currentRound.SetupOnChainAt, 0))
 	}
@@ -668,17 +694,19 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		currentRound:       g.currentRound.RoundNumber,
 		currentRoundStatus: g.currentRound.Status,
 	}
+	log.Debugw("send timer event",
+		"game id", g.gameInfo.ID,
+		"round", timerEvent.currentRound,
+		"round status", timerEvent.currentRoundStatus,
+		"timeout", timeout.Seconds(),
+	)
 	time.AfterFunc(timeout, func() {
 		g.workerMangerService.SendEvent(g.workerID(), types.NewEvent(g.workerID(), timerEvent))
 	})
 }
 
 func (g *Game) handleTimerEvent(event *timerEvent) {
-	log.Infow("handle timer event",
-		"game id", g.gameInfo.ID,
-		"round", g.currentRound.RoundNumber,
-		"round status", g.currentRound.Status,
-		"game status", g.gameInfo.Status)
+
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
 		return
 	}
@@ -690,6 +718,11 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	if g.currentRound.Status != event.currentRoundStatus {
 		return
 	}
+	log.Infow("timer event triggered",
+		"game id", g.gameInfo.ID,
+		"round", g.currentRound.RoundNumber,
+		"round status", g.currentRound.Status,
+		"game status", g.gameInfo.Status)
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
 		err := g.handleGameAbortInit()
