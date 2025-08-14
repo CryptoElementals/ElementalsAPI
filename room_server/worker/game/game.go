@@ -175,10 +175,13 @@ func (g *Game) GetBattleInfo(roundNum uint32) (*proto.RoundResult, *proto.GameRe
 	var gameRes *proto.GameResult
 	if g.gameInfo.GameResult != nil {
 		gameRes = conversion.DbGameResultToProtoGameResult(g.gameInfo.GameResult)
+		gameRes.GameContinueTimeout = uint64(g.gameInfo.GameArgs.ContinueTimeout)
 	}
 	for _, round := range g.gameInfo.Rounds {
 		if round.RoundNumber == (roundNum) {
-			return conversion.DbRoundToRoundResult(round), gameRes
+			roundRes := conversion.DbRoundToRoundResult(round)
+			roundRes.RoundConfirmTimeout = uint64(g.gameInfo.GameArgs.RoundConfirmTimeout)
+			return roundRes, gameRes
 		}
 	}
 	return nil, nil
