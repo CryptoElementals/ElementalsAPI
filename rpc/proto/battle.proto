@@ -51,7 +51,8 @@ message RoundResult {
     repeated PlayerRoundStat Players = 1;
     uint32 RoundNumber = 2;
     bool IsGameOver = 3;
-    uint64 RoundEndTime =4; 
+    uint64 RoundEndTime = 4; 
+    uint64 RoundConfirmTimeout = 5;
 }
 
 message PlayerReward {
@@ -80,6 +81,7 @@ message GameResult {
     string WinnerTemporaryAddress = 3;
     GameResultType GameResultType = 5;
     BattleReward Reward = 6;
+    uint64 GameContinueTimeout = 7;
 }
 
 enum BattleEffectType {
