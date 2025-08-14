@@ -3,6 +3,8 @@ package battle
 import (
 	"fmt"
 
+	"github.com/CryptoElementals/common/log"
+
 	"github.com/CryptoElementals/common/config"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
@@ -236,6 +238,7 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 
 	isGameOver, grType, winner, temporaryAddress, finalMul := be.gameLogic.CheckGameOver(gameEndState, input.RoundNumber)
 
+	log.Info("engine isGameOver", isGameOver)
 	// 先构建回合结果（暂不含 GameResult）
 	roundRes := &RoundResult{
 		Players:     playerStats,

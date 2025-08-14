@@ -77,22 +77,22 @@ func TestExecuteRoundProto(t *testing.T) {
 	engine := NewBattleEngine()
 
 	protoInput := &pb.RoundInput{
-		RoundNumber: 3,
+		RoundNumber: 1,
 		Players: []*pb.PlayerRoundInput{
 			{
 				WalletAddress:    "player1_address",
 				TemporaryAddress: "PLAYER1_TEMP_ADDRESS",
-				Cards:            []int32{},
-				HP:               500,
-				LostHP:           4000,
-				Commitment:       []byte(""),
+				Cards:            []int32{1, 2, 3},
+				HP:               6000,
+				LostHP:           0,
+				Commitment:       []byte("dummy"),
 			},
 			{
 				WalletAddress:    "player2_address",
 				TemporaryAddress: "PLAYER2_TEMP_ADDRESS",
-				Cards:            []int32{},
-				HP:               1500,
-				LostHP:           8000,
+				Cards:            []int32{2, 5, 4},
+				HP:               6000,
+				LostHP:           0,
 				Commitment:       []byte("dummy"),
 			},
 		},

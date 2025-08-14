@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -152,6 +153,8 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 		task.Response.BaseResponse.Message = "RoomServer GetBattleInfo failed: " + err.Error()
 		return task.Response, nil
 	}
+
+	log.Info("IsGameOver", battleInfo.RoundResult.IsGameOver)
 
 	// 转换回合结果
 	roundResult := &RoundResult{
