@@ -145,10 +145,10 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 		task.Response.Mode = uint32(gamePhase.GameType)
 		task.Response.PvPInfo.Phase = 3
 		task.Response.BaseResponse.Message = "Player has entered battle"
-	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
-		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 4
-		task.Response.BaseResponse.Message = "Player is waiting for continue"
+	// case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
+	// 	task.Response.Mode = uint32(gamePhase.GameType)
+	// 	task.Response.PvPInfo.Phase = 4
+	// 	task.Response.BaseResponse.Message = "Player is waiting for continue"
 
 	default:
 		task.Response.Mode = 0
