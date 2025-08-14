@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -169,10 +168,6 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
 		if q.botMgr.isInGame(*addr) {
 			q.botMgr.releaseInGameBot(*addr)
-			err := q.lockToken(addr)
-			if err != nil {
-				return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
-			}
 		}
 	}
 	q.continueManager.addGame(event.GameInfo)

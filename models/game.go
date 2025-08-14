@@ -42,6 +42,7 @@ type Round struct {
 	SetupOnChainAt   int64                     `json:"setup_on_chain_at"`
 	IsLastRound      bool                      `json:"is_last_round"`
 	CompleteReason   proto.RoundCompleteReason `json:"complete_reason"`
+	RoundEndTime     int64                     `json:"round_end_at"`
 }
 
 // PlayerRoundInfo 回合玩家记录

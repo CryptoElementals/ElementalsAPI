@@ -91,7 +91,10 @@ func (s *Service) runBots() {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			b.run()
+			err := b.run()
+			if err != nil {
+				log.Errorw("cannot run bot", "err", err, "addr", b.addr.String())
+			}
 		}()
 	}
 }
