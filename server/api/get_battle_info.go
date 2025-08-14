@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -66,9 +65,11 @@ type GameResult struct {
 
 // RoundResult 回合结果
 type RoundResult struct {
-	Round      uint32            `json:"Round"`      // 回合号
-	IsGameOver bool              `json:"IsGameOver"` // 游戏是否结束
-	Players    []PlayerRoundStat `json:"Players"`    // 玩家回合统计
+	Round           uint32            `json:"Round"`            // 回合号
+	RoundEndAt      uint64            `json:"RoundEndAt"`       // 回合结束时间
+	TimeoutDuration uint64            `json:"TimeoutDuratiatn"` // 超时时间
+	IsGameOver      bool              `json:"IsGameOver"`       // 游戏是否结束
+	Players         []PlayerRoundStat `json:"Players"`          // 玩家回合统计
 }
 
 // GetBattleInfoResponse 响应结构体
@@ -154,13 +155,12 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	log.Info("IsGameOver", battleInfo.RoundResult.IsGameOver)
-
 	// 转换回合结果
 	roundResult := &RoundResult{
 		Round:      battleInfo.RoundResult.RoundNumber,
 		Players:    make([]PlayerRoundStat, 0, len(battleInfo.RoundResult.Players)),
 		IsGameOver: battleInfo.RoundResult.IsGameOver,
+		RoundEndAt: battleInfo.RoundResult.RoundEndTime,
 	}
 
 	// 转换玩家统计信息
