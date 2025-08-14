@@ -2,6 +2,7 @@ package battle
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/CryptoElementals/common/config"
 	pb "github.com/CryptoElementals/common/rpc/proto"
@@ -56,24 +57,54 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 		}
 	}
 
-	// 检查是否有离线玩家
+	// 检查是否都提交了commitment，没提交的视为离线
 	hasOfflinePlayer := false
 	for _, p := range input.Players {
+		log.Println("p.Status", p.Status)
 		if p.Status == PLAYER_OFFLINE {
 			hasOfflinePlayer = true
 			break
 		}
 	}
 
-	// 获取所有在线玩家的卡牌
-	playerCards := make([][]*Card, playerCount)
-	for i, p := range input.Players {
-		if p.Status == PLAYER_ONLINE {
-			cards, err := be.cardFactory.GetCards(p.Cards)
-			if err != nil {
-				return nil, err
+	log.Println("hasOfflinePlayer", hasOfflinePlayer)
+
+	//检查是否都提交了卡牌
+	if !hasOfflinePlayer {
+		for i := range input.Players {
+			p := &input.Players[i]
+			log.Println("p.Status", p.Status)
+			log.Println("p.Cards", p.Cards)
+			if len(p.Cards) != 3 {
+				p.Status = PLAYER_OFFLINE
+				hasOfflinePlayer = true
+			} else {
+				// 数量为3的同时校验卡牌内容是否合规，不合规也视为离线
+				if err := be.gameLogic.validateCardElements(p.Cards, fmt.Sprintf("Player %d", i+1)); err != nil {
+					log.Println("validateCardElements failed at first step, mark offline:", err)
+					p.Status = PLAYER_OFFLINE
+					hasOfflinePlayer = true
+				}
 			}
-			playerCards[i] = cards
+			log.Println("p.Status", p.Status)
+		}
+	}
+	log.Println("hasOfflinePlayer", hasOfflinePlayer)
+
+	// 获取所有在线玩家的卡牌（只有在没有离线玩家时才需要获取）
+	playerCards := make([][]*Card, playerCount)
+	if !hasOfflinePlayer {
+		for i, p := range input.Players {
+			if p.Status == PLAYER_ONLINE {
+				cards, err := be.cardFactory.GetCards(p.Cards)
+				if err != nil {
+					log.Println("GetCards failed, mark offline:", err)
+					input.Players[i].Status = PLAYER_OFFLINE
+					hasOfflinePlayer = true
+					continue
+				}
+				playerCards[i] = cards
+			}
 		}
 	}
 
@@ -122,29 +153,31 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 					p2BeforeMul := p2.Multiplier
 					p1.HP += be.elementalSystem.ExecuteEffects(effects1)
 					p2.HP += be.elementalSystem.ExecuteEffects(effects2)
-					// 下限 0，上限 MaxHP
+					// 下限 0，不设置上限
 					if p1.HP < 0 {
 						p1.HP = 0
-					} else if p1.HP > config.GameParams.MaxHP {
-						p1.HP = config.GameParams.MaxHP
 					}
 					if p2.HP < 0 {
 						p2.HP = 0
-					} else if p2.HP > config.GameParams.MaxHP {
-						p2.HP = config.GameParams.MaxHP
 					}
-					// 计算此次卡牌造成的伤害，并累加到总 LostHP
+					// 计算此次卡牌造成的伤害，并累加到总 LostHP, 如果超过初始血量，则设置为初始血量
 					damage1 := p1BeforeHP - p1.HP
 					if damage1 < 0 {
 						damage1 = 0
 					}
 					p1.LostHP += damage1
+					if p1.LostHP > config.GameParams.InitialHP {
+						p1.LostHP = config.GameParams.InitialHP
+					}
 
 					damage2 := p2BeforeHP - p2.HP
 					if damage2 < 0 {
 						damage2 = 0
 					}
 					p2.LostHP += damage2
+					if p2.LostHP > config.GameParams.InitialHP {
+						p2.LostHP = config.GameParams.InitialHP
+					}
 					p1.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p1.LostHP)
 					p2.Multiplier = be.multiplierCalc.CalculateMultiplierByLostHP(p2.LostHP)
 

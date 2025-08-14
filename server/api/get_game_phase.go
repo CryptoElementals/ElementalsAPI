@@ -172,7 +172,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 				Cards:            p.Cards,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
-				InitialHP:        int32(config.GameParams.MaxHP),
+				InitialHP:        int32(config.GameParams.InitialHP),
 				InitialMultipler: int32(config.GameParams.InitialMultiplier),
 			})
 		}

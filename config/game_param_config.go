@@ -1,7 +1,7 @@
 package config
 
 type GameParamConfig struct {
-	MaxHP             int     `mapstructure:"max-hp"`
+	InitialHP         int     `mapstructure:"initial-hp"`
 	InitialMultiplier int     `mapstructure:"initial-multiplier"`
 	SystemFeeRate     float64 `mapstructure:"system-fee-rate"`     // 系统抽水比例，例如 0.016 表示 1.6%
 	WinnerPointRate   float64 `mapstructure:"winner-point-rate"`   // 获胜者积分倍率
@@ -20,8 +20,8 @@ var GameParams = GameParamConfig{}
 // InitializeGameParams 设置 GameParams 的默认值并赋值给全局变量
 func InitializeGameParams(gameParams *GameParamConfig) {
 	// 设置默认值
-	if gameParams.MaxHP == 0 {
-		gameParams.MaxHP = 5000
+	if gameParams.InitialHP == 0 {
+		gameParams.InitialHP = 6000
 	}
 	if gameParams.InitialMultiplier == 0 {
 		gameParams.InitialMultiplier = 1
