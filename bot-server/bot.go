@@ -87,6 +87,7 @@ type Bot struct {
 	bindOpt     *bind.TransactOpts
 	chanEvt     chan *proto.Event
 	chanErr     chan error
+	subscribing bool
 }
 
 func NewBot(
@@ -111,13 +112,28 @@ func NewBot(
 		client:      client,
 		ethClient:   ethClient,
 		bindOpt:     opt,
-		chanEvt:     make(chan *proto.Event),
-		chanErr:     make(chan error),
+		chanEvt:     make(chan *proto.Event, 1),
+		chanErr:     make(chan error, 1),
 	}
 }
 
 func (b *Bot) formatBotID() string {
 	return fmt.Sprintf("bot_%s", b.addr.String())
+}
+
+func (b *Bot) resubscribe(subId string, sleepTime time.Duration) error {
+	err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
+	if err != nil {
+		return err
+	}
+	b.chanErr = make(chan error, 1)
+	b.chanEvt = make(chan *proto.Event, 1)
+	time.Sleep(sleepTime)
+	err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *Bot) run() error {
@@ -130,6 +146,11 @@ func (b *Bot) run() error {
 		return err
 	}
 	needReconnect := false
+	err = b.recoverGameInfo()
+	if err != nil {
+		log.Errorw("cannot recover game", "err", err)
+		needReconnect = true
+	}
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -138,17 +159,14 @@ func (b *Bot) run() error {
 		default:
 		}
 		if needReconnect {
-			time.Sleep(10 * time.Second)
-			err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
+			// make sure the old game expires
+			err := b.resubscribe(subId, time.Second*120)
 			if err != nil {
-				continue
-			}
-			err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
-			if err != nil {
+				log.Errorw("cannot resubscribe", "err", err)
+				time.Sleep(time.Second * 10)
 				continue
 			}
 		}
-
 		err = b.runGameLoop()
 		if err != nil {
 			needReconnect = true
@@ -156,6 +174,64 @@ func (b *Bot) run() error {
 		}
 		needReconnect = false
 	}
+}
+
+func (b *Bot) recoverGameInfo() error {
+	phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
+	if err != nil {
+		log.Errorw("error get game phase", "err", err)
+		return err
+	}
+	if phase.PvPInfo.Status != proto.PlayerStatus_PLAYER_IN_GAME {
+		return nil
+	}
+	b.currentGame = &gameInfo{
+		id: uint(phase.PvPInfo.GameID),
+		currentRound: roundInfo{
+			roundNum: uint(phase.PvPInfo.RoundNumber),
+		},
+	}
+	log.Infow("recover game", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+	if phase.PvPInfo.ContractAddress != "" {
+		c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
+		if err != nil {
+			log.Errorw("new room contract failed", "err", err, "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.PvPInfo.ContractAddress)
+			return err
+		}
+		b.currentGame.gameContract = c
+		b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
+	}
+	for _, player := range phase.Players {
+		// found myself
+		if player.Address.TemporaryAddress == b.addr.TemporaryAddress &&
+			player.Address.WalletAddress == b.addr.WalletAddress {
+			// need confirm
+			if !player.IsConfirmed {
+				log.Infow("recover game, confirm battle", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
+				err := b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
+				if err != nil {
+					log.Errorw("confirm battle failed", "addr", types.ToJsonLoggable(b.addr), "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+					return err
+				}
+				return nil
+			}
+			// didn't send cards
+			if len(player.Commitment) == 0 {
+				log.Infow("recover game, submit cards", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
+				b.currentGame.currentRound.prepareCards()
+				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
+				if err != nil {
+					log.Errorw("submit card hash failed", "addr", types.ToJsonLoggable(b.addr), "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
+					return err
+				}
+				log.Infow("submitted card hash", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
+					"contract", b.currentGame.gameContractAddress, "hash", hexutil.Encode(b.currentGame.currentRound.commitment[:]), "txHash", tx.Hash().String())
+				return nil
+			}
+			return fmt.Errorf("game not recoverable, addr: %s, game: %d, round: %d", types.ToJsonLoggable(b.addr), b.currentGame.id, b.currentGame.currentRound.roundNum)
+		}
+	}
+	return fmt.Errorf("cannot find myself from game player list, addr: %s, game: %d, round: %d", types.ToJsonLoggable(b.addr), b.currentGame.id, b.currentGame.currentRound.roundNum)
 }
 
 func (b *Bot) runGameLoop() error {
