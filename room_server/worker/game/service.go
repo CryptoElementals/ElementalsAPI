@@ -91,7 +91,10 @@ func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.R
 	}
 	for _, round := range gameInfo.Rounds {
 		if round.RoundNumber == roundNum {
-			return conversion.DbRoundToRoundResult(round), conversion.DbGameResultToProtoGameResult(gameInfo.GameResult), nil
+			roundRes := conversion.DbRoundToRoundResult(round)
+			gameRes := conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
+			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.RoundConfirmTimeout)
+			gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.ContinueTimeout)
 		}
 	}
 	return nil, nil, errors.New("round not found")
