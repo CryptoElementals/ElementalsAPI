@@ -2,7 +2,6 @@ package battle
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/CryptoElementals/common/config"
 	pb "github.com/CryptoElementals/common/rpc/proto"
@@ -60,36 +59,28 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 	// 检查是否都提交了commitment，没提交的视为离线
 	hasOfflinePlayer := false
 	for _, p := range input.Players {
-		log.Println("p.Status", p.Status)
 		if p.Status == PLAYER_OFFLINE {
 			hasOfflinePlayer = true
 			break
 		}
 	}
 
-	log.Println("hasOfflinePlayer", hasOfflinePlayer)
-
 	//检查是否都提交了卡牌
 	if !hasOfflinePlayer {
 		for i := range input.Players {
 			p := &input.Players[i]
-			log.Println("p.Status", p.Status)
-			log.Println("p.Cards", p.Cards)
 			if len(p.Cards) != 3 {
 				p.Status = PLAYER_OFFLINE
 				hasOfflinePlayer = true
 			} else {
 				// 数量为3的同时校验卡牌内容是否合规，不合规也视为离线
 				if err := be.gameLogic.validateCardElements(p.Cards, fmt.Sprintf("Player %d", i+1)); err != nil {
-					log.Println("validateCardElements failed at first step, mark offline:", err)
 					p.Status = PLAYER_OFFLINE
 					hasOfflinePlayer = true
 				}
 			}
-			log.Println("p.Status", p.Status)
 		}
 	}
-	log.Println("hasOfflinePlayer", hasOfflinePlayer)
 
 	// 获取所有在线玩家的卡牌（只有在没有离线玩家时才需要获取）
 	playerCards := make([][]*Card, playerCount)
@@ -98,7 +89,6 @@ func (be *BattleEngine) ExecuteRound(input *RoundInput) (*RoundResult, error) {
 			if p.Status == PLAYER_ONLINE {
 				cards, err := be.cardFactory.GetCards(p.Cards)
 				if err != nil {
-					log.Println("GetCards failed, mark offline:", err)
 					input.Players[i].Status = PLAYER_OFFLINE
 					hasOfflinePlayer = true
 					continue
