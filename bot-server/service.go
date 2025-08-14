@@ -81,19 +81,19 @@ func NewService(
 }
 
 func (s *Service) Start() error {
-	return s.runBots()
+	s.runBots()
+	return nil
 }
 
-func (s *Service) runBots() error {
+func (s *Service) runBots() {
 	log.Infow("run bots", types.ToJsonLoggable(s.addresses))
 	for _, b := range s.bots {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			err := b.run()
+			b.run()
 		}()
 	}
-	return nil
 }
 
 func (s *Service) Stop() {
