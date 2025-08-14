@@ -179,9 +179,10 @@ func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
 		return nil
 	}
 	return &proto.RoundResult{
-		Players:     DbPlayerRoundInfosToProtoPlayerRoundStats(round.PlayerRoundInfos),
-		RoundNumber: round.RoundNumber,
-		IsGameOver:  round.IsLastRound,
+		Players:      DbPlayerRoundInfosToProtoPlayerRoundStats(round.PlayerRoundInfos),
+		RoundNumber:  round.RoundNumber,
+		IsGameOver:   round.IsLastRound,
+		RoundEndTime: uint64(round.RoundEndTime),
 	}
 }
 

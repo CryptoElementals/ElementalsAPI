@@ -50,7 +50,8 @@ message PlayerRoundStat {
 message RoundResult {
     repeated PlayerRoundStat Players = 1;
     uint32 RoundNumber = 2;
-    bool IsGameOver = 4;
+    bool IsGameOver = 3;
+    uint64 RoundEndTime =4; 
 }
 
 message PlayerReward {

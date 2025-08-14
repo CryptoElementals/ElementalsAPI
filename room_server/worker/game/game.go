@@ -589,6 +589,7 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 
 func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 	g.currentRound.CompleteReason = reason
+	g.currentRound.RoundEndTime = time.Now().Unix()
 	e := battle.NewBattleEngine()
 	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
 	for _, p := range input.Players {
