@@ -27,7 +27,7 @@ type GetGamePhaseRequest struct {
 
 // PvPInfo PvP对战信息
 type PvPInfo struct {
-	Phase           uint32 `json:"Phase"`           // None, Queueing, Matching, InBattle: 0123
+	Phase           uint32 `json:"Phase"`           // None, Confirming, InBattle, WaitingContinue: 0123
 	GameID          uint32 `json:"GameID"`          // 游戏ID
 	ContractAddress string `json:"ContractAddress"` // 房间合约地址
 	BeginAt         uint64 `json:"BeginAt"`         // 开始时间
@@ -124,8 +124,8 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	task.Response.PvPInfo.BeginAt = gamePhase.PvPInfo.BeginAt
-	// task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
-	task.Response.PvPInfo.TimeoutDuration = 20
+	task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
+	// task.Response.PvPInfo.TimeoutDuration = 20
 	task.Response.PvPInfo.ContractAddress = gamePhase.PvPInfo.ContractAddress
 	task.Response.PvPInfo.Round = gamePhase.PvPInfo.RoundNumber
 	if gamePhase.PvPInfo.GameID != 0 {
@@ -172,7 +172,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 				Cards:            p.Cards,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
-				InitialHP:        int32(config.GameParams.MaxHP),
+				InitialHP:        int32(config.GameParams.InitialHP),
 				InitialMultipler: int32(config.GameParams.InitialMultiplier),
 			})
 		}

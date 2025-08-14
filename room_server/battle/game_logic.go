@@ -1,6 +1,8 @@
 package battle
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // GameEndState 用于游戏结束判定的玩家状态
 type GameEndState struct {
@@ -81,7 +83,6 @@ func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, 
 			offlineCount++
 		}
 	}
-
 	// 如果有离线玩家，需要特殊处理
 	if offlineCount > 0 {
 		if offlineCount == len(states) {
@@ -119,9 +120,6 @@ func (gl *GameLogic) CheckGameOver(states []*GameEndState, round uint32) (bool, 
 			}
 
 			return true, GAME_NORMAL, winnersStr, winnerTempsStr, maxLoserMul
-		} else {
-			// 所有人都离线：按传入的血量判断胜负，立即结算，不等第3轮
-			return gl.checkGameOverByHP(states, round, true)
 		}
 	}
 
@@ -270,7 +268,7 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 		// Status字段默认为PLAYER_ONLINE(0)，无需显式设置
 	}
 
-	// 然后处理卡牌数量不足的情况（强制设为离线）
+	// 然后处理未提交的情况（强制设为离线）
 	for idx, p := range input.Players {
 		// 如果玩家投降，设置为投降状态（优先级最高）
 		if p.Surrendered {
@@ -281,20 +279,6 @@ func (gl *GameLogic) ValidateRoundInput(input *RoundInput) error {
 		// 如果未提交 Commitment，则视为离线
 		if len(p.Commitment) == 0 {
 			input.Players[idx].Status = PLAYER_OFFLINE
-		}
-
-		// 如果卡牌数量不足 3，也视为离线
-		if len(p.Cards) < 3 {
-			input.Players[idx].Status = PLAYER_OFFLINE
-		}
-	}
-
-	// 验证卡牌元素类型（只对在线且卡牌数量为3的玩家）
-	for idx, p := range input.Players {
-		if input.Players[idx].Status == PLAYER_ONLINE && len(p.Cards) == 3 {
-			if err := gl.validateCardElements(p.Cards, fmt.Sprintf("Player %d", idx+1)); err != nil {
-				return err
-			}
 		}
 	}
 
