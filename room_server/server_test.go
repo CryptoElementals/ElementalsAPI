@@ -45,12 +45,9 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 				RoomManagerAddress: roomManagerAddress,
 			},
 		},
-		WalletPaths:     []string{tempFile},
-		RoundTimeout:    gametTimeout,
-		ContinueTimeout: gametTimeout,
-		MaxRounds:       3,
-		GameInitialHP:   3000,
-		ListenPort:      30011,
+		WalletPaths: []string{tempFile},
+
+		ListenPort: 30011,
 		GameParams: config.GameParamConfig{
 			TokenThreshold:    1000,
 			MaxHP:             3000,
@@ -61,6 +58,10 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 			TieTokenRate:      0.008,
 			TiePointRate:      0.008,
 			BaseStake:         1000,
+			RoundTimeout:      gametTimeout,
+			ContinueTimeout:   gametTimeout,
+			MaxRounds:         3,
+			InitialHP:         3000,
 		},
 	}
 	config.InitializeGameParams(&cfg.GameParams)
@@ -90,6 +91,27 @@ func TestInsertCards(t *testing.T) {
 	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
 	require.NoError(t, err)
 	prepareCards(t)
+}
+
+func TestInsertUserProfile(t *testing.T) {
+	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
+	require.NoError(t, err)
+	userProfile1 := dao.UserProfile{
+		Address:       "0x1a8aea9401d35cd6d6a955a386480e7917d0d89b",
+		Name:          "bot1",
+		AvatarURL:     "avatar_6.png",
+		BackgroundURL: "bg_6.png",
+	}
+	userProfile2 := dao.UserProfile{
+		Address:       "0xcd57ac6115d73b401ce53e34b1320e6265261a91",
+		Name:          "bot2",
+		AvatarURL:     "avatar_5.png",
+		BackgroundURL: "bg_5.png",
+	}
+	err = db.CreateUserProfile(&userProfile1)
+	require.NoError(t, err)
+	err = db.CreateUserProfile(&userProfile2)
+	require.NoError(t, err)
 }
 
 func prepareCards(t *testing.T) {

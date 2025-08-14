@@ -81,77 +81,22 @@ func NewService(
 }
 
 func (s *Service) Start() error {
-	if s.mimicPlayers {
-		return s.runPlayers()
-	} else {
-		return s.runBots()
-	}
-}
-
-func (s *Service) runPlayers() error {
-	log.Infow("run players", types.ToJsonLoggable(s.addresses))
-	for _, b := range s.bots {
-		err := b.client.PubSubClient.Subscribe(b.addr.String(), b.formatBotID(), b.chanEvt, b.chanErr)
-		if err != nil {
-			return err
-		}
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			defer b.client.PubSubClient.Unsubscribe(b.addr.String(), b.formatBotID())
-			for {
-				select {
-				case <-s.ctx.Done():
-					return
-				default:
-					err := b.runGameLoop()
-					if err != nil {
-						log.Errorw("run bot failed", "err", err, "addr", b.addr)
-						return
-					}
-				}
-			}
-
-		}()
-	}
+	s.runBots()
 	return nil
 }
 
-func (s *Service) runBots() error {
+func (s *Service) runBots() {
 	log.Infow("run bots", types.ToJsonLoggable(s.addresses))
 	for _, b := range s.bots {
-		err := b.client.PubSubClient.Subscribe(b.addr.String(), b.formatBotID(), b.chanEvt, b.chanErr)
-		if err != nil {
-			return err
-		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			for {
-				select {
-				case <-s.ctx.Done():
-					return
-				default:
-					err := b.runGameLoop()
-					if err != nil {
-						log.Errorw("start bot failed", "err", err, "addr", b.addr)
-						return
-					}
-				}
-			}
-
+			b.run()
 		}()
 	}
-	return nil
 }
 
 func (s *Service) Stop() {
 	s.ccl()
 	s.wg.Wait()
-	// unregister all bots anyway
-	log.Infow("unregister bots", types.ToJsonLoggable(s.addresses))
-	err := s.rpcClient.RpcClient.UnregisterBots(context.Background(), s.addresses)
-	if err != nil {
-		log.Errorw("cannot unregister bots", "err", err)
-	}
 }

@@ -120,6 +120,44 @@ func (b *Bot) formatBotID() string {
 	return fmt.Sprintf("bot_%s", b.addr.String())
 }
 
+func (b *Bot) run() error {
+	subId := b.formatBotID()
+	if b.mimicPlayer {
+		subId = b.addr.String()
+	}
+	err := b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	if err != nil {
+		return err
+	}
+	needReconnect := false
+	for {
+		select {
+		case <-b.ctx.Done():
+			log.Infow("bot canceled", "addr", b.addr.String())
+			return nil
+		default:
+		}
+		if needReconnect {
+			time.Sleep(10 * time.Second)
+			err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
+			if err != nil {
+				continue
+			}
+			err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+			if err != nil {
+				continue
+			}
+		}
+
+		err = b.runGameLoop()
+		if err != nil {
+			needReconnect = true
+			continue
+		}
+		needReconnect = false
+	}
+}
+
 func (b *Bot) runGameLoop() error {
 	if b.mimicPlayer {
 		err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
@@ -172,11 +210,11 @@ func (b *Bot) runGameLoop() error {
 			case proto.EventType_TYPE_PART_CONFIRMED:
 				log.Infow("player part confirmed", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 			case proto.EventType_TYPE_GAME_CREATED:
-				log.Infow("game created", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("game created", "game id", b.currentGame.id)
 				// get contract
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
-					log.Errorw("get game phase failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+					log.Errorw("get game phase failed", "err", err, "game id", b.currentGame.id)
 				}
 
 				c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
@@ -187,51 +225,54 @@ func (b *Bot) runGameLoop() error {
 				b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
 				b.currentGame.gameContract = c
 			case proto.EventType_TYPE_ROUND_READY:
-				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				// submit commitments
 				b.currentGame.currentRound.prepareCards()
 				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
 				if err != nil {
-					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", b.currentGame.gameContractAddress)
+					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
 				}
-				log.Infow("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
+				log.Infow("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
 					"contract", b.currentGame.gameContractAddress, "hash", hexutil.Encode(b.currentGame.currentRound.commitment[:]), "txHash", tx.Hash().String())
 			case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
-				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				// submit cards
 				tx, err := b.currentGame.gameContract.SubmitCards(b.bindOpt, b.currentGame.currentRound.cards, b.currentGame.currentRound.salt, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
 				if err != nil {
-					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", b.currentGame.gameContractAddress)
+					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
 				}
-				log.Infow("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound,
+				log.Infow("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
 					"contract", b.currentGame.gameContractAddress, "cards", b.currentGame.currentRound.cards, "txHash", tx.Hash().String())
 			case proto.EventType_TYPE_CARDS_ON_CHAIN:
-				log.Info("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
-				// skip
-
+				log.Infow("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 			case proto.EventType_TYPE_ROUND_COMPLETE:
-				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				battleInfo, err := b.client.RpcClient.GetBattleInfo(b.ctx, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
-					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
+					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 					continue
 				}
 				if !battleInfo.RoundResult.IsGameOver {
 					b.currentGame.currentRound.prepareNewRound()
 					b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
-					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound, b.currentGame.id)
+					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound.roundNum, b.currentGame.id)
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Infow("game complete", "game id", b.currentGame.id)
+				err := b.client.RpcClient.RefuseContinueGame(b.ctx, b.addr, b.currentGame.id)
+				if err != nil {
+					log.Errorw("error refuse continue game", "err", err)
+				}
 				b.currentGame = nil
+				// skip continue
+
 				return nil
 			}
 		case err, ok := <-b.chanErr:
 			if !ok {
 				break
 			}
-			log.Errorw("received error", "err", err)
-			time.Sleep(time.Second * 5)
+			return err
 		}
 	}
 }

@@ -2,17 +2,34 @@ package dao
 
 import "github.com/CryptoElementals/common/rpc/proto"
 
+type GameArgs struct {
+	MaxRounds int64
+	InitialHP int64 `json:"initial_hp"`
+
+	// timeouts
+	GameMatchTimeout    int64
+	RoundConfirmTimeout int64
+	RoundTimeout        int64
+	ContinueTimeout     int64
+
+	// timeout redundancy
+	GameMatchTimeoutRedundancy    int64
+	RoundConfirmTimeoutRedundancy int64
+	RoundTimeoutRedundancy        int64
+	ContinueTimeoutRedundancy     int64
+}
+
 type Game struct {
 	BaseModel
-	RoomContract string            `gorm:"index" json:"room_contract"` // 房间合约地址
-	Type         uint              `gorm:"not null" json:"type"`       // 游戏模式
-	Status       proto.GameStatus  `gorm:"not null" json:"status"`
-	InitialHP    int64             `json:"initial_hp"`
-	Players      []*GamePlayerInfo `json:"players"`
-	Rounds       []*Round          `json:"rounds"`
-	GameResult   *GameResult       `json:"game_result"`
-	MaxRounds    int64
-	RoundTimeout int64
+	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
+	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
+	Status       proto.GameStatus `gorm:"not null" json:"status"`
+
+	Players    []*GamePlayerInfo `json:"players"`
+	Rounds     []*Round          `json:"rounds"`
+	GameResult *GameResult       `json:"game_result"`
+
+	GameArgs
 }
 
 // Round 回合记录

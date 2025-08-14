@@ -20,20 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RpcService_JoinQueue_FullMethodName          = "/rpc.RpcService/JoinQueue"
-	RpcService_ExitQueue_FullMethodName          = "/rpc.RpcService/ExitQueue"
-	RpcService_ContinueGame_FullMethodName       = "/rpc.RpcService/ContinueGame"
-	RpcService_GetGamePhase_FullMethodName       = "/rpc.RpcService/GetGamePhase"
-	RpcService_IsPlayerInQueue_FullMethodName    = "/rpc.RpcService/IsPlayerInQueue"
-	RpcService_GetBattleInfo_FullMethodName      = "/rpc.RpcService/GetBattleInfo"
-	RpcService_ConfirmBattle_FullMethodName      = "/rpc.RpcService/ConfirmBattle"
-	RpcService_RefuseContinueGame_FullMethodName = "/rpc.RpcService/RefuseContinueGame"
-	RpcService_Surrender_FullMethodName          = "/rpc.RpcService/Surrender"
-	RpcService_GetPlayerToken_FullMethodName     = "/rpc.RpcService/GetPlayerToken"
-	RpcService_SubmitTransactions_FullMethodName = "/rpc.RpcService/SubmitTransactions"
-	RpcService_RegisterBot_FullMethodName        = "/rpc.RpcService/RegisterBot"
-	RpcService_RegisterBots_FullMethodName       = "/rpc.RpcService/RegisterBots"
-	RpcService_UnregisterBots_FullMethodName     = "/rpc.RpcService/UnregisterBots"
+	RpcService_JoinQueue_FullMethodName            = "/rpc.RpcService/JoinQueue"
+	RpcService_ExitQueue_FullMethodName            = "/rpc.RpcService/ExitQueue"
+	RpcService_ContinueGame_FullMethodName         = "/rpc.RpcService/ContinueGame"
+	RpcService_GetGamePhase_FullMethodName         = "/rpc.RpcService/GetGamePhase"
+	RpcService_IsPlayerInQueue_FullMethodName      = "/rpc.RpcService/IsPlayerInQueue"
+	RpcService_GetBattleInfo_FullMethodName        = "/rpc.RpcService/GetBattleInfo"
+	RpcService_ConfirmBattle_FullMethodName        = "/rpc.RpcService/ConfirmBattle"
+	RpcService_RefuseContinueGame_FullMethodName   = "/rpc.RpcService/RefuseContinueGame"
+	RpcService_Surrender_FullMethodName            = "/rpc.RpcService/Surrender"
+	RpcService_GetGameTimeoutConfig_FullMethodName = "/rpc.RpcService/GetGameTimeoutConfig"
+	RpcService_GetPlayerToken_FullMethodName       = "/rpc.RpcService/GetPlayerToken"
+	RpcService_SubmitTransactions_FullMethodName   = "/rpc.RpcService/SubmitTransactions"
 )
 
 // RpcServiceClient is the client API for RpcService service.
@@ -50,14 +48,11 @@ type RpcServiceClient interface {
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error)
 	// token related logic
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// chain related api
 	SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// bot server related api
-	RegisterBot(ctx context.Context, in *RegisterBotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	RegisterBots(ctx context.Context, in *RegisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	UnregisterBots(ctx context.Context, in *UnregisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type rpcServiceClient struct {
@@ -158,6 +153,16 @@ func (c *rpcServiceClient) Surrender(ctx context.Context, in *SurrenderRequest, 
 	return out, nil
 }
 
+func (c *rpcServiceClient) GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TimeoutConfig)
+	err := c.cc.Invoke(ctx, RpcService_GetGameTimeoutConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
@@ -178,36 +183,6 @@ func (c *rpcServiceClient) SubmitTransactions(ctx context.Context, in *Transacti
 	return out, nil
 }
 
-func (c *rpcServiceClient) RegisterBot(ctx context.Context, in *RegisterBotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_RegisterBot_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) RegisterBots(ctx context.Context, in *RegisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_RegisterBots_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) UnregisterBots(ctx context.Context, in *UnregisterBotsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_UnregisterBots_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // RpcServiceServer is the server API for RpcService service.
 // All implementations must embed UnimplementedRpcServiceServer
 // for forward compatibility.
@@ -222,14 +197,11 @@ type RpcServiceServer interface {
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
 	Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error)
+	GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error)
 	// token related logic
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	// chain related api
 	SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error)
-	// bot server related api
-	RegisterBot(context.Context, *RegisterBotRequest) (*emptypb.Empty, error)
-	RegisterBots(context.Context, *RegisterBotsRequest) (*emptypb.Empty, error)
-	UnregisterBots(context.Context, *UnregisterBotsRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRpcServiceServer()
 }
 
@@ -267,20 +239,14 @@ func (UnimplementedRpcServiceServer) RefuseContinueGame(context.Context, *Refuse
 func (UnimplementedRpcServiceServer) Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Surrender not implemented")
 }
+func (UnimplementedRpcServiceServer) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetGameTimeoutConfig not implemented")
+}
 func (UnimplementedRpcServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
 }
 func (UnimplementedRpcServiceServer) SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitTransactions not implemented")
-}
-func (UnimplementedRpcServiceServer) RegisterBot(context.Context, *RegisterBotRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RegisterBot not implemented")
-}
-func (UnimplementedRpcServiceServer) RegisterBots(context.Context, *RegisterBotsRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RegisterBots not implemented")
-}
-func (UnimplementedRpcServiceServer) UnregisterBots(context.Context, *UnregisterBotsRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UnregisterBots not implemented")
 }
 func (UnimplementedRpcServiceServer) mustEmbedUnimplementedRpcServiceServer() {}
 func (UnimplementedRpcServiceServer) testEmbeddedByValue()                    {}
@@ -465,6 +431,24 @@ func _RpcService_Surrender_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_GetGameTimeoutConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).GetGameTimeoutConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_GetGameTimeoutConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).GetGameTimeoutConfig(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RpcService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetPlayerTokenRequest)
 	if err := dec(in); err != nil {
@@ -497,60 +481,6 @@ func _RpcService_SubmitTransactions_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RpcServiceServer).SubmitTransactions(ctx, req.(*TransactionBatch))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_RegisterBot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterBotRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).RegisterBot(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_RegisterBot_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).RegisterBot(ctx, req.(*RegisterBotRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_RegisterBots_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterBotsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).RegisterBots(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_RegisterBots_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).RegisterBots(ctx, req.(*RegisterBotsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_UnregisterBots_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UnregisterBotsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).UnregisterBots(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_UnregisterBots_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).UnregisterBots(ctx, req.(*UnregisterBotsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -599,24 +529,16 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RpcService_Surrender_Handler,
 		},
 		{
+			MethodName: "GetGameTimeoutConfig",
+			Handler:    _RpcService_GetGameTimeoutConfig_Handler,
+		},
+		{
 			MethodName: "GetPlayerToken",
 			Handler:    _RpcService_GetPlayerToken_Handler,
 		},
 		{
 			MethodName: "SubmitTransactions",
 			Handler:    _RpcService_SubmitTransactions_Handler,
-		},
-		{
-			MethodName: "RegisterBot",
-			Handler:    _RpcService_RegisterBot_Handler,
-		},
-		{
-			MethodName: "RegisterBots",
-			Handler:    _RpcService_RegisterBots_Handler,
-		},
-		{
-			MethodName: "UnregisterBots",
-			Handler:    _RpcService_UnregisterBots_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

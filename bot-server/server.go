@@ -23,8 +23,8 @@ func NewBotServer(cfg *config.BotConfig) *BotServer {
 	}
 }
 
-func (s *BotServer) Start() error {
-	return s.svc.runBots()
+func (s *BotServer) Start() {
+	s.svc.runBots()
 }
 
 func (s *BotServer) Stop() {
