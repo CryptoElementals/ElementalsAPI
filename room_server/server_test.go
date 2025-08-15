@@ -50,7 +50,6 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		ListenPort: 30011,
 		GameParams: config.GameParamConfig{
 			TokenThreshold:    1000,
-			MaxHP:             3000,
 			InitialMultiplier: 1,
 			SystemFeeRate:     0.016,
 			WinnerPointRate:   0.012,
