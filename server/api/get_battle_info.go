@@ -61,15 +61,16 @@ type GameResult struct {
 	GameResultType      uint32        `json:"GameResultType"`      // 游戏结果类型 (0:normal, 1:ko, 2:tie)
 	GameFinalMultiplier uint32        `json:"GameFinalMultiplier"` // 游戏最终倍率（平局为1）
 	Reward              *BattleReward `json:"Reward,omitempty"`    // 对战奖励
+	ContinueTimeout     uint64        `json:"ContinueTimeout"`     // 继续对战超时时间
 }
 
 // RoundResult 回合结果
 type RoundResult struct {
-	Round           uint32            `json:"Round"`            // 回合号
-	RoundEndAt      uint64            `json:"RoundEndAt"`       // 回合结束时间
-	TimeoutDuration uint64            `json:"TimeoutDuratiatn"` // 超时时间
-	IsGameOver      bool              `json:"IsGameOver"`       // 游戏是否结束
-	Players         []PlayerRoundStat `json:"Players"`          // 玩家回合统计
+	Round               uint32            `json:"Round"`               // 回合号
+	RoundEndAt          uint64            `json:"RoundEndAt"`          // 回合结束时间
+	RoundConfirmTimeout uint64            `json:"RoundConfirmTimeout"` // 超时时间
+	IsGameOver          bool              `json:"IsGameOver"`          // 游戏是否结束
+	Players             []PlayerRoundStat `json:"Players"`             // 玩家回合统计
 }
 
 // GetBattleInfoResponse 响应结构体
@@ -157,10 +158,11 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 转换回合结果
 	roundResult := &RoundResult{
-		Round:      battleInfo.RoundResult.RoundNumber,
-		Players:    make([]PlayerRoundStat, 0, len(battleInfo.RoundResult.Players)),
-		IsGameOver: battleInfo.RoundResult.IsGameOver,
-		RoundEndAt: battleInfo.RoundResult.RoundEndTime,
+		Round:               battleInfo.RoundResult.RoundNumber,
+		Players:             make([]PlayerRoundStat, 0, len(battleInfo.RoundResult.Players)),
+		IsGameOver:          battleInfo.RoundResult.IsGameOver,
+		RoundEndAt:          battleInfo.RoundResult.RoundEndTime,
+		RoundConfirmTimeout: battleInfo.RoundResult.RoundConfirmTimeout,
 	}
 
 	// 转换玩家统计信息
@@ -197,6 +199,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 			Winner:              battleInfo.GameResult.WinnerWalletAddress,
 			GameResultType:      uint32(battleInfo.GameResult.GameResultType),
 			GameFinalMultiplier: uint32(battleInfo.GameResult.Multiplier),
+			ContinueTimeout:     battleInfo.GameResult.GameContinueTimeout,
 		}
 
 		// 转换奖励信息
