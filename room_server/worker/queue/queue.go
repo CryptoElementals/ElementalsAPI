@@ -72,12 +72,21 @@ func (q *Queue) start() error {
 func (q *Queue) close() {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	// drain the queue when closing
 	q.closing = true
+	for addr := range q.queue {
+		q.removePlayerFromQueue(addr)
+	}
+	log.Info("queue closed")
 }
 
 func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	if q.closing {
+		log.Debugw("cannot join queue, server is closing", "addr", event.PlayerAddress.String())
+		return errors.New("server is closing")
+	}
 	if _, ok := q.queue[event.PlayerAddress]; ok {
 		return errors.New("player already in queue")
 	}
@@ -116,9 +125,8 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 }
 
 func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
-	evt := &types.GameMatchedEvent{}
-	for _, p := range players {
-		evt.Players = append(evt.Players, p)
+	evt := &types.GameMatchedEvent{
+		Players: players,
 	}
 	gid, err := q.gameCreator.HandleGameMatchedEvent(evt)
 	if err != nil {
@@ -147,9 +155,13 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	delete(q.queue, event.PlayerAddress)
-	q.queueCache.Delete(event.PlayerAddress.String())
-	err := q.unlockToken(&event.PlayerAddress)
+	return q.removePlayerFromQueue(event.PlayerAddress)
+}
+
+func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
+	delete(q.queue, player)
+	q.queueCache.Delete(player.String())
+	err := q.unlockToken(&player)
 	if err != nil {
 		log.Errorf("unlock user token failed: %s", err.Error())
 	}

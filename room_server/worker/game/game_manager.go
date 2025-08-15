@@ -24,6 +24,8 @@ type GameManager struct {
 	gameResultSettler GameResultSettler
 	args              dao.GameArgs
 	noRecover         bool
+	stopped           bool
+	wg                sync.WaitGroup
 }
 
 func NewGameManager(ctx context.Context,
@@ -45,11 +47,26 @@ func NewGameManager(ctx context.Context,
 }
 
 func (r *GameManager) Start() error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	err := r.recoverGames()
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (r *GameManager) Stop() {
+	r.lock.Lock()
+	log.Info("closing game manager")
+	for _, game := range r.gamesMap {
+		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "round", game.currentRound.Status)
+	}
+	r.stopped = true
+	r.lock.Unlock()
+	// wait until all games done
+	r.wg.Wait()
+	log.Info("game manager closed")
 }
 
 func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
@@ -102,6 +119,9 @@ func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) er
 func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+	if r.stopped {
+		return 0, errors.New("server stopping, drop game matched event")
+	}
 	gameID, err := r.createGame(evt.Players)
 	if err != nil {
 		return 0, err
@@ -161,7 +181,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, &r.args)
+	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -184,7 +204,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
 		}
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.chainSvc, r, &r.args)
+	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
 	err := game.saveGame()
 	if err != nil {
 		return 0, err
@@ -206,7 +226,7 @@ func (r *GameManager) recoverGames() error {
 		return err
 	}
 	for _, info := range gameInfos {
-		game := NewGameFromGameInfo(r.ctx, r.workerManager, r, info, r.chainSvc)
+		game := NewGameFromGameInfo(r.ctx, &r.wg, r.workerManager, r, info, r.chainSvc)
 		if game == nil {
 			continue
 		}

@@ -66,6 +66,10 @@ func (s *Service) Start() error {
 	return s.gameManager.Start()
 }
 
+func (s *Service) Stop() {
+	s.gameManager.Stop()
+}
+
 func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo {
 	gameInfo := s.gameManager.GetActiveGame(playerAddress)
 	return gameInfo

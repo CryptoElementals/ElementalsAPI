@@ -95,7 +95,7 @@ func UnlockUserToken(ctx context.Context, address string, tempAddress string) (e
 
 func BattleResultSettlement(game *dao.Game) error {
 	// game aborted when init
-	if game.Status == proto.GameStatus_GAME_INIT {
+	if game.Status == proto.GameStatus_GAME_ABORTED {
 		for _, pr := range game.Players {
 			log.Debugw("unlock player token", "wallet addr", pr.WalletAddress, "temp addr", pr.TemporaryAddress)
 			err := UnlockUserToken(context.Background(), pr.WalletAddress, pr.TemporaryAddress)

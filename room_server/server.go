@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
@@ -114,7 +115,16 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Stop() {
-	s.server.GracefulStop()
+	s.queueSvc.Stop()
+	s.gameSvc.Stop()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		s.server.GracefulStop()
+		wg.Done()
+	}()
+	s.pubsub.Stop()
+	wg.Wait()
 }
 
 func (s *Service) startListener() error {

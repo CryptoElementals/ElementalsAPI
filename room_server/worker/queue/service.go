@@ -40,9 +40,8 @@ func (s *Service) Start() error {
 	return s.queue.start()
 }
 
-func (s *Service) Stop() error {
+func (s *Service) Stop() {
 	s.queue.close()
-	return nil
 }
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {

@@ -60,6 +60,14 @@ func (s *PubSub) SetPlayerManager(playerManager PlayerManager) {
 	s.playerManager = playerManager
 }
 
+func (s *PubSub) Stop() {
+	for _, subMap := range s.subscribers {
+		for _, sub := range subMap {
+			sub.cancel()
+		}
+	}
+}
+
 func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic is required")

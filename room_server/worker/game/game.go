@@ -52,10 +52,12 @@ type Game struct {
 	workerMangerService *worker.WorkerManager
 	chainSvc            ContractClient
 	gameContextHandler  GameHandler
+	wg                  *sync.WaitGroup
 }
 
 func NewGame(
 	ctx context.Context,
+	wg *sync.WaitGroup,
 	players []types.PlayerAddress,
 	workerMangerService *worker.WorkerManager,
 	chainSvc ContractClient,
@@ -74,6 +76,7 @@ func NewGame(
 	}
 	game := &Game{
 		ctx: ctx,
+		wg:  wg,
 		gameInfo: &dao.Game{
 			Players:  daoPlayers,
 			Type:     types.GameTypePVP,
@@ -85,25 +88,29 @@ func NewGame(
 		gameContextHandler:  gameContinuer,
 	}
 	game.setupNewRound()
+	wg.Add(1)
 	return game
 }
 
 func NewGameFromGameInfo(
 	ctx context.Context,
+	wg *sync.WaitGroup,
 	workerMangerService *worker.WorkerManager,
 	gameContinuer GameHandler,
 	gameInfo *dao.Game,
 	chainSvc ContractClient) *Game {
 	g := &Game{
 		ctx:                 ctx,
+		wg:                  wg,
 		gameInfo:            gameInfo,
 		gamePlayers:         make(map[string]*gamePlayer),
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
 	}
-
+	wg.Add(1)
 	var terminateGame = func() {
+		defer wg.Done()
 		log.Errorw("game expired, terminate", "game id", gameInfo.ID, "status", gameInfo.Status)
 		if gameInfo.Status == proto.GameStatus_GAME_INIT {
 			err := g.handleGameAbortInit()
@@ -505,11 +512,6 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 
 // can go into game end from any other status
 func (g *Game) handleGameEnd() error {
-	completeEvt := &types.GameCompletedEvent{
-		GameID:   g.gameInfo.ID,
-		GameInfo: g.gameInfo,
-	}
-	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
 	g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
 	g.currentRound.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_END
@@ -517,11 +519,17 @@ func (g *Game) handleGameEnd() error {
 	if err != nil {
 		return err
 	}
+	completeEvt := &types.GameCompletedEvent{
+		GameID:   g.gameInfo.ID,
+		GameInfo: g.gameInfo,
+	}
+	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
-		return err
+		// we forward the game any way
+		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 	}
 	g.sendEventsToAllPlayers(gameCompletedEvt)
-	g.stopWorker()
+	g.stopGame()
 	return nil
 }
 
@@ -531,23 +539,30 @@ func (g *Game) handleGameAbortInit() error {
 	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
+	g.currentRound.IsLastRound = true
+	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
+	err := g.saveGame()
+	if err != nil {
+		return err
+	}
 	completeEvt := &types.GameCompletedEvent{
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
 	}
 	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
-	// we need a deterministic sequence for locks
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
-		return err
+		if err != nil {
+			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+		}
 	}
-	// we need a deterministic sequence for locks
 	g.sendEventsToAllPlayers(gameCompletedEvt)
-	g.stopWorker()
+	g.stopGame()
 	return nil
 }
 
-func (g *Game) stopWorker() {
+func (g *Game) stopGame() {
 	g.workerMangerService.CloseWorker(g.workerID())
+	g.wg.Done()
 }
 
 func (g *Game) createSelf() {
