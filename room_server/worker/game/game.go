@@ -110,7 +110,6 @@ func NewGameFromGameInfo(
 	}
 	wg.Add(1)
 	var terminateGame = func() {
-		defer wg.Done()
 		log.Errorw("game expired, terminate", "game id", gameInfo.ID, "status", gameInfo.Status)
 		if gameInfo.Status == proto.GameStatus_GAME_INIT {
 			err := g.handleGameAbortInit()
@@ -560,6 +559,33 @@ func (g *Game) handleGameAbortInit() error {
 	return nil
 }
 
+// can go into game end from any other status
+func (g *Game) handleGameAbortInternalError() error {
+	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
+	if g.currentRound != nil {
+		g.currentRound.IsLastRound = true
+		g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
+	}
+
+	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
+	g.gameInfo.GameResult = g.abortedGameResult()
+	err := g.saveGame()
+	if err != nil {
+		return err
+	}
+	completeEvt := &types.GameCompletedEvent{
+		GameID:   g.gameInfo.ID,
+		GameInfo: g.gameInfo,
+	}
+	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
+	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+	}
+	g.sendEventsToAllPlayers(gameCompletedEvt)
+	g.stopGame()
+	return nil
+}
+
 func (g *Game) stopGame() {
 	g.workerMangerService.CloseWorker(g.workerID())
 	g.wg.Done()
@@ -621,7 +647,7 @@ func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 	roundResult, gameResult, err := e.ExecuteRoundProto(input)
 	if err != nil {
 		log.Errorf("ExecuteRoundProto failed, err: %v", err)
-		return err
+		return g.handleGameAbortInternalError()
 	}
 	g.applyRoundResultToCurrentRound(roundResult)
 	if roundResult.IsGameOver {
@@ -801,6 +827,23 @@ func (g *Game) sendRoundReady() error {
 		return err
 	}
 	return nil
+}
+
+func (g *Game) abortedGameResult() *dao.GameResult {
+	gameRes := &dao.GameResult{
+		GameResultType: proto.GameResultType_GAME_ABORTED,
+		BattleReward: &dao.BattleReward{
+			PlayerRewards: []*dao.PlayerReward{},
+		},
+	}
+	for _, player := range g.gamePlayers {
+		playerReward := &dao.PlayerReward{
+			WalletAddress:    player.player.WalletAddress,
+			TemporaryAddress: player.player.TemporaryAddress,
+		}
+		gameRes.BattleReward.PlayerRewards = append(gameRes.BattleReward.PlayerRewards, playerReward)
+	}
+	return gameRes
 }
 
 func currentHpFromCards(cards []*dao.RoundSubmittedCard) int64 {
