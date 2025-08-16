@@ -215,8 +215,7 @@ func (g *Game) GetGamePhase() *proto.GamePhase {
 func (g *Game) saveGame() error {
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
-		log.Errorf("SaveGame failed, err: %v", err)
-		return err
+		log.Errorw("saveGame failed", "err", err, "game id", g.gameInfo.ID)
 	}
 	return nil
 }
@@ -224,7 +223,7 @@ func (g *Game) saveGame() error {
 func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 	err := db.SavePlayerRoundInfo(roundPlayer)
 	if err != nil {
-		return err
+		log.Errorw("savePlayerRoundInfo failed", "err", err, "game id", g.gameInfo.ID, "round num", g.currentRound.RoundNumber)
 	}
 	return nil
 }
@@ -232,7 +231,7 @@ func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 func (g *Game) saveRound(round *dao.Round) error {
 	err := db.SaveRound(round)
 	if err != nil {
-		return err
+		log.Errorw("saveRound failed", "err", err, "game id", g.gameInfo.ID, "round num", round.RoundNumber)
 	}
 	return nil
 }
@@ -298,10 +297,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 		return err
 	}
 	p.roundPlayer.Surrendered = true
-	err = g.savePlayerRoundInfo(p.roundPlayer)
-	if err != nil {
-		return err
-	}
+	g.savePlayerRoundInfo(p.roundPlayer)
 	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER)
 }
 
@@ -314,6 +310,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
 	}
+	// might be a chain error, ignore it
 	player, err := g.getGamePlayer(evt.PlayerAddress.TemporaryAddress)
 	if err != nil {
 		log.Errorf("getGamePlayer failed, err: %v", err)
@@ -333,10 +330,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		ReadyAddress: player.PlayerAddress(),
 	}))
 	if !allPlayersReady {
-		err := g.savePlayerRoundInfo(player.roundPlayer)
-		if err != nil {
-			log.Errorw("save player round info failed", "err", err)
-		}
+		g.savePlayerRoundInfo(player.roundPlayer)
 		return nil
 	}
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
@@ -455,7 +449,8 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		}
 	}
 	if !allCommitmentsOnChain {
-		return g.savePlayerRoundInfo(player.roundPlayer)
+		g.savePlayerRoundInfo(player.roundPlayer)
+		return nil
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
 	err = g.saveRound(g.currentRound)
@@ -500,10 +495,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 			break
 		}
 	}
-	err = g.savePlayerRoundInfo(player.roundPlayer)
-	if err != nil {
-		return err
-	}
+	g.savePlayerRoundInfo(player.roundPlayer)
 	if !allCardsOnChain {
 		return nil
 	}
