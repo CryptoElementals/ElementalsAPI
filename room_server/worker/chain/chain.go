@@ -102,11 +102,16 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 	roundTimeoutBigInt := big.NewInt(roundTimeout)
 	maxRoundsBigInt := big.NewInt(maxRounds)
 	initialHPBigInt := big.NewInt(initialHP)
+	retryCnt := 3
 	for {
 		select {
 		case <-c.ctx.Done():
 			return errors.New("create room contract failed, context canceled")
 		default:
+			if retryCnt == 0 {
+				return errors.New("send create room tx failed")
+			}
+			retryCnt--
 			txHash, err := c.roomMgrClient.sendCreateRoomTx(player1WalletAddress, player2WalletAddress, player1TemporaryAddress, player2TemporaryAddress,
 				roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
 			if err != nil {
@@ -138,11 +143,16 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 
 func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex string) error {
 	roomContractAddress := common.HexToAddress(roomContractHex)
+	retryCnt := 3
 	for {
 		select {
 		case <-c.ctx.Done():
 			return errors.New("create room contract failed, context canceled")
 		default:
+			if retryCnt == 0 {
+				return errors.New("send create room tx failed")
+			}
+			retryCnt--
 			txHash, err := c.roomMgrClient.sendStartANewRound(roomContractAddress)
 			if err != nil {
 				log.Errorw("send set round read tx failed", "err", err)
