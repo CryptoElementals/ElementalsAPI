@@ -37,18 +37,19 @@ type GameCreator interface {
 	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 }
 
-func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64, botWaitTime int64) *Queue {
+func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64, botWaitTime int64, minTokenToJoinQueue int32) *Queue {
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	q := &Queue{
-		ctx:             ctx,
-		queue:           make(map[types.PlayerAddress]time.Time),
-		workerManager:   workerManager,
-		queueCache:      queueCache,
-		gameCreator:     gameCreator,
-		continueManager: newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
-		continueTimeout: time.Duration(continueTimeout) * time.Second,
-		botMgr:          newBotManager(),
-		botWaitTime:     time.Duration(botWaitTime) * time.Second,
+		ctx:                 ctx,
+		queue:               make(map[types.PlayerAddress]time.Time),
+		workerManager:       workerManager,
+		queueCache:          queueCache,
+		gameCreator:         gameCreator,
+		continueManager:     newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
+		continueTimeout:     time.Duration(continueTimeout) * time.Second,
+		botMgr:              newBotManager(),
+		botWaitTime:         time.Duration(botWaitTime) * time.Second,
+		minTokenToJoinQueue: minTokenToJoinQueue,
 	}
 	return q
 }

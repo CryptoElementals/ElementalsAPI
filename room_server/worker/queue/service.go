@@ -29,7 +29,7 @@ func NewService(ctx context.Context,
 ) *Service {
 	s := &Service{
 		ctx:                 ctx,
-		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, botWaitTime),
+		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, botWaitTime, minTokenToJoinQueue),
 		minTokenToJoinQueue: minTokenToJoinQueue,
 		botWaitTime:         botWaitTime,
 	}
