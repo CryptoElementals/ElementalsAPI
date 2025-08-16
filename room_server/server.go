@@ -3,22 +3,26 @@ package roomserver
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/room_server/worker/player"
 	"github.com/CryptoElementals/common/room_server/worker/queue"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Service struct {
@@ -82,7 +86,7 @@ func New(ctx context.Context,
 	s.playerSvc = playerSvc
 	gameSvc.SetGameResultSettler(queueSvc)
 	s.pubsub.SetPlayerManager(playerSvc)
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	rpcServer := rpc.NewRpc(
 		chainSvc,
 		playerSvc,
@@ -139,4 +143,24 @@ func (s *Service) startListener() error {
 	}()
 
 	return nil
+}
+
+func UnaryServerInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	start := time.Now()
+
+	// Call the next handler in the chain (your actual service method)
+	resp, err := handler(ctx, req)
+
+	duration := time.Since(start)
+	statusCode := codes.OK
+	if err != nil {
+		if s, ok := status.FromError(err); ok {
+			statusCode = s.Code()
+		} else {
+			statusCode = codes.Unknown
+		}
+	}
+	log.Infow("rpc called", "method", info.FullMethod, "req", types.ToJsonLoggable(req), "status code", statusCode.String(), "duration", duration.Seconds())
+
+	return resp, err
 }

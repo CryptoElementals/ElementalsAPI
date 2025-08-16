@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const maxLockTime = time.Minute
+const maxLockTime = 10 * time.Minute
 const maxPlayerPerAddress = 3
 
 func SaveUserToken(tokens ...dao.UserToken) error {
@@ -36,9 +36,6 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 		lockedAmount := int32(0)
 		lockedNum := 0
 		for _, locked := range userToken.LockedTokens {
-			if locked.TemporaryAddress == tempAddress {
-				return errors.New("user token is locked")
-			}
 			if time.Since(locked.CreatedAt) < maxLockTime {
 				lockedNum++
 				lockedAmount += locked.TokenAmount
@@ -47,6 +44,10 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 				if err != nil {
 					return err
 				}
+				continue
+			}
+			if locked.TemporaryAddress == tempAddress {
+				return errors.New("user token is locked")
 			}
 		}
 		if lockedNum >= maxPlayerPerAddress {
@@ -168,6 +169,6 @@ func SetLockedTokenGameID(ctx context.Context, walletAddress, temporaryAddress s
 				return tx.Save(locked).Error
 			}
 		}
-		return errors.New("locked token not found")
+		return ErrNotFound
 	})
 }

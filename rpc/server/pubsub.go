@@ -111,7 +111,6 @@ func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 	for _, subscriber := range topic.subscribers {
 		subscriber.mu.Lock()
 		if subscriber.stream != nil {
-			log.Debugw("send event to subscriber", "topic", req.Topic, "event type", req.Event.Type.String(), "sub id", subscriber.id)
 			err := subscriber.stream.Send(message)
 			if err != nil {
 				log.Errorf("Failed to send message to subscriber %s: %v", subscriber.id, err)
@@ -123,6 +122,9 @@ func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 		subscriber.mu.Unlock()
 	}
 	topic.mu.RUnlock()
+	if subscriberCount == 0 {
+		log.Errorw("send event to subscriber failed, no subscriber found", "topic", req.Topic, "event type", req.Event.Type.String())
+	}
 
 	return &pb.PublishResponse{
 		MessageId:       message.MessageId,

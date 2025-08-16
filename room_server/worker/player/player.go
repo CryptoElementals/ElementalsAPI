@@ -3,6 +3,7 @@ package player
 import (
 	"context"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -61,6 +62,7 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedEvent) error {
 	// send nothing if continued game
 	if !evt.IsContinueGame {
+		log.Debugw("publish event", "event type", proto.EventType_TYPE_MATCHED, "receiver", p.address.String(), "game id", evt.GameID)
 		p.publisher.Publish(ctx, &proto.PublishRequest{
 			Topic: p.address.String(),
 			Event: &proto.Event{
@@ -72,6 +74,7 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 }
 
 func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_GAME_CREATED, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -86,6 +89,7 @@ func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.Ro
 	if p.address == evt.ReadyAddress {
 		return nil
 	}
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_PART_CONFIRMED, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -96,6 +100,7 @@ func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.Ro
 }
 
 func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_READY, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -106,6 +111,7 @@ func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundRead
 }
 
 func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_COMMITMENTS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -116,6 +122,7 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 }
 
 func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_CARDS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -126,6 +133,7 @@ func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOn
 }
 
 func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.ContinueCanceledEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_CONTINUE_CANCELED, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -136,6 +144,7 @@ func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.Con
 }
 
 func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.RoundCompletedEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -146,12 +155,14 @@ func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.Round
 }
 
 func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCompletedEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_ROUND_COMPLETE,
 		},
 	})
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_GAME_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
