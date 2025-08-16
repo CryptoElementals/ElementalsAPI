@@ -332,9 +332,12 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		RoundNumber:  uint32(g.currentRound.RoundNumber),
 		ReadyAddress: player.PlayerAddress(),
 	}))
-	// for the first round we don't record any thing until both players confirmed
 	if !allPlayersReady {
-		return g.savePlayerRoundInfo(player.roundPlayer)
+		err := g.savePlayerRoundInfo(player.roundPlayer)
+		if err != nil {
+			log.Errorw("save player round info failed", "err", err)
+		}
+		return nil
 	}
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
 	for _, player := range g.gamePlayers {
@@ -345,6 +348,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 		err := g.sendContractCreation(allPlayers)
 		if err != nil {
+			g.handleGameAbortInternalError()
 			return err
 		}
 	} else {
@@ -354,6 +358,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		// otherwise we need to setup new round on chain
 		err := g.sendRoundReady()
 		if err != nil {
+			g.handleGameAbortInternalError()
 			return err
 		}
 	}

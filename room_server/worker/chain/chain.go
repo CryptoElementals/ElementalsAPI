@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -101,37 +102,70 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 	roundTimeoutBigInt := big.NewInt(roundTimeout)
 	maxRoundsBigInt := big.NewInt(maxRounds)
 	initialHPBigInt := big.NewInt(initialHP)
-	txHash, err := c.roomMgrClient.sendCreateRoomTx(player1WalletAddress, player2WalletAddress, player1TemporaryAddress, player2TemporaryAddress,
-		roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
-	if err != nil {
-		return err
+	for {
+		select {
+		case <-c.ctx.Done():
+			return errors.New("create room contract failed, context canceled")
+		default:
+			txHash, err := c.roomMgrClient.sendCreateRoomTx(player1WalletAddress, player2WalletAddress, player1TemporaryAddress, player2TemporaryAddress,
+				roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
+			if err != nil {
+				log.Errorw("send create room tx failed", "err", err)
+				// not retriable error
+				if strings.Contains(strings.ToLower(err.Error()), "revert") {
+					return err
+				}
+				continue
+			}
+			log.Infow("createRoomContract: create room contract success", "tx hash", txHash, "game id", gameID)
+			c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), int(time.Hour.Seconds()))
+			createRoomTxModel := &dao.CreateRoomTx{
+				GameID:       gameID,
+				Status:       dao.TxStatusSent,
+				TxHash:       txHash,
+				RoundTimeout: time.Duration(roundTimeout) * time.Second,
+				MaxRounds:    uint64(maxRounds),
+			}
+			err = db.SaveCreateRoomTx(createRoomTxModel)
+			if err != nil {
+				log.Errorw("save create room tx failed", "err", err)
+				continue
+			}
+		}
 	}
-	log.Infow("createRoomContract: create room contract success", "tx hash", txHash, "game id", gameID)
-	c.createRoomTxToGameID.Set(txHash, fmt.Sprint(gameID), int(time.Hour.Seconds()))
-	createRoomTxModel := &dao.CreateRoomTx{
-		GameID:       gameID,
-		Status:       dao.TxStatusSent,
-		TxHash:       txHash,
-		RoundTimeout: time.Duration(roundTimeout) * time.Second,
-		MaxRounds:    uint64(maxRounds),
-	}
-	return db.SaveCreateRoomTx(createRoomTxModel)
+
 }
 
 func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex string) error {
 	roomContractAddress := common.HexToAddress(roomContractHex)
-	txHash, err := c.roomMgrClient.sendStartANewRound(roomContractAddress)
-	if err != nil {
-		return err
+	for {
+		select {
+		case <-c.ctx.Done():
+			return errors.New("create room contract failed, context canceled")
+		default:
+			txHash, err := c.roomMgrClient.sendStartANewRound(roomContractAddress)
+			if err != nil {
+				log.Errorw("send set round read tx failed", "err", err)
+				// not retriable error
+				if strings.Contains(strings.ToLower(err.Error()), "revert") {
+					return err
+				}
+				continue
+			}
+			setRoundReadyTxModel := &dao.SetRoundReadyTx{
+				GameID:          gameID,
+				Status:          dao.TxStatusSent,
+				ContractAddress: roomContractHex,
+				RoundNumber:     uint64(roundNumber),
+				TxHash:          txHash,
+			}
+			err = db.SaveSetRoundReadyTx(setRoundReadyTxModel)
+			if err != nil {
+				log.Errorw("save set round ready tx failed", "err", err)
+				continue
+			}
+		}
 	}
-	setRoundReadyTxModel := &dao.SetRoundReadyTx{
-		GameID:          gameID,
-		Status:          dao.TxStatusSent,
-		ContractAddress: roomContractHex,
-		RoundNumber:     uint64(roundNumber),
-		TxHash:          txHash,
-	}
-	return db.SaveSetRoundReadyTx(setRoundReadyTxModel)
 }
 
 func (c *Chain) handleChainEvents(evt *batchTxEvent) {
