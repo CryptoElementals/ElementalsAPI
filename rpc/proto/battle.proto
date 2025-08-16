@@ -73,6 +73,7 @@ enum GameResultType {
     GAME_NORMAL = 0;
     GAME_KO = 1;
     GAME_TIE = 2;
+    GAME_ABORTED = 3;
 }
 
 message GameResult {

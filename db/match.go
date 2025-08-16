@@ -23,7 +23,7 @@ func LoadGameByGameID(gameID uint) (*dao.Game, error) {
 
 func GetAllActiveGames() ([]*dao.Game, error) {
 	var games []*dao.Game
-	tx := Get().Where("status != ?", proto.GameStatus_GAME_END)
+	tx := Get().Where("status != ? and status != ?", proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED)
 	err := preloadGameInfo(tx).Find(&games).Error
 	if err != nil {
 		return nil, err

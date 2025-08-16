@@ -66,6 +66,10 @@ func (s *Service) Start() error {
 	return s.gameManager.Start()
 }
 
+func (s *Service) Stop() {
+	s.gameManager.Stop()
+}
+
 func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo {
 	gameInfo := s.gameManager.GetActiveGame(playerAddress)
 	return gameInfo
@@ -92,9 +96,13 @@ func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.R
 	for _, round := range gameInfo.Rounds {
 		if round.RoundNumber == roundNum {
 			roundRes := conversion.DbRoundToRoundResult(round)
-			gameRes := conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
+			var gameRes *proto.GameResult
 			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.RoundConfirmTimeout)
-			gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.ContinueTimeout)
+			if gameInfo.GameResult != nil {
+				gameRes = conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
+				gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.ContinueTimeout)
+			}
+			return roundRes, gameRes, nil
 		}
 	}
 	return nil, nil, errors.New("round not found")

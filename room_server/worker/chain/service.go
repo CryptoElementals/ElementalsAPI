@@ -39,7 +39,7 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 		blockHash: txs.BlockHash,
 	}
 	s.chain.batchSendTxs(evt)
-	log.Info("SubmitTransactions success")
+	log.Info("SubmitTransactions done")
 	return nil
 }
 

@@ -130,6 +130,7 @@ func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error 
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	if q.closing {
+		log.Debugw("cannot continue game, server is closing", "addr", event.PlayerAddress.String())
 		return errors.New("queue is closing")
 	}
 

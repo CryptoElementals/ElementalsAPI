@@ -60,6 +60,14 @@ func (s *PubSub) SetPlayerManager(playerManager PlayerManager) {
 	s.playerManager = playerManager
 }
 
+func (s *PubSub) Stop() {
+	for _, subMap := range s.subscribers {
+		for _, sub := range subMap {
+			sub.cancel()
+		}
+	}
+}
+
 func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic is required")
@@ -103,7 +111,6 @@ func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 	for _, subscriber := range topic.subscribers {
 		subscriber.mu.Lock()
 		if subscriber.stream != nil {
-			log.Debugw("send event to subscriber", "topic", req.Topic, "event type", req.Event.Type.String(), "sub id", subscriber.id)
 			err := subscriber.stream.Send(message)
 			if err != nil {
 				log.Errorf("Failed to send message to subscriber %s: %v", subscriber.id, err)
@@ -115,6 +122,9 @@ func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 		subscriber.mu.Unlock()
 	}
 	topic.mu.RUnlock()
+	if subscriberCount == 0 {
+		log.Errorw("send event to subscriber failed, no subscriber found", "topic", req.Topic, "event type", req.Event.Type.String())
+	}
 
 	return &pb.PublishResponse{
 		MessageId:       message.MessageId,

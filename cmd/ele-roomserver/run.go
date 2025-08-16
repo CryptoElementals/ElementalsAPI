@@ -58,6 +58,7 @@ var runCmd = &cobra.Command{
 		<-sigChan
 		log.Info("receive signal, exit")
 		svr.Stop()
+		log.Info("room server stopped")
 	},
 }
 

@@ -29,7 +29,7 @@ func NewService(ctx context.Context,
 ) *Service {
 	s := &Service{
 		ctx:                 ctx,
-		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, botWaitTime),
+		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, botWaitTime, minTokenToJoinQueue),
 		minTokenToJoinQueue: minTokenToJoinQueue,
 		botWaitTime:         botWaitTime,
 	}
@@ -40,9 +40,8 @@ func (s *Service) Start() error {
 	return s.queue.start()
 }
 
-func (s *Service) Stop() error {
+func (s *Service) Stop() {
 	s.queue.close()
-	return nil
 }
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
