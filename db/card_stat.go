@@ -39,16 +39,17 @@ func UpdateCardStat(cardStat *dao.CardStat) error {
 }
 
 // GetOrCreateCardStat 获取或创建卡牌统计记录
-func GetOrCreateCardStat(address, cardName string) (*dao.CardStat, error) {
+func GetOrCreateCardStat(address string, cardID uint) (*dao.CardStat, error) {
 	var cardStat dao.CardStat
-	err := Get().Where("address = ? AND card_name = ?", address, cardName).First(&cardStat).Error
+	err := Get().Where("address = ? AND card_name = ?", address, cardID).First(&cardStat).Error
 	if err != nil {
 		// 卡牌统计不存在，创建新记录
 		cardStat = dao.CardStat{
-			Address:     address,
-			CardName:    cardName,
-			Frequency:   0,
-			WinningRate: 0.0,
+			Address:      address,
+			CardID:       cardID,
+			RoundCount:   0,
+			UsageCount:   0,
+			WinningCount: 0,
 		}
 		err = Get().Create(&cardStat).Error
 		if err != nil {
@@ -63,9 +64,14 @@ func GetCardStatsInfo(cardStats []dao.CardStat) []CardStatInfo {
 	result := make([]CardStatInfo, len(cardStats))
 	for i, stat := range cardStats {
 		result[i] = CardStatInfo{
-			CardID:      stat.ID,
-			Frequency:   stat.Frequency,
-			WinningRate: stat.WinningRate,
+			CardID: stat.CardID,
+		}
+		if stat.RoundCount == 0 {
+			result[i].Frequency = 0.0
+			result[i].WinningRate = 0.0
+		} else {
+			result[i].Frequency = float64(stat.UsageCount) / float64(stat.RoundCount)
+			result[i].WinningRate = float64(stat.WinningCount) / float64(stat.UsageCount)
 		}
 	}
 	return result

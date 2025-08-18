@@ -1,16 +1,18 @@
 package dao
 
-import "time"
+import (
+	"gorm.io/gorm"
+)
 
 // CardStat 卡牌统计表 - 存储用户每张卡牌的使用统计
 type CardStat struct {
-	ID          uint      `gorm:"primaryKey"`
-	Address     string    `gorm:"type:varchar(42);not null;index:idx_addr_card,unique"` // 关联用户地址
-	CardName    string    `gorm:"type:varchar(50);not null;index:idx_addr_card,unique"` // 卡牌名称
-	Frequency   float64   `gorm:"default:0"`                                            // 使用次数
-	WinningRate float64   `gorm:"default:0.0"`                                          // 胜率
-	CreatedAt   time.Time `gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+	gorm.Model
+	Address      string `gorm:"type:varchar(42);not null;uniqueIndex:idx_addr_card" json:"address"` // 关联用户地址
+	CardID       uint   `gorm:"not null;default:0;uniqueIndex:idx_addr_card" json:"card_id"`        // 卡牌ID
+	RoundCount   uint   `gorm:"not null;default:0" json:"round_count"`                              // 该玩家的玩的游戏轮数
+	UsageCount   uint   `gorm:"not null;default:0" json:"usage_count"`                              // 使用该卡牌的次数
+	WinningCount uint   `gorm:"not null;default:0" json:"winning_count"`                            // 使用该卡牌赢的次数
+	LastGameID   uint   `gorm:"not null;default:0" json:"last_game_id"`
 }
 
 // TableName 指定表名
