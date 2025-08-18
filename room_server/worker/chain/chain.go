@@ -136,6 +136,7 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 				log.Errorw("save create room tx failed", "err", err)
 				continue
 			}
+			return nil
 		}
 	}
 
@@ -174,6 +175,7 @@ func (c *Chain) setRoundReady(gameID uint, roundNumber uint32, roomContractHex s
 				log.Errorw("save set round ready tx failed", "err", err)
 				continue
 			}
+			return nil
 		}
 	}
 }

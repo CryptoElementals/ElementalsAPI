@@ -548,9 +548,7 @@ func (g *Game) handleGameAbortInit() error {
 	}
 	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
-		if err != nil {
-			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-		}
+		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 	}
 	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopGame()

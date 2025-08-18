@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
@@ -121,14 +120,10 @@ func (s *Service) Start() error {
 func (s *Service) Stop() {
 	s.queueSvc.Stop()
 	s.gameSvc.Stop()
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	go func() {
-		s.server.GracefulStop()
-		wg.Done()
+		s.pubsub.Stop()
 	}()
-	s.pubsub.Stop()
-	wg.Wait()
+	s.server.GracefulStop()
 }
 
 func (s *Service) startListener() error {

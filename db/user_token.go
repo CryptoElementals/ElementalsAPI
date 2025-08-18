@@ -47,7 +47,27 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 				continue
 			}
 			if locked.TemporaryAddress == tempAddress {
-				return errors.New("user token is locked")
+				if locked.GameID == 0 {
+					return errors.New("user token is locked")
+				}
+				log.Infow("LockUserToken called but game id != 0", "game id", locked.GameID)
+				// already locked by some game
+				// check if game is still running
+				gameInfo := &dao.Game{}
+				err := tx.Where("id = ? and status != ? and status != ?", locked.GameID, proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED).Find(gameInfo).Error
+				if err == nil {
+					// game still running
+					return errors.New("user token is locked")
+				}
+				if err != gorm.ErrRecordNotFound {
+					return err
+				}
+				// game stopped, delete the record
+				log.Infow("locked game info not found", "game id", locked.GameID)
+				err = tx.Delete(locked).Error
+				if err != nil {
+					return err
+				}
 			}
 		}
 		if lockedNum >= maxPlayerPerAddress {

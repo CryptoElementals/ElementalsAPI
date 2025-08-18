@@ -61,9 +61,13 @@ func (s *PubSub) SetPlayerManager(playerManager PlayerManager) {
 }
 
 func (s *PubSub) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, subMap := range s.subscribers {
 		for _, sub := range subMap {
+			sub.mu.Lock()
 			sub.cancel()
+			sub.mu.Unlock()
 		}
 	}
 }

@@ -188,7 +188,7 @@ func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
 func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	err := db.BattleResultSettlement(event.GameInfo)
 	if err != nil {
-		log.Error("BattleResultSettlement failed, err: ", err)
+		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
 	q.lock.Lock()
