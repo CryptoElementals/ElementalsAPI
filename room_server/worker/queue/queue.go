@@ -14,6 +14,7 @@ import (
 )
 
 const queueInfoPrefix = "queue_info"
+const lockedTokenPrefix = "locked_token"
 const queueInfoVal = "v"
 
 type Queue struct {
@@ -23,6 +24,7 @@ type Queue struct {
 	continueManager     *continueManager
 	workerManager       *worker.WorkerManager
 	queueCache          cache.Cache
+	lockedTokenCache    cache.Cache
 	closing             bool
 	gameCreator         GameCreator
 	continueTimeout     time.Duration
@@ -37,12 +39,22 @@ type GameCreator interface {
 	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 }
 
-func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64, botWaitTime int64, minTokenToJoinQueue int32) *Queue {
+func NewQueue(
+	ctx context.Context,
+	workerManager *worker.WorkerManager,
+	c cache.Cache,
+	gameCreator GameCreator,
+	continueTimeout int64,
+	botWaitTime int64,
+	minTokenToJoinQueue int32,
+) *Queue {
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
+	tokenCache := cache.WithPrefix(lockedTokenPrefix, c)
 	q := &Queue{
 		ctx:                 ctx,
 		queue:               make(map[types.PlayerAddress]time.Time),
 		workerManager:       workerManager,
+		lockedTokenCache:    tokenCache,
 		queueCache:          queueCache,
 		gameCreator:         gameCreator,
 		continueManager:     newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
@@ -201,6 +213,17 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
+}
+
+func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uint) error {
+	walletAddresses := make([]string, len(addresses))
+	tempAddresses := make([]string, len(addresses))
+	for i := range addresses {
+		log.Infow("lock user tokens for continue", "addr", addresses[i].String(), "token amount", q.minTokenToJoinQueue, "game id", gameID)
+		walletAddresses = append(walletAddresses, addresses[i].WalletAddress)
+		tempAddresses = append(tempAddresses, addresses[i].TemporaryAddress)
+	}
+	return db.LockUserTokenForContinue(q.ctx, walletAddresses, tempAddresses, q.minTokenToJoinQueue, gameID)
 }
 
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {

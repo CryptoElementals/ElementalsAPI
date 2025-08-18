@@ -285,6 +285,7 @@ func (g *Game) pushStateToContractCreating() error {
 	}
 	err := g.sendContractCreation(allPlayers)
 	if err != nil {
+		g.handleGameAbortInternalError()
 		return err
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN

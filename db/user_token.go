@@ -69,6 +69,61 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 	})
 }
 
+func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddresses []string, tokenAmount int32, gameID uint) (err error) {
+	return Get().Transaction(func(tx *gorm.DB) error {
+		for i := range addresses {
+			address := addresses[i]
+			tempAddress := tempAddresses[i]
+			userToken := &dao.UserToken{}
+			err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+			if err != nil {
+				if err != gorm.ErrRecordNotFound {
+					return err
+				}
+				// save a record if locked token is zero
+				// mostly used in test
+				if tokenAmount == 0 {
+					tx.Save(userToken)
+				}
+			}
+			lockedAmount := int32(0)
+			lockedNum := 0
+			for _, locked := range userToken.LockedTokens {
+				if time.Since(locked.CreatedAt) < maxLockTime {
+					lockedNum++
+					lockedAmount += locked.TokenAmount
+				} else {
+					err = tx.Delete(locked).Error
+					if err != nil {
+						return err
+					}
+					continue
+				}
+				if locked.TemporaryAddress == tempAddress {
+					return errors.New("user token is locked")
+				}
+			}
+			if lockedNum >= maxPlayerPerAddress {
+				return errors.New("cannot lock token, locked temporary address num exceeds limit")
+			}
+			if userToken.TokenAmount < tokenAmount+lockedAmount {
+				return errors.New("user token amount is not enough")
+			}
+			newLocked := &dao.LockedUserToken{
+				UserTokenID:      userToken.ID,
+				TokenAmount:      tokenAmount,
+				TemporaryAddress: tempAddress,
+				GameID:           gameID,
+			}
+			err = tx.Save(newLocked).Error
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func UnlockUserToken(ctx context.Context, address string, tempAddress string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
@@ -94,17 +149,22 @@ func UnlockUserToken(ctx context.Context, address string, tempAddress string) (e
 	})
 }
 
+func UnlockUserTokenByGameID(ctx context.Context, gameID uint) error {
+	return Get().Transaction(func(tx *gorm.DB) error {
+		cnt, err := gorm.G[dao.LockedUserToken](tx).Where("game_id = ?", gameID).Delete(ctx)
+		if err != nil {
+			return err
+		}
+		log.Debugw("UnlockUserTokenByGameID", "unlocked cnt", cnt)
+		return nil
+	})
+}
+
 func BattleResultSettlement(game *dao.Game) error {
 	// game aborted when init
 	if game.Status == proto.GameStatus_GAME_ABORTED {
-		for _, pr := range game.Players {
-			log.Debugw("unlock player token", "wallet addr", pr.WalletAddress, "temp addr", pr.TemporaryAddress)
-			err := UnlockUserToken(context.Background(), pr.WalletAddress, pr.TemporaryAddress)
-			if err != nil {
-				log.Errorw("cannot unlock user token", "err", err, "wallet addr", pr.WalletAddress, "temp addr", pr.TemporaryAddress)
-			}
-		}
-		return nil
+		log.Debugw("unlock player token caused by abort", "game id", game.ID)
+		return UnlockUserTokenByGameID(context.Background(), game.ID)
 	}
 	if game.GameResult == nil {
 		return errors.New("game result is nil")
