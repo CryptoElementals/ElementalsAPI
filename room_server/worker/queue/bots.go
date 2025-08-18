@@ -71,6 +71,10 @@ func newBotManager() *botManager {
 	}
 }
 
+func (m *botManager) isBot(addr types.PlayerAddress) bool {
+	return m.inGame.Contains(addr) || m.idle.Contains(addr)
+}
+
 func (m *botManager) addBot(addr types.PlayerAddress) {
 	m.idle.Add(addr)
 }
@@ -89,11 +93,13 @@ func (m *botManager) popBotForMatch() (types.PlayerAddress, bool) {
 	return addr, ok
 }
 
-func (m *botManager) releaseInGameBot(addr types.PlayerAddress) {
+func (m *botManager) releaseInGameBot(addr types.PlayerAddress) bool {
 	if m.inGame.Contains(addr) {
 		m.inGame.Remove(addr)
 		m.idle.Add(addr)
+		return true
 	}
+	return false
 }
 
 func (m *botManager) inGameCount() int {

@@ -186,19 +186,22 @@ func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
 }
 
 func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
-	err := db.BattleResultSettlement(event.GameInfo)
+	bots := Set[types.PlayerAddress]{}
+	q.lock.Lock()
+	for _, p := range event.GameInfo.Players {
+		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
+		isBot := q.botMgr.releaseInGameBot(*addr)
+		if isBot {
+			bots.Add(*addr)
+		}
+	}
+	q.lock.Unlock()
+	err := db.BattleResultSettlement(event.GameInfo, bots)
 	if err != nil {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	for _, p := range event.GameInfo.Players {
-		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
-		if q.botMgr.isInGame(*addr) {
-			q.botMgr.releaseInGameBot(*addr)
-		}
-	}
+
 	q.continueManager.addGame(event.GameInfo)
 	return nil
 }

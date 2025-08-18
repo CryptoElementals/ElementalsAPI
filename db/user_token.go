@@ -8,6 +8,7 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
@@ -180,7 +181,7 @@ func UnlockUserTokenByGameID(ctx context.Context, gameID uint) error {
 	})
 }
 
-func BattleResultSettlement(game *dao.Game) error {
+func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{}) error {
 	// game aborted when init
 	if game.Status == proto.GameStatus_GAME_ABORTED {
 		log.Debugw("unlock player token caused by abort", "game id", game.ID)
@@ -195,6 +196,13 @@ func BattleResultSettlement(game *dao.Game) error {
 	}
 	return Get().Transaction(func(tx *gorm.DB) error {
 		for _, pr := range reward.PlayerRewards {
+			// skip bot accounts
+			if _, ok := bots[types.PlayerAddress{
+				WalletAddress:    pr.WalletAddress,
+				TemporaryAddress: pr.TemporaryAddress,
+			}]; ok {
+				continue
+			}
 			userToken := &dao.UserToken{}
 			err := tx.Where("wallet_address = ?", pr.WalletAddress).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
