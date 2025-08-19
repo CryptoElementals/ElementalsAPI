@@ -36,6 +36,46 @@ func (s *StatService) HealthCheck(ctx context.Context, req *proto.HealthCheckReq
 	}, nil
 }
 
+// UpdatePlayerStats implement update player statistics RPC
+func (s *StatService) UpdatePlayerStats(ctx context.Context, req *proto.UpdatePlayerStatsRequest) (*proto.UpdatePlayerStatsResponse, error) {
+	log.Infof("Update player stats request received from client: %s, player: %s", req.ClientId, req.PlayerId)
+
+	// Calculate new statistics
+	newLevel := req.Level
+	newExperience := req.Experience
+	newWinRate := req.WinRate
+
+	// Simple level up logic (every 1000 experience = 1 level)
+	if newExperience >= 1000 {
+		levelIncrease := newExperience / 1000
+		newLevel += levelIncrease
+		newExperience = newExperience % 1000
+	}
+
+	// Recalculate win rate based on wins, losses, and draws
+	totalGames := req.Wins + req.Losses + req.Draws
+	if totalGames > 0 {
+		newWinRate = float32(req.Wins) / float32(totalGames) * 100.0
+	}
+
+	// Create response
+	response := &proto.UpdatePlayerStatsResponse{
+		Status:        "OK",
+		Message:       "Player statistics updated successfully",
+		PlayerId:      req.PlayerId,
+		NewLevel:      newLevel,
+		NewExperience: newExperience,
+		NewWinRate:    newWinRate,
+		Timestamp:     time.Now().Unix(),
+		Updated:       true,
+	}
+
+	log.Infof("Player %s stats updated: Level %d -> %d, Experience %d -> %d, Win Rate %.2f%% -> %.2f%%",
+		req.PlayerId, req.Level, newLevel, req.Experience, newExperience, req.WinRate, newWinRate)
+
+	return response, nil
+}
+
 // formatDuration format duration
 func formatDuration(d time.Duration) string {
 	days := int(d.Hours()) / 24

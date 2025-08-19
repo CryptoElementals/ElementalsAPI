@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StatService_HealthCheck_FullMethodName = "/stat.StatService/HealthCheck"
+	StatService_HealthCheck_FullMethodName       = "/stat.StatService/HealthCheck"
+	StatService_UpdatePlayerStats_FullMethodName = "/stat.StatService/UpdatePlayerStats"
 )
 
 // StatServiceClient is the client API for StatService service.
@@ -30,6 +31,8 @@ const (
 type StatServiceClient interface {
 	// Health check
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+	// Update player statistics
+	UpdatePlayerStats(ctx context.Context, in *UpdatePlayerStatsRequest, opts ...grpc.CallOption) (*UpdatePlayerStatsResponse, error)
 }
 
 type statServiceClient struct {
@@ -50,6 +53,16 @@ func (c *statServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequ
 	return out, nil
 }
 
+func (c *statServiceClient) UpdatePlayerStats(ctx context.Context, in *UpdatePlayerStatsRequest, opts ...grpc.CallOption) (*UpdatePlayerStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdatePlayerStatsResponse)
+	err := c.cc.Invoke(ctx, StatService_UpdatePlayerStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StatServiceServer is the server API for StatService service.
 // All implementations must embed UnimplementedStatServiceServer
 // for forward compatibility.
@@ -58,6 +71,8 @@ func (c *statServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequ
 type StatServiceServer interface {
 	// Health check
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	// Update player statistics
+	UpdatePlayerStats(context.Context, *UpdatePlayerStatsRequest) (*UpdatePlayerStatsResponse, error)
 	mustEmbedUnimplementedStatServiceServer()
 }
 
@@ -70,6 +85,9 @@ type UnimplementedStatServiceServer struct{}
 
 func (UnimplementedStatServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedStatServiceServer) UpdatePlayerStats(context.Context, *UpdatePlayerStatsRequest) (*UpdatePlayerStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdatePlayerStats not implemented")
 }
 func (UnimplementedStatServiceServer) mustEmbedUnimplementedStatServiceServer() {}
 func (UnimplementedStatServiceServer) testEmbeddedByValue()                     {}
@@ -110,6 +128,24 @@ func _StatService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StatService_UpdatePlayerStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePlayerStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StatServiceServer).UpdatePlayerStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StatService_UpdatePlayerStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StatServiceServer).UpdatePlayerStats(ctx, req.(*UpdatePlayerStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StatService_ServiceDesc is the grpc.ServiceDesc for StatService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -120,6 +156,10 @@ var StatService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HealthCheck",
 			Handler:    _StatService_HealthCheck_Handler,
+		},
+		{
+			MethodName: "UpdatePlayerStats",
+			Handler:    _StatService_UpdatePlayerStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
