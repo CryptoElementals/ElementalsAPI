@@ -65,7 +65,7 @@ func NewService(
 		if err != nil {
 			return nil, err
 		}
-		b := NewBot(ctx, p, rpcClient, chainClient, chainID, mimicPlayers)
+		b := NewBot(ctx, p, rpcClient, chainClient, chainID)
 		bots = append(bots, b)
 		addresses = append(addresses, p.address())
 	}

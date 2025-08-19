@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
@@ -53,9 +54,11 @@ func (w *Worker) Run() {
 			w.closer.CloseWorker(w.Id)
 			return
 		case event := <-w.msgQueue:
+			log.Debugw("worker received event", "worker id", w.Id, "event", types.ToJsonLoggable(event))
 			err := w.handler.Handle(w.ctx, event)
 			if err != nil {
 				event.Error = err
+				log.Debugw("worker handle event failed", "worker id", w.Id, "event", types.ToJsonLoggable(event), "err", err)
 			}
 			if event.AckChan != nil {
 				close(event.AckChan)

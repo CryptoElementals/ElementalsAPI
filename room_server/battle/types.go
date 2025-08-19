@@ -95,12 +95,13 @@ type BattleReward struct {
 
 // PlayerReward 单个玩家的奖励
 type PlayerReward struct {
-	WalletAddress    string `json:"WalletAddress"`    // 玩家地址
-	TemporaryAddress string `json:"TemporaryAddress"` // 玩家临时地址
-	TokenChange      int    `json:"TokenChange"`      // Token变化
-	PointChange      int    `json:"PointChange"`      // 积分变化
-	IsOffline        bool   `json:"IsOffline"`        // 是否离线
-	IsSurrendered    bool   `json:"IsSurrendered"`    // 是否投降
+	WalletAddress          string                    `json:"WalletAddress"`          // 玩家地址
+	TemporaryAddress       string                    `json:"TemporaryAddress"`       // 玩家临时地址
+	TokenChange            int                       `json:"TokenChange"`            // Token变化
+	PointChange            int                       `json:"PointChange"`            // 积分变化
+	IsOffline              bool                      `json:"IsOffline"`              // 是否离线
+	IsSurrendered          bool                      `json:"IsSurrendered"`          // 是否投降
+	PlayerGameResultStatus pb.PlayerGameResultStatus `json:"PlayerGameResultStatus"` // 玩家游戏结果状态
 }
 
 // 单个玩家每张卡的详细数据
