@@ -30,6 +30,7 @@ func Migrate() error {
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
 		&dao.DevTempKey{},
+		&dao.UserStat{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {

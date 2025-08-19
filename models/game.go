@@ -49,7 +49,7 @@ type Round struct {
 type PlayerRoundInfo struct {
 	BaseModel
 	RoundID             uint                  `json:"round_id"`
-	WalletAddress       string                `json:"wallet_address"`
+	WalletAddress       string                `gorm:"not null;index:idx_wallet_address,length:42;size:42" json:"wallet_address"`
 	TemporaryAddress    string                `json:"temporary_address"`
 	PlayerReady         bool                  `json:"player_ready"`
 	Salt                []byte                `json:"salt"`
@@ -98,7 +98,7 @@ type PlayerReward struct {
 	TemporaryAddress       string
 	TokenChange            int32
 	PointChange            int32
-	PlayerGameResultStatus proto.PlayerGameResultStatus 
+	PlayerGameResultStatus proto.PlayerGameResultStatus
 	IsOffline              bool
 	Surrendered            bool
 }

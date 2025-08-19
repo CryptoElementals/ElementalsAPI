@@ -28,25 +28,11 @@ message HealthCheckResponse {
 
 // Update player statistics request
 message UpdatePlayerStatsRequest {
-  string client_id = 1;           // Client identifier
-  string player_id = 2;           // Player identifier
-  int32 level = 3;                // Player level
-  int32 experience = 4;           // Player experience points
-  int32 wins = 5;                 // Number of wins
-  int32 losses = 6;               // Number of losses
-  int32 draws = 7;                // Number of draws
-  float win_rate = 8;             // Win rate percentage
-  int64 last_updated = 9;         // Last update timestamp
+  repeated string player_addresses = 1;         // Multiple player addresses
 }
 
 // Update player statistics response
 message UpdatePlayerStatsResponse {
-  string status = 1;              // Operation status (OK, ERROR, etc.)
+  bool ok = 1;                    // Whether the operation was successful
   string message = 2;             // Response message
-  string player_id = 3;           // Player identifier
-  int32 new_level = 4;            // New player level after update
-  int32 new_experience = 5;       // New experience points after update
-  float new_win_rate = 6;         // New win rate after update
-  int64 timestamp = 7;            // Response timestamp
-  bool updated = 8;               // Whether the update was successful
 }

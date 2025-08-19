@@ -45,11 +45,11 @@ func GetOrCreateCardStat(address string, cardID uint) (*dao.CardStat, error) {
 	if err != nil {
 		// 卡牌统计不存在，创建新记录
 		cardStat = dao.CardStat{
-			Address:      address,
-			CardID:       cardID,
-			RoundCount:   0,
-			UsageCount:   0,
-			WinningCount: 0,
+			Address:    address,
+			CardID:     cardID,
+			RoundCount: 0,
+			UsageCount: 0,
+			WinCount:   0,
 		}
 		err = Get().Create(&cardStat).Error
 		if err != nil {
@@ -71,7 +71,7 @@ func GetCardStatsInfo(cardStats []dao.CardStat) []CardStatInfo {
 			result[i].WinningRate = 0.0
 		} else {
 			result[i].Frequency = float64(stat.UsageCount) / float64(stat.RoundCount)
-			result[i].WinningRate = float64(stat.WinningCount) / float64(stat.UsageCount)
+			result[i].WinningRate = float64(stat.WinCount) / float64(stat.UsageCount)
 		}
 	}
 	return result
