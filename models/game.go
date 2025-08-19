@@ -94,11 +94,11 @@ type GamePlayerInfo struct {
 type PlayerReward struct {
 	BaseModel
 	BattleRewardID         uint
-	WalletAddress          string
+	WalletAddress          string `gorm:"not null;index:wallet_address" json:"wallet_address"`
 	TemporaryAddress       string
 	TokenChange            int32
 	PointChange            int32
-	PlayerGameResultStatus proto.PlayerGameResultStatus
+	PlayerGameResultStatus proto.PlayerGameResultStatus 
 	IsOffline              bool
 	Surrendered            bool
 }
