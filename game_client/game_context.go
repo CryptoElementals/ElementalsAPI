@@ -1,84 +1,20 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
-package main
+package gameclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
-	"os"
-	"strings"
 	"sync"
 
 	contract "github.com/CryptoElementals/common/contracts"
-	gameclient "github.com/CryptoElementals/common/game_client"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/c-bata/go-prompt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/spf13/cobra"
-	"golang.org/x/crypto/sha3"
 )
-
-// gameCmd represents the game command
-var gameCmd = &cobra.Command{
-	Use:   "game",
-	Short: "game tools for room server testing",
-}
-
-var gameRunCmd = &cobra.Command{
-	Use:   "run",
-	Short: "game tools for room server testing",
-	Run: func(cmd *cobra.Command, args []string) {
-		err := startGame()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(gameCmd)
-	gameCmd.AddCommand(gameRunCmd)
-
-	gameRunCmd.Flags().StringVarP(&chainRpc, "chain-rpc", "c", "", "chain rpc endpoint")
-	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
-	gameRunCmd.Flags().StringVarP(&accountWalletPath, "account-wallet-path", "a", "", "account wallet path")
-	gameRunCmd.Flags().StringVarP(&tempWalletPath, "temp-wallet-path", "t", "", "temp wallet path")
-	gameRunCmd.MarkFlagRequired("chain-rpc")
-	gameRunCmd.MarkFlagRequired("room-server-endpoint")
-	gameRunCmd.MarkFlagRequired("account-wallet-path")
-	gameRunCmd.MarkFlagRequired("temp-wallet-path")
-}
-
-func toJsonLoggable(obj any) string {
-	res, _ := json.MarshalIndent(obj, "", "  ")
-	return string(res)
-}
-
-var suggestions = []prompt.Suggest{
-	{Text: "join-queue", Description: "join game queue"},
-	{Text: "exit-queue", Description: "exit game queue"},
-	{Text: "confirm", Description: "confirm game"},
-	//{Text: "submit-commitment", Description: "submit card commitments"},
-	{Text: "submit-cards", Description: "submit cards"},
-	{Text: "continue", Description: "continue game"},
-}
-
-func completer(in prompt.Document) []prompt.Suggest {
-	w := in.GetWordBeforeCursor()
-	if w == "" {
-		return []prompt.Suggest{}
-	}
-	return prompt.FilterHasPrefix(suggestions, w, true)
-}
 
 type playerState uint8
 
@@ -118,28 +54,30 @@ func (ps playerState) String() string {
 	return "unknown state"
 }
 
-type gameContext struct {
+type GameContext struct {
 	ctx             context.Context
 	wallet          *wallet.Wallet
 	temporaryWallet *wallet.Wallet
 	chainClient     *ethclient.Client
 	rpcClient       *rpc.Client
 
-	gameID          uint
-	players         []*types.PlayerAddress
-	currentRound    uint32
-	contractAddress string
-	myself          *types.PlayerAddress
-	contract        *contract.RoomContract
-	bindOpts        *bind.TransactOpts
-	evtChan         chan *proto.Event
-	errChan         chan error
-	state           playerState
-	lock            sync.Mutex
-	signalChan      chan struct{}
+	gameID                uint
+	players               []*types.PlayerAddress
+	currentRound          uint32
+	contractAddress       string
+	myself                *types.PlayerAddress
+	contract              *contract.RoomContract
+	bindOpts              *bind.TransactOpts
+	evtChan               chan *proto.Event
+	errChan               chan error
+	state                 playerState
+	lock                  sync.Mutex
+	commitmentOnChainChan chan struct{}
+	roomReadyChan         chan struct{}
+	cardOnChainChan       chan struct{}
 }
 
-func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*gameContext, error) {
+func NewGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*GameContext, error) {
 	chainId, err := chainClient.ChainID(ctx)
 	if err != nil {
 		return nil, err
@@ -149,21 +87,23 @@ func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 		From:   temporaryWallet.GetAddr(),
 		Signer: temporaryWallet.BuildTxSinger(chainId),
 	}
-	return &gameContext{
-		ctx:             ctx,
-		myself:          types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
-		wallet:          wallet,
-		temporaryWallet: temporaryWallet,
-		evtChan:         make(chan *proto.Event, 10),
-		errChan:         make(chan error, 10),
-		bindOpts:        bindOpts,
-		chainClient:     chainClient,
-		rpcClient:       rpcClient,
-		signalChan:      make(chan struct{}),
+	return &GameContext{
+		ctx:                   ctx,
+		myself:                types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
+		wallet:                wallet,
+		temporaryWallet:       temporaryWallet,
+		evtChan:               make(chan *proto.Event, 10),
+		errChan:               make(chan error, 10),
+		bindOpts:              bindOpts,
+		chainClient:           chainClient,
+		rpcClient:             rpcClient,
+		commitmentOnChainChan: make(chan struct{}),
+		roomReadyChan:         make(chan struct{}),
+		cardOnChainChan:       make(chan struct{}),
 	}, nil
 }
 
-func (c *gameContext) run() error {
+func (c *GameContext) Run() error {
 	err := c.rpcClient.PubSubClient.Subscribe(c.myself.String(), c.myself.String(), c.evtChan, c.errChan)
 	if err != nil {
 		return err
@@ -228,7 +168,7 @@ func (c *gameContext) run() error {
 					c.lock.Lock()
 					c.state = playerStateWaittingCardsSubmitted
 					c.lock.Unlock()
-					c.signalChan <- struct{}{}
+					c.commitmentOnChainChan <- struct{}{}
 				case proto.EventType_TYPE_CARDS_ON_CHAIN:
 					c.lock.Lock()
 					fmt.Println("cards on chain")
@@ -240,14 +180,14 @@ func (c *gameContext) run() error {
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
-					fmt.Println("round result: ", toJsonLoggable(battleInfo.RoundResult))
+					fmt.Println("round result: ", types.ToJsonLoggable(battleInfo.RoundResult))
 					if !battleInfo.RoundResult.IsGameOver {
 						c.lock.Lock()
 						c.currentRound++
 						c.state = playerStateWaittingConfirm
 						c.lock.Unlock()
 					} else {
-						fmt.Println("game result: ", toJsonLoggable(battleInfo.GameResult))
+						fmt.Println("game result: ", types.ToJsonLoggable(battleInfo.GameResult))
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
 					fmt.Println("game complete")
@@ -261,7 +201,7 @@ func (c *gameContext) run() error {
 	return nil
 }
 
-func (c *gameContext) JoinQueue() error {
+func (c *GameContext) JoinQueue() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state != playerStateIdle {
@@ -276,7 +216,7 @@ func (c *gameContext) JoinQueue() error {
 	return nil
 }
 
-func (c *gameContext) ExitQueue() error {
+func (c *GameContext) ExitQueue() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state != playerStateWattingGameMatched {
@@ -290,7 +230,7 @@ func (c *gameContext) ExitQueue() error {
 	return nil
 }
 
-func (c *gameContext) ConfirmBattle() error {
+func (c *GameContext) ConfirmBattle() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state != playerStateWaittingConfirm {
@@ -304,7 +244,7 @@ func (c *gameContext) ConfirmBattle() error {
 	return nil
 }
 
-func (c *gameContext) SubmitCommitment(cardHash []byte) (string, error) {
+func (c *GameContext) SubmitCommitment(cardHash []byte) (string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state != playerStateWaittingCommitmentsSubmitted {
@@ -319,7 +259,7 @@ func (c *gameContext) SubmitCommitment(cardHash []byte) (string, error) {
 	return tx.Hash().String(), nil
 }
 
-func (c *gameContext) SubmitCards(cards string, salt string) (string, error) {
+func (c *GameContext) SubmitCards(cards string, salt string) (string, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	// if c.state != playerStateWaittingCardsSubmitted {
@@ -334,7 +274,7 @@ func (c *gameContext) SubmitCards(cards string, salt string) (string, error) {
 	return tx.Hash().String(), nil
 }
 
-func (c *gameContext) Continue() error {
+func (c *GameContext) Continue() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.state != playerStateIdle {
@@ -348,132 +288,6 @@ func (c *gameContext) Continue() error {
 	return nil
 }
 
-func makeExecutor(ctx *gameclient.GameContext) func(in string) {
-	return func(in string) {
-		in = strings.TrimSpace(in)
-		blocks := strings.Split(in, " ")
-		cmd := blocks[0]
-		blocks = blocks[1:]
-		assetArgsNumber := func(expectedCount int) error {
-			if len(blocks) != expectedCount {
-				return fmt.Errorf("invalid args number")
-			}
-			return nil
-		}
-		switch cmd {
-		case "join-queue":
-			err := assetArgsNumber(0)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			err = ctx.JoinQueue()
-			if err != nil {
-				fmt.Println("join queue failed, err: ", err)
-				return
-			}
-			fmt.Println("join queue success, waitting for game matched")
-		case "exit-queue":
-			err := assetArgsNumber(0)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			err = ctx.ExitQueue()
-			if err != nil {
-				fmt.Println("exit queue failed, err: ", err)
-				return
-			}
-			fmt.Println("exit queue success")
-		case "confirm":
-			err := assetArgsNumber(0)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			err = ctx.ConfirmBattle()
-			if err != nil {
-				fmt.Println("confirm failed, err: ", err)
-				return
-			}
-			fmt.Println("confirm success, waitting for game ready on chain")
-		case "continue":
-			err := assetArgsNumber(0)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			err = ctx.Continue()
-			if err != nil {
-				fmt.Println("continue failed, err: ", err)
-				return
-			}
-			fmt.Println("continue success, waitting for game ready on chain")
-		case "submit-cards":
-			err := assetArgsNumber(3)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			cards := strings.Join(blocks[:3], ",")
-			salt := "salt"
-			hh := sha3.NewLegacyKeccak256()
-			hh.Write([]byte(cards))
-			hh.Write([]byte(salt))
-			commitment := hh.Sum(nil)
-			tx, err := ctx.SubmitCommitment(commitment)
-			if err != nil {
-				fmt.Println("submit commitment failed, err: ", err)
-				return
-			}
-			fmt.Println("submit commitment success, tx hash: ", tx)
-			fmt.Println("waitting for commitment on chain")
-			ctx.WaitCommitmentOnChain()
-			tx, err = ctx.SubmitCards(cards, salt)
-			if err != nil {
-				fmt.Println("submit cards failed, err: ", err)
-				return
-			}
-			fmt.Println("submit cards success, tx hash: ", tx)
-		}
-	}
-}
-
-func startGame() error {
-	if chainRpc == "" || roomServerEndpoint == "" {
-		return fmt.Errorf("chain rpc and room server endpoint are required")
-	}
-	client, err := rpc.NewClient(roomServerEndpoint)
-	if err != nil {
-		return err
-	}
-	chainClient, err := ethclient.Dial(chainRpc)
-	if err != nil {
-		return err
-	}
-	var wTemp *wallet.Wallet
-	var wAccount *wallet.Wallet
-	wTemp, err = wallet.LoadWallet(tempWalletPath)
-	if err != nil {
-		return err
-	}
-	fmt.Println("using temp account, address: ", wTemp.GetAddrHex())
-	wAccount, err = wallet.LoadWallet(accountWalletPath)
-	if err != nil {
-		return err
-	}
-	fmt.Println("using wallet account, address: ", wAccount.GetAddrHex())
-	gameContext, err := gameclient.NewGameContext(context.Background(), wAccount, wTemp, chainClient, client)
-	if err != nil {
-		return err
-	}
-	err = gameContext.Run()
-	if err != nil {
-		return err
-	}
-	executor := makeExecutor(gameContext)
-	p := prompt.New(executor, completer)
-	p.Run()
-
-	return nil
+func (c *GameContext) WaitCommitmentOnChain() {
+	<-c.commitmentOnChainChan
 }

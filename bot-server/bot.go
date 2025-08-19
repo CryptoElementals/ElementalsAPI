@@ -87,7 +87,6 @@ type Bot struct {
 	bindOpt     *bind.TransactOpts
 	chanEvt     chan *proto.Event
 	chanErr     chan error
-	subscribing bool
 }
 
 func NewBot(
@@ -96,7 +95,6 @@ func NewBot(
 	client *rpc.Client,
 	ethClient *ethclient.Client,
 	chainID *big.Int,
-	mimicPlayer bool,
 ) *Bot {
 	addr := types.NewPlayerAddress(playerWallet.accountWallet.GetAddrHex(), playerWallet.tempWallet.GetAddrHex())
 	opt := &bind.TransactOpts{
@@ -105,15 +103,14 @@ func NewBot(
 		Signer:  playerWallet.tempWallet.BuildTxSinger(chainID),
 	}
 	return &Bot{
-		ctx:         ctx,
-		w:           playerWallet,
-		mimicPlayer: mimicPlayer,
-		addr:        addr,
-		client:      client,
-		ethClient:   ethClient,
-		bindOpt:     opt,
-		chanEvt:     make(chan *proto.Event, 1),
-		chanErr:     make(chan error, 1),
+		ctx:       ctx,
+		w:         playerWallet,
+		addr:      addr,
+		client:    client,
+		ethClient: ethClient,
+		bindOpt:   opt,
+		chanEvt:   make(chan *proto.Event, 1),
+		chanErr:   make(chan error, 1),
 	}
 }
 
@@ -138,9 +135,6 @@ func (b *Bot) resubscribe(subId string, sleepTime time.Duration) error {
 
 func (b *Bot) run() error {
 	subId := b.formatBotID()
-	if b.mimicPlayer {
-		subId = b.addr.String()
-	}
 	err := b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
 	if err != nil {
 		return err
@@ -236,11 +230,13 @@ func (b *Bot) recoverGameInfo() error {
 
 func (b *Bot) runGameLoop() error {
 	if b.mimicPlayer {
-		err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
-		if err != nil {
-			return err
+		if b.currentGame == nil {
+			err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
+			if err != nil {
+				return err
+			}
+			log.Infow("bot start, join queue", "addr", b.addr.String())
 		}
-		log.Infow("bot start, join queue", "addr", b.addr.String())
 	} else {
 		log.Infow("bot start, waitting for task", "addr", b.addr.String())
 	}
@@ -268,16 +264,6 @@ func (b *Bot) runGameLoop() error {
 					currentRound: roundInfo{
 						roundNum: 1,
 					},
-				}
-				var rival *proto.GamePhasePlayer
-				for _, player := range phase.Players {
-					if player.Address.WalletAddress != b.addr.WalletAddress && player.Address.TemporaryAddress != b.addr.TemporaryAddress {
-						rival = player
-						break
-					}
-				}
-				if rival == nil {
-					log.Errorw("cannot find rival player", "game id", b.currentGame.id)
 				}
 				err = b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
