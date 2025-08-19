@@ -538,6 +538,7 @@ func (g *Game) handleGameAbortInit() error {
 	}
 	g.currentRound.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
+	g.gameInfo.GameResult = g.abortedGameResult()
 	err := g.saveGame()
 	if err != nil {
 		return err
