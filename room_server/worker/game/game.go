@@ -215,8 +215,7 @@ func (g *Game) GetGamePhase() *proto.GamePhase {
 func (g *Game) saveGame() error {
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
-		log.Errorf("SaveGame failed, err: %v", err)
-		return err
+		log.Errorw("saveGame failed", "err", err, "game id", g.gameInfo.ID)
 	}
 	return nil
 }
@@ -224,7 +223,7 @@ func (g *Game) saveGame() error {
 func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 	err := db.SavePlayerRoundInfo(roundPlayer)
 	if err != nil {
-		return err
+		log.Errorw("savePlayerRoundInfo failed", "err", err, "game id", g.gameInfo.ID, "round num", g.currentRound.RoundNumber)
 	}
 	return nil
 }
@@ -232,7 +231,7 @@ func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 func (g *Game) saveRound(round *dao.Round) error {
 	err := db.SaveRound(round)
 	if err != nil {
-		return err
+		log.Errorw("saveRound failed", "err", err, "game id", g.gameInfo.ID, "round num", round.RoundNumber)
 	}
 	return nil
 }
@@ -286,6 +285,7 @@ func (g *Game) pushStateToContractCreating() error {
 	}
 	err := g.sendContractCreation(allPlayers)
 	if err != nil {
+		g.handleGameAbortInternalError()
 		return err
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
@@ -298,10 +298,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 		return err
 	}
 	p.roundPlayer.Surrendered = true
-	err = g.savePlayerRoundInfo(p.roundPlayer)
-	if err != nil {
-		return err
-	}
+	g.savePlayerRoundInfo(p.roundPlayer)
 	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER)
 }
 
@@ -314,6 +311,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 	if evt.RoundNumber != g.currentRound.RoundNumber {
 		return nil
 	}
+	// might be a chain error, ignore it
 	player, err := g.getGamePlayer(evt.PlayerAddress.TemporaryAddress)
 	if err != nil {
 		log.Errorf("getGamePlayer failed, err: %v", err)
@@ -332,9 +330,9 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		RoundNumber:  uint32(g.currentRound.RoundNumber),
 		ReadyAddress: player.PlayerAddress(),
 	}))
-	// for the first round we don't record any thing until both players confirmed
 	if !allPlayersReady {
-		return g.savePlayerRoundInfo(player.roundPlayer)
+		g.savePlayerRoundInfo(player.roundPlayer)
+		return nil
 	}
 	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
 	for _, player := range g.gamePlayers {
@@ -345,6 +343,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 		err := g.sendContractCreation(allPlayers)
 		if err != nil {
+			g.handleGameAbortInternalError()
 			return err
 		}
 	} else {
@@ -354,6 +353,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		// otherwise we need to setup new round on chain
 		err := g.sendRoundReady()
 		if err != nil {
+			g.handleGameAbortInternalError()
 			return err
 		}
 	}
@@ -450,7 +450,8 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		}
 	}
 	if !allCommitmentsOnChain {
-		return g.savePlayerRoundInfo(player.roundPlayer)
+		g.savePlayerRoundInfo(player.roundPlayer)
+		return nil
 	}
 	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
 	err = g.saveRound(g.currentRound)
@@ -495,10 +496,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 			break
 		}
 	}
-	err = g.savePlayerRoundInfo(player.roundPlayer)
-	if err != nil {
-		return err
-	}
+	g.savePlayerRoundInfo(player.roundPlayer)
 	if !allCardsOnChain {
 		return nil
 	}
@@ -540,6 +538,7 @@ func (g *Game) handleGameAbortInit() error {
 	}
 	g.currentRound.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
+	g.gameInfo.GameResult = g.abortedGameResult()
 	err := g.saveGame()
 	if err != nil {
 		return err
@@ -550,9 +549,7 @@ func (g *Game) handleGameAbortInit() error {
 	}
 	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
-		if err != nil {
-			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-		}
+		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 	}
 	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopGame()

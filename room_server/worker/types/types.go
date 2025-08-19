@@ -88,7 +88,7 @@ func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
 type Event struct {
 	Sender  string
 	EventID string
-	AckChan chan struct{}
+	AckChan chan struct{} `json:",omitempty"`
 	Error   error
 	Data    any
 }

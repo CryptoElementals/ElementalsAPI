@@ -65,46 +65,43 @@ func startHealthCheck(serverAddress string) {
 	var consecutiveFailures int
 	const maxRetries = 3
 
-	for {
-		select {
-		case <-ticker.C:
-			globalMutex.RLock()
-			conn := globalConn
-			globalMutex.RUnlock()
+	for range ticker.C {
+		globalMutex.RLock()
+		conn := globalConn
+		globalMutex.RUnlock()
 
-			if conn == nil {
-				continue
+		if conn == nil {
+			continue
+		}
+
+		// 检查连接状态
+		state := conn.GetState()
+		switch state {
+		case connectivity.Ready:
+			// 连接正常，重置失败计数
+			if consecutiveFailures > 0 {
+				log.Infof("gRPC连接恢复正常")
+				consecutiveFailures = 0
 			}
+		case connectivity.TransientFailure, connectivity.Shutdown:
+			consecutiveFailures++
+			log.Warnf("gRPC连接状态异常: %v，连续失败次数: %d/%d", state, consecutiveFailures, maxRetries)
 
-			// 检查连接状态
-			state := conn.GetState()
-			switch state {
-			case connectivity.Ready:
-				// 连接正常，重置失败计数
-				if consecutiveFailures > 0 {
-					log.Infof("gRPC连接恢复正常")
+			if consecutiveFailures >= maxRetries {
+				log.Errorf("连续失败次数达到上限，尝试重新连接")
+
+				// 重新连接
+				if err := reconnectGlobalClients(serverAddress); err != nil {
+					log.Errorf("重新连接失败: %v", err)
+				} else {
+					log.Infof("gRPC连接重新建立成功")
 					consecutiveFailures = 0
 				}
-			case connectivity.TransientFailure, connectivity.Shutdown:
-				consecutiveFailures++
-				log.Warnf("gRPC连接状态异常: %v，连续失败次数: %d/%d", state, consecutiveFailures, maxRetries)
-
-				if consecutiveFailures >= maxRetries {
-					log.Errorf("连续失败次数达到上限，尝试重新连接")
-
-					// 重新连接
-					if err := reconnectGlobalClients(serverAddress); err != nil {
-						log.Errorf("重新连接失败: %v", err)
-					} else {
-						log.Infof("gRPC连接重新建立成功")
-						consecutiveFailures = 0
-					}
-				}
-			case connectivity.Connecting:
-				log.Debugf("gRPC连接正在重连中...")
-			case connectivity.Idle:
-				log.Debugf("gRPC连接处于空闲状态")
 			}
+		case connectivity.Connecting:
+			log.Debugf("gRPC连接正在重连中...")
+		case connectivity.Idle:
+			log.Debugf("gRPC连接处于空闲状态")
 		}
 	}
 }
@@ -173,9 +170,9 @@ func CloseGlobalClients() error {
 
 // Client 统一的客户端接口，组合了 RPC 和 PubSub 客户端
 type Client struct {
-	conn         *grpc.ClientConn
-	PubSubClient *PubSubClient
-	RpcClient    *RpcClient
+	conn *grpc.ClientConn
+	*PubSubClient
+	*RpcClient
 }
 
 // NewClient 创建新的统一客户端
