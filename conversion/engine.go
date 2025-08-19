@@ -84,12 +84,13 @@ func ProtoPlayerRewardsToDbPlayerRewards(protoPlayerRewards []*proto.PlayerRewar
 	dbPlayerRewards := make([]*dao.PlayerReward, 0, len(protoPlayerRewards))
 	for _, p := range protoPlayerRewards {
 		dbPlayerRewards = append(dbPlayerRewards, &dao.PlayerReward{
-			WalletAddress:    p.WalletAddress,
-			TemporaryAddress: p.TemporaryAddress,
-			TokenChange:      p.TokenChange,
-			PointChange:      p.PointChange,
-			IsOffline:        p.Offline,
-			Surrendered:      p.Surrendered,
+			WalletAddress:          p.WalletAddress,
+			TemporaryAddress:       p.TemporaryAddress,
+			TokenChange:            p.TokenChange,
+			PointChange:            p.PointChange,
+			IsOffline:              p.Offline,
+			Surrendered:            p.Surrendered,
+			PlayerGameResultStatus: proto.PlayerGameResultStatus(p.PlayerGameResultStatus),
 		})
 	}
 	return dbPlayerRewards

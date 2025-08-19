@@ -64,12 +64,13 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerRew
 	var playerRewards []*proto.PlayerReward
 	for _, playerReward := range playerReward {
 		playerRewards = append(playerRewards, &proto.PlayerReward{
-			WalletAddress:    playerReward.WalletAddress,
-			TemporaryAddress: playerReward.TemporaryAddress,
-			TokenChange:      int32(playerReward.TokenChange),
-			PointChange:      int32(playerReward.PointChange),
-			Offline:          playerReward.IsOffline,
-			Surrendered:      playerReward.Surrendered,
+			WalletAddress:          playerReward.WalletAddress,
+			TemporaryAddress:       playerReward.TemporaryAddress,
+			TokenChange:            int32(playerReward.TokenChange),
+			PointChange:            int32(playerReward.PointChange),
+			Offline:                playerReward.IsOffline,
+			Surrendered:            playerReward.Surrendered,
+			PlayerGameResultStatus: playerReward.PlayerGameResultStatus,
 		})
 	}
 	return playerRewards

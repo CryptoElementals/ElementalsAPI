@@ -130,12 +130,13 @@ func convertInternalRewardToProto(in *BattleReward) *pb.BattleReward {
 	players := make([]*pb.PlayerReward, len(in.PlayerRewards))
 	for i, pr := range in.PlayerRewards {
 		players[i] = &pb.PlayerReward{
-			WalletAddress:    pr.WalletAddress,
-			TemporaryAddress: pr.TemporaryAddress,
-			TokenChange:      int32(pr.TokenChange),
-			PointChange:      int32(pr.PointChange),
-			Offline:          pr.IsOffline,
-			Surrendered:      pr.IsSurrendered,
+			WalletAddress:          pr.WalletAddress,
+			TemporaryAddress:       pr.TemporaryAddress,
+			TokenChange:            int32(pr.TokenChange),
+			PointChange:            int32(pr.PointChange),
+			Offline:                pr.IsOffline,
+			Surrendered:            pr.IsSurrendered,
+			PlayerGameResultStatus: pr.PlayerGameResultStatus,
 		}
 	}
 	return &pb.BattleReward{

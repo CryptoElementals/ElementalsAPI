@@ -62,6 +62,7 @@ message PlayerReward {
     int32 PointChange = 4;
     bool Offline = 5;
     bool Surrendered =6;
+    PlayerGameResultStatus PlayerGameResultStatus = 7;
 }
 
 message BattleReward {
@@ -74,6 +75,13 @@ enum GameResultType {
     GAME_KO = 1;
     GAME_TIE = 2;
     GAME_ABORTED = 3;
+}
+
+enum PlayerGameResultStatus {
+    PLAYER_ABORTED = 0;
+    PLAYER_WIN = 1;
+    PLAYER_LOSE = 2;
+    PLAYER_TIE = 3;
 }
 
 message GameResult {

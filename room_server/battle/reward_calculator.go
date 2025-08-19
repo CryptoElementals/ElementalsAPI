@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // RewardCalculator reward calculator
@@ -47,12 +48,13 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 			}
 
 			playerRewards = append(playerRewards, PlayerReward{
-				WalletAddress:    player.WalletAddress,
-				TemporaryAddress: player.TemporaryAddress,
-				TokenChange:      -tokenDeduction,
-				PointChange:      pointGain,
-				IsOffline:        isOffline,
-				IsSurrendered:    isSurrendered,
+				WalletAddress:          player.WalletAddress,
+				TemporaryAddress:       player.TemporaryAddress,
+				TokenChange:            -tokenDeduction,
+				PointChange:            pointGain,
+				IsOffline:              isOffline,
+				IsSurrendered:          isSurrendered,
+				PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
 			})
 		}
 		systemFee = totalDeducted
@@ -107,23 +109,25 @@ func (rc *RewardCalculator) CalculateRewards(result *RoundResult, playerStatuses
 					// 赢家
 
 					playerRewards = append(playerRewards, PlayerReward{
-						WalletAddress:    player.WalletAddress,
-						TemporaryAddress: player.TemporaryAddress,
-						TokenChange:      winnerTokenPerPlayer,
-						PointChange:      winnerPointPerPlayer,
-						IsOffline:        isOffline,
-						IsSurrendered:    isSurrendered,
+						WalletAddress:          player.WalletAddress,
+						TemporaryAddress:       player.TemporaryAddress,
+						TokenChange:            winnerTokenPerPlayer,
+						PointChange:            winnerPointPerPlayer,
+						IsOffline:              isOffline,
+						IsSurrendered:          isSurrendered,
+						PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_WIN,
 					})
 				} else {
 					// 输家
 
 					playerRewards = append(playerRewards, PlayerReward{
-						WalletAddress:    player.WalletAddress,
-						TemporaryAddress: player.TemporaryAddress,
-						TokenChange:      -loserTokenPerPlayer,
-						PointChange:      loserPointPerPlayer,
-						IsOffline:        isOffline,
-						IsSurrendered:    isSurrendered,
+						WalletAddress:          player.WalletAddress,
+						TemporaryAddress:       player.TemporaryAddress,
+						TokenChange:            -loserTokenPerPlayer,
+						PointChange:            loserPointPerPlayer,
+						IsOffline:              isOffline,
+						IsSurrendered:          isSurrendered,
+						PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_LOSE,
 					})
 				}
 			}
