@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -38,18 +37,19 @@ type GameCreator interface {
 	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 }
 
-func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64, botWaitTime int64) *Queue {
+func NewQueue(ctx context.Context, workerManager *worker.WorkerManager, c cache.Cache, gameCreator GameCreator, continueTimeout int64, botWaitTime int64, minTokenToJoinQueue int32) *Queue {
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	q := &Queue{
-		ctx:             ctx,
-		queue:           make(map[types.PlayerAddress]time.Time),
-		workerManager:   workerManager,
-		queueCache:      queueCache,
-		gameCreator:     gameCreator,
-		continueManager: newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
-		continueTimeout: time.Duration(continueTimeout) * time.Second,
-		botMgr:          newBotManager(),
-		botWaitTime:     time.Duration(botWaitTime) * time.Second,
+		ctx:                 ctx,
+		queue:               make(map[types.PlayerAddress]time.Time),
+		workerManager:       workerManager,
+		queueCache:          queueCache,
+		gameCreator:         gameCreator,
+		continueManager:     newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
+		continueTimeout:     time.Duration(continueTimeout) * time.Second,
+		botMgr:              newBotManager(),
+		botWaitTime:         time.Duration(botWaitTime) * time.Second,
+		minTokenToJoinQueue: minTokenToJoinQueue,
 	}
 	return q
 }
@@ -73,12 +73,21 @@ func (q *Queue) start() error {
 func (q *Queue) close() {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	// drain the queue when closing
 	q.closing = true
+	for addr := range q.queue {
+		q.removePlayerFromQueue(addr)
+	}
+	log.Info("queue closed")
 }
 
 func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	if q.closing {
+		log.Debugw("cannot join queue, server is closing", "addr", event.PlayerAddress.String())
+		return errors.New("server is closing")
+	}
 	if _, ok := q.queue[event.PlayerAddress]; ok {
 		return errors.New("player already in queue")
 	}
@@ -117,9 +126,8 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 }
 
 func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
-	evt := &types.GameMatchedEvent{}
-	for _, p := range players {
-		evt.Players = append(evt.Players, p)
+	evt := &types.GameMatchedEvent{
+		Players: players,
 	}
 	gid, err := q.gameCreator.HandleGameMatchedEvent(evt)
 	if err != nil {
@@ -128,12 +136,16 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 	}
 
 	for _, p := range players {
-		if q.minTokenToJoinQueue > 0 {
-			err = db.SetLockedTokenGameID(q.ctx, p.WalletAddress, p.TemporaryAddress, gid)
-			if err != nil {
+		err = db.SetLockedTokenGameID(q.ctx, p.WalletAddress, p.TemporaryAddress, gid)
+		if err != nil {
+			// bot never lock token
+			if err == db.ErrNotFound && q.botMgr.isInGame(p) {
+				log.Debugw("bot token lock record not found when setting locked token game id", "player", p)
+			} else {
 				log.Errorf("set locked token game id failed: %s", err.Error())
 				return err
 			}
+
 		}
 		delete(q.queue, p)
 		err = q.queueCache.Delete(p.String())
@@ -148,9 +160,13 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	delete(q.queue, event.PlayerAddress)
-	q.queueCache.Delete(event.PlayerAddress.String())
-	err := q.unlockToken(&event.PlayerAddress)
+	return q.removePlayerFromQueue(event.PlayerAddress)
+}
+
+func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
+	delete(q.queue, player)
+	q.queueCache.Delete(player.String())
+	err := q.unlockToken(&player)
 	if err != nil {
 		log.Errorf("unlock user token failed: %s", err.Error())
 	}
@@ -169,10 +185,6 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
 		if q.botMgr.isInGame(*addr) {
 			q.botMgr.releaseInGameBot(*addr)
-			err := q.lockToken(addr)
-			if err != nil {
-				return fmt.Errorf("lock token failed, err: %w, addr: %s", err, addr.String())
-			}
 		}
 	}
 	q.continueManager.addGame(event.GameInfo)

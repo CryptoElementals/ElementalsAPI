@@ -12,15 +12,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// tokenCmd represents the addToken command
-var tokenCmd = &cobra.Command{
-	Use:   "token",
-	Short: "command to manage token and points",
+// playerCmd represents the addToken command
+var playerCmd = &cobra.Command{
+	Use:   "player",
+	Short: "command to manage tokens, points and player infos",
 }
 
-var tokenSetCmd = &cobra.Command{
-	Use:   "set",
-	Short: "set token and points for player",
+var playerSetCmd = &cobra.Command{
+	Use:   "player-set",
+	Short: "set player info",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := db.Init(&db.Config{
 			Endpoint: endpoint,
@@ -38,17 +38,31 @@ var tokenSetCmd = &cobra.Command{
 			Points:        int32(points),
 			TokenAmount:   int32(tokens),
 		}
+
 		err = db.Get().Save(&ut).Error
 		if err != nil {
 			fmt.Printf("set token and points failed, err: %v\n", err)
 			return
 		}
+		if cmd.Flags().Changed("name") {
+			profile := dao.UserProfile{
+				Address:       playerAddress,
+				Name:          playerName,
+				AvatarURL:     playerAvatarUrl,
+				BackgroundURL: backgroundUrl,
+			}
+			err = db.Get().Save(&profile).Error
+			if err != nil {
+				fmt.Printf("set token and points failed, err: %v\n", err)
+				return
+			}
+		}
 	},
 }
 
-var tokenGetCmd = &cobra.Command{
-	Use:   "show",
-	Short: "show token and points",
+var playerGetCmd = &cobra.Command{
+	Use:   "player-get",
+	Short: "display player info",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := db.Init(&db.Config{
 			Endpoint: endpoint,
@@ -71,7 +85,7 @@ var tokenGetCmd = &cobra.Command{
 }
 
 var tokenLockCmd = &cobra.Command{
-	Use:   "lock",
+	Use:   "token-lock",
 	Short: "lock token for wallet address",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := db.Init(&db.Config{
@@ -105,7 +119,7 @@ var tokenLockCmd = &cobra.Command{
 }
 
 var tokenUnlockCmd = &cobra.Command{
-	Use:   "unlock",
+	Use:   "token-unlock",
 	Short: "unlock token for wallet address",
 	Run: func(cmd *cobra.Command, args []string) {
 		err := db.Init(&db.Config{
@@ -145,17 +159,21 @@ var tokenUnlockCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(tokenCmd)
-	tokenCmd.AddCommand(tokenSetCmd)
-	tokenCmd.AddCommand(tokenGetCmd)
-	tokenCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", "", "endpoint of mysql")
-	tokenCmd.PersistentFlags().StringVarP(&user, "user", "u", "", "user of mysql")
-	tokenCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password of mysql")
-	tokenCmd.PersistentFlags().StringVarP(&dbName, "db-name", "d", "", "db name of mysql")
-	tokenCmd.PersistentFlags().StringVarP(&playerAddress, "address", "a", "", "player wallet address")
+	rootCmd.AddCommand(playerCmd)
+	playerCmd.AddCommand(playerSetCmd)
+	playerCmd.AddCommand(playerGetCmd)
+	playerCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", "", "endpoint of mysql")
+	playerCmd.PersistentFlags().StringVarP(&user, "user", "u", "", "user of mysql")
+	playerCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password of mysql")
+	playerCmd.PersistentFlags().StringVarP(&dbName, "db-name", "d", "", "db name of mysql")
+	playerCmd.PersistentFlags().StringVarP(&playerAddress, "address", "a", "", "player wallet address")
 
-	tokenSetCmd.Flags().Int64VarP(&points, "points", "", 0, "points to set")
-	tokenSetCmd.Flags().Int64VarP(&tokens, "tokens", "", 0, "tokens to set")
+	playerSetCmd.Flags().Int64VarP(&points, "points", "", 0, "points to set")
+	playerSetCmd.Flags().Int64VarP(&tokens, "tokens", "", 0, "tokens to set")
+	playerSetCmd.Flags().StringVarP(&playerName, "name", "", "", "player name")
+	playerSetCmd.Flags().StringVarP(&playerAvatarUrl, "avatar", "", "", "player avatar url")
+	playerSetCmd.Flags().StringVarP(&backgroundUrl, "background", "", "", "player avatar background")
+	playerSetCmd.MarkFlagsRequiredTogether("avatar", "name", "background")
 
 	tokenLockCmd.Flags().UintVarP(&gameID, "game-id", "i", 0, "game id")
 	tokenLockCmd.Flags().StringVarP(&tempAddress, "temp-addr", "t", "", "temporary address for locking")
