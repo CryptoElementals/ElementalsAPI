@@ -123,3 +123,24 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 
 	return results, nil
 }
+
+// GetUserStatByAddress 根据地址获取用户统计数据
+func GetUserStatByAddress(address string) (*dao.UserStat, error) {
+	if address == "" {
+		return nil, fmt.Errorf("address cannot be empty")
+	}
+
+	userStat := &dao.UserStat{}
+
+	// 查询用户统计记录
+	if err := db.Where("address = ?", address).First(userStat).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 如果记录不存在，返回空对象
+			return userStat, nil
+		}
+		// 其他数据库错误
+		return nil, fmt.Errorf("failed to query user stat for address %s: %v", address, err)
+	}
+
+	return userStat, nil
+}
