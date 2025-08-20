@@ -463,7 +463,12 @@ func startGame() error {
 		return err
 	}
 	fmt.Println("using wallet account, address: ", wAccount.GetAddrHex())
-	gameContext, err := gameclient.NewGameContext(context.Background(), wAccount, wTemp, chainClient, client)
+	gameContext, err := gameclient.NewGameContext(context.Background(), &gameclient.GameContextConfig{
+		Wallet:          wAccount,
+		TemporaryWallet: wTemp,
+		ChainClient:     chainClient,
+		RpcClient:       client,
+	})
 	if err != nil {
 		return err
 	}

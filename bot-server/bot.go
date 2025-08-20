@@ -22,12 +22,12 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-type playerWallet struct {
+type PlayerWallet struct {
 	accountWallet *wallet.Wallet
 	tempWallet    *wallet.Wallet
 }
 
-func (w *playerWallet) address() *types.PlayerAddress {
+func (w *PlayerWallet) Address() *types.PlayerAddress {
 	return types.NewPlayerAddress(w.accountWallet.GetAddrHex(), w.tempWallet.GetAddrHex())
 }
 
@@ -78,7 +78,7 @@ type gameInfo struct {
 
 type Bot struct {
 	ctx         context.Context
-	w           *playerWallet
+	w           *PlayerWallet
 	mimicPlayer bool
 	currentGame *gameInfo
 	addr        *types.PlayerAddress
@@ -91,7 +91,7 @@ type Bot struct {
 
 func NewBot(
 	ctx context.Context,
-	playerWallet *playerWallet,
+	playerWallet *PlayerWallet,
 	client *rpc.Client,
 	ethClient *ethclient.Client,
 	chainID *big.Int,

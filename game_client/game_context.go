@@ -77,26 +77,41 @@ type GameContext struct {
 	cardOnChainChan       chan struct{}
 }
 
-func NewGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*GameContext, error) {
-	chainId, err := chainClient.ChainID(ctx)
+type GameContextConfig struct {
+	Wallet          *wallet.Wallet
+	TemporaryWallet *wallet.Wallet
+	ChainClient     *ethclient.Client
+	RpcClient       *rpc.Client
+	HttpClient      *HttpClient
+}
+
+func NewGameContext(ctx context.Context, cfg *GameContextConfig) (*GameContext, error) {
+	chainId, err := cfg.ChainClient.ChainID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	temporaryWallet.BuildTxSinger(chainId)
+	cfg.TemporaryWallet.BuildTxSinger(chainId)
 	bindOpts := &bind.TransactOpts{
-		From:   temporaryWallet.GetAddr(),
-		Signer: temporaryWallet.BuildTxSinger(chainId),
+		From:   cfg.TemporaryWallet.GetAddr(),
+		Signer: cfg.TemporaryWallet.BuildTxSinger(chainId),
+	}
+
+	var gameClient GameClient
+	if cfg.RpcClient != nil {
+		gameClient = WrapRpcClient(cfg.RpcClient)
+	} else if cfg.HttpClient != nil {
+		gameClient = WrapHttpClient(cfg.HttpClient)
 	}
 	return &GameContext{
 		ctx:                   ctx,
-		myself:                types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
-		wallet:                wallet,
-		temporaryWallet:       temporaryWallet,
+		myself:                types.NewPlayerAddress(cfg.Wallet.GetAddrHex(), cfg.TemporaryWallet.GetAddrHex()),
+		wallet:                cfg.Wallet,
+		temporaryWallet:       cfg.TemporaryWallet,
 		evtChan:               make(chan *proto.Event, 10),
 		errChan:               make(chan error, 10),
 		bindOpts:              bindOpts,
-		chainClient:           chainClient,
-		rpcClient:             rpcClient,
+		chainClient:           cfg.ChainClient,
+		rpcClient:             gameClient,
 		commitmentOnChainChan: make(chan struct{}),
 		roomReadyChan:         make(chan struct{}),
 		cardOnChainChan:       make(chan struct{}),
@@ -130,11 +145,8 @@ func (c *GameContext) Run() error {
 						continue
 					}
 					c.lock.Lock()
-					c.gameID = uint(phase.PvPInfo.GameID)
-					for _, pp := range phase.Players {
-						player := types.NewPlayerAddress(pp.Address.WalletAddress, pp.Address.TemporaryAddress)
-						c.players = append(c.players, player)
-					}
+					c.gameID = phase.GameID()
+					c.players = phase.Players()
 					c.state = playerStateWaittingConfirm
 					c.currentRound = 1
 					c.lock.Unlock()
@@ -148,8 +160,8 @@ func (c *GameContext) Run() error {
 						fmt.Println("error: ", err.Error())
 					}
 					c.lock.Lock()
-					c.gameID = uint(phase.PvPInfo.GameID)
-					c.contractAddress = phase.PvPInfo.ContractAddress
+					c.gameID = phase.GameID()
+					c.contractAddress = phase.ContractAddress()
 					c.contract, err = contract.NewRoomContract(common.HexToAddress(c.contractAddress), c.chainClient)
 					if err != nil {
 						fmt.Println("error: ", err.Error())
@@ -180,14 +192,14 @@ func (c *GameContext) Run() error {
 					if err != nil {
 						fmt.Println("error: ", err.Error())
 					}
-					fmt.Println("round result: ", types.ToJsonLoggable(battleInfo.RoundResult))
-					if !battleInfo.RoundResult.IsGameOver {
+					fmt.Println("round result: ", types.ToJsonLoggable(battleInfo.RoundResult()))
+					if !battleInfo.IsGameOver() {
 						c.lock.Lock()
 						c.currentRound++
 						c.state = playerStateWaittingConfirm
 						c.lock.Unlock()
 					} else {
-						fmt.Println("game result: ", types.ToJsonLoggable(battleInfo.GameResult))
+						fmt.Println("game result: ", types.ToJsonLoggable(battleInfo.GameResult()))
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
 					fmt.Println("game complete")

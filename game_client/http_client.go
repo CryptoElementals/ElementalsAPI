@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,10 +25,9 @@ type HttpClient struct {
 	endpoint      string
 	client        *http.Client
 	accountWallet *wallet.Wallet
-	tempWallet    *wallet.Wallet
 }
 
-func NewHttpClient(ctx context.Context, endpoint string, accountWallet, tempWallet *wallet.Wallet) *HttpClient {
+func NewHttpClient(ctx context.Context, endpoint string, accountWallet *wallet.Wallet) *HttpClient {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		log.Fatal(err)
@@ -42,7 +40,6 @@ func NewHttpClient(ctx context.Context, endpoint string, accountWallet, tempWall
 		endpoint:      endpoint,
 		client:        client,
 		accountWallet: accountWallet,
-		tempWallet:    tempWallet,
 	}
 }
 
@@ -259,12 +256,17 @@ func (c *HttpClient) RefuseContinueGame(ctx context.Context, addr *types.PlayerA
 	return nil
 }
 func (c *HttpClient) Subscribe(topic string, subscriberID string, evtChan chan *events.Event) error {
+	addr := types.PlayerAddress{}
+	err := addr.Parse(topic)
+	if err != nil {
+		return fmt.Errorf("failed to parse player address from topic: %s, err: %w", topic, err)
+	}
 	req := &api.SubscribeGameInfoRequest{
 		BaseRequest: api.BaseRequest{
 			Action: api.SUBSCRIBE_GAME_INFO_LABEL,
 		},
-		Address:     c.accountWallet.GetAddrHex(),
-		TempAddress: c.tempWallet.GetAddrHex(),
+		Address:     addr.WalletAddress,
+		TempAddress: addr.TemporaryAddress,
 		Duration:    86400, // 1 day in seconds
 	}
 	reqBody, err := json.Marshal(req)
@@ -272,45 +274,47 @@ func (c *HttpClient) Subscribe(topic string, subscriberID string, evtChan chan *
 		return err
 	}
 	r := bytes.NewBuffer(reqBody)
-	for {
-		resp, err := c.client.Post(c.endpoint, "application/json", r)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusOK {
-			return errors.New("status code not 200")
-		}
-
-		reader := bufio.NewReader(resp.Body)
+	go func() {
 		for {
-			line, err := reader.ReadString('\n')
+			resp, err := c.client.Post(c.endpoint, "application/json", r)
 			if err != nil {
-				if err == io.EOF {
-					log.Error("SSE connection closed by server. Reconnecting...")
+				log.Errorw("request SSE stream failed", "error", err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				log.Errorw("SSE stream returned non-200 status code", "status", resp.StatusCode)
+			}
+
+			reader := bufio.NewReader(resp.Body)
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					if err == io.EOF {
+						log.Error("SSE connection closed by server. Reconnecting...")
+						break // Exit inner loop to trigger reconnection
+					}
+					log.Error("Error reading SSE stream: %v. Reconnecting...", err)
 					break // Exit inner loop to trigger reconnection
 				}
-				log.Error("Error reading SSE stream: %v. Reconnecting...", err)
-				break // Exit inner loop to trigger reconnection
-			}
 
-			line = strings.TrimSpace(line)
-			if line == "" { // End of an event
-				continue
-			}
-
-			// Basic parsing (can be extended for 'event', 'id' fields)
-			if strings.HasPrefix(line, "data:") {
-				data := strings.TrimPrefix(line, "data:")
-				evt := events.Event{}
-				err := json.Unmarshal([]byte(strings.TrimSpace(data)), &evt)
-				if err != nil {
-					log.Error("Error unmarshalling SSE event: %v", err)
+				line = strings.TrimSpace(line)
+				if line == "" { // End of an event
 					continue
 				}
-				// Send the event to the channel
-				evtChan <- &evt
+
+				// Basic parsing (can be extended for 'event', 'id' fields)
+				if strings.HasPrefix(line, "data:") {
+					data := strings.TrimPrefix(line, "data:")
+					evt := events.Event{}
+					err := json.Unmarshal([]byte(strings.TrimSpace(data)), &evt)
+					if err != nil {
+						log.Error("Error unmarshalling SSE event: %v", err)
+						continue
+					}
+					// Send the event to the channel
+					evtChan <- &evt
+				}
 			}
 		}
-		return nil
-	}
+	}()
+	return nil
 }

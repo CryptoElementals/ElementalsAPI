@@ -12,6 +12,7 @@ type UserProfile struct {
 	WinCount          int        `gorm:"default:0" json:"win_count"`
 	WinningRate       float64    `gorm:"default:0.0" json:"winning_rate"`
 	CollectedRewardAt *time.Time `gorm:"default:null" json:"collected_reward_at"` // 记录用户领取每日奖励的时间
+	IsBot             bool       `gorm:"is_bot,index" json:"is_bot"`
 	CreatedAt         time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt         time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }

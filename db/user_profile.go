@@ -169,3 +169,12 @@ func UpdateUserGameStats(player1Address, player2Address, winner string, multipli
 
 	return nil
 }
+
+func ListBots() ([]dao.UserProfile, error) {
+	userProfiles := make([]dao.UserProfile, 0)
+	err := Get().Where("is_bot = ?", true).Find(&userProfiles).Error
+	if err != nil {
+		return nil, err
+	}
+	return userProfiles, nil
+}

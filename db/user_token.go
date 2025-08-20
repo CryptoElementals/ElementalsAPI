@@ -20,6 +20,15 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 	return Get().Save(&tokens).Error
 }
 
+func GetUserToken(address string) (*dao.UserToken, error) {
+	ut := dao.UserToken{}
+	err := Get().Where("wallet_address = ?", address).First(&ut).Error
+	if err != nil{
+		return nil, err
+	}
+	return &ut, nil
+}
+
 func LockUserToken(ctx context.Context, address string, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
