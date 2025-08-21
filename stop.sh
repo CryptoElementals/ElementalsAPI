@@ -10,6 +10,7 @@ show_usage() {
     echo "  $0 room-server        # Stop only room server"
     echo "  $0 api-server         # Stop only API server"
     echo "  $0 scanner            # Stop only scanner"
+    echo "  $0 stat               # Stop only stat"
 }
 
 # 停止指定进程
@@ -39,6 +40,7 @@ stop_all() {
     stop_process "ele-roomserver" "Room Server"
     stop_process "ele-apiserver" "API Server"
     stop_process "ele-scanner" "Scanner"
+    stop_process "ele-stat" "Stat"
     echo "✓ All services stopped."
 }
 
@@ -59,6 +61,9 @@ case "$1" in
         ;;
     "scanner")
         stop_process "ele-scanner" "Scanner"
+        ;;
+    "stat")
+        stop_process "ele-stat" "Stat"
         ;;
     "all")
         stop_all

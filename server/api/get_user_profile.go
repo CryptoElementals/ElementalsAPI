@@ -1,6 +1,7 @@
 package api
 
 import (
+	"math"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
@@ -103,6 +104,17 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		return nil, errors.GetUserProfileFailed(lowercaseAddress)
 	}
 
+	userStat, err := db.GetUserStatByAddress(lowercaseAddress)
+	if err != nil {
+		log.Errorf("%s, failed to get user stat for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
+	}
+	winningRate := 0.00
+	if userStat.TotalGameCount > 0 {
+		winningRate = float64(userStat.WinCount) / float64(userStat.TotalGameCount)
+		// 保留2位小数
+		winningRate = math.Round(winningRate*100) / 100
+	}
+
 	// 从 user_token 表获取积分和代币信息（优先使用该表数据）
 	var (
 		points      int
@@ -135,8 +147,8 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		BackgroundURL: "",
 		Points:        points,
 		TokenAmount:   tokenAmount,
-		OverallGame:   userProfile.OverallGame,
-		WinningRate:   userProfile.WinningRate,
+		OverallGame:   int(userStat.TotalGameCount),
+		WinningRate:   winningRate,
 		CardStatInfo:  cardStatInfo,
 	}
 

@@ -4,9 +4,11 @@ BIN_DIR="bin"
 API_SERVER="ele-apiserver"
 ROOM_SERVER="ele-roomserver"
 SCANNER="ele-scanner"
+STAT="ele-stat"
 API_CONFIG="config.yaml"
 ROOM_CONFIG="config.yaml"
 SCANNER_CONFIG="scanner_config.yaml"
+STAT_CONFIG="stat_config.yaml"
 
 # 显示使用说明
 show_usage() {
@@ -18,6 +20,7 @@ show_usage() {
     echo "  $0 room-server        # Start only room server"
     echo "  $0 api-server         # Start only API server"
     echo "  $0 scanner            # Start only scanner"
+    echo "  $0 stat               # Start only stat"
 }
 
 # 启动 room server
@@ -41,6 +44,13 @@ start_scanner() {
     echo "✓ $SCANNER started with PID: $!"
 }
 
+# 启动 stat
+start_stat() {
+    echo "Starting $STAT with config $STAT_CONFIG..."
+    nohup ./$BIN_DIR/$STAT run --config $STAT_CONFIG > /dev/null 2>&1 &
+    echo "✓ $STAT started with PID: $!"
+}
+
 # 启动所有服务
 start_all() {
     echo "Starting all services..."
@@ -49,6 +59,8 @@ start_all() {
     start_api_server
     sleep 2
     start_scanner
+    sleep 2
+    start_stat
     echo "✓ All services started successfully"
 }
 
@@ -69,6 +81,9 @@ case "$1" in
         ;;
     "scanner")
         start_scanner
+        ;;
+    "stat")
+        start_stat
         ;;
     "all")
         start_all
