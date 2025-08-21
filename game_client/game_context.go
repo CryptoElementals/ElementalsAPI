@@ -62,7 +62,7 @@ type GameContext struct {
 	rpcClient       GameClient
 
 	gameID                uint
-	players               []*types.PlayerAddress
+	players               []RoundPlayer
 	currentRound          uint32
 	contractAddress       string
 	myself                *types.PlayerAddress

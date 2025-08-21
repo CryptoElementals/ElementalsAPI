@@ -20,11 +20,83 @@ type GameClient interface {
 	JoinQueue(ctx context.Context, addr *types.PlayerAddress) error
 	RefuseContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error
 	Subscribe(topic string, subscriberID string, evtChan chan *proto.Event, errChan chan error) error
+	Unsubscribe(s string, subId string) error
+}
+
+type GamePhasePlayerWrapper struct {
+	ProtoRoundPlayer *proto.GamePhasePlayer
+	HttpRoundPlayer  *api.MatchPlayer
+}
+
+func (w *GamePhasePlayerWrapper) Address() *types.PlayerAddress {
+	if w.ProtoRoundPlayer != nil {
+		return &types.PlayerAddress{
+			WalletAddress:    w.ProtoRoundPlayer.Address.WalletAddress,
+			TemporaryAddress: w.ProtoRoundPlayer.Address.TemporaryAddress,
+		}
+	}
+	if w.HttpRoundPlayer != nil {
+		return &types.PlayerAddress{
+			WalletAddress: w.HttpRoundPlayer.Address,
+		}
+	}
+	return nil
+}
+
+func (w *GamePhasePlayerWrapper) IsConfirmed() bool {
+	if w.ProtoRoundPlayer != nil {
+		return w.ProtoRoundPlayer.IsConfirmed
+	}
+	if w.HttpRoundPlayer != nil {
+		return w.HttpRoundPlayer.IsConfirmed
+	}
+	return false
+}
+
+func (w *GamePhasePlayerWrapper) Commitment() []byte {
+	if w.ProtoRoundPlayer != nil {
+		return w.ProtoRoundPlayer.Commitment
+	}
+	if w.HttpRoundPlayer != nil {
+		return make([]byte, 48)
+	}
+	return nil
 }
 
 type GamePhaseWrapper struct {
 	ProtoGamePhase *proto.GamePhase
 	HttpGamePhase  *api.GetGamePhaseResponse
+}
+
+// RoundNumber implements GamePhase.
+func (w *GamePhaseWrapper) RoundNumber() uint32 {
+	if w.ProtoGamePhase != nil {
+		return uint32(w.ProtoGamePhase.PvPInfo.RoundNumber)
+	}
+	if w.HttpGamePhase != nil {
+		return uint32(w.HttpGamePhase.PvPInfo.Round)
+	}
+	return 0
+}
+
+// Status implements GamePhase.
+func (w *GamePhaseWrapper) Status() proto.PlayerStatus {
+	if w.ProtoGamePhase != nil {
+		return w.ProtoGamePhase.PvPInfo.Status
+	}
+	if w.HttpGamePhase != nil {
+		switch w.HttpGamePhase.PvPInfo.Phase {
+		case 0:
+			return proto.PlayerStatus_PLAYER_UNKNOWN
+		case 1:
+			return proto.PlayerStatus_PLAYER_MATCHED
+		case 2:
+			return proto.PlayerStatus_PLAYER_IN_GAME
+		case 3:
+			return proto.PlayerStatus_PLAYER_WAITTING_CONTINUE
+		}
+	}
+	return proto.PlayerStatus_PLAYER_UNKNOWN
 }
 
 func (w *GamePhaseWrapper) GameID() uint {
@@ -46,21 +118,18 @@ func (w *GamePhaseWrapper) ContractAddress() string {
 	return ""
 }
 
-func (w *GamePhaseWrapper) Players() []*types.PlayerAddress {
+func (w *GamePhaseWrapper) Players() []RoundPlayer {
 	if w.ProtoGamePhase != nil {
-		players := make([]*types.PlayerAddress, len(w.ProtoGamePhase.Players))
+		players := make([]RoundPlayer, len(w.ProtoGamePhase.Players))
 		for i, p := range w.ProtoGamePhase.Players {
-			players[i] = &types.PlayerAddress{}
-			players[i].FromProto(p.Address)
+			players[i] = &GamePhasePlayerWrapper{ProtoRoundPlayer: p}
 		}
 		return players
 	}
 	if w.HttpGamePhase != nil {
-		players := make([]*types.PlayerAddress, len(w.ProtoGamePhase.Players))
+		players := make([]RoundPlayer, len(w.ProtoGamePhase.Players))
 		for i, p := range w.HttpGamePhase.Players {
-			players[i] = &types.PlayerAddress{
-				WalletAddress: p.Address,
-			}
+			players[i] = &GamePhasePlayerWrapper{HttpRoundPlayer: &p}
 		}
 		return players
 	}
@@ -101,10 +170,18 @@ func (w *BattleInfoWrapper) GameResult() any {
 	return nil
 }
 
+type RoundPlayer interface {
+	Address() *types.PlayerAddress
+	IsConfirmed() bool
+	Commitment() []byte
+}
+
 type GamePhase interface {
 	GameID() uint
 	ContractAddress() string
-	Players() []*types.PlayerAddress
+	Players() []RoundPlayer
+	Status() proto.PlayerStatus
+	RoundNumber() uint32
 }
 
 type BattleInfo interface {

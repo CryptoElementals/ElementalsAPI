@@ -43,7 +43,7 @@ func NewHttpClient(ctx context.Context, endpoint string, accountWallet *wallet.W
 	}
 }
 
-func (c *HttpClient) start() error {
+func (c *HttpClient) Start() error {
 	_, err := c.doLogin(c.accountWallet)
 	return err
 }
@@ -316,5 +316,9 @@ func (c *HttpClient) Subscribe(topic string, subscriberID string, evtChan chan *
 			}
 		}
 	}()
+	return nil
+}
+
+func (c *HttpClient) Unsubscribe(s string, subId string) error {
 	return nil
 }

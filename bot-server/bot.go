@@ -10,9 +10,9 @@ import (
 	"time"
 
 	contract "github.com/CryptoElementals/common/contracts"
+	gameclient "github.com/CryptoElementals/common/game_client"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
-	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -82,7 +82,7 @@ type Bot struct {
 	mimicPlayer bool
 	currentGame *gameInfo
 	addr        *types.PlayerAddress
-	client      *rpc.Client
+	client      gameclient.GameClient
 	ethClient   *ethclient.Client
 	bindOpt     *bind.TransactOpts
 	chanEvt     chan *proto.Event
@@ -92,7 +92,7 @@ type Bot struct {
 func NewBot(
 	ctx context.Context,
 	playerWallet *PlayerWallet,
-	client *rpc.Client,
+	client gameclient.GameClient,
 	ethClient *ethclient.Client,
 	chainID *big.Int,
 ) *Bot {
@@ -119,14 +119,14 @@ func (b *Bot) formatBotID() string {
 }
 
 func (b *Bot) resubscribe(subId string, sleepTime time.Duration) error {
-	err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
+	err := b.client.Unsubscribe(b.addr.String(), subId)
 	if err != nil {
 		return err
 	}
 	b.chanErr = make(chan error, 1)
 	b.chanEvt = make(chan *proto.Event, 1)
 	time.Sleep(sleepTime)
-	err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	err = b.client.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (b *Bot) resubscribe(subId string, sleepTime time.Duration) error {
 
 func (b *Bot) run() error {
 	subId := b.formatBotID()
-	err := b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	err := b.client.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
 	if err != nil {
 		return err
 	}
@@ -170,39 +170,56 @@ func (b *Bot) run() error {
 	}
 }
 
+func (b *Bot) runStress() error {
+	subId := b.addr.String()
+	err := b.client.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+	if err != nil {
+		return err
+	}
+	b.mimicPlayer = true
+	for {
+		select {
+		case <-b.ctx.Done():
+			log.Infow("bot canceled", "addr", b.addr.String())
+			return nil
+		default:
+		}
+		b.runGameLoop()
+	}
+}
+
 func (b *Bot) recoverGameInfo() error {
-	phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
+	phase, err := b.client.GetGamePhase(b.ctx, b.addr)
 	if err != nil {
 		log.Errorw("error get game phase", "err", err)
 		return err
 	}
-	if phase.PvPInfo.Status != proto.PlayerStatus_PLAYER_IN_GAME {
+	if phase.Status() != proto.PlayerStatus_PLAYER_IN_GAME {
 		return nil
 	}
 	b.currentGame = &gameInfo{
-		id: uint(phase.PvPInfo.GameID),
+		id: uint(phase.GameID()),
 		currentRound: roundInfo{
-			roundNum: uint(phase.PvPInfo.RoundNumber),
+			roundNum: uint(phase.RoundNumber()),
 		},
 	}
 	log.Infow("recover game", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound)
-	if phase.PvPInfo.ContractAddress != "" {
-		c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
+	if phase.ContractAddress() != "" {
+		c, err := contract.NewRoomContract(common.HexToAddress(phase.ContractAddress()), b.ethClient)
 		if err != nil {
-			log.Errorw("new room contract failed", "err", err, "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.PvPInfo.ContractAddress)
+			log.Errorw("new room contract failed", "err", err, "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.ContractAddress())
 			return err
 		}
 		b.currentGame.gameContract = c
-		b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
+		b.currentGame.gameContractAddress = phase.ContractAddress()
 	}
-	for _, player := range phase.Players {
+	for _, player := range phase.Players() {
 		// found myself
-		if player.Address.TemporaryAddress == b.addr.TemporaryAddress &&
-			player.Address.WalletAddress == b.addr.WalletAddress {
+		if player.Address().WalletAddress == b.addr.WalletAddress {
 			// need confirm
-			if !player.IsConfirmed {
+			if !player.IsConfirmed() {
 				log.Infow("recover game, confirm battle", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				err := b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
+				err := b.client.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
 					log.Errorw("confirm battle failed", "addr", types.ToJsonLoggable(b.addr), "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 					return err
@@ -210,7 +227,7 @@ func (b *Bot) recoverGameInfo() error {
 				return nil
 			}
 			// didn't send cards
-			if len(player.Commitment) == 0 {
+			if len(player.Commitment()) == 0 {
 				log.Infow("recover game, submit cards", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 				b.currentGame.currentRound.prepareCards()
 				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
@@ -231,7 +248,7 @@ func (b *Bot) recoverGameInfo() error {
 func (b *Bot) runGameLoop() error {
 	if b.mimicPlayer {
 		if b.currentGame == nil {
-			err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
+			err := b.client.JoinQueue(b.ctx, b.addr)
 			if err != nil {
 				return err
 			}
@@ -255,17 +272,17 @@ func (b *Bot) runGameLoop() error {
 				return errors.New("bot received unexpected event: proto.EventType_TYPE_KNOWN")
 			case proto.EventType_TYPE_MATCHED:
 				log.Infow("bot matched")
-				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
+				phase, err := b.client.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
 					log.Errorw("error get game phase", "err", err)
 				}
 				b.currentGame = &gameInfo{
-					id: uint(phase.PvPInfo.GameID),
+					id: phase.GameID(),
 					currentRound: roundInfo{
 						roundNum: 1,
 					},
 				}
-				err = b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
+				err = b.client.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
 					log.Errorw("error confirm battle", "err", err, "game id", b.currentGame.id)
 				}
@@ -274,17 +291,17 @@ func (b *Bot) runGameLoop() error {
 			case proto.EventType_TYPE_GAME_CREATED:
 				log.Infow("game created", "game id", b.currentGame.id)
 				// get contract
-				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
+				phase, err := b.client.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
 					log.Errorw("get game phase failed", "err", err, "game id", b.currentGame.id)
 				}
 
-				c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
+				c, err := contract.NewRoomContract(common.HexToAddress(phase.ContractAddress()), b.ethClient)
 				if err != nil {
-					log.Errorw("new room contract failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.PvPInfo.ContractAddress)
+					log.Errorw("new room contract failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.ContractAddress())
 
 				}
-				b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
+				b.currentGame.gameContractAddress = phase.ContractAddress()
 				b.currentGame.gameContract = c
 			case proto.EventType_TYPE_ROUND_READY:
 				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
@@ -309,19 +326,19 @@ func (b *Bot) runGameLoop() error {
 				log.Infow("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 			case proto.EventType_TYPE_ROUND_COMPLETE:
 				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				battleInfo, err := b.client.RpcClient.GetBattleInfo(b.ctx, b.currentGame.id, b.currentGame.currentRound.roundNum)
+				battleInfo, err := b.client.GetBattleInfo(b.ctx, b.currentGame.id, b.currentGame.currentRound.roundNum)
 				if err != nil {
 					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 					continue
 				}
-				if !battleInfo.RoundResult.IsGameOver {
+				if !battleInfo.IsGameOver() {
 					b.currentGame.currentRound.prepareNewRound()
-					b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
+					b.client.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
 					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound.roundNum, b.currentGame.id)
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Infow("game complete", "game id", b.currentGame.id)
-				err := b.client.RpcClient.RefuseContinueGame(b.ctx, b.addr, b.currentGame.id)
+				err := b.client.RefuseContinueGame(b.ctx, b.addr, b.currentGame.id)
 				if err != nil {
 					log.Errorw("error refuse continue game", "err", err)
 				}

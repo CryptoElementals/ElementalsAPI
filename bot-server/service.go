@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/CryptoElementals/common/config"
+	gameclient "github.com/CryptoElementals/common/game_client"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
@@ -65,7 +66,7 @@ func NewService(
 		if err != nil {
 			return nil, err
 		}
-		b := NewBot(ctx, p, rpcClient, chainClient, chainID)
+		b := NewBot(ctx, p, gameclient.WrapRpcClient(rpcClient), chainClient, chainID)
 		bots = append(bots, b)
 		addresses = append(addresses, p.Address())
 	}
