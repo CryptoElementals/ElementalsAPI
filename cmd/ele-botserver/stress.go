@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,7 +20,7 @@ var stressCmd = &cobra.Command{
 	Use:   "stress",
 	Short: "stress test elementra backend server",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("stress called")
+		runStressServer()
 	},
 }
 
@@ -42,7 +41,7 @@ func runStressServer() {
 	}
 	svr := botserver.NewStressService(context.Background(), &config.BotCfg)
 	svr.Start()
-	log.Info("start bot server success")
+	log.Info("start stress server success")
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan

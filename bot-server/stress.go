@@ -12,9 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-type StressServiceConfig struct {
-}
-
 type StressService struct {
 	ctx           context.Context
 	ccl           context.CancelFunc
