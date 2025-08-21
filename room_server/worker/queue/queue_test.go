@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 
 func TestJoinExitQueue(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0)
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -61,7 +61,7 @@ func TestJoinExitQueue(t *testing.T) {
 
 func TestGameMatched(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0)
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{

@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"google.golang.org/grpc"
 )
 
 const queueInfoPrefix = "queue_info"
@@ -32,6 +34,9 @@ type Queue struct {
 
 	botMgr      *botManager
 	botWaitTime time.Duration
+
+	statServiceEndpoint string
+	statSvcClient       proto.StatServiceClient
 }
 
 type GameCreator interface {
@@ -47,6 +52,7 @@ func NewQueue(
 	continueTimeout int64,
 	botWaitTime int64,
 	minTokenToJoinQueue int32,
+	statServiceEndpoint string,
 ) *Queue {
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	tokenCache := cache.WithPrefix(lockedTokenPrefix, c)
@@ -62,11 +68,18 @@ func NewQueue(
 		botMgr:              newBotManager(),
 		botWaitTime:         time.Duration(botWaitTime) * time.Second,
 		minTokenToJoinQueue: minTokenToJoinQueue,
+		statServiceEndpoint: statServiceEndpoint,
 	}
 	return q
 }
 
 func (q *Queue) start() error {
+	conn, err := grpc.DialContext(q.ctx, q.statServiceEndpoint, grpc.WithInsecure(), grpc.WithBlock())
+	if err != nil {
+		log.Errorf("failed to connect to stat service: %s", err.Error())
+		return err
+	}
+	q.statSvcClient = proto.NewStatServiceClient(conn)
 	keys, err := q.queueCache.List("")
 	if err != nil {
 		return err
@@ -201,6 +214,21 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
+	go func() {
+		walletAddrs := make([]string, 0, len(event.GameInfo.Players))
+		for _, p := range event.GameInfo.Players {
+			walletAddrs = append(walletAddrs, p.WalletAddress)
+		}
+
+		_, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
+			PlayerAddresses: walletAddrs,
+		})
+		if err != nil {
+			log.Errorw("UpdatePlayerStats failed", "err", err)
+		} else {
+			log.Infow("UpdatePlayerStats success", "players", walletAddrs)
+		}
+	}()
 
 	q.continueManager.addGame(event.GameInfo)
 	return nil
