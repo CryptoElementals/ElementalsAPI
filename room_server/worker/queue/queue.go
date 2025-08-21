@@ -220,13 +220,17 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 			walletAddrs = append(walletAddrs, p.WalletAddress)
 		}
 
-		_, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
+		resp, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
 			PlayerAddresses: walletAddrs,
 		})
 		if err != nil {
-			log.Errorw("UpdatePlayerStats failed", "err", err)
+			log.Errorw("UpdatePlayerStats error", "err", err)
 		} else {
-			log.Infow("UpdatePlayerStats success", "players", walletAddrs)
+			if !resp.Ok {
+				log.Errorw("UpdatePlayerStats failed", "err", resp.Message)
+			} else {
+				log.Infow("UpdatePlayerStats success", "players", walletAddrs)
+			}
 		}
 	}()
 
