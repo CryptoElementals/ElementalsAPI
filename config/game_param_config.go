@@ -12,8 +12,9 @@ type GameParamConfig struct {
 	DailyRewardTokens int     `mapstructure:"daily-reward-tokens"` // 每日奖励代币数量
 	KeygenPolicy      uint    `mapstructure:"keygen-policy"`       // 1-后端生成(调试)，2-前端生成(生产)
 
-	MaxRounds int64 `mapstructure:"max-rounds"`
-	InitialHP int64 `mapstructure:"initial-hp"`
+	MaxRounds    int64 `mapstructure:"max-rounds"`
+	InitialHP    int64 `mapstructure:"initial-hp"`
+	MaxHPOneLine int64 `mapstructure:"max-hp-one-line"`
 	// timeouts
 	GameMatchTimeout    int64 `mapstructure:"game-match-timeout"`
 	RoundConfirmTimeout int64 `mapstructure:"round-confirm-timeout"`
