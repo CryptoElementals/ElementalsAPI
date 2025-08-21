@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package stat;
+
+option go_package = "github.com/CryptoElementals/common/cmd/ele-stat/proto";
+
+// Stat service for monitoring server status
+service StatService {
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  
+  // Update player statistics
+  rpc UpdatePlayerStats(UpdatePlayerStatsRequest) returns (UpdatePlayerStatsResponse);
+}
+
+// Health check request
+message HealthCheckRequest {
+  string client_id = 1;
+}
+
+// Health check response
+message HealthCheckResponse {
+  string status = 1;      // Status
+  string uptime = 2;      // Uptime
+  int64 timestamp = 3;    // Timestamp
+  string message = 4;     // Message
+}
+
+// Update player statistics request
+message UpdatePlayerStatsRequest {
+  repeated string player_addresses = 1;         // Multiple player addresses
+}
+
+// Update player statistics response
+message UpdatePlayerStatsResponse {
+  bool ok = 1;                    // Whether the operation was successful
+  string message = 2;             // Response message
+}

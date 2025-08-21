@@ -27,13 +27,16 @@ ROOMSERVER_MAIN = ./cmd/ele-roomserver
 BOTSERVER_BIN = ele-botserver
 BOTSERVER_MAIN = ./cmd/ele-botserver
 
+STAT_BIN = ele-stat
+STAT_MAIN = ./cmd/ele-stat
+
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner roomserver botserver clean deps lint help
+.PHONY: all build apiserver scanner roomserver botserver stat clean deps lint help
 
 all: build
 
-build: apiserver scanner roomserver botserver
+build: apiserver scanner roomserver botserver stat
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -55,12 +58,17 @@ botserver: $(BIN_DIR)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(BOTSERVER_BIN) $(BOTSERVER_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(BOTSERVER_BIN)"
 
+stat: $(BIN_DIR)
+	@echo "Building $(STAT_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(STAT_BIN) $(STAT_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(STAT_BIN)"
+
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) 
+	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN)
 	@echo "Clean completed"
 
 deps:
@@ -83,6 +91,7 @@ help:
 	@echo "  build         - Build both binaries (default)"
 	@echo "  apiserver     - Build ele-apiserver only"
 	@echo "  scanner       - Build ele-scanner only"
+	@echo "  stat       - Build ele-stat only"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean         - Clean build files"
