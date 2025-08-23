@@ -25,16 +25,19 @@ type GetUserProfileRequest struct {
 
 // UserInfo 用户信息结构体
 type UserInfo struct {
-	Address       string            `json:"Address"`
-	Name          string            `json:"Name"`
-	AvatarName    string            `json:"AvatarName"`
-	AvatarURL     string            `json:"AvatarURL"`
-	BackgroundURL string            `json:"BackgroundURL"`
-	Points        int               `json:"Points"`
-	TokenAmount   int               `json:"TokenAmount"`
-	OverallGame   int               `json:"OverallGame"`
-	WinningRate   float64           `json:"WinningRate"`
-	CardStatInfo  []db.CardStatInfo `json:"CardStatInfo"`
+	Address            string            `json:"Address"`
+	Name               string            `json:"Name"`
+	AvatarName         string            `json:"AvatarName"`
+	AvatarURL          string            `json:"AvatarURL"`
+	BackgroundURL      string            `json:"BackgroundURL"`
+	Points             int               `json:"Points"`
+	TokenAmount        int               `json:"TokenAmount"`
+	OverallGame        int               `json:"OverallGame"`
+	WinningRate        float64           `json:"WinningRate"`
+	Level              int               `json:"Level"`
+	CurrentLevelPoints int               `json:"CurrentLevelPoints"`
+	NextLevelPoints    int               `json:"NextLevelPoints"`
+	CardStatInfo       []db.CardStatInfo `json:"CardStatInfo"`
 }
 
 type GetUserProfileResponse struct {
@@ -65,6 +68,49 @@ func NewGetUserProfileResponse(sessionId string) *GetUserProfileResponse {
 			RequestUUID: sessionId,
 		},
 	}
+}
+
+// Level 阈值配置
+var levelThresholds = []int{
+	0, 5000, 10000, 20500, 35000, 54500, 81000, 120000, 175000, 260000,
+	410000, 650000, 1050000, 1700000, 2800000, 4600000, 7500000, 12300000,
+	20500000, 35000000, 60000000,
+}
+
+// calculateLevel 根据积分计算等级、当前等级所需积分和下一级所需积分
+func calculateLevel(points int) (level int, currentLevelPoints int, nextLevelPoints int) {
+	// 如果积分为0，返回等级0，当前等级需要0积分，下一级需要5000积分
+	if points == 0 {
+		return 0, 0, levelThresholds[1]
+	}
+
+	// 查找当前等级
+	for i, threshold := range levelThresholds {
+		if points < threshold {
+			// 找到第一个超过当前积分的阈值，等级为 i-1
+			level = i - 1
+			// 当前等级所需积分
+			if level >= 0 {
+				currentLevelPoints = levelThresholds[level]
+			} else {
+				currentLevelPoints = 0
+			}
+			// 下一级所需积分
+			if i < len(levelThresholds) {
+				nextLevelPoints = levelThresholds[i]
+			} else {
+				// 已经是最高等级
+				nextLevelPoints = levelThresholds[len(levelThresholds)-1]
+			}
+			return
+		}
+	}
+
+	// 如果积分超过所有阈值，返回最高等级
+	level = len(levelThresholds) - 1
+	currentLevelPoints = levelThresholds[level]
+	nextLevelPoints = levelThresholds[len(levelThresholds)-1]
+	return
 }
 
 func NewGetUserProfileTask(data *map[string]interface{}) (Task, error) {
@@ -138,18 +184,24 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	// 转换为API响应格式
 	cardStatInfo := db.GetCardStatsInfo(cardStats)
 
+	// 计算等级、当前等级所需积分和下一级所需积分
+	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
+
 	// 构建用户信息
 	task.Response.UserInfo = UserInfo{
-		Address:       userProfile.Address,
-		Name:          userProfile.Name,
-		AvatarName:    userProfile.AvatarURL,
-		AvatarURL:     "",
-		BackgroundURL: "",
-		Points:        points,
-		TokenAmount:   tokenAmount,
-		OverallGame:   int(userStat.TotalGameCount),
-		WinningRate:   winningRate,
-		CardStatInfo:  cardStatInfo,
+		Address:            userProfile.Address,
+		Name:               userProfile.Name,
+		AvatarName:         userProfile.AvatarURL,
+		AvatarURL:          "",
+		BackgroundURL:      "",
+		Points:             points,
+		TokenAmount:        tokenAmount,
+		OverallGame:        int(userStat.TotalGameCount),
+		WinningRate:        winningRate,
+		Level:              level,
+		CurrentLevelPoints: currentLevelPoints,
+		NextLevelPoints:    nextLevelPoints,
+		CardStatInfo:       cardStatInfo,
 	}
 
 	// 将文件名转换为预签名URL
