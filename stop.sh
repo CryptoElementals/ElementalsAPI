@@ -3,12 +3,12 @@
 # 显示使用说明
 show_usage() {
     echo "Usage: $0 <service>"
-    echo "  service: room-server | api-server | scanner | all"
+    echo "  service: roomserver | apiserver | scanner | stat | all"
     echo ""
     echo "Examples:"
     echo "  $0 all                # Stop all services"
-    echo "  $0 room-server        # Stop only room server"
-    echo "  $0 api-server         # Stop only API server"
+    echo "  $0 roomserver        # Stop only room server"
+    echo "  $0 apiserver         # Stop only API server"
     echo "  $0 scanner            # Stop only scanner"
     echo "  $0 stat               # Stop only stat"
 }
@@ -53,10 +53,10 @@ fi
 
 # 主逻辑
 case "$1" in
-    "room-server")
+    "roomserver")
         stop_process "ele-roomserver" "Room Server"
         ;;
-    "api-server")
+    "apiserver")
         stop_process "ele-apiserver" "API Server"
         ;;
     "scanner")
