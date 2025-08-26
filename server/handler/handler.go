@@ -102,7 +102,6 @@ func handleSSEMode(c *gin.Context, task api.Task, action, requestUUID string) {
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
-	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.Writer.Header().Set("Access-Control-Allow-Headers", "Cache-Control")
 
 	// 获取 writer 和 flusher
