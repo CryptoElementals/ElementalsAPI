@@ -26,7 +26,10 @@ type PlayerManager interface {
 
 type PubSub struct {
 	pb.UnimplementedPubSubServiceServer
-	mu            sync.RWMutex
+	ctx context.Context
+	ccl context.CancelFunc
+	mu  sync.RWMutex
+
 	topics        map[string]*Topic
 	subscribers   map[string]map[string]*Subscriber
 	playerManager PlayerManager
@@ -49,9 +52,12 @@ type Subscriber struct {
 }
 
 func NewPubSub() *PubSub {
+	ctx, ccl := context.WithCancel(context.Background())
 	s := &PubSub{
 		topics:      make(map[string]*Topic),
 		subscribers: make(map[string]map[string]*Subscriber),
+		ctx:         ctx,
+		ccl:         ccl,
 	}
 	return s
 }
@@ -61,15 +67,7 @@ func (s *PubSub) SetPlayerManager(playerManager PlayerManager) {
 }
 
 func (s *PubSub) Stop() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, subMap := range s.subscribers {
-		for _, sub := range subMap {
-			sub.mu.Lock()
-			sub.cancel()
-			sub.mu.Unlock()
-		}
-	}
+	s.ccl()
 }
 
 func (s *PubSub) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
@@ -189,9 +187,13 @@ func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_Sub
 	s.mu.Unlock()
 
 	log.Infof("Subscriber %s subscribed to topic %s", req.SubscriberId, req.Topic)
-
 	// 等待连接关闭
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+		log.Infof("Subscriber %s disconnected from topic %s", req.SubscriberId, req.Topic)
+	case <-s.ctx.Done():
+		log.Infof("PubSub service is stopping, disconnecting subscriber %s from topic %s", req.SubscriberId, req.Topic)
+	}
 
 	// 清理订阅者
 	s.Unsubscribe(context.Background(), &pb.UnsubscribeRequest{

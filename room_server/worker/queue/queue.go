@@ -103,7 +103,6 @@ func (q *Queue) close() {
 	for addr := range q.queue {
 		q.removePlayerFromQueue(addr)
 	}
-	log.Info("queue closed")
 }
 
 func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {

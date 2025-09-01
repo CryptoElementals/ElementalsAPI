@@ -119,12 +119,21 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Stop() {
+	log.Info("stopping queue service")
 	s.queueSvc.Stop()
+	log.Info("queue service closed")
+
+	log.Info("stopping game service")
 	s.gameSvc.Stop()
-	go func() {
-		s.pubsub.Stop()
-	}()
+	log.Info("game service stopped")
+
+	log.Info("stopping pubsub service")
+	s.pubsub.Stop()
+	log.Info("pubsub service stopped")
+
+	log.Info("stopping grpc server")
 	s.server.GracefulStop()
+	log.Info("grpc server stopped")
 }
 
 func (s *Service) startListener() error {
