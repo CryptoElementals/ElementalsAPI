@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -142,4 +143,10 @@ func (b *EventBatch) Wait() {
 func ToJsonLoggable(obj any) string {
 	res, _ := json.Marshal(obj)
 	return string(res)
+}
+
+type GameContinueInfo struct {
+	GameID          uint
+	EndTime         time.Time
+	ContinueTimeout time.Duration
 }

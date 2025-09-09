@@ -126,6 +126,20 @@ func (m *continueManager) handlePlayerGameContinue(playerAddr types.PlayerAddres
 	return allPlayers, true, nil
 }
 
+func (m *continueManager) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
+	m.RLock()
+	defer m.RUnlock()
+	info, ok := m.playerToContinueQueue[address]
+	if !ok {
+		return nil
+	}
+	return &types.GameContinueInfo{
+		GameID:          info.gameID,
+		EndTime:         info.endTime,
+		ContinueTimeout: m.continueTimeout,
+	}
+}
+
 func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()

@@ -244,6 +244,10 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	return ok
 }
 
+func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
+	return q.continueManager.getPlayerContinueInfo(address)
+}
+
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)

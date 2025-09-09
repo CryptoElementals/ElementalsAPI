@@ -49,6 +49,10 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.isPlayerInQueue(address)
 }
 
+func (s *Service) GetPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
+	return s.queue.getPlayerContinueInfo(address)
+}
+
 func (s *Service) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	return s.queue.HandleJoinQueueEvent(event)
 }

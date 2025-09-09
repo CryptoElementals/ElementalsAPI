@@ -118,6 +118,20 @@ func (m *MockQueuer) EXPECT() *MockQueuerMockRecorder {
 	return m.recorder
 }
 
+// GetPlayerContinueInfo mocks base method.
+func (m *MockQueuer) GetPlayerContinueInfo(arg0 types.PlayerAddress) *types.GameContinueInfo {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPlayerContinueInfo", arg0)
+	ret0, _ := ret[0].(*types.GameContinueInfo)
+	return ret0
+}
+
+// GetPlayerContinueInfo indicates an expected call of GetPlayerContinueInfo.
+func (mr *MockQueuerMockRecorder) GetPlayerContinueInfo(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPlayerContinueInfo", reflect.TypeOf((*MockQueuer)(nil).GetPlayerContinueInfo), arg0)
+}
+
 // HandleContinueGameEvent mocks base method.
 func (m *MockQueuer) HandleContinueGameEvent(arg0 *types.PlayerContinueEvent) error {
 	m.ctrl.T.Helper()
