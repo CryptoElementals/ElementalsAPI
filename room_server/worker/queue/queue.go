@@ -257,8 +257,8 @@ func (q *Queue) lockToken(address *types.PlayerAddress) error {
 }
 
 func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uint) error {
-	walletAddresses := make([]string, len(addresses))
-	tempAddresses := make([]string, len(addresses))
+	walletAddresses := make([]string, 0, len(addresses))
+	tempAddresses := make([]string, 0, len(addresses))
 	for i := range addresses {
 		log.Infow("lock user tokens for continue", "addr", addresses[i].String(), "token amount", q.minTokenToJoinQueue, "game id", gameID)
 		walletAddresses = append(walletAddresses, addresses[i].WalletAddress)

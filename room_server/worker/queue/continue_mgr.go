@@ -166,17 +166,21 @@ func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error 
 	if !ok {
 		return nil
 	}
-	err = q.lockTokenForContinue(allPlayers, event.GameId)
-	if err != nil {
-		log.Infow("lock token for continue failed", "err", err, "game", event.GameId)
-		// evt := &types.ContinueCanceledEvent{
-		// 	GameID: event.GameId,
-		// }
-		// // if error, we cancel the continue, no need to throw error to frontend
-		// for _, player := range allPlayers {
-		// 	q.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, evt))
-		// }
-		return err
+	for _, player := range allPlayers {
+		err := q.lockToken(&player)
+		if err != nil {
+			for _, player := range allPlayers {
+				q.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
+					GameID: event.GameId,
+				}))
+				err = q.unlockToken(&player)
+				if err != nil {
+					log.Infow("unlock token for continue failed", "err", err, "game", event.GameId, "player", player.String())
+				}
+			}
+			log.Infow("lock token for continue failed", "err", err, "game", event.GameId, "player", player.String())
+			return err
+		}
 	}
 	evt := &types.GameContinueEvent{
 		Players: allPlayers,
