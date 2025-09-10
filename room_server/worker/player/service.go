@@ -170,7 +170,7 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 				PvPInfo: &proto.PvPInfo{
 					GameID:          uint32(continueInfo.GameID),
 					BeginAt:         uint64(continueInfo.EndTime.Unix()),
-					TimeoutDuration: uint64(continueInfo.ContinueTimeout.Seconds()),
+					TimeoutDuration: uint64(continueInfo.ContinueTimeout),
 					Status:          proto.PlayerStatus_PLAYER_WAITTING_CONTINUE,
 				},
 			}, nil

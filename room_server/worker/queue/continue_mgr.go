@@ -17,19 +17,21 @@ type gameContinueInfo struct {
 }
 
 type continueManager struct {
-	continueQueue         map[uint]map[types.PlayerAddress]bool
-	playerToContinueQueue map[types.PlayerAddress]*gameContinueInfo
-	workerManager         *worker.WorkerManager
-	continueTimeout       time.Duration
+	continueQueue             map[uint]map[types.PlayerAddress]bool
+	playerToContinueQueue     map[types.PlayerAddress]*gameContinueInfo
+	workerManager             *worker.WorkerManager
+	continueTimeout           int64
+	continueTimeoutRedundancy int64
 	sync.RWMutex
 }
 
-func newContinueManager(workerManager *worker.WorkerManager, continueTimeout time.Duration) *continueManager {
+func newContinueManager(workerManager *worker.WorkerManager, continueTimeout, continueTimeoutRedundancy int64) *continueManager {
 	return &continueManager{
-		continueQueue:         make(map[uint]map[types.PlayerAddress]bool),
-		playerToContinueQueue: make(map[types.PlayerAddress]*gameContinueInfo),
-		workerManager:         workerManager,
-		continueTimeout:       continueTimeout,
+		continueQueue:             make(map[uint]map[types.PlayerAddress]bool),
+		playerToContinueQueue:     make(map[types.PlayerAddress]*gameContinueInfo),
+		workerManager:             workerManager,
+		continueTimeout:           continueTimeout,
+		continueTimeoutRedundancy: continueTimeoutRedundancy,
 	}
 }
 
@@ -48,8 +50,10 @@ func (m *continueManager) addGame(game *dao.Game) {
 	}
 	m.continueQueue[game.ID] = continuePlayers
 	if m.continueTimeout != 0 {
-		time.AfterFunc(m.continueTimeout, func() {
-			m.removeGameByID(game.ID)
+		time.AfterFunc(time.Duration(m.continueTimeout+m.continueTimeoutRedundancy)*time.Second, func() {
+			if m.removeGameByID(game.ID) {
+				log.Infow("continue timeout, game id found", "game id", game.ID)
+			}
 		})
 	}
 }
@@ -74,12 +78,12 @@ func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID u
 	delete(m.continueQueue, gameInfo.gameID)
 }
 
-func (m *continueManager) removeGameByID(gameID uint) {
+func (m *continueManager) removeGameByID(gameID uint) bool {
 	m.Lock()
 	defer m.Unlock()
 	continueMap, ok := m.continueQueue[gameID]
 	if !ok {
-		return
+		return false
 	}
 	for player := range continueMap {
 		delete(m.playerToContinueQueue, player)
@@ -88,6 +92,7 @@ func (m *continueManager) removeGameByID(gameID uint) {
 		}))
 	}
 	delete(m.continueQueue, gameID)
+	return true
 }
 
 func (m *continueManager) removeGameByIDNoSendEvent(gameID uint) {

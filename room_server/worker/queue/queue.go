@@ -29,7 +29,6 @@ type Queue struct {
 	lockedTokenCache    cache.Cache
 	closing             bool
 	gameCreator         GameCreator
-	continueTimeout     time.Duration
 	minTokenToJoinQueue int32
 
 	botMgr      *botManager
@@ -50,6 +49,7 @@ func NewQueue(
 	c cache.Cache,
 	gameCreator GameCreator,
 	continueTimeout int64,
+	continueTimeoutRedundancy int64,
 	botWaitTime int64,
 	minTokenToJoinQueue int32,
 	statServiceEndpoint string,
@@ -63,8 +63,7 @@ func NewQueue(
 		lockedTokenCache:    tokenCache,
 		queueCache:          queueCache,
 		gameCreator:         gameCreator,
-		continueManager:     newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
-		continueTimeout:     time.Duration(continueTimeout) * time.Second,
+		continueManager:     newContinueManager(workerManager, continueTimeout, continueTimeoutRedundancy),
 		botMgr:              newBotManager(),
 		botWaitTime:         time.Duration(botWaitTime) * time.Second,
 		minTokenToJoinQueue: minTokenToJoinQueue,
@@ -245,7 +244,11 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 }
 
 func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
-	return q.continueManager.getPlayerContinueInfo(address)
+	info := q.continueManager.getPlayerContinueInfo(address)
+	if info == nil {
+		return nil
+	}
+	return info
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {

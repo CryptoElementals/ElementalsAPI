@@ -148,5 +148,5 @@ func ToJsonLoggable(obj any) string {
 type GameContinueInfo struct {
 	GameID          uint
 	EndTime         time.Time
-	ContinueTimeout time.Duration
+	ContinueTimeout int64
 }
