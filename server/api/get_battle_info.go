@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -18,9 +19,10 @@ func init() {
 // GetBattleInfoRequest 请求结构体
 type GetBattleInfoRequest struct {
 	BaseRequest
-	GameID  uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
-	Round   uint32 `mapstructure:"Round" validate:"required"`  // 回合号
-	Address string `mapstructure:"Address"`
+	GameID      uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
+	Round       uint32 `mapstructure:"Round" validate:"required"`  // 回合号
+	Address     string `mapstructure:"Address"`
+	TempAddress string `mapstructure:"TempAddress"` // 临时地址
 }
 
 // PlayerCardStat 玩家卡牌统计信息
@@ -61,6 +63,8 @@ type GameResult struct {
 	GameResultType      uint32        `json:"GameResultType"`      // 游戏结果类型 (0:normal, 1:ko, 2:tie)
 	GameFinalMultiplier uint32        `json:"GameFinalMultiplier"` // 游戏最终倍率（平局为1）
 	Reward              *BattleReward `json:"Reward,omitempty"`    // 对战奖励
+	//GameEndAt           uint64        `json:"GameEndAt"`           // 游戏结束时间
+	GameContinueTimeout uint64 `json:"GameContinueTimeout"` // 游戏继续超时时间
 }
 
 // RoundResult 回合结果
@@ -132,6 +136,11 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	address = strings.ToLower(address)
+
+	tempAddress := ""
+	if len(task.Request.TempAddress) > 0 {
+		tempAddress = strings.ToLower(task.Request.TempAddress)
+	}
 
 	// 通过gRPC调用RoomServer的GetBattleInfo
 	rpcClient := client.GetGlobalRpcClient()
@@ -212,6 +221,24 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 			}
 
 			gameResult.Reward = reward
+		}
+
+		if len(tempAddress) > 0 {
+			playerAddr := &proto.PlayerAddress{
+				WalletAddress:    address,
+				TemporaryAddress: tempAddress,
+			}
+
+			gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
+			if err != nil {
+				task.Response.BaseResponse.RetCode = 1003
+				task.Response.BaseResponse.Message = "RoomServer GetGamePhase in GetBattleInfo failed: " + err.Error()
+				return task.Response, nil
+			}
+			log.Debugf("RequestUUID: %s, gamePhase: %+v", task.Request.BaseRequest.RequestUUID, gamePhase)
+
+			//gameResult.GameEndAt = gamePhase.PvPInfo.BeginAt
+			gameResult.GameContinueTimeout = gamePhase.PvPInfo.TimeoutDuration
 		}
 
 		task.Response.GameResult = gameResult
