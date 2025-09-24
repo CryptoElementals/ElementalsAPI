@@ -31,7 +31,7 @@ var (
 
 // RoomContractMetaData contains all meta data concerning the RoomContract contract.
 var RoomContractMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_player1\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"_creator\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"}],\"name\":\"startANewRound\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"cards\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"salt\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"}],\"name\":\"submitCards\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"cardsHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"}],\"name\":\"submitCardsHash\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"StartANewRound\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"_cards\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"_salt\",\"type\":\"string\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"}],\"name\":\"SubmitCards\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_cardsHash\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"}],\"name\":\"SubmitCardsHash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"cardsHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"creator\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"currentRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"initialHP\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"launchTime\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"player1\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"player2\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"roundTimeout\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"totalRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_player1\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"_creator\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"startANewRound\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"cards\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"salt\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCards\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"cardsHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCardsHash\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"StartANewRound\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"_cards\",\"type\":\"string\"},{\"internalType\":\"string\",\"name\":\"_salt\",\"type\":\"string\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"}],\"name\":\"SubmitCards\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_cardsHash\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"}],\"name\":\"SubmitCardsHash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"cardsHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"creator\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"currentRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"gameId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"initialHP\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"launchTime\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"player1\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"player2\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"roundTimeout\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"totalRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // RoomContractABI is the input ABI used to generate the binding from.
@@ -271,6 +271,37 @@ func (_RoomContract *RoomContractSession) CurrentRound() (*big.Int, error) {
 // Solidity: function currentRound() view returns(uint256)
 func (_RoomContract *RoomContractCallerSession) CurrentRound() (*big.Int, error) {
 	return _RoomContract.Contract.CurrentRound(&_RoomContract.CallOpts)
+}
+
+// GameId is a free data retrieval call binding the contract method 0xd7c81b55.
+//
+// Solidity: function gameId() view returns(uint256)
+func (_RoomContract *RoomContractCaller) GameId(opts *bind.CallOpts) (*big.Int, error) {
+	var out []interface{}
+	err := _RoomContract.contract.Call(opts, &out, "gameId")
+
+	if err != nil {
+		return *new(*big.Int), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+
+	return out0, err
+
+}
+
+// GameId is a free data retrieval call binding the contract method 0xd7c81b55.
+//
+// Solidity: function gameId() view returns(uint256)
+func (_RoomContract *RoomContractSession) GameId() (*big.Int, error) {
+	return _RoomContract.Contract.GameId(&_RoomContract.CallOpts)
+}
+
+// GameId is a free data retrieval call binding the contract method 0xd7c81b55.
+//
+// Solidity: function gameId() view returns(uint256)
+func (_RoomContract *RoomContractCallerSession) GameId() (*big.Int, error) {
+	return _RoomContract.Contract.GameId(&_RoomContract.CallOpts)
 }
 
 // InitialHP is a free data retrieval call binding the contract method 0x2fab3323.
@@ -591,13 +622,14 @@ func (it *RoomContractStartANewRoundIterator) Close() error {
 
 // RoomContractStartANewRound represents a StartANewRound event raised by the RoomContract contract.
 type RoomContractStartANewRound struct {
-	Round *big.Int
-	Raw   types.Log // Blockchain specific contextual infos
+	Round  *big.Int
+	GameId *big.Int
+	Raw    types.Log // Blockchain specific contextual infos
 }
 
-// FilterStartANewRound is a free log retrieval operation binding the contract event 0x2725d08e118f50552c873a88cc6bb7d51493108e351080ca153086d4fcfd74a7.
+// FilterStartANewRound is a free log retrieval operation binding the contract event 0xaca67f96a15f8004520340cac1e065bb840ae3fbc7dca8aac21670406b701429.
 //
-// Solidity: event startANewRound(uint256 round)
+// Solidity: event startANewRound(uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) FilterStartANewRound(opts *bind.FilterOpts) (*RoomContractStartANewRoundIterator, error) {
 
 	logs, sub, err := _RoomContract.contract.FilterLogs(opts, "startANewRound")
@@ -607,9 +639,9 @@ func (_RoomContract *RoomContractFilterer) FilterStartANewRound(opts *bind.Filte
 	return &RoomContractStartANewRoundIterator{contract: _RoomContract.contract, event: "startANewRound", logs: logs, sub: sub}, nil
 }
 
-// WatchStartANewRound is a free log subscription operation binding the contract event 0x2725d08e118f50552c873a88cc6bb7d51493108e351080ca153086d4fcfd74a7.
+// WatchStartANewRound is a free log subscription operation binding the contract event 0xaca67f96a15f8004520340cac1e065bb840ae3fbc7dca8aac21670406b701429.
 //
-// Solidity: event startANewRound(uint256 round)
+// Solidity: event startANewRound(uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) WatchStartANewRound(opts *bind.WatchOpts, sink chan<- *RoomContractStartANewRound) (event.Subscription, error) {
 
 	logs, sub, err := _RoomContract.contract.WatchLogs(opts, "startANewRound")
@@ -644,9 +676,9 @@ func (_RoomContract *RoomContractFilterer) WatchStartANewRound(opts *bind.WatchO
 	}), nil
 }
 
-// ParseStartANewRound is a log parse operation binding the contract event 0x2725d08e118f50552c873a88cc6bb7d51493108e351080ca153086d4fcfd74a7.
+// ParseStartANewRound is a log parse operation binding the contract event 0xaca67f96a15f8004520340cac1e065bb840ae3fbc7dca8aac21670406b701429.
 //
-// Solidity: event startANewRound(uint256 round)
+// Solidity: event startANewRound(uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) ParseStartANewRound(log types.Log) (*RoomContractStartANewRound, error) {
 	event := new(RoomContractStartANewRound)
 	if err := _RoomContract.contract.UnpackLog(event, "startANewRound", log); err != nil {
@@ -729,12 +761,13 @@ type RoomContractSubmitCards struct {
 	Cards  string
 	Salt   string
 	Round  *big.Int
+	GameId *big.Int
 	Raw    types.Log // Blockchain specific contextual infos
 }
 
-// FilterSubmitCards is a free log retrieval operation binding the contract event 0xb57778228a8340017474c84eeb5d3b73cf06543b74edf776a78011b593e28779.
+// FilterSubmitCards is a free log retrieval operation binding the contract event 0x5d27615cf8be88352f066f89d68895bf550e70271317af8ad003080740b65186.
 //
-// Solidity: event submitCards(address player, string cards, string salt, uint256 round)
+// Solidity: event submitCards(address player, string cards, string salt, uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) FilterSubmitCards(opts *bind.FilterOpts) (*RoomContractSubmitCardsIterator, error) {
 
 	logs, sub, err := _RoomContract.contract.FilterLogs(opts, "submitCards")
@@ -744,9 +777,9 @@ func (_RoomContract *RoomContractFilterer) FilterSubmitCards(opts *bind.FilterOp
 	return &RoomContractSubmitCardsIterator{contract: _RoomContract.contract, event: "submitCards", logs: logs, sub: sub}, nil
 }
 
-// WatchSubmitCards is a free log subscription operation binding the contract event 0xb57778228a8340017474c84eeb5d3b73cf06543b74edf776a78011b593e28779.
+// WatchSubmitCards is a free log subscription operation binding the contract event 0x5d27615cf8be88352f066f89d68895bf550e70271317af8ad003080740b65186.
 //
-// Solidity: event submitCards(address player, string cards, string salt, uint256 round)
+// Solidity: event submitCards(address player, string cards, string salt, uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) WatchSubmitCards(opts *bind.WatchOpts, sink chan<- *RoomContractSubmitCards) (event.Subscription, error) {
 
 	logs, sub, err := _RoomContract.contract.WatchLogs(opts, "submitCards")
@@ -781,9 +814,9 @@ func (_RoomContract *RoomContractFilterer) WatchSubmitCards(opts *bind.WatchOpts
 	}), nil
 }
 
-// ParseSubmitCards is a log parse operation binding the contract event 0xb57778228a8340017474c84eeb5d3b73cf06543b74edf776a78011b593e28779.
+// ParseSubmitCards is a log parse operation binding the contract event 0x5d27615cf8be88352f066f89d68895bf550e70271317af8ad003080740b65186.
 //
-// Solidity: event submitCards(address player, string cards, string salt, uint256 round)
+// Solidity: event submitCards(address player, string cards, string salt, uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) ParseSubmitCards(log types.Log) (*RoomContractSubmitCards, error) {
 	event := new(RoomContractSubmitCards)
 	if err := _RoomContract.contract.UnpackLog(event, "submitCards", log); err != nil {
@@ -865,12 +898,13 @@ type RoomContractSubmitCardsHash struct {
 	Player    common.Address
 	CardsHash [32]byte
 	Round     *big.Int
+	GameId    *big.Int
 	Raw       types.Log // Blockchain specific contextual infos
 }
 
-// FilterSubmitCardsHash is a free log retrieval operation binding the contract event 0x47d16da20fbc7182e199bf669bb55176ef3a0c4fb2288b85cbe394932e024f3d.
+// FilterSubmitCardsHash is a free log retrieval operation binding the contract event 0x2476c695efbba42850dfbb5494cf106c2ee985551a2cf09637481a81f31a6dc1.
 //
-// Solidity: event submitCardsHash(address player, bytes32 cardsHash, uint256 round)
+// Solidity: event submitCardsHash(address player, bytes32 cardsHash, uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) FilterSubmitCardsHash(opts *bind.FilterOpts) (*RoomContractSubmitCardsHashIterator, error) {
 
 	logs, sub, err := _RoomContract.contract.FilterLogs(opts, "submitCardsHash")
@@ -880,9 +914,9 @@ func (_RoomContract *RoomContractFilterer) FilterSubmitCardsHash(opts *bind.Filt
 	return &RoomContractSubmitCardsHashIterator{contract: _RoomContract.contract, event: "submitCardsHash", logs: logs, sub: sub}, nil
 }
 
-// WatchSubmitCardsHash is a free log subscription operation binding the contract event 0x47d16da20fbc7182e199bf669bb55176ef3a0c4fb2288b85cbe394932e024f3d.
+// WatchSubmitCardsHash is a free log subscription operation binding the contract event 0x2476c695efbba42850dfbb5494cf106c2ee985551a2cf09637481a81f31a6dc1.
 //
-// Solidity: event submitCardsHash(address player, bytes32 cardsHash, uint256 round)
+// Solidity: event submitCardsHash(address player, bytes32 cardsHash, uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) WatchSubmitCardsHash(opts *bind.WatchOpts, sink chan<- *RoomContractSubmitCardsHash) (event.Subscription, error) {
 
 	logs, sub, err := _RoomContract.contract.WatchLogs(opts, "submitCardsHash")
@@ -917,9 +951,9 @@ func (_RoomContract *RoomContractFilterer) WatchSubmitCardsHash(opts *bind.Watch
 	}), nil
 }
 
-// ParseSubmitCardsHash is a log parse operation binding the contract event 0x47d16da20fbc7182e199bf669bb55176ef3a0c4fb2288b85cbe394932e024f3d.
+// ParseSubmitCardsHash is a log parse operation binding the contract event 0x2476c695efbba42850dfbb5494cf106c2ee985551a2cf09637481a81f31a6dc1.
 //
-// Solidity: event submitCardsHash(address player, bytes32 cardsHash, uint256 round)
+// Solidity: event submitCardsHash(address player, bytes32 cardsHash, uint256 round, uint256 gameId)
 func (_RoomContract *RoomContractFilterer) ParseSubmitCardsHash(log types.Log) (*RoomContractSubmitCardsHash, error) {
 	event := new(RoomContractSubmitCardsHash)
 	if err := _RoomContract.contract.UnpackLog(event, "submitCardsHash", log); err != nil {
