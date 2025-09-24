@@ -527,6 +527,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 						RoomContractAddress: eventData.RoomAddress.Hex(),
 					},
 				},
+				GameId: uint32(eventData.GameId.Uint64()),
 			}
 		}
 
@@ -548,6 +549,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 						Commitment: eventData.CardsHash[:],
 					},
 				},
+				GameId: uint32(eventData.GameId.Uint64()),
 			}
 		}
 
@@ -584,6 +586,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 						Cards:       cards,
 					},
 				},
+				GameId: uint32(eventData.GameId.Uint64()),
 			}
 		}
 
@@ -600,6 +603,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 						RoundNumber:         uint32(eventData.Round.Uint64()),
 					},
 				},
+				GameId: uint32(eventData.GameId.Uint64()),
 			}
 		}
 
