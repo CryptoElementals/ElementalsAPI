@@ -102,6 +102,7 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 	roundTimeoutBigInt := big.NewInt(roundTimeout)
 	maxRoundsBigInt := big.NewInt(maxRounds)
 	initialHPBigInt := big.NewInt(initialHP)
+	gameIdBigInt := big.NewInt(int64(gameID))
 	retryCnt := 3
 	for {
 		select {
@@ -113,7 +114,7 @@ func (c *Chain) createRoomContract(gameID uint, players []types.PlayerAddress, i
 			}
 			retryCnt--
 			txHash, err := c.roomMgrClient.sendCreateRoomTx(player1WalletAddress, player2WalletAddress, player1TemporaryAddress, player2TemporaryAddress,
-				roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
+				roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt, gameIdBigInt)
 			if err != nil {
 				log.Errorw("send create room tx failed", "err", err)
 				// not retriable error
@@ -187,45 +188,20 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 	blockTime := int64(evt.txs.Timestamp)
 	for _, protoTx := range evt.txs.Transactions {
 		hash := strings.ToLower(hexutil.Encode(protoTx.TxHash))
+		gid := uint(protoTx.GameId)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_RoomContractCreated:
-			// maybe stale event, just skip
-			gidStr, err := c.createRoomTxToGameID.Get(hash)
-			if err != nil {
-				log.Errorf("createRoomTxToGameID: load tx with hash %s from cache failed: %s", hash, err.Error())
-				continue
-			}
-			gid, err := strconv.Atoi(gidStr)
-			if err != nil {
-				log.Errorf("createRoomTxToGameID: decoded loaded tx with hash %s failed: %s", hash, err.Error())
-				continue
-			}
 			log.Infof("contractCreated: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
 			c.contractCreated(batchTx, blockTime, uint(gid), blockHash, blockNumber, tx)
 		case *proto.Transaction_RoomContractSetupReady:
-			gid, err := c.getRoomIDByContract(tx.RoomContractSetupReady.RoomContractAddress)
-			if err != nil {
-				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
-				continue
-			}
 			log.Infof("contractSetupReady: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
 			c.roundSetupCompleted(batchTx, blockTime, gid, blockHash, blockNumber, tx)
 		case *proto.Transaction_CommitmentsOnChain:
-			gid, err := c.getRoomIDByContract(tx.CommitmentsOnChain.RoomContractAddress)
-			if err != nil {
-				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
-				continue
-			}
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CommitmentsOnChain.Address)
 			log.Infof("commitmentOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, address %s", gid, blockHash, blockNumber, hash, address.String())
 			c.commitmentOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_CardsOnChain:
-			gid, err := c.getRoomIDByContract(tx.CardsOnChain.RoomContractAddress)
-			if err != nil {
-				log.Errorf("cannot find room contract tx with contract hash %s, err: %s", err.Error())
-				continue
-			}
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CardsOnChain.Address)
 			log.Infof("cardsOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, contract address: %s, player address %s", gid, blockHash, blockNumber, hash, tx.CardsOnChain.RoomContractAddress, address.String())

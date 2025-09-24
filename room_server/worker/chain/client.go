@@ -54,14 +54,14 @@ func newConcurrentRoomClient(
 
 func (c *concurrentRoomClient) sendCreateRoomTx(
 	player1WalletAddress, player2WalletAddress, player1TemporaryAddress, player2TemporaryAddress common.Address,
-	roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt *big.Int,
+	roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt, gameIdBigInt *big.Int,
 ) (string, error) {
 	bindOpts := <-c.optsPool
 	defer func() {
 		c.optsPool <- bindOpts
 	}()
 	tx, err := c.roomCtr.CreateRoom(bindOpts, player1WalletAddress, player2WalletAddress,
-		player1TemporaryAddress, player2TemporaryAddress, roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt)
+		player1TemporaryAddress, player2TemporaryAddress, roundTimeoutBigInt, maxRoundsBigInt, initialHPBigInt, gameIdBigInt)
 	if err != nil {
 		log.Errorf("createRoomContract: create room contract failed: %s", err.Error())
 		return "", fmt.Errorf("create room contract failed: %s", err.Error())

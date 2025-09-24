@@ -184,11 +184,12 @@ message GameInfo {
 
 message Transaction {
     bytes tx_hash = 1;
+    uint32 game_id = 2;
     oneof tx {
-        TxRoomContractCreated room_contract_created = 2;
-        TxRoomContractRoundSetupReady room_contract_setup_ready = 3;
-        TxCommitmentsOnChain commitments_on_chain = 4;
-        TxCardsOnChain cards_on_chain = 5;
+        TxRoomContractCreated room_contract_created = 3;
+        TxRoomContractRoundSetupReady room_contract_setup_ready = 4;
+        TxCommitmentsOnChain commitments_on_chain = 5;
+        TxCardsOnChain cards_on_chain = 6;
     };
 }
 
