@@ -81,6 +81,10 @@ func (s *StatService) UpdatePlayerStats(ctx context.Context, req *proto.UpdatePl
 	cardStats, err := db.UpdateCardStatByAddresses(req.PlayerAddresses)
 	if err != nil {
 		log.Errorf("Failed to update card stats for addresses %v: %v", req.PlayerAddresses, err)
+		return &proto.UpdatePlayerStatsResponse{
+			Ok:      false,
+			Message: fmt.Sprintf("Failed to update card stats for addresses %v: %v", req.PlayerAddresses, err),
+		}, nil
 	}
 
 	// 操作成功

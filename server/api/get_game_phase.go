@@ -173,6 +173,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
 				InitialHP:        int32(config.GameParams.InitialHP),
+				MaxHPOneLine:     int32(config.GameParams.InitialHP), // 暂时使用初始血量作为一行最大血量
 				InitialMultipler: int32(config.GameParams.InitialMultiplier),
 			})
 		}
@@ -191,5 +192,6 @@ type MatchPlayer struct {
 	IsConfirmed      bool     `json:"IsConfirmed"`
 	Cards            []uint32 `json:"Cards"`
 	InitialHP        int32    `json:"InitialHP"`
+	MaxHPOneLine     int32    `json:"MaxHPOneLine"`
 	InitialMultipler int32    `json:"InitialMultipler"`
 }

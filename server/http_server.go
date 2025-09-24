@@ -143,6 +143,10 @@ func corsMiddleware() gin.HandlerFunc {
 			"http://127.0.0.1:8080",
 			"http://beast-royale-fe.prj-console.svc.a4.u4/",
 			"https://beast-royale-fe.prj-console.svc.a4.u4/",
+			"https://d.elementra.xyz",
+			"http://d.elementra.xyz",
+			"https://elementra.xyz",
+			"http://elementra.xyz",
 		}
 
 		// 检查来源是否被允许
