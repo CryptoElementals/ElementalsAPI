@@ -25,12 +25,13 @@ func NewService(ctx context.Context,
 	gameCreator GameCreator,
 	minTokenToJoinQueue int32,
 	continueTimeout int64,
+	continueTimeoutRedundancy int64,
 	botWaitTime int64,
 	statServiceEndpoint string,
 ) *Service {
 	s := &Service{
 		ctx:                 ctx,
-		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
+		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout,continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
 		minTokenToJoinQueue: minTokenToJoinQueue,
 		botWaitTime:         botWaitTime,
 	}
@@ -47,6 +48,10 @@ func (s *Service) Stop() {
 
 func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.isPlayerInQueue(address)
+}
+
+func (s *Service) GetPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
+	return s.queue.getPlayerContinueInfo(address)
 }
 
 func (s *Service) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {

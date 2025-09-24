@@ -12,6 +12,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 )
 
@@ -29,7 +30,6 @@ type Queue struct {
 	lockedTokenCache    cache.Cache
 	closing             bool
 	gameCreator         GameCreator
-	continueTimeout     time.Duration
 	minTokenToJoinQueue int32
 
 	botMgr      *botManager
@@ -50,6 +50,7 @@ func NewQueue(
 	c cache.Cache,
 	gameCreator GameCreator,
 	continueTimeout int64,
+	continueTimeoutRedundancy int64,
 	botWaitTime int64,
 	minTokenToJoinQueue int32,
 	statServiceEndpoint string,
@@ -63,8 +64,7 @@ func NewQueue(
 		lockedTokenCache:    tokenCache,
 		queueCache:          queueCache,
 		gameCreator:         gameCreator,
-		continueManager:     newContinueManager(workerManager, time.Duration(continueTimeout)*time.Second),
-		continueTimeout:     time.Duration(continueTimeout) * time.Second,
+		continueManager:     newContinueManager(workerManager, continueTimeout, continueTimeoutRedundancy),
 		botMgr:              newBotManager(),
 		botWaitTime:         time.Duration(botWaitTime) * time.Second,
 		minTokenToJoinQueue: minTokenToJoinQueue,
@@ -103,7 +103,6 @@ func (q *Queue) close() {
 	for addr := range q.queue {
 		q.removePlayerFromQueue(addr)
 	}
-	log.Info("queue closed")
 }
 
 func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
@@ -214,6 +213,9 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
+	if event.GameInfo.Status == pb.GameStatus_GAME_ABORTED {
+		return nil
+	}
 	go func() {
 		walletAddrs := make([]string, 0, len(event.GameInfo.Players))
 		for _, p := range event.GameInfo.Players {
@@ -245,14 +247,22 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	return ok
 }
 
+func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
+	info := q.continueManager.getPlayerContinueInfo(address)
+	if info == nil {
+		return nil
+	}
+	return info
+}
+
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
 }
 
 func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uint) error {
-	walletAddresses := make([]string, len(addresses))
-	tempAddresses := make([]string, len(addresses))
+	walletAddresses := make([]string, 0, len(addresses))
+	tempAddresses := make([]string, 0, len(addresses))
 	for i := range addresses {
 		log.Infow("lock user tokens for continue", "addr", addresses[i].String(), "token amount", q.minTokenToJoinQueue, "game id", gameID)
 		walletAddresses = append(walletAddresses, addresses[i].WalletAddress)

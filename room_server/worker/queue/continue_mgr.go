@@ -17,19 +17,21 @@ type gameContinueInfo struct {
 }
 
 type continueManager struct {
-	continueQueue         map[uint]map[types.PlayerAddress]bool
-	playerToContinueQueue map[types.PlayerAddress]*gameContinueInfo
-	workerManager         *worker.WorkerManager
-	continueTimeout       time.Duration
+	continueQueue             map[uint]map[types.PlayerAddress]bool
+	playerToContinueQueue     map[types.PlayerAddress]*gameContinueInfo
+	workerManager             *worker.WorkerManager
+	continueTimeout           int64
+	continueTimeoutRedundancy int64
 	sync.RWMutex
 }
 
-func newContinueManager(workerManager *worker.WorkerManager, continueTimeout time.Duration) *continueManager {
+func newContinueManager(workerManager *worker.WorkerManager, continueTimeout, continueTimeoutRedundancy int64) *continueManager {
 	return &continueManager{
-		continueQueue:         make(map[uint]map[types.PlayerAddress]bool),
-		playerToContinueQueue: make(map[types.PlayerAddress]*gameContinueInfo),
-		workerManager:         workerManager,
-		continueTimeout:       continueTimeout,
+		continueQueue:             make(map[uint]map[types.PlayerAddress]bool),
+		playerToContinueQueue:     make(map[types.PlayerAddress]*gameContinueInfo),
+		workerManager:             workerManager,
+		continueTimeout:           continueTimeout,
+		continueTimeoutRedundancy: continueTimeoutRedundancy,
 	}
 }
 
@@ -48,8 +50,10 @@ func (m *continueManager) addGame(game *dao.Game) {
 	}
 	m.continueQueue[game.ID] = continuePlayers
 	if m.continueTimeout != 0 {
-		time.AfterFunc(m.continueTimeout, func() {
-			m.removeGameByID(game.ID)
+		time.AfterFunc(time.Duration(m.continueTimeout+m.continueTimeoutRedundancy)*time.Second, func() {
+			if m.removeGameByID(game.ID) {
+				log.Infow("continue timeout, game id found", "game id", game.ID)
+			}
 		})
 	}
 }
@@ -74,12 +78,12 @@ func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID u
 	delete(m.continueQueue, gameInfo.gameID)
 }
 
-func (m *continueManager) removeGameByID(gameID uint) {
+func (m *continueManager) removeGameByID(gameID uint) bool {
 	m.Lock()
 	defer m.Unlock()
 	continueMap, ok := m.continueQueue[gameID]
 	if !ok {
-		return
+		return false
 	}
 	for player := range continueMap {
 		delete(m.playerToContinueQueue, player)
@@ -88,6 +92,7 @@ func (m *continueManager) removeGameByID(gameID uint) {
 		}))
 	}
 	delete(m.continueQueue, gameID)
+	return true
 }
 
 func (m *continueManager) removeGameByIDNoSendEvent(gameID uint) {
@@ -126,6 +131,25 @@ func (m *continueManager) handlePlayerGameContinue(playerAddr types.PlayerAddres
 	return allPlayers, true, nil
 }
 
+func (m *continueManager) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
+	m.RLock()
+	defer m.RUnlock()
+	info, ok := m.playerToContinueQueue[address]
+	if !ok {
+		return nil
+	}
+	allPlayers := make([]types.PlayerAddress, 0, len(m.playerToContinueQueue))
+	for player := range m.continueQueue[info.gameID] {
+		allPlayers = append(allPlayers, player)
+	}
+	return &types.GameContinueInfo{
+		GameID:          info.gameID,
+		EndTime:         info.endTime,
+		ContinueTimeout: m.continueTimeout,
+		Players:         allPlayers,
+	}
+}
+
 func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -147,17 +171,21 @@ func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error 
 	if !ok {
 		return nil
 	}
-	err = q.lockTokenForContinue(allPlayers, event.GameId)
-	if err != nil {
-		log.Infow("lock token for continue failed", "err", err, "game", event.GameId)
-		// evt := &types.ContinueCanceledEvent{
-		// 	GameID: event.GameId,
-		// }
-		// // if error, we cancel the continue, no need to throw error to frontend
-		// for _, player := range allPlayers {
-		// 	q.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, evt))
-		// }
-		return err
+	for _, player := range allPlayers {
+		err := q.lockToken(&player)
+		if err != nil {
+			for _, player := range allPlayers {
+				q.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
+					GameID: event.GameId,
+				}))
+				err = q.unlockToken(&player)
+				if err != nil {
+					log.Infow("unlock token for continue failed", "err", err, "game", event.GameId, "player", player.String())
+				}
+			}
+			log.Infow("lock token for continue failed", "err", err, "game", event.GameId, "player", player.String())
+			return err
+		}
 	}
 	evt := &types.GameContinueEvent{
 		Players: allPlayers,

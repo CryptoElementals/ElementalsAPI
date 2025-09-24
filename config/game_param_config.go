@@ -87,20 +87,6 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 		gameParams.ContinueTimeout = 10
 	}
 
-	if gameParams.GameMatchTimeoutRedundancy == 0 {
-		gameParams.GameMatchTimeoutRedundancy = 10
-	}
-	if gameParams.RoundConfirmTimeoutRedundancy == 0 {
-		gameParams.RoundConfirmTimeoutRedundancy = 10
-	}
-	if gameParams.RoundTimeoutRedundancy == 0 {
-		gameParams.RoundTimeoutRedundancy = 20
-	}
-
-	if gameParams.ContinueTimeoutRedundancy == 0 {
-		gameParams.ContinueTimeoutRedundancy = 5
-	}
-
 	// 赋值给全局变量
 	GameParams = *gameParams
 }

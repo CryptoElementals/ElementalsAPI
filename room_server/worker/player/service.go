@@ -27,6 +27,7 @@ type Queuer interface {
 	HandleExitQueueEvent(event *types.ExitQueueEvent) error
 	HandleContinueGameEvent(event *types.PlayerContinueEvent) error
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
+	GetPlayerContinueInfo(playerAddress types.PlayerAddress) *types.GameContinueInfo
 	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	RegisterBots(addrs ...*types.PlayerAddress) error
 	UnregisterBots(addrs ...*types.PlayerAddress) error
@@ -161,6 +162,30 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 			},
 		}, nil
 	case proto.PlayerStatus_PLAYER_UNKNOWN:
+		// it might have a case that the player is not in any game, but in the continue queue
+		continueInfo := s.queue.GetPlayerContinueInfo(address)
+		if continueInfo != nil {
+			players := make([]*proto.GamePhasePlayer, 0, len(continueInfo.Players))
+			for _, playerInfo := range continueInfo.Players {
+				addr := types.NewPlayerAddress(
+					playerInfo.WalletAddress,
+					playerInfo.TemporaryAddress,
+				).ToProto()
+				players = append(players, &proto.GamePhasePlayer{
+					Address: addr,
+				})
+			}
+			return &proto.GamePhase{
+				GameType: proto.GameType_PVP,
+				PvPInfo: &proto.PvPInfo{
+					GameID:          uint32(continueInfo.GameID),
+					BeginAt:         uint64(continueInfo.EndTime.Unix()),
+					TimeoutDuration: uint64(continueInfo.ContinueTimeout),
+					Status:          proto.PlayerStatus_PLAYER_WAITTING_CONTINUE,
+				},
+				Players: players,
+			}, nil
+		}
 		return &proto.GamePhase{
 			GameType: proto.GameType_PVP,
 			PvPInfo: &proto.PvPInfo{

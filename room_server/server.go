@@ -80,7 +80,7 @@ func New(ctx context.Context,
 	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.ShouldRecverGames)
 	s.gameSvc = gameSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
-		cfg.GameParams.ContinueTimeout+cfg.GameParams.ContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
+		cfg.GameParams.ContinueTimeout,cfg.GameParams.ContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc
@@ -119,12 +119,21 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Stop() {
+	log.Info("stopping queue service")
 	s.queueSvc.Stop()
+	log.Info("queue service closed")
+
+	log.Info("stopping game service")
 	s.gameSvc.Stop()
-	go func() {
-		s.pubsub.Stop()
-	}()
+	log.Info("game service stopped")
+
+	log.Info("stopping pubsub service")
+	s.pubsub.Stop()
+	log.Info("pubsub service stopped")
+
+	log.Info("stopping grpc server")
 	s.server.GracefulStop()
+	log.Info("grpc server stopped")
 }
 
 func (s *Service) startListener() error {
