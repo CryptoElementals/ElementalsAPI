@@ -149,4 +149,5 @@ type GameContinueInfo struct {
 	GameID          uint
 	EndTime         time.Time
 	ContinueTimeout int64
+	Players         []PlayerAddress
 }

@@ -138,10 +138,15 @@ func (m *continueManager) getPlayerContinueInfo(address types.PlayerAddress) *ty
 	if !ok {
 		return nil
 	}
+	allPlayers := make([]types.PlayerAddress, 0, len(m.playerToContinueQueue))
+	for player := range m.continueQueue[info.gameID] {
+		allPlayers = append(allPlayers, player)
+	}
 	return &types.GameContinueInfo{
 		GameID:          info.gameID,
 		EndTime:         info.endTime,
 		ContinueTimeout: m.continueTimeout,
+		Players:         allPlayers,
 	}
 }
 

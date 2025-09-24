@@ -165,6 +165,16 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 		// it might have a case that the player is not in any game, but in the continue queue
 		continueInfo := s.queue.GetPlayerContinueInfo(address)
 		if continueInfo != nil {
+			players := make([]*proto.GamePhasePlayer, 0, len(continueInfo.Players))
+			for _, playerInfo := range continueInfo.Players {
+				addr := types.NewPlayerAddress(
+					playerInfo.WalletAddress,
+					playerInfo.TemporaryAddress,
+				).ToProto()
+				players = append(players, &proto.GamePhasePlayer{
+					Address: addr,
+				})
+			}
 			return &proto.GamePhase{
 				GameType: proto.GameType_PVP,
 				PvPInfo: &proto.PvPInfo{
@@ -173,6 +183,7 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 					TimeoutDuration: uint64(continueInfo.ContinueTimeout),
 					Status:          proto.PlayerStatus_PLAYER_WAITTING_CONTINUE,
 				},
+				Players: players,
 			}, nil
 		}
 		return &proto.GamePhase{

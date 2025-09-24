@@ -12,6 +12,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 )
 
@@ -211,6 +212,9 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	if err != nil {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
+	}
+	if event.GameInfo.Status == pb.GameStatus_GAME_ABORTED {
+		return nil
 	}
 	go func() {
 		walletAddrs := make([]string, 0, len(event.GameInfo.Players))
