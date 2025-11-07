@@ -482,6 +482,10 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	if err != nil {
 		return err
 	}
+	if len(player.roundPlayer.SubmittedCards) != 0 {
+		log.Errorw("player cards already submitted", "game id", g.gameInfo.ID, "round number", evt.RoundNumber, "player address", evt.Address.TemporaryAddress)
+		return nil
+	}
 	for i, card := range evt.Cards {
 		player.roundPlayer.SubmittedCards = append(player.roundPlayer.SubmittedCards, &dao.RoundSubmittedCard{
 			CardID:     card,
