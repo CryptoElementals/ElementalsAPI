@@ -36,6 +36,8 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 		switch authType {
 		case api.COOKIEAUTH:
 			session := sessions.Default(c)
+			sessionID := session.ID()
+			log.Debugf("Session ID: %s (Client IP: %s)", sessionID, c.ClientIP())
 			//从服务器的会话（session）中查找该 Cookie 是否存在。如果 Cookie 不存在或无效，返回错误响应，表示认证失败。
 			addr := session.Get(api.SESSION_ADDR_KEY)
 			if addr == nil {
