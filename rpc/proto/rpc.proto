@@ -153,9 +153,9 @@ message RoundSubmittedCard {
 }
 
 message Round {
-    int32 number = 1; // start from 1
-    RoundStatus status = 2;
-    repeated PlayerRoundInfo player_round_infos = 3;
+    int32 Number = 1; // start from 1
+    RoundStatus Status = 2;
+    repeated PlayerRoundInfo PlayerRoundInfos = 3;
 }
 
 enum GameStatus {
