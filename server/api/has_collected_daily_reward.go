@@ -18,6 +18,7 @@ func init() {
 type HasCollectedDailyRewardRequest struct {
 	BaseRequest
 	Address string `mapstructure:"Address"`
+	Email   string `mapstructure:"Email"`
 }
 
 type HasCollectedDailyRewardResponse struct {
@@ -70,24 +71,32 @@ func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (Task, error) 
 }
 
 func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 从请求中获取用户地址（由中间件设置）
-	address := task.Request.Address
-	if address == "" {
-		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
+	// 允许通过 Address 或 Email 查询，至少提供一个
+	requestAddress := strings.ToLower(strings.TrimSpace(task.Request.Address))
+	requestEmail := strings.TrimSpace(task.Request.Email)
+	if requestAddress == "" && requestEmail == "" {
+		log.Errorf("%s, neither address nor email provided", task.Request.RequestUUID)
+		return nil, errors.MissingParams("Address or Email")
 	}
 
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	if requestAddress != "" {
+		collected, err := db.HasCollectedDailyReward(requestAddress)
+		if err != nil {
+			log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, requestAddress, err)
+			return nil, errors.GetUserProfileFailed(requestAddress)
+		}
+		task.Response.Collected = collected
+		log.Infof("%s, daily reward collection status checked (addr=%s): %v", task.Request.RequestUUID, requestAddress, collected)
+		return task.Response, nil
+	}
 
-	// 检查用户是否已领取今日奖励
-	collected, err := db.HasCollectedDailyReward(lowercaseAddress)
+	// 使用 Email 直接查询，不再通过 Email 解析地址
+	collected, err := db.HasCollectedDailyRewardByEmail(requestEmail)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.GetUserProfileFailed(lowercaseAddress)
+		log.Errorf("%s, failed to check daily reward collection for email %s: %v", task.Request.RequestUUID, requestEmail, err)
+		return nil, errors.GetUserProfileFailed(requestEmail)
 	}
-
 	task.Response.Collected = collected
-	log.Infof("%s, daily reward collection status checked for address %s: %v", task.Request.RequestUUID, lowercaseAddress, collected)
+	log.Infof("%s, daily reward collection status checked (email=%s): %v", task.Request.RequestUUID, requestEmail, collected)
 	return task.Response, nil
 }

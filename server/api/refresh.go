@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
@@ -81,17 +82,19 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	})
 
 	refreshToken := task.Request.RefreshToken
-	addr, err := getAddrByRefreshToken(refreshToken)
+	user, err := getUserByRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	err = globalRefreshTokenCache.Set(refreshToken, addr, globalRefreshTokenMaxAge)
+	// 续期 refresh token
+	userJSON, _ := json.Marshal(user)
+	err = globalRefreshTokenCache.Set(refreshToken, string(userJSON), globalRefreshTokenMaxAge)
 	if err != nil {
 		log.Errorf("update refresh failed, err: %s", err.Error())
 	}
-	//2 generate session
-	session.Set(SESSION_ADDR_KEY, addr)
+	//2 写入会话 user
+	session.Set(SESSION_USER_KEY, string(userJSON))
 	err = session.Save()
 	if err != nil {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
@@ -101,29 +104,37 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	return task.Response, nil
 }
 
-func saveRefreshToken(addr string) (string, error) {
+func SaveRefreshTokenForUser(user *LoginUser) (string, error) {
 	token := uuid.NewString()
-	_, err := globalRefreshTokenCache.Exist(token)
-	if err == nil {
+	if _, err := globalRefreshTokenCache.Exist(token); err == nil {
 		return "", errors.SaveRefreshTokenFailed()
-	}
-	if err != cache.ErrNotFound {
+	} else if err != cache.ErrNotFound {
 		log.Errorf("get refresh token failed: %s", err.Error())
 		return "", errors.SaveRefreshTokenFailed()
 	}
-
-	err = globalRefreshTokenCache.Set(token, addr, globalRefreshTokenMaxAge)
-	return token, err
+	b, err := json.Marshal(user)
+	if err != nil {
+		return "", errors.SaveRefreshTokenFailed()
+	}
+	if err := globalRefreshTokenCache.Set(token, string(b), globalRefreshTokenMaxAge); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
-func getAddrByRefreshToken(token string) (string, error) {
+func getUserByRefreshToken(token string) (*LoginUser, error) {
 	res, err := globalRefreshTokenCache.Get(token)
 	if err == cache.ErrNotFound || res == "" {
-		return "", errors.RefreshTokenInvalid(token)
+		return nil, errors.RefreshTokenInvalid(token)
 	}
 	if err != nil {
-		log.Errorf("get addr by refresh token failed: %s", err.Error())
-		return "", errors.ServiceUnavailable()
+		log.Errorf("get user by refresh token failed: %s", err.Error())
+		return nil, errors.ServiceUnavailable()
 	}
-	return res, nil
+	var u LoginUser
+	if err := json.Unmarshal([]byte(res), &u); err != nil {
+		log.Errorf("unmarshal user by refresh token failed: %s", err.Error())
+		return nil, errors.ServiceUnavailable()
+	}
+	return &u, nil
 }
