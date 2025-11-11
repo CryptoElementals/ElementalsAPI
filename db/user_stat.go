@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -27,19 +28,30 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 
 	// 使用事务确保原子性
 	var results []*dao.UserStat
-	err := db.Transaction(func(tx *gorm.DB) error {
+	err := Get().Transaction(func(tx *gorm.DB) error {
 		results = make([]*dao.UserStat, 0, len(deduplicatedAddresses))
 
 		for _, address := range deduplicatedAddresses {
+			address = strings.ToLower(address)
+			// 解析 user_id
+			profile, err := GetUserProfileByAddress(address)
+			if err != nil {
+				// 跳过不存在的地址
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				}
+				return fmt.Errorf("failed to get user profile for address %s: %v", address, err)
+			}
+
 			// 步骤1：查找或创建用户统计记录
 			userStat := &dao.UserStat{}
-			dbResult := tx.Where("address = ?", address).First(userStat)
+			dbResult := tx.Where("user_id = ?", profile.UserID).First(userStat)
 
 			if dbResult.Error != nil {
 				if errors.Is(dbResult.Error, gorm.ErrRecordNotFound) {
 					// 如果记录不存在，创建新记录
 					userStat = &dao.UserStat{
-						Address:            address,
+						UserID:             profile.UserID,
 						TotalGameCount:     0,
 						WinCount:           0,
 						LoseCount:          0,
@@ -48,10 +60,10 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 					}
 
 					if err := tx.Create(userStat).Error; err != nil {
-						return fmt.Errorf("failed to create user stat for address %s: %v", address, err)
+						return fmt.Errorf("failed to create user stat for user_id %s: %v", profile.UserID.String(), err)
 					}
 				} else {
-					return fmt.Errorf("failed to query user stat for address %s: %v", address, dbResult.Error)
+					return fmt.Errorf("failed to query user stat for user_id %s: %v", profile.UserID.String(), dbResult.Error)
 				}
 			}
 
@@ -103,12 +115,12 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 			}
 
 			if err := tx.Model(userStat).Updates(updateData).Error; err != nil {
-				return fmt.Errorf("failed to update user stat for address %s: %v", address, err)
+				return fmt.Errorf("failed to update user stat for user_id %s: %v", profile.UserID.String(), err)
 			}
 
 			// 步骤5：重新查询更新后的记录
-			if err := tx.Where("address = ?", address).First(userStat).Error; err != nil {
-				return fmt.Errorf("failed to query updated user stat for address %s: %v", address, err)
+			if err := tx.Where("user_id = ?", profile.UserID).First(userStat).Error; err != nil {
+				return fmt.Errorf("failed to query updated user stat for user_id %s: %v", profile.UserID.String(), err)
 			}
 
 			results = append(results, userStat)
@@ -132,14 +144,24 @@ func GetUserStatByAddress(address string) (*dao.UserStat, error) {
 
 	userStat := &dao.UserStat{}
 
-	// 查询用户统计记录
-	if err := db.Where("address = ?", address).First(userStat).Error; err != nil {
+	// 解析 user_id
+	profile, err := GetUserProfileByAddress(strings.ToLower(address))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 不存在用户时返回空对象
+			return userStat, nil
+		}
+		return nil, fmt.Errorf("failed to query user profile for address %s: %v", address, err)
+	}
+
+	// 查询用户统计记录（按 user_id）
+	if err := Get().Where("user_id = ?", profile.UserID).First(userStat).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 如果记录不存在，返回空对象
 			return userStat, nil
 		}
 		// 其他数据库错误
-		return nil, fmt.Errorf("failed to query user stat for address %s: %v", address, err)
+		return nil, fmt.Errorf("failed to query user stat for user_id %s: %v", profile.UserID.String(), err)
 	}
 
 	return userStat, nil

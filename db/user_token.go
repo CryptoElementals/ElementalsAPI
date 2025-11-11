@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
@@ -22,8 +23,13 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 
 func LockUserToken(ctx context.Context, address string, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
+		// resolve user by address
+		profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+		if perr != nil {
+			return perr
+		}
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		err = tx.Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			if err != gorm.ErrRecordNotFound {
 				return err
@@ -31,6 +37,7 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 			// save a record if locked token is zero
 			// mostly used in test
 			if tokenAmount == 0 {
+				userToken.UserID = profile.UserID
 				tx.Save(userToken)
 			}
 		}
@@ -95,8 +102,12 @@ func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddre
 		for i := range addresses {
 			address := addresses[i]
 			tempAddress := tempAddresses[i]
+			profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+			if perr != nil {
+				return perr
+			}
 			userToken := &dao.UserToken{}
-			err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+			err = tx.Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
 				if err != gorm.ErrRecordNotFound {
 					return err
@@ -104,6 +115,7 @@ func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddre
 				// save a record if locked token is zero
 				// mostly used in test
 				if tokenAmount == 0 {
+					userToken.UserID = profile.UserID
 					tx.Save(userToken)
 				}
 			}
@@ -147,8 +159,12 @@ func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddre
 
 func UnlockUserToken(ctx context.Context, address string, tempAddress string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
+		profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+		if perr != nil {
+			return perr
+		}
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		err = tx.Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}
@@ -203,8 +219,12 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 			}]; ok {
 				continue
 			}
+			profile, perr := GetUserProfileByAddress(strings.ToLower(pr.WalletAddress))
+			if perr != nil {
+				return fmt.Errorf("find user profile failed, game id: %d, address: %s, err: %w", game.ID, pr.WalletAddress, perr)
+			}
 			userToken := &dao.UserToken{}
-			err := tx.Where("wallet_address = ?", pr.WalletAddress).Preload("LockedTokens").First(userToken).Error
+			err := tx.Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
 				return fmt.Errorf("find user token record from db failed, game id: %d, address: %s, err: %w", game.ID, pr.WalletAddress, err)
 			}
@@ -228,8 +248,12 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 }
 
 func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error) {
+	profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+	if perr != nil {
+		return nil, perr
+	}
 	var userToken dao.UserToken
-	err := Get().Where("wallet_address = ?", address).Preload("LockedTokens").First(&userToken).Error
+	err := Get().Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(&userToken).Error
 	if err != nil {
 		return nil, err
 	}
@@ -244,10 +268,35 @@ func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error)
 	return &userToken, nil
 }
 
+// GetPlayerTokenByEmail returns user token by email, filtering expired locked tokens
+func GetPlayerTokenByEmail(ctx context.Context, email string) (*dao.UserToken, error) {
+	profile, perr := GetUserProfileByEmail(email)
+	if perr != nil {
+		return nil, perr
+	}
+	var userToken dao.UserToken
+	err := Get().Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(&userToken).Error
+	if err != nil {
+		return nil, err
+	}
+	lockedTokens := make([]*dao.LockedUserToken, 0)
+	for _, locked := range userToken.LockedTokens {
+		if time.Since(locked.CreatedAt) < maxLockTime {
+			lockedTokens = append(lockedTokens, locked)
+		}
+	}
+	userToken.LockedTokens = lockedTokens
+	return &userToken, nil
+}
+
 func SetLockedTokenGameID(ctx context.Context, walletAddress, temporaryAddress string, gameID uint) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
-		err := tx.Where("wallet_address = ?", walletAddress).Preload("LockedTokens").First(userToken).Error
+		profile, perr := GetUserProfileByAddress(strings.ToLower(walletAddress))
+		if perr != nil {
+			return perr
+		}
+		err := tx.Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}

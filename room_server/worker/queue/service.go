@@ -31,7 +31,7 @@ func NewService(ctx context.Context,
 ) *Service {
 	s := &Service{
 		ctx:                 ctx,
-		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout,continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
+		queue:               NewQueue(ctx, workerManager, cache, gameCreator, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
 		minTokenToJoinQueue: minTokenToJoinQueue,
 		botWaitTime:         botWaitTime,
 	}
@@ -72,7 +72,7 @@ func (s *Service) GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenRes
 		log.Error("GetPlayerToken failed, err: ", err)
 		return nil, err
 	}
-	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken, walletAddress), nil
 }
 
 func (s *Service) GameResultSettlement(event *types.GameCompletedEvent) error {

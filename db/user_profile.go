@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"time"
@@ -142,98 +141,4 @@ func UpdateDailyRewardCollectionByEmail(email string) error {
 	return Get().Model(&dao.UserProfile{}).
 		Where("email = ?", email).
 		Update("collected_reward_at", now).Error
-}
-
-// UpdateUserGameStats 更新用户游戏统计数据
-// winner: 获胜者地址，如果是平局则为""
-// multiplier: 赢家的最高倍率
-func UpdateUserGameStats(player1Address, player2Address, winner string, multiplier float64) error {
-	// 获取两个用户的档案
-	player1Profile, err := GetUserProfileByAddress(player1Address)
-	if err != nil {
-		return err
-	}
-
-	player2Profile, err := GetUserProfileByAddress(player2Address)
-	if err != nil {
-		return err
-	}
-
-	// 计算积分和代币变化
-	basePoints := 1000
-	baseTokens := 1000
-
-	// 更新用户档案中的对局统计信息
-	player1Profile.OverallGame++
-	player2Profile.OverallGame++
-
-	// 获取 / 创建用户 Token 信息
-	player1Token, err := GetPlayerToken(context.Background(), player1Address)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if player1Token == nil {
-		player1Token = &dao.UserToken{WalletAddress: player1Address}
-	}
-
-	player2Token, err := GetPlayerToken(context.Background(), player2Address)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if player2Token == nil {
-		player2Token = &dao.UserToken{WalletAddress: player2Address}
-	}
-
-	// 玩家1、玩家2基础积分变动
-	player1PointsChange := basePoints * int(multiplier)
-	player2PointsChange := basePoints * int(multiplier)
-
-	player1Token.Points += int32(player1PointsChange)
-	player2Token.Points += int32(player2PointsChange)
-
-	// 根据胜负情况更新胜场数和代币
-	if winner == player1Address {
-		// 玩家1获胜
-		player1Profile.WinCount++
-		player1Token.TokenAmount += int32(float64(baseTokens) * multiplier * 0.98) // 赢家获得98%
-		player2Token.TokenAmount -= int32(float64(baseTokens) * multiplier)        // 输家扣100%
-	} else if winner == player2Address {
-		// 玩家2获胜
-		player2Profile.WinCount++
-		player2Token.TokenAmount += int32(float64(baseTokens) * multiplier * 0.98)
-		player1Token.TokenAmount -= int32(float64(baseTokens) * multiplier)
-	} else {
-		// 平局，双方各扣0.5%
-		deduction := int32(float64(baseTokens) * 0.005)
-		player1Token.TokenAmount -= deduction
-		player2Token.TokenAmount -= deduction
-	}
-
-	// 重新计算胜率
-	player1Profile.WinningRate = float64(player1Profile.WinCount) / float64(player1Profile.OverallGame)
-	player2Profile.WinningRate = float64(player2Profile.WinCount) / float64(player2Profile.OverallGame)
-
-	// 确保代币数量不为负数
-	if player1Token.TokenAmount < 0 {
-		player1Token.TokenAmount = 0
-	}
-	if player2Token.TokenAmount < 0 {
-		player2Token.TokenAmount = 0
-	}
-
-	// 保存用户 Token 及 Profile
-	err = SaveUserToken(*player1Token, *player2Token)
-	if err != nil {
-		return err
-	}
-
-	// 更新用户档案信息
-	if err := UpdateUserProfile(player1Profile); err != nil {
-		return err
-	}
-	if err := UpdateUserProfile(player2Profile); err != nil {
-		return err
-	}
-
-	return nil
 }

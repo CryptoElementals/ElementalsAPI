@@ -33,12 +33,22 @@ var playerSetCmd = &cobra.Command{
 			return
 		}
 		playerAddress = strings.ToLower(playerAddress)
-		ut := dao.UserToken{
-			WalletAddress: playerAddress,
-			Points:        int32(points),
-			TokenAmount:   int32(tokens),
+		// ensure profile exists
+		profile, perr := db.GetOrCreateUserProfile(playerAddress)
+		if perr != nil {
+			fmt.Printf("get or create user profile failed, err: %v\n", perr)
+			return
 		}
-
+		// upsert user token by user_id
+		var ut dao.UserToken
+		if err = db.Get().Where("user_id = ?", profile.UserID).First(&ut).Error; err != nil {
+			if err == nil {
+				// no-op
+			}
+		}
+		ut.UserID = profile.UserID
+		ut.Points = int32(points)
+		ut.TokenAmount = int32(tokens)
 		err = db.Get().Save(&ut).Error
 		if err != nil {
 			fmt.Printf("set token and points failed, err: %v\n", err)
@@ -75,12 +85,18 @@ var playerGetCmd = &cobra.Command{
 			return
 		}
 		var ut dao.UserToken
-		err = db.Get().Where("wallet_address = ?", playerAddress).First(&ut).Error
+		// resolve by user_id
+		profile, perr := db.GetUserProfileByAddress(strings.ToLower(playerAddress))
+		if perr != nil {
+			fmt.Printf("get user profile failed, err: %v\n", perr)
+			return
+		}
+		err = db.Get().Where("user_id = ?", profile.UserID).First(&ut).Error
 		if err != nil {
 			fmt.Printf("get token and points failed, err: %v\n", err)
 			return
 		}
-		fmt.Printf("player address: %s, points: %d, tokens: %d\n", ut.WalletAddress, ut.Points, ut.TokenAmount)
+		fmt.Printf("player address: %s, points: %d, tokens: %d\n", playerAddress, ut.Points, ut.TokenAmount)
 	},
 }
 
@@ -99,7 +115,12 @@ var tokenLockCmd = &cobra.Command{
 			return
 		}
 		var ut dao.UserToken
-		err = db.Get().Where("wallet_address = ?", playerAddress).First(&ut).Error
+		profile, perr := db.GetUserProfileByAddress(strings.ToLower(playerAddress))
+		if perr != nil {
+			fmt.Printf("get user profile failed, err: %v\n", perr)
+			return
+		}
+		err = db.Get().Where("user_id = ?", profile.UserID).First(&ut).Error
 		if err != nil {
 			fmt.Printf("get token and points failed, err: %v\n", err)
 			return
@@ -114,7 +135,7 @@ var tokenLockCmd = &cobra.Command{
 			fmt.Printf("save locked tokens failed, err: %v\n", err)
 			return
 		}
-		fmt.Printf("player address: %s, locked tokens: %d\n", ut.WalletAddress, ut.TokenAmount)
+		fmt.Printf("player address: %s, locked tokens: %d\n", playerAddress, ut.TokenAmount)
 	},
 }
 
@@ -133,7 +154,12 @@ var tokenUnlockCmd = &cobra.Command{
 			return
 		}
 		var ut dao.UserToken
-		err = db.Get().Where("wallet_address = ?", playerAddress).First(&ut).Error
+		profile, perr := db.GetUserProfileByAddress(strings.ToLower(playerAddress))
+		if perr != nil {
+			fmt.Printf("get user profile failed, err: %v\n", perr)
+			return
+		}
+		err = db.Get().Where("user_id = ?", profile.UserID).First(&ut).Error
 		if err != nil {
 			fmt.Printf("get token and points failed, err: %v\n", err)
 			return

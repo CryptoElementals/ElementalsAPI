@@ -206,7 +206,7 @@ func (s *Service) GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenRes
 		log.Error("GetPlayerToken failed, err: ", err)
 		return nil, err
 	}
-	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken, walletAddress), nil
 }
 
 func (s *Service) GetTimeoutConfig() (*proto.TimeoutConfig, error) {

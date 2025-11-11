@@ -89,8 +89,6 @@ func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		log.Infof("%s, daily reward collection status checked (addr=%s): %v", task.Request.RequestUUID, requestAddress, collected)
 		return task.Response, nil
 	}
-
-	// 使用 Email 直接查询，不再通过 Email 解析地址
 	collected, err := db.HasCollectedDailyRewardByEmail(requestEmail)
 	if err != nil {
 		log.Errorf("%s, failed to check daily reward collection for email %s: %v", task.Request.RequestUUID, requestEmail, err)

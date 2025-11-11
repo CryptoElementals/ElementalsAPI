@@ -127,9 +127,14 @@ func prepareCards(t *testing.T) {
 
 func prepareUserTokens(t *testing.T) {
 	t.Helper()
+	// ensure profiles
+	profile1, err := db.GetOrCreateUserProfile("wallet1")
+	require.NoError(t, err)
+	profile2, err := db.GetOrCreateUserProfile("wallet2")
+	require.NoError(t, err)
 	userTokens := []dao.UserToken{
-		{WalletAddress: "wallet1", TokenAmount: 1000000, Points: 0},
-		{WalletAddress: "wallet2", TokenAmount: 1000000, Points: 0},
+		{UserID: profile1.UserID, TokenAmount: 1000000, Points: 0},
+		{UserID: profile2.UserID, TokenAmount: 1000000, Points: 0},
 	}
 	require.NoError(t, db.SaveUserToken(userTokens...))
 }
