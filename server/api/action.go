@@ -16,10 +16,10 @@ const (
 // 统一的 API Label 定义
 const (
 	// 登录与会话
-	GET_LOGIN_CODE_LABEL      = "GetLoginCode"
-	LOGIN_DILL_LABEL          = "LoginWeb3"
-	REFRESH_LABEL             = "RefreshTokens"
-	IS_WALLET_LOGGED_IN_LABEL = "IsWalletLoggedIn"
+	GET_LOGIN_CODE_LABEL    = "GetLoginCode"
+	LOGIN_DILL_LABEL        = "LoginWeb3"
+	REFRESH_LABEL           = "RefreshTokens"
+	IS_USER_LOGGED_IN_LABEL = "IsUserLoggedIn"
 
 	// 系统与资源
 	HEALTH_CHECK_LABEL = "HealthCheck"

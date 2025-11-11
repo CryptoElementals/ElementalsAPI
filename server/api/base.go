@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/CryptoElementals/common/errors"
@@ -8,7 +9,35 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-const SESSION_ADDR_KEY = "addr"
+const SESSION_USER_KEY = "user"
+
+const (
+	LOGIN_TYPE_ADDR  = "addr"
+	LOGIN_TYPE_EMAIL = "email"
+)
+
+type LoginUser struct {
+	Type    string `json:"type"`
+	Address string `json:"address,omitempty"`
+	Email   string `json:"email,omitempty"`
+	Name    string `json:"name,omitempty"`
+}
+
+func (u *LoginUser) ToJSON() (string, error) {
+	b, err := json.Marshal(u)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func LoginUserFromJSON(s string) (*LoginUser, error) {
+	var u LoginUser
+	if err := json.Unmarshal([]byte(s), &u); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
 
 type AnyRequest[T any] struct {
 	BaseRequest `mapstructure:",squash"`
@@ -71,9 +100,7 @@ func MakeAddrNonceKey(addr string) string {
 	return fmt.Sprintf("%s_nonce", addr)
 }
 
-func MakeAddrCookieKey(addr string) string {
-	return fmt.Sprintf("%s_cookie", addr)
-}
+// removed legacy addr cookie key helper
 
 func Bool(ptr *bool) bool {
 	if ptr == nil {
