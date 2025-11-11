@@ -60,7 +60,7 @@ func (r *GameManager) Stop() {
 	r.lock.Lock()
 	log.Info("closing game manager")
 	for _, game := range r.gamesMap {
-		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "round", game.currentRound.Status)
+		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "round", game.Round.round.Status)
 	}
 	r.stopped = true
 	r.lock.Unlock()

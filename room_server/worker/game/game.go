@@ -13,7 +13,6 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/battle"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -47,8 +46,7 @@ type Game struct {
 	ctx                 context.Context
 	lock                sync.RWMutex
 	gameInfo            *dao.Game
-	gamePlayers         map[string]*gamePlayer
-	currentRound        *dao.Round
+	*Round              // Embedded Round for battle execution
 	workerMangerService *worker.WorkerManager
 	chainSvc            ContractClient
 	gameContextHandler  GameHandler
@@ -82,7 +80,7 @@ func NewGame(
 			Type:     types.GameTypePVP,
 			GameArgs: *gameArgs,
 		},
-		gamePlayers:         gamePlayers,
+		Round:               &Round{round: nil, gamePlayers: gamePlayers, battleStates: nil},
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
@@ -99,11 +97,12 @@ func NewGameFromGameInfo(
 	gameContinuer GameHandler,
 	gameInfo *dao.Game,
 	chainSvc ContractClient) *Game {
+	gamePlayers := make(map[string]*gamePlayer)
 	g := &Game{
 		ctx:                 ctx,
 		wg:                  wg,
 		gameInfo:            gameInfo,
-		gamePlayers:         make(map[string]*gamePlayer),
+		Round:               &Round{round: nil, gamePlayers: gamePlayers, battleStates: nil},
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
@@ -144,10 +143,10 @@ func NewGameFromGameInfo(
 		for _, r := range g.gameInfo.Rounds {
 			if r.RoundNumber > roundNum {
 				roundNum = r.RoundNumber
-				g.currentRound = r
+				g.Round.round = r
 			}
 		}
-		for _, roundPlayer := range g.currentRound.PlayerRoundInfos {
+		for _, roundPlayer := range g.Round.round.PlayerRoundInfos {
 			player, err := g.getGamePlayer(roundPlayer.TemporaryAddress)
 			if err != nil {
 				// should never happen
@@ -163,7 +162,7 @@ func NewGameFromGameInfo(
 			terminateGame()
 			return nil
 		}
-		if g.currentRound.Status == proto.RoundStatus_ROUND_COMPLETED {
+		if g.Round.round.Status == proto.RoundStatus_ROUND_COMPLETED {
 			g.setupNewRound()
 		} else {
 			g.sendTimerEventByCurrentRound()
@@ -209,7 +208,7 @@ func (g *Game) GetGameResult() *proto.GameResult {
 func (g *Game) GetGamePhase() *proto.GamePhase {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
-	return conversion.DbGameToProtoGamePhase(g.gameInfo, g.currentRound)
+	return conversion.DbGameToProtoGamePhase(g.gameInfo, g.Round.round)
 }
 
 func (g *Game) saveGame() error {
@@ -223,7 +222,7 @@ func (g *Game) saveGame() error {
 func (g *Game) savePlayerRoundInfo(roundPlayer *dao.PlayerRoundInfo) error {
 	err := db.SavePlayerRoundInfo(roundPlayer)
 	if err != nil {
-		log.Errorw("savePlayerRoundInfo failed", "err", err, "game id", g.gameInfo.ID, "round num", g.currentRound.RoundNumber)
+		log.Errorw("savePlayerRoundInfo failed", "err", err, "game id", g.gameInfo.ID, "round num", g.Round.round.RoundNumber)
 	}
 	return nil
 }
@@ -258,7 +257,7 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 }
 
 func (g *Game) handleRound(event *types.Event) error {
-	currentRound := g.currentRound
+	currentRound := g.Round.round
 	if surrentEvt, err := types.AssertInterface[*types.SurrenderEvent](event); err == nil {
 		return g.handleSurrenderEvent(surrentEvt)
 	}
@@ -278,8 +277,8 @@ func (g *Game) handleRound(event *types.Event) error {
 
 func (g *Game) pushStateToContractCreating() error {
 	g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
-	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
-	for _, player := range g.gamePlayers {
+	allPlayers := make([]types.PlayerAddress, 0, len(g.Round.gamePlayers))
+	for _, player := range g.Round.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
 		player.roundPlayer.PlayerReady = true
 	}
@@ -288,7 +287,7 @@ func (g *Game) pushStateToContractCreating() error {
 		g.handleGameAbortInternalError()
 		return err
 	}
-	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
+	g.Round.round.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
 	return nil
 }
 
@@ -308,7 +307,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 		return err
 	}
 	// stale events
-	if evt.RoundNumber != g.currentRound.RoundNumber {
+	if evt.RoundNumber != g.Round.round.RoundNumber {
 		return nil
 	}
 	// might be a chain error, ignore it
@@ -320,26 +319,26 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 	player.roundPlayer.PlayerReady = true
 	// check if all players ready
 	allPlayersReady := true
-	for _, player := range g.gamePlayers {
+	for _, player := range g.Round.gamePlayers {
 		if !player.roundPlayer.PlayerReady {
 			allPlayersReady = false
 		}
 	}
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
 		GameID:       g.gameInfo.ID,
-		RoundNumber:  uint32(g.currentRound.RoundNumber),
+		RoundNumber:  uint32(g.Round.round.RoundNumber),
 		ReadyAddress: player.PlayerAddress(),
 	}))
 	if !allPlayersReady {
 		g.savePlayerRoundInfo(player.roundPlayer)
 		return nil
 	}
-	allPlayers := make([]types.PlayerAddress, 0, len(g.gamePlayers))
-	for _, player := range g.gamePlayers {
+	allPlayers := make([]types.PlayerAddress, 0, len(g.Round.gamePlayers))
+	for _, player := range g.Round.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
 	}
 	// the first round, we need to create contract
-	if g.currentRound.RoundNumber == 1 {
+	if g.Round.round.RoundNumber == 1 {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 		err := g.sendContractCreation(allPlayers)
 		if err != nil {
@@ -357,7 +356,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 			return err
 		}
 	}
-	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
+	g.Round.round.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
 	err = g.saveGame()
 	if err != nil {
 		return err
@@ -368,7 +367,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 
 func (g *Game) handleGameStateWaittingSetupOnChain(event *types.Event) error {
 	defer g.sendTimerEventByCurrentRound()
-	if g.currentRound.RoundNumber == 1 {
+	if g.Round.round.RoundNumber == 1 {
 		return g.handleRoomContractCreated(event)
 	}
 	return g.handleNewRoundSetupOnChain(event)
@@ -381,8 +380,8 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 	}
 	g.gameInfo.RoomContract = evt.RoomContractAddress
 	// just skip setup new round on chain for first round
-	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
-	g.currentRound.SetupOnChainAt = evt.TimeStamp
+	g.Round.round.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
+	g.Round.round.SetupOnChainAt = evt.TimeStamp
 	err = g.saveGame()
 	if err != nil {
 		return err
@@ -393,7 +392,7 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 	})
 	roundReadyEvt := types.NewEvent(g.workerID(), &types.RoundReadyEvent{
 		GameID:         g.gameInfo.ID,
-		RoundNumber:    g.currentRound.RoundNumber,
+		RoundNumber:    g.Round.round.RoundNumber,
 		RoundStartedAt: evt.TimeStamp,
 		RoundTimeout:   g.gameInfo.RoundTimeout,
 	})
@@ -410,12 +409,12 @@ func (g *Game) handleNewRoundSetupOnChain(event *types.Event) error {
 		return errors.New("invalid game id")
 	}
 	// stale event
-	if evt.RoundNumber != uint32(g.currentRound.RoundNumber) {
+	if evt.RoundNumber != uint32(g.Round.round.RoundNumber) {
 		return nil
 	}
-	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
-	g.currentRound.SetupOnChainAt = evt.TimeStamp
-	err = g.saveRound(g.currentRound)
+	g.Round.round.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
+	g.Round.round.SetupOnChainAt = evt.TimeStamp
+	err = g.saveRound(g.Round.round)
 	if err != nil {
 		return err
 	}
@@ -433,7 +432,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		return err
 	}
 	// stale events
-	if evt.RoundNumber != g.currentRound.RoundNumber {
+	if evt.RoundNumber != g.Round.round.RoundNumber {
 		return nil
 	}
 	player, err := g.getGamePlayer(evt.Address.TemporaryAddress)
@@ -443,7 +442,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	player.roundPlayer.SubmittedCommitment = evt.Commitment
 	// check if all player commitment on chain
 	allCommitmentsOnChain := true
-	for _, player := range g.gamePlayers {
+	for _, player := range g.Round.gamePlayers {
 		if len(player.roundPlayer.SubmittedCommitment) == 0 {
 			allCommitmentsOnChain = false
 			break
@@ -453,8 +452,8 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		g.savePlayerRoundInfo(player.roundPlayer)
 		return nil
 	}
-	g.currentRound.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
-	err = g.saveRound(g.currentRound)
+	g.Round.round.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
+	err = g.saveRound(g.Round.round)
 	if err != nil {
 		return err
 	}
@@ -475,7 +474,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		return err
 	}
 	// stale events
-	if evt.RoundNumber != g.currentRound.RoundNumber {
+	if evt.RoundNumber != g.Round.round.RoundNumber {
 		return nil
 	}
 	player, err := g.getGamePlayer(evt.Address.TemporaryAddress)
@@ -494,7 +493,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	}
 	// check if all player cards on chain
 	allCardsOnChain := true
-	for _, player := range g.gamePlayers {
+	for _, player := range g.Round.gamePlayers {
 		if len(player.roundPlayer.SubmittedCards) == 0 {
 			allCardsOnChain = false
 			break
@@ -513,8 +512,8 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 
 // can go into game end from any other status
 func (g *Game) handleGameEnd() error {
-	g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
-	g.currentRound.IsLastRound = true
+	g.Round.round.Status = proto.RoundStatus_ROUND_COMPLETED
+	g.Round.round.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_END
 	err := g.saveGame()
 	if err != nil {
@@ -540,7 +539,7 @@ func (g *Game) handleGameAbortInit() error {
 	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
-	g.currentRound.IsLastRound = true
+	g.Round.round.IsLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
 	g.gameInfo.GameResult = g.abortedGameResult()
 	err := g.saveGame()
@@ -563,9 +562,9 @@ func (g *Game) handleGameAbortInit() error {
 // can go into game end from any other status
 func (g *Game) handleGameAbortInternalError() error {
 	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
-	if g.currentRound != nil {
-		g.currentRound.IsLastRound = true
-		g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
+	if g.Round.round != nil {
+		g.Round.round.IsLastRound = true
+		g.Round.round.Status = proto.RoundStatus_ROUND_COMPLETED
 	}
 
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
@@ -602,15 +601,15 @@ func (g *Game) workerID() string {
 
 func (g *Game) setupNewRound() {
 	roundNum := uint32(1)
-	if g.currentRound != nil {
-		roundNum = g.currentRound.RoundNumber + 1
+	if g.Round.round != nil {
+		roundNum = g.Round.round.RoundNumber + 1
 	}
 	newRound := &dao.Round{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: roundNum,
 		Status:      proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
 	}
-	for _, player := range g.gamePlayers {
+	for _, player := range g.Round.gamePlayers {
 		playerRoundInfo := &dao.PlayerRoundInfo{
 			WalletAddress:    player.player.WalletAddress,
 			TemporaryAddress: player.player.TemporaryAddress,
@@ -619,13 +618,13 @@ func (g *Game) setupNewRound() {
 		newRound.PlayerRoundInfos = append(newRound.PlayerRoundInfos, playerRoundInfo)
 		player.roundPlayer = playerRoundInfo
 	}
-	g.currentRound = newRound
+	g.Round.round = newRound // Update the embedded Round's reference
 	g.gameInfo.Rounds = append(g.gameInfo.Rounds, newRound)
 	g.sendTimerEventByCurrentRound()
 }
 
 func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
-	for _, player := range g.gamePlayers {
+	for _, player := range g.Round.gamePlayers {
 		for _, event := range events {
 			g.workerMangerService.SendEvent(player.String(), event)
 		}
@@ -633,32 +632,26 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 }
 
 func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
-	g.currentRound.CompleteReason = reason
-	g.currentRound.RoundEndTime = time.Now().Unix()
-	e := battle.NewBattleEngine()
-	input := conversion.DbRoundToProtoRoundInput(g.currentRound)
-	for _, p := range input.Players {
-		player, err := g.getGamePlayer(p.TemporaryAddress)
-		if err != nil {
-			return err
-		}
-		p.LostHP = int32(player.totalLostHP)
-		p.HP = int32(player.currentHP)
-	}
-	roundResult, gameResult, err := e.ExecuteRoundProto(input)
+	g.Round.round.CompleteReason = reason
+	g.Round.round.RoundEndTime = time.Now().Unix()
+	// Round already points to current round
+
+	// Execute using embedded Round - no conversion needed, returns DAO directly
+	isGameOver, gameResult, err := g.Round.ExecuteRound()
 	if err != nil {
-		log.Errorf("ExecuteRoundProto failed, err: %v", err)
+		log.Errorf("ExecuteRound failed, err: %v", err)
 		return g.handleGameAbortInternalError()
 	}
-	g.applyRoundResultToCurrentRound(roundResult)
-	if roundResult.IsGameOver {
-		g.gameInfo.GameResult = conversion.ProtoGameResultToDbGameResult(gameResult)
+
+	// Battle results are already applied to gamePlayers by ExecuteRound
+	if isGameOver {
+		g.gameInfo.GameResult = gameResult
 		return g.handleGameEnd()
 	}
-	g.currentRound.Status = proto.RoundStatus_ROUND_COMPLETED
+	g.Round.round.Status = proto.RoundStatus_ROUND_COMPLETED
 	roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
 		GameID:    g.gameInfo.ID,
-		RoundInfo: g.currentRound,
+		RoundInfo: g.Round.round,
 	})
 	g.setupNewRound()
 	err = g.saveGame()
@@ -669,35 +662,7 @@ func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 	return nil
 }
 
-func (g *Game) applyRoundResultToCurrentRound(roundResult *proto.RoundResult) {
-	for _, p := range roundResult.Players {
-		player, err := g.getGamePlayer(p.TemporaryAddress)
-		if err != nil {
-			// should never happen
-			log.Fatalf("getGamePlayer failed, err: %v", err)
-			continue
-		}
-		player.roundPlayer.LostHP = p.LostHP
-		player.totalLostHP = int64(p.LostHP)
-		for i, card := range p.CardStats {
-			for _, sc := range player.roundPlayer.SubmittedCards {
-				if sc.CardNumber == uint32(card.CardNumber) {
-					sc := player.roundPlayer.SubmittedCards[i]
-					sc.HealthBefore = uint32(card.HPBefore)
-					sc.HealthAfter = uint32(card.HPAfter)
-					sc.MultiplierBefore = uint32(card.MultiplierBefore)
-					sc.MultiplierAfter = uint32(card.MultiplierAfter)
-					sc.Description = card.Description
-					sc.ElementRelation = card.ElementRelation
-					sc.CardEffects = conversion.ProtoBattleEffectsToDbCardEffects(card.Effects)
-				}
-			}
-		}
-		if len(player.roundPlayer.SubmittedCards) != 0 {
-			player.currentHP = currentHpFromCards(player.roundPlayer.SubmittedCards)
-		}
-	}
-}
+// applyRoundResultToCurrentRound is no longer needed - ExecuteRound applies results directly
 
 func (g *Game) timeoutFromCurentRound() time.Duration {
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
@@ -709,7 +674,7 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 		// game waitting confirmed for the first round
 		timeoutDuration = g.gameInfo.GameArgs.GameMatchTimeout + g.gameInfo.GameArgs.GameMatchTimeoutRedundancy
 	case proto.GameStatus_GAME_RUNNING:
-		switch g.currentRound.Status {
+		switch g.Round.round.Status {
 		case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
 			proto.RoundStatus_ROUND_COMPLETED,
 			proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
@@ -724,8 +689,8 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 	}
 
 	timeout := time.Second * time.Duration(timeoutDuration)
-	if g.currentRound.SetupOnChainAt != 0 {
-		timeout -= time.Since(time.Unix(g.currentRound.SetupOnChainAt, 0))
+	if g.Round.round.SetupOnChainAt != 0 {
+		timeout -= time.Since(time.Unix(g.Round.round.SetupOnChainAt, 0))
 	}
 	return timeout
 }
@@ -737,8 +702,8 @@ func (g *Game) sendTimerEventByCurrentRound() {
 	}
 	timerEvent := &timerEvent{
 		currentGameStatus:  g.gameInfo.Status,
-		currentRound:       g.currentRound.RoundNumber,
-		currentRoundStatus: g.currentRound.Status,
+		currentRound:       g.Round.round.RoundNumber,
+		currentRoundStatus: g.Round.round.Status,
 	}
 	log.Debugw("send timer event",
 		"game id", g.gameInfo.ID,
@@ -757,17 +722,17 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	// stale event
-	if g.currentRound.RoundNumber != event.currentRound {
+	if g.Round.round.RoundNumber != event.currentRound {
 		return
 	}
 	// status changed go ahead
-	if g.currentRound.Status != event.currentRoundStatus {
+	if g.Round.round.Status != event.currentRoundStatus {
 		return
 	}
 	log.Infow("timer event triggered",
 		"game id", g.gameInfo.ID,
-		"round", g.currentRound.RoundNumber,
-		"round status", g.currentRound.Status,
+		"round", g.Round.round.RoundNumber,
+		"round status", g.Round.round.Status,
 		"game status", g.gameInfo.Status)
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
@@ -777,7 +742,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		}
 		return
 	}
-	switch g.currentRound.Status {
+	switch g.Round.round.Status {
 	case proto.RoundStatus_ROUND_COMPLETED:
 		// do nothing
 	case proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
@@ -793,11 +758,11 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 }
 
 func (g *Game) setGamePlayer(tempAddr string, player *gamePlayer) {
-	g.gamePlayers[strings.ToLower(tempAddr)] = player
+	g.Round.gamePlayers[strings.ToLower(tempAddr)] = player
 }
 
 func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
-	player, ok := g.gamePlayers[strings.ToLower(tempAddr)]
+	player, ok := g.Round.gamePlayers[strings.ToLower(tempAddr)]
 	if !ok {
 		return nil, fmt.Errorf("player %s not found", tempAddr)
 	}
@@ -822,7 +787,7 @@ func (g *Game) sendRoundReady() error {
 	err := g.chainSvc.SetRoundReady(&types.RequireSetupNewRoundEvent{
 		GameID:          g.gameInfo.ID,
 		ContractAddress: g.gameInfo.RoomContract,
-		RoundNumber:     uint32(g.currentRound.RoundNumber),
+		RoundNumber:     uint32(g.Round.round.RoundNumber),
 	})
 	if err != nil {
 		return err
@@ -837,7 +802,7 @@ func (g *Game) abortedGameResult() *dao.GameResult {
 			PlayerRewards: []*dao.PlayerReward{},
 		},
 	}
-	for _, player := range g.gamePlayers {
+	for _, player := range g.Round.gamePlayers {
 		playerReward := &dao.PlayerReward{
 			WalletAddress:    player.player.WalletAddress,
 			TemporaryAddress: player.player.TemporaryAddress,
