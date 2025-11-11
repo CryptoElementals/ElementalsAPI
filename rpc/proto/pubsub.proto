@@ -121,11 +121,14 @@ message RoundReady {
 message CommitmentsOnChain {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
+  uint32 CardNum = 3;
 }
 
 message CardsOnChain {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
+  rpc.RoundSubmittedCard MyCard = 3;
+  rpc.RoundSubmittedCard RivalCard = 4;
 }
 
 message RoundCompleted {
@@ -136,6 +139,15 @@ message RoundCompleted {
 message GameCompleted {
   uint32 GameId = 1;
   battle.GameResult GameResult = 2;
+}
+
+message GameStat {
+  uint32 GameId = 1;
+  string ContractAddress = 2;
+  repeated rpc.PlayerAddress Players = 3; 
+  uint32 CurrentRoundNum = 4;
+  uint32 CurrentCardNum = 5;
+
 }
 
 enum EventType {
@@ -150,6 +162,7 @@ enum EventType {
   TYPE_GAME_COMPLETE = 8;
   TYPE_PLAYER_OFFLINE = 9;
   TYPE_CONTINUE_CANCELED = 10;
+  TYPE_STAT_SYNC = 11;
 }
 
 message Event {

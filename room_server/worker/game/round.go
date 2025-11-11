@@ -147,7 +147,12 @@ func (r *Round) checkPlayerStatuses() (bool, bool) {
 		if p.Surrendered {
 			hasSurrenderedPlayer = true
 		}
-		if len(p.SubmittedCommitment) == 0 || len(p.SubmittedCards) != 3 {
+		// Check commitment from first card (if exists) and card count
+		hasCommitment := false
+		if len(p.SubmittedCards) > 0 && len(p.SubmittedCards[0].SubmittedCommitment) > 0 {
+			hasCommitment = true
+		}
+		if !hasCommitment || len(p.SubmittedCards) != 3 {
 			hasOfflinePlayer = true
 		}
 		// Early exit if both conditions are already found
@@ -206,7 +211,12 @@ func (r *Round) determinePlayerStatus(p *dao.PlayerRoundInfo) playerStatus {
 	if p.Surrendered {
 		return playerStatusSurrendered
 	}
-	if len(p.SubmittedCommitment) == 0 || len(p.SubmittedCards) != 3 {
+	// Check commitment from first card (if exists) and card count
+	hasCommitment := false
+	if len(p.SubmittedCards) > 0 && len(p.SubmittedCards[0].SubmittedCommitment) > 0 {
+		hasCommitment = true
+	}
+	if !hasCommitment || len(p.SubmittedCards) != 3 {
 		return playerStatusOffline
 	}
 	return playerStatusOnline
@@ -915,12 +925,17 @@ func (r *Round) handleServerTimeout() (bool, *dao.GameResult, error) {
 		player.roundPlayer.LostHP = p.LostHP
 		player.totalLostHP = int64(p.LostHP)
 
+		// Check commitment from first card (if exists)
+		hasCommitment := false
+		if len(p.SubmittedCards) > 0 && len(p.SubmittedCards[0].SubmittedCommitment) > 0 {
+			hasCommitment = true
+		}
 		playerRewards = append(playerRewards, &dao.PlayerReward{
 			WalletAddress:          p.WalletAddress,
 			TemporaryAddress:       p.TemporaryAddress,
 			TokenChange:            0,
 			PointChange:            0,
-			IsOffline:              len(p.SubmittedCommitment) == 0 || len(p.SubmittedCards) < 3,
+			IsOffline:              !hasCommitment || len(p.SubmittedCards) < 3,
 			Surrendered:            p.Surrendered,
 			PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
 		})

@@ -133,9 +133,7 @@ enum RoundStatus {
 message PlayerRoundInfo {
     PlayerAddress PlayerAddress = 1;
     bool PlayerReady = 2;
-    bytes Salt = 3;
-    bytes SubmittedCommitment = 4;
-    repeated RoundSubmittedCard SubmittedCards = 5;
+    repeated RoundSubmittedCard SubmittedCards = 3;
 }
 
 // Battle Engine related messages
@@ -150,6 +148,8 @@ message RoundSubmittedCard {
     string Description = 6;            // battle description
     battle.ElementRelation ElementRelation = 7;       // element relation type
     repeated battle.BattleEffect Effects = 8; // effects applied to this player
+    bytes SubmittedCommitment = 9;
+    bytes Salt = 10;
 }
 
 message Round {

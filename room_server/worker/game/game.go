@@ -51,6 +51,9 @@ type Game struct {
 	chainSvc            ContractClient
 	gameContextHandler  GameHandler
 	wg                  *sync.WaitGroup
+	// Temporary storage for commitments before cards are submitted
+	// Key: temporary address, Value: commitment
+	pendingCommitments map[string][]byte
 }
 
 func NewGame(
@@ -84,6 +87,7 @@ func NewGame(
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
+		pendingCommitments:  make(map[string][]byte),
 	}
 	game.setupNewRound()
 	wg.Add(1)
@@ -106,6 +110,7 @@ func NewGameFromGameInfo(
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
+		pendingCommitments:  make(map[string][]byte),
 	}
 	wg.Add(1)
 	var terminateGame = func() {
@@ -439,11 +444,23 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	if err != nil {
 		return err
 	}
-	player.roundPlayer.SubmittedCommitment = evt.Commitment
+	// Store commitment temporarily until cards are submitted
+	g.pendingCommitments[strings.ToLower(evt.Address.TemporaryAddress)] = evt.Commitment
 	// check if all player commitment on chain
 	allCommitmentsOnChain := true
 	for _, player := range g.Round.gamePlayers {
-		if len(player.roundPlayer.SubmittedCommitment) == 0 {
+		tempAddr := strings.ToLower(player.player.TemporaryAddress)
+		hasCommitment := false
+		// Check if commitment is in pending map
+		if _, ok := g.pendingCommitments[tempAddr]; ok {
+			hasCommitment = true
+		} else {
+			// Also check if commitment is already in cards (for loaded games)
+			if len(player.roundPlayer.SubmittedCards) > 0 && len(player.roundPlayer.SubmittedCards[0].SubmittedCommitment) > 0 {
+				hasCommitment = true
+			}
+		}
+		if !hasCommitment {
 			allCommitmentsOnChain = false
 			break
 		}
@@ -485,12 +502,30 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		log.Errorw("player cards already submitted", "game id", g.gameInfo.ID, "round number", evt.RoundNumber, "player address", evt.Address.TemporaryAddress)
 		return nil
 	}
+	// Get commitment from pending commitments
+	tempAddr := strings.ToLower(evt.Address.TemporaryAddress)
+	pendingCommitment := g.pendingCommitments[tempAddr]
+
 	for i, card := range evt.Cards {
+		// For loaded games, read commitment from the same index if card already exists
+		var commitment []byte
+		if len(pendingCommitment) > 0 {
+			// Use pending commitment if available
+			commitment = pendingCommitment
+		} else if i < len(player.roundPlayer.SubmittedCards) {
+			// For loaded games, preserve commitment from the same index
+			commitment = player.roundPlayer.SubmittedCards[i].SubmittedCommitment
+		}
+
 		player.roundPlayer.SubmittedCards = append(player.roundPlayer.SubmittedCards, &dao.RoundSubmittedCard{
-			CardID:     card,
-			CardNumber: uint32(i + 1),
+			CardID:              card,
+			CardNumber:          uint32(i + 1),
+			SubmittedCommitment: commitment, // Set commitment in each card
+			Salt:                evt.Salt,   // Set salt in each card
 		})
 	}
+	// Remove commitment from pending map after setting it in cards
+	delete(g.pendingCommitments, tempAddr)
 	// check if all player cards on chain
 	allCardsOnChain := true
 	for _, player := range g.Round.gamePlayers {

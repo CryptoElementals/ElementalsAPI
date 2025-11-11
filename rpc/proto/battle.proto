@@ -4,22 +4,6 @@ package battle;
 
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
-message PlayerRoundInput {
-    string WalletAddress = 1;
-    string TemporaryAddress = 2;
-    bytes Commitment = 3;
-    repeated int32 Cards = 4;
-    int32 HP = 5;
-    int32 LostHP = 6;
-    bool Surrendered = 7;
-}
-
-message RoundInput {
-    int32 RoundNumber = 1;
-    repeated PlayerRoundInput Players = 2;
-    RoundCompleteReason reason = 3;
-}
-
 enum ElementRelation {
     OVER_POWER = 0;
     OVER_POWERED = 1;

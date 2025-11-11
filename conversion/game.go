@@ -116,12 +116,11 @@ func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.Playe
 		WalletAddress:    playerRoundInfo.WalletAddress,
 		TemporaryAddress: playerRoundInfo.TemporaryAddress,
 	}
+	// Note: Salt and SubmittedCommitment are now in RoundSubmittedCard, not PlayerRoundInfo
 	return &proto.PlayerRoundInfo{
-		PlayerAddress:       addr,
-		PlayerReady:         playerRoundInfo.PlayerReady,
-		SubmittedCards:      DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
-		Salt:                playerRoundInfo.Salt,
-		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
+		PlayerAddress:  addr,
+		PlayerReady:    playerRoundInfo.PlayerReady,
+		SubmittedCards: DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
 	}
 }
 
@@ -140,14 +139,16 @@ func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmi
 		return nil
 	}
 	return &proto.RoundSubmittedCard{
-		PlayerHealthBefore: card.HealthBefore,
-		PlayerHealthEnd:    card.HealthAfter,
-		MultiplierBefore:   card.MultiplierBefore,
-		MultiplierAfter:    card.MultiplierAfter,
-		Description:        card.Description,
-		ElementRelation:    card.ElementRelation,
-		Effects:            DbCardEffectsToProto(card.CardEffects),
-		SubmittedCardId:    uint32(card.CardID),
+		PlayerHealthBefore:  card.HealthBefore,
+		PlayerHealthEnd:     card.HealthAfter,
+		MultiplierBefore:    card.MultiplierBefore,
+		MultiplierAfter:     card.MultiplierAfter,
+		Description:         card.Description,
+		ElementRelation:     card.ElementRelation,
+		Effects:             DbCardEffectsToProto(card.CardEffects),
+		SubmittedCardId:     uint32(card.CardID),
+		SubmittedCommitment: card.SubmittedCommitment,
+		Salt:                card.Salt,
 	}
 }
 
@@ -260,10 +261,16 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 			cards = append(cards, uint32(sc.CardID))
 		}
 
+		// Get commitment from first card (if exists)
+		var commitment []byte
+		if len(playerInfo.SubmittedCards) > 0 {
+			commitment = playerInfo.SubmittedCards[0].SubmittedCommitment
+		}
+
 		gamePhase.Players = append(gamePhase.Players, &proto.GamePhasePlayer{
 			Address:     addr,
 			IsConfirmed: playerInfo.PlayerReady,
-			Commitment:  playerInfo.SubmittedCommitment,
+			Commitment:  commitment,
 			Cards:       cards,
 		})
 	}
