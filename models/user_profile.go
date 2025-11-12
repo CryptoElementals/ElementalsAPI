@@ -3,13 +3,12 @@ package dao
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 // UserProfile 用户档案表 - 存储用户基本信息
 type UserProfile struct {
-	UserID            uuid.UUID  `gorm:"column:user_id;type:char(36);primaryKey" json:"user_id"`
+	UserID            uint64     `gorm:"column:user_id;type:bigint;primaryKey" json:"user_id"`
 	Address           string     `gorm:"type:varchar(100)" json:"address"`
 	Email             string     `gorm:"type:varchar(200)" json:"email"`
 	Name              string     `gorm:"type:varchar(100);not null;uniqueIndex" json:"name"`
@@ -22,8 +21,8 @@ type UserProfile struct {
 
 // BeforeCreate 确保在创建记录时生成 UUID 主键
 func (u *UserProfile) BeforeCreate(tx *gorm.DB) (err error) {
-	if u.UserID == uuid.Nil {
-		u.UserID = uuid.New()
+	if u.UserID == 0 {
+		u.UserID = generateSnowflakeID()
 	}
 	return nil
 }
@@ -42,4 +41,39 @@ func (UserProfile) TableName() string {
 
 func (DevTempKey) TableName() string {
 	return "dev_temp_keys"
+}
+
+// ---- Minimal Snowflake-like generator (local to avoid extra imports) ----
+// 41 bits timestamp (ms), 10 bits node id (fixed 1), 12 bits sequence
+var (
+	_lastTs int64
+	_seq    uint16
+	_nodeID uint16 = 1
+)
+
+func nowMs() int64 {
+	return time.Now().UnixNano() / int64(time.Millisecond)
+}
+
+func generateSnowflakeID() uint64 {
+	const epoch = int64(1762819200000) // 2025-11-11
+	const nodeBits = 10
+	const seqBits = 12
+	const maxSeq = (1 << seqBits) - 1
+
+	ts := nowMs()
+	if ts == _lastTs {
+		_seq = (_seq + 1) & uint16(maxSeq)
+		if _seq == 0 {
+			for ts <= _lastTs {
+				ts = nowMs()
+			}
+		}
+	} else {
+		_seq = 0
+	}
+	_lastTs = ts
+	return (uint64(ts-epoch) << (nodeBits + seqBits)) |
+		(uint64(_nodeID) << seqBits) |
+		uint64(_seq)
 }

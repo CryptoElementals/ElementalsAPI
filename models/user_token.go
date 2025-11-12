@@ -1,12 +1,10 @@
 package dao
 
-import "github.com/google/uuid"
-
 type UserToken struct {
 	BaseModel
-	UserID       uuid.UUID `gorm:"index;not null"`
-	Points       int32     `gorm:"default:0"`
-	TokenAmount  int32     `gorm:"default:0"`
+	UserID       uint64 `gorm:"index;not null"`
+	Points       int32  `gorm:"default:0"`
+	TokenAmount  int32  `gorm:"default:0"`
 	LockedTokens []*LockedUserToken
 }
 

@@ -21,8 +21,7 @@ func init() {
 
 type CollectDailyRewardRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address"`
-	Email   string `mapstructure:"Email"`
+	UserID string `mapstructure:"UserID" validate:"required"`
 }
 
 type CollectDailyRewardResponse struct {
@@ -74,72 +73,31 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 允许通过 Address 或 Email 领取，至少提供一个
-	requestAddress := strings.ToLower(strings.TrimSpace(task.Request.Address))
-	requestEmail := strings.TrimSpace(task.Request.Email)
-	if requestAddress == "" && requestEmail == "" {
-		log.Errorf("%s, neither address nor email provided", task.Request.RequestUUID)
-		return nil, cmnErrors.MissingParams("Address or Email")
-	}
-
-	// 统一流程：解析用户档案 -> 校验是否已领取 -> 发放并保存代币 -> 更新领取时间
-	useAddress := requestAddress != ""
-
-	// 读取档案
-	var profile *dao.UserProfile
-	var err error
-	if useAddress {
-		profile, err = db.GetUserProfileByAddress(requestAddress)
-	} else {
-		profile, err = db.GetUserProfileByEmail(requestEmail)
-	}
+	// 统一流程：基于 UserID 校验是否已领取 -> 发放并保存代币 -> 更新领取时间
+	requestUserID := strings.TrimSpace(task.Request.UserID)
+	profile, err := db.GetUserProfileByUserID(requestUserID)
 	if err != nil {
-		key := requestAddress
-		if !useAddress {
-			key = requestEmail
-		}
-		log.Errorf("%s, failed to get user profile for %s: %v", task.Request.RequestUUID, key, err)
-		return nil, cmnErrors.GetUserProfileFailed(key)
+		log.Errorf("%s, failed to get user profile by user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
+		return nil, cmnErrors.GetUserProfileFailed(requestUserID)
 	}
 
 	// 校验当日是否已领取
-	collected := false
-	if useAddress {
-		collected, err = db.HasCollectedDailyReward(requestAddress)
-	} else {
-		collected, err = db.HasCollectedDailyRewardByEmail(requestEmail)
-	}
+	collected, err := db.HasCollectedDailyRewardByUserID(requestUserID)
 	if err != nil {
-		key := requestAddress
-		if !useAddress {
-			key = requestEmail
-		}
-		log.Errorf("%s, failed to check daily reward collection for %s: %v", task.Request.RequestUUID, key, err)
-		return nil, cmnErrors.GetUserProfileFailed(key)
+		log.Errorf("%s, failed to check daily reward collection for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
+		return nil, cmnErrors.GetUserProfileFailed(requestUserID)
 	}
 	if collected {
-		key := requestAddress
-		if !useAddress {
-			key = requestEmail
-		}
-		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, key)
+		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestUserID)
 		return nil, cmnErrors.ActionError("Daily reward already collected")
 	}
 
 	// 发放 token
 	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
 	var userToken *dao.UserToken
-	if useAddress {
-		userToken, err = db.GetPlayerToken(c.Request.Context(), requestAddress)
-	} else {
-		userToken, err = db.GetPlayerTokenByEmail(c.Request.Context(), requestEmail)
-	}
+	userToken, err = db.GetPlayerTokenByUserID(c.Request.Context(), requestUserID)
 	if err != nil && err != gorm.ErrRecordNotFound {
-		key := requestAddress
-		if !useAddress {
-			key = requestEmail
-		}
-		log.Errorf("%s, failed to get user token for %s: %v", task.Request.RequestUUID, key, err)
+		log.Errorf("%s, failed to get user token for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 	if userToken == nil {
@@ -152,27 +110,15 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		userToken.TokenAmount += dailyRewardTokens
 	}
 	if err = db.SaveUserToken(*userToken); err != nil {
-		key := requestAddress
-		if !useAddress {
-			key = requestEmail
-		}
-		log.Errorf("%s, failed to save user token for %s: %v", task.Request.RequestUUID, key, err)
+		log.Errorf("%s, failed to save user token for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 
 	// 更新领取时间
-	if useAddress {
-		if err = db.UpdateDailyRewardCollection(requestAddress); err != nil {
-			log.Errorf("%s, failed to update daily reward collection for address %s: %v", task.Request.RequestUUID, requestAddress, err)
-			return nil, cmnErrors.SaveUserProfileFailed()
-		}
-		log.Infof("%s, daily reward collected successfully for address %s, tokens: %d", task.Request.RequestUUID, requestAddress, dailyRewardTokens)
-	} else {
-		if err = db.UpdateDailyRewardCollectionByEmail(requestEmail); err != nil {
-			log.Errorf("%s, failed to update daily reward collection for email %s: %v", task.Request.RequestUUID, requestEmail, err)
-			return nil, cmnErrors.SaveUserProfileFailed()
-		}
-		log.Infof("%s, daily reward collected successfully for email %s, tokens: %d", task.Request.RequestUUID, requestEmail, dailyRewardTokens)
+	if err = db.UpdateDailyRewardCollectionByUserID(requestUserID); err != nil {
+		log.Errorf("%s, failed to update daily reward collection for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
+		return nil, cmnErrors.SaveUserProfileFailed()
 	}
+	log.Infof("%s, daily reward collected successfully for user_id=%s, tokens: %d", task.Request.RequestUUID, requestUserID, dailyRewardTokens)
 	return task.Response, nil
 }

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
@@ -82,19 +81,18 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	})
 
 	refreshToken := task.Request.RefreshToken
-	user, err := getUserByRefreshToken(refreshToken)
+	userID, err := getUserIdByRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
 	// 续期 refresh token
-	userJSON, _ := json.Marshal(user)
-	err = globalRefreshTokenCache.Set(refreshToken, string(userJSON), globalRefreshTokenMaxAge)
+	err = globalRefreshTokenCache.Set(refreshToken, userID, globalRefreshTokenMaxAge)
 	if err != nil {
 		log.Errorf("update refresh failed, err: %s", err.Error())
 	}
 	//2 写入会话 user
-	session.Set(SESSION_USER_KEY, string(userJSON))
+	session.Set(SESSION_USER_KEY, userID)
 	err = session.Save()
 	if err != nil {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
@@ -104,7 +102,7 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	return task.Response, nil
 }
 
-func SaveRefreshTokenForUser(user *LoginUser) (string, error) {
+func SaveRefreshTokenForUserId(userID string) (string, error) {
 	token := uuid.NewString()
 	if _, err := globalRefreshTokenCache.Exist(token); err == nil {
 		return "", errors.SaveRefreshTokenFailed()
@@ -112,29 +110,45 @@ func SaveRefreshTokenForUser(user *LoginUser) (string, error) {
 		log.Errorf("get refresh token failed: %s", err.Error())
 		return "", errors.SaveRefreshTokenFailed()
 	}
-	b, err := json.Marshal(user)
-	if err != nil {
-		return "", errors.SaveRefreshTokenFailed()
-	}
-	if err := globalRefreshTokenCache.Set(token, string(b), globalRefreshTokenMaxAge); err != nil {
+	if err := globalRefreshTokenCache.Set(token, userID, globalRefreshTokenMaxAge); err != nil {
 		return "", err
 	}
 	return token, nil
 }
 
-func getUserByRefreshToken(token string) (*LoginUser, error) {
+// SaveTempCodeForRefreshToken 生成一个短期 code，并保存 code->refresh_token 的映射（ttl 秒）
+func SaveTempCodeForRefreshToken(refreshToken string, ttl int) (string, error) {
+	code := uuid.NewString()
+	key := "code:" + code
+	if err := globalRefreshTokenCache.Set(key, refreshToken, ttl); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// ExchangeRefreshTokenByCode 根据 code 找到 refresh_token，并删除该映射
+func ExchangeRefreshTokenByCode(code string) (string, error) {
+	key := "code:" + code
+	val, err := globalRefreshTokenCache.Get(key)
+	if err == cache.ErrNotFound || val == "" {
+		return "", errors.RefreshTokenInvalid(code)
+	}
+	if err != nil {
+		log.Errorf("exchange code failed, err: %s", err.Error())
+		return "", errors.ServiceUnavailable()
+	}
+	_ = globalRefreshTokenCache.Delete(key)
+	return val, nil
+}
+
+func getUserIdByRefreshToken(token string) (string, error) {
 	res, err := globalRefreshTokenCache.Get(token)
 	if err == cache.ErrNotFound || res == "" {
-		return nil, errors.RefreshTokenInvalid(token)
+		return "", errors.RefreshTokenInvalid(token)
 	}
 	if err != nil {
 		log.Errorf("get user by refresh token failed: %s", err.Error())
-		return nil, errors.ServiceUnavailable()
+		return "", errors.ServiceUnavailable()
 	}
-	var u LoginUser
-	if err := json.Unmarshal([]byte(res), &u); err != nil {
-		log.Errorf("unmarshal user by refresh token failed: %s", err.Error())
-		return nil, errors.ServiceUnavailable()
-	}
-	return &u, nil
+	return res, nil
 }

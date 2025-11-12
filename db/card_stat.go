@@ -26,6 +26,16 @@ func GetCardStatsByAddress(address string) ([]dao.CardStat, error) {
 	return cardStats, err
 }
 
+// GetCardStatsByUserID 根据 user_id 获取该用户的所有卡牌统计
+func GetCardStatsByUserID(userID string) ([]dao.CardStat, error) {
+	profile, err := GetUserProfileByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	// 当前 card_stats 表以 address 为维度，先按地址查询
+	return GetCardStatsByAddress(profile.Address)
+}
+
 // GetCardStatByAddressAndName 根据用户地址和卡牌名称获取特定卡牌统计
 func GetCardStatByAddressAndName(address, cardName string) (*dao.CardStat, error) {
 	var cardStat dao.CardStat

@@ -23,7 +23,7 @@ type JoinQueueRequest struct {
 	BaseRequest
 	Mode        string `mapstructure:"Mode" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	Address     string `mapstructure:"Address"`
+	UserID      string `mapstructure:"UserID" validate:"required"`
 }
 
 // JoinQueueResponse 响应结构体
@@ -76,13 +76,14 @@ func NewJoinQueueTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 通过 UserID 解析玩家地址
+	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "Failed to get player address by user id"
 		return task.Response, nil
 	}
+	address := profile.Address
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致（用于数据库查询）
 	lowercaseAddress := strings.ToLower(address)

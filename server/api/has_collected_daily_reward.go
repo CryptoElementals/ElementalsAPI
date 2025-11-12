@@ -17,8 +17,7 @@ func init() {
 
 type HasCollectedDailyRewardRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address"`
-	Email   string `mapstructure:"Email"`
+	UserID string `mapstructure:"UserID" validate:"required"`
 }
 
 type HasCollectedDailyRewardResponse struct {
@@ -71,30 +70,13 @@ func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (Task, error) 
 }
 
 func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 允许通过 Address 或 Email 查询，至少提供一个
-	requestAddress := strings.ToLower(strings.TrimSpace(task.Request.Address))
-	requestEmail := strings.TrimSpace(task.Request.Email)
-	if requestAddress == "" && requestEmail == "" {
-		log.Errorf("%s, neither address nor email provided", task.Request.RequestUUID)
-		return nil, errors.MissingParams("Address or Email")
-	}
-
-	if requestAddress != "" {
-		collected, err := db.HasCollectedDailyReward(requestAddress)
-		if err != nil {
-			log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, requestAddress, err)
-			return nil, errors.GetUserProfileFailed(requestAddress)
-		}
-		task.Response.Collected = collected
-		log.Infof("%s, daily reward collection status checked (addr=%s): %v", task.Request.RequestUUID, requestAddress, collected)
-		return task.Response, nil
-	}
-	collected, err := db.HasCollectedDailyRewardByEmail(requestEmail)
+	userID := strings.TrimSpace(task.Request.UserID)
+	collected, err := db.HasCollectedDailyRewardByUserID(userID)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for email %s: %v", task.Request.RequestUUID, requestEmail, err)
-		return nil, errors.GetUserProfileFailed(requestEmail)
+		log.Errorf("%s, failed to check daily reward collection for user_id=%s: %v", task.Request.RequestUUID, userID, err)
+		return nil, errors.GetUserProfileFailed(userID)
 	}
 	task.Response.Collected = collected
-	log.Infof("%s, daily reward collection status checked (email=%s): %v", task.Request.RequestUUID, requestEmail, collected)
+	log.Infof("%s, daily reward collection status checked (user_id=%s): %v", task.Request.RequestUUID, userID, collected)
 	return task.Response, nil
 }

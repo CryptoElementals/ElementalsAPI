@@ -2,6 +2,7 @@ package api
 
 import (
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
@@ -20,8 +21,7 @@ func init() {
 
 type GetUserProfileRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address"`
-	Email   string `mapstructure:"Email"`
+	UserID string `mapstructure:"UserID" validate:"required"`
 }
 
 // UserInfo 用户信息结构体
@@ -136,36 +136,17 @@ func NewGetUserProfileTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
-	// 允许通过 Address 或 Email 查询，至少提供一个
 	var (
-		userProfile    *dao.UserProfile
-		err            error
-		lookupAddress  string
-		requestAddress = strings.ToLower(strings.TrimSpace(task.Request.Address))
-		requestEmail   = strings.TrimSpace(task.Request.Email)
+		userProfile *dao.UserProfile
+		err         error
 	)
-
-	if requestAddress == "" && requestEmail == "" {
-		log.Errorf("%s, neither address nor email provided", task.Request.RequestUUID)
-		return nil, errors.MissingParams("Address or Email")
-	}
-
-	if requestAddress != "" {
-		lookupAddress = requestAddress
-		userProfile, err = db.GetUserProfileByAddress(lookupAddress)
-	} else {
-		userProfile, err = db.GetUserProfileByEmail(requestEmail)
-		if err == nil && userProfile != nil {
-			lookupAddress = strings.ToLower(strings.TrimSpace(userProfile.Address))
-		}
-	}
+	userID := strings.TrimSpace(task.Request.UserID)
+	userProfile, err = db.GetUserProfileByUserID(userID)
 	if err != nil {
-		log.Errorf("%s, failed to get user profile (addr=%s,email=%s): %v", task.Request.RequestUUID, lookupAddress, requestEmail, err)
-		if lookupAddress != "" {
-			return nil, errors.GetUserProfileFailed(lookupAddress)
-		}
-		return nil, errors.GetUserProfileFailed(requestEmail)
+		log.Errorf("%s, failed to get user profile by user_id=%s: %v", task.Request.RequestUUID, userID, err)
+		return nil, errors.GetUserProfileFailed(userID)
 	}
+	lookupAddress := strings.ToLower(strings.TrimSpace(userProfile.Address))
 
 	// 默认统计为 0；仅当有可用地址时查询统计
 	winningRate := 0.00
@@ -173,74 +154,43 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	tokenAmount := 0
 	totalGameCount := 0
 
-	if lookupAddress != "" {
-		if userStat, e := db.GetUserStatByAddress(lookupAddress); e == nil && userStat != nil {
-			totalGameCount = int(userStat.TotalGameCount)
-			if userStat.TotalGameCount > 0 {
-				winningRate = float64(userStat.WinCount) / float64(userStat.TotalGameCount)
-				winningRate = math.Round(winningRate*100) / 100
-			}
-		} else if e != nil {
-			log.Errorf("%s, failed to get user stat for address %s: %v", task.Request.RequestUUID, lookupAddress, e)
+	// 统一基于 UserID 查询统计、代币、卡牌统计
+	if userStat, e := db.GetUserStatByUserID(userID); e == nil && userStat != nil {
+		totalGameCount = int(userStat.TotalGameCount)
+		if userStat.TotalGameCount > 0 {
+			winningRate = float64(userStat.WinCount) / float64(userStat.TotalGameCount)
+			winningRate = math.Round(winningRate*100) / 100
 		}
+	} else if e != nil {
+		log.Errorf("%s, failed to get user stat by user_id=%s: %v", task.Request.RequestUUID, userID, e)
+	}
 
-		if userToken, e := db.GetPlayerToken(c.Request.Context(), lookupAddress); e == nil && userToken != nil {
-			points = int(userToken.Points)
-			tokenAmount = int(userToken.TokenAmount)
-		}
+	if userToken, e := db.GetPlayerTokenByUserID(c.Request.Context(), userID); e == nil && userToken != nil {
+		points = int(userToken.Points)
+		tokenAmount = int(userToken.TokenAmount)
+	}
 
-		if cardStats, e := db.GetCardStatsByAddress(lookupAddress); e == nil {
-			cardStatInfo := db.GetCardStatsInfo(cardStats)
-			level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
-			task.Response.UserInfo = UserInfo{
-				UserID:             userProfile.UserID.String(),
-				Address:            userProfile.Address,
-				Email:              userProfile.Email,
-				Name:               userProfile.Name,
-				AvatarName:         userProfile.AvatarURL,
-				AvatarURL:          "",
-				BackgroundURL:      "",
-				Points:             points,
-				TokenAmount:        tokenAmount,
-				OverallGame:        totalGameCount,
-				WinningRate:        winningRate,
-				Level:              level,
-				CurrentLevelPoints: currentLevelPoints,
-				NextLevelPoints:    nextLevelPoints,
-				CardStatInfo:       cardStatInfo,
-			}
-		} else {
-			// 无法获取卡牌统计，不影响主要信息
-			level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
-			task.Response.UserInfo = UserInfo{
-				UserID:             userProfile.UserID.String(),
-				Address:            userProfile.Address,
-				Email:              userProfile.Email,
-				Name:               userProfile.Name,
-				AvatarName:         userProfile.AvatarURL,
-				AvatarURL:          "",
-				BackgroundURL:      "",
-				Points:             points,
-				TokenAmount:        tokenAmount,
-				OverallGame:        totalGameCount,
-				WinningRate:        winningRate,
-				Level:              level,
-				CurrentLevelPoints: currentLevelPoints,
-				NextLevelPoints:    nextLevelPoints,
-				CardStatInfo:       []db.CardStatInfo{},
-			}
-		}
-	} else {
-		// 无地址（仅邮箱）情况下仅返回基础信息
-		task.Response.UserInfo = UserInfo{
-			UserID:        userProfile.UserID.String(),
-			Address:       userProfile.Address,
-			Email:         userProfile.Email,
-			Name:          userProfile.Name,
-			AvatarName:    userProfile.AvatarURL,
-			AvatarURL:     "",
-			BackgroundURL: "",
-		}
+	cardStatInfo := []db.CardStatInfo{}
+	if cardStats, e := db.GetCardStatsByUserID(userID); e == nil {
+		cardStatInfo = db.GetCardStatsInfo(cardStats)
+	}
+	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
+	task.Response.UserInfo = UserInfo{
+		UserID:             strconv.FormatUint(userProfile.UserID, 10),
+		Address:            userProfile.Address,
+		Email:              userProfile.Email,
+		Name:               userProfile.Name,
+		AvatarName:         userProfile.AvatarURL,
+		AvatarURL:          "",
+		BackgroundURL:      "",
+		Points:             points,
+		TokenAmount:        tokenAmount,
+		OverallGame:        totalGameCount,
+		WinningRate:        winningRate,
+		Level:              level,
+		CurrentLevelPoints: currentLevelPoints,
+		NextLevelPoints:    nextLevelPoints,
+		CardStatInfo:       cardStatInfo,
 	}
 
 	if userProfile.AvatarURL != "" {
@@ -259,6 +209,6 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		}
 	}
 
-	log.Infof("%s, user profile retrieved successfully (addr=%s,email=%s)", task.Request.RequestUUID, lookupAddress, requestEmail)
+	log.Infof("%s, user profile retrieved successfully (user_id=%s, addr=%s)", task.Request.RequestUUID, userID, lookupAddress)
 	return task.Response, nil
 }

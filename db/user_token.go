@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -268,15 +269,16 @@ func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error)
 	return &userToken, nil
 }
 
-// GetPlayerTokenByEmail returns user token by email, filtering expired locked tokens
-func GetPlayerTokenByEmail(ctx context.Context, email string) (*dao.UserToken, error) {
-	profile, perr := GetUserProfileByEmail(email)
-	if perr != nil {
-		return nil, perr
-	}
+// Removed: GetPlayerTokenByEmail
+
+// GetPlayerTokenByUserID returns user token by user_id, filtering expired locked tokens
+func GetPlayerTokenByUserID(ctx context.Context, userID string) (*dao.UserToken, error) {
 	var userToken dao.UserToken
-	err := Get().Where("user_id = ?", profile.UserID).Preload("LockedTokens").First(&userToken).Error
+	id, err := strconv.ParseUint(userID, 10, 64)
 	if err != nil {
+		return nil, err
+	}
+	if err := Get().Where("user_id = ?", id).Preload("LockedTokens").First(&userToken).Error; err != nil {
 		return nil, err
 	}
 	lockedTokens := make([]*dao.LockedUserToken, 0)

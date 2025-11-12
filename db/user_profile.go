@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,11 +21,17 @@ func GetUserProfileByAddress(address string) (*dao.UserProfile, error) {
 	return &userProfile, nil
 }
 
-// GetUserProfileByEmail 根据邮箱获取用户档案
-func GetUserProfileByEmail(email string) (*dao.UserProfile, error) {
+// Removed: GetUserProfileByEmail
+
+// GetUserProfileByUserID 根据用户ID获取用户档案
+func GetUserProfileByUserID(userID string) (*dao.UserProfile, error) {
 	var userProfile dao.UserProfile
-	err := Get().Where("email = ?", email).First(&userProfile).Error
+	// userID 存在于 session 中为字符串，这里解析为 uint64
+	id, err := strconv.ParseUint(userID, 10, 64)
 	if err != nil {
+		return nil, err
+	}
+	if err := Get().Where("user_id = ?", id).First(&userProfile).Error; err != nil {
 		return nil, err
 	}
 	return &userProfile, nil
@@ -110,22 +117,7 @@ func HasCollectedDailyReward(address string) (bool, error) {
 		now.YearDay() == collectedTime.YearDay(), nil
 }
 
-// HasCollectedDailyRewardByEmail 检查用户（按邮箱）是否已领取今日奖励
-func HasCollectedDailyRewardByEmail(email string) (bool, error) {
-	userProfile, err := GetUserProfileByEmail(email)
-	if err != nil {
-		return false, err
-	}
-
-	if userProfile.CollectedRewardAt == nil {
-		return false, nil
-	}
-
-	now := time.Now()
-	collectedTime := *userProfile.CollectedRewardAt
-	return now.Year() == collectedTime.Year() &&
-		now.YearDay() == collectedTime.YearDay(), nil
-}
+// Removed: HasCollectedDailyRewardByEmail
 
 // UpdateDailyRewardCollection 更新用户每日奖励领取时间
 func UpdateDailyRewardCollection(address string) error {
@@ -135,10 +127,31 @@ func UpdateDailyRewardCollection(address string) error {
 		Update("collected_reward_at", now).Error
 }
 
-// UpdateDailyRewardCollectionByEmail 更新用户（按邮箱）每日奖励领取时间
-func UpdateDailyRewardCollectionByEmail(email string) error {
+// Removed: UpdateDailyRewardCollectionByEmail
+
+// HasCollectedDailyRewardByUserID 检查用户（按 user_id）是否已领取今日奖励
+func HasCollectedDailyRewardByUserID(userID string) (bool, error) {
+	profile, err := GetUserProfileByUserID(userID)
+	if err != nil {
+		return false, err
+	}
+	if profile.CollectedRewardAt == nil {
+		return false, nil
+	}
+	now := time.Now()
+	collectedTime := *profile.CollectedRewardAt
+	return now.Year() == collectedTime.Year() &&
+		now.YearDay() == collectedTime.YearDay(), nil
+}
+
+// UpdateDailyRewardCollectionByUserID 更新用户（按 user_id）每日奖励领取时间
+func UpdateDailyRewardCollectionByUserID(userID string) error {
+	id, err := strconv.ParseUint(userID, 10, 64)
+	if err != nil {
+		return err
+	}
 	now := time.Now()
 	return Get().Model(&dao.UserProfile{}).
-		Where("email = ?", email).
+		Where("user_id = ?", id).
 		Update("collected_reward_at", now).Error
 }

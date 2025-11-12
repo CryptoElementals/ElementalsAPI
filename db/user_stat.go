@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	dao "github.com/CryptoElementals/common/models"
@@ -60,10 +61,10 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 					}
 
 					if err := tx.Create(userStat).Error; err != nil {
-						return fmt.Errorf("failed to create user stat for user_id %s: %v", profile.UserID.String(), err)
+						return fmt.Errorf("failed to create user stat for user_id %d: %v", profile.UserID, err)
 					}
 				} else {
-					return fmt.Errorf("failed to query user stat for user_id %s: %v", profile.UserID.String(), dbResult.Error)
+					return fmt.Errorf("failed to query user stat for user_id %d: %v", profile.UserID, dbResult.Error)
 				}
 			}
 
@@ -115,12 +116,12 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 			}
 
 			if err := tx.Model(userStat).Updates(updateData).Error; err != nil {
-				return fmt.Errorf("failed to update user stat for user_id %s: %v", profile.UserID.String(), err)
+				return fmt.Errorf("failed to update user stat for user_id %d: %v", profile.UserID, err)
 			}
 
 			// 步骤5：重新查询更新后的记录
 			if err := tx.Where("user_id = ?", profile.UserID).First(userStat).Error; err != nil {
-				return fmt.Errorf("failed to query updated user stat for user_id %s: %v", profile.UserID.String(), err)
+				return fmt.Errorf("failed to query updated user stat for user_id %d: %v", profile.UserID, err)
 			}
 
 			results = append(results, userStat)
@@ -161,8 +162,27 @@ func GetUserStatByAddress(address string) (*dao.UserStat, error) {
 			return userStat, nil
 		}
 		// 其他数据库错误
-		return nil, fmt.Errorf("failed to query user stat for user_id %s: %v", profile.UserID.String(), err)
+		return nil, fmt.Errorf("failed to query user stat for user_id %d: %v", profile.UserID, err)
 	}
 
+	return userStat, nil
+}
+
+// GetUserStatByUserID 根据 user_id 获取用户统计数据
+func GetUserStatByUserID(userID string) (*dao.UserStat, error) {
+	userStat := &dao.UserStat{}
+	if strings.TrimSpace(userID) == "" {
+		return userStat, fmt.Errorf("userID cannot be empty")
+	}
+	id, err := strconv.ParseUint(userID, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	if err := Get().Where("user_id = ?", id).First(userStat).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return userStat, nil
+		}
+		return nil, err
+	}
 	return userStat, nil
 }
