@@ -567,9 +567,15 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 				}
 				n, err := strconv.ParseUint(s, 10, 32)
 				if err != nil {
-					return nil, fmt.Errorf("invalid card value: %v", err)
+					log.Errorf("invalid card value: %v", err)
+					break
 				}
 				cards = append(cards, uint32(n))
+			}
+
+			if len(cards) == 0 {
+				log.Errorf("no proper cards found for tx %s, eventData %+v", tx.Hash, eventData)
+				continue
 			}
 
 			txSubmit = &proto.Transaction{
