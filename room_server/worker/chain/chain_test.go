@@ -136,7 +136,7 @@ func TestChainContractInteraction(t *testing.T) {
 		&types.RoomContractCreated{},
 		&types.NewRoundSetupComplete{},
 		&types.PlayerCommitmentOnChain{},
-		&types.PlayerCardsOnChain{},
+		&types.PlayerCardOnChain{},
 	)
 	txHash, err := hexutil.Decode(tx.TxHash)
 	require.NoError(t, err)

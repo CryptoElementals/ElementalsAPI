@@ -15,6 +15,7 @@ type Round struct {
 	round        *dao.Round
 	gamePlayers  map[string]*gamePlayer
 	battleStates map[string]*playerBattleState // Tracks HP/multipliers during progressive battle
+	turnNumber   uint32                        // Current turn number within this round (1-3), runtime state only
 }
 
 // ElementalRelation represents the relationship between two cards
@@ -491,6 +492,86 @@ func (r *Round) getCards(cardIDs []int) ([]*dao.Card, error) {
 		cards = append(cards, dbCard)
 	}
 	return cards, nil
+}
+
+// ExecuteCardIndex executes battles for a single card index (0, 1, or 2) between all players
+// It initializes battle states if needed and processes all player pairs for the given card index
+// Returns (isGameOver, gameResult, error)
+func (r *Round) ExecuteCardIndex(cardIdx int) (bool, *dao.GameResult, error) {
+	if err := r.validateRound(); err != nil {
+		return false, nil, err
+	}
+	if r.isServerTimeout() {
+		return r.handleServerTimeout()
+	}
+
+	// Initialize battleStates if not already done
+	if r.battleStates == nil {
+		if err := r.InitializeBattleStates(); err != nil {
+			return false, nil, err
+		}
+	}
+
+	playerCount := len(r.round.PlayerRoundInfos)
+	hasSurrenderedPlayer, hasOfflinePlayer := r.checkPlayerStatuses()
+
+	// If there are offline or surrendered players, skip battle but still check game over
+	if hasOfflinePlayer || hasSurrenderedPlayer {
+		isGameOver, gameResult := r.checkGameOverFromBattleStates()
+		return isGameOver, gameResult, nil
+	}
+
+	// Fetch cards for all players for this card index
+	playerCards := make([][]*dao.Card, playerCount)
+	for i, p := range r.round.PlayerRoundInfos {
+		if cardIdx >= len(p.SubmittedCards) {
+			return false, nil, fmt.Errorf("card index %d not found for player %s", cardIdx, p.TemporaryAddress)
+		}
+		cardID := int(p.SubmittedCards[cardIdx].CardID)
+		cards, err := r.getCards([]int{cardID})
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to get card for player %s: %v", p.TemporaryAddress, err)
+		}
+		if len(cards) == 0 {
+			return false, nil, fmt.Errorf("card not found for player %s", p.TemporaryAddress)
+		}
+		playerCards[i] = cards
+	}
+
+	// Execute battles for this card index between all player pairs
+	for i := 0; i < playerCount; i++ {
+		for j := i + 1; j < playerCount; j++ {
+			st1 := r.battleStates[r.round.PlayerRoundInfos[i].TemporaryAddress]
+			st2 := r.battleStates[r.round.PlayerRoundInfos[j].TemporaryAddress]
+
+			// Only process if both players are online
+			if st1.Status == playerStatusOnline && st2.Status == playerStatusOnline {
+				r.processCardBattle(st1, st2, playerCards[i][0], playerCards[j][0], cardIdx)
+			}
+		}
+	}
+
+	// Update gamePlayers with current state
+	r.updateGamePlayersFromBattleStates()
+
+	// Check if game is over
+	isGameOver, gameResult := r.checkGameOverFromBattleStates()
+	return isGameOver, gameResult, nil
+}
+
+// updateGamePlayersFromBattleStates updates gamePlayers from battleStates
+func (r *Round) updateGamePlayersFromBattleStates() {
+	for _, st := range r.battleStates {
+		player := r.gamePlayers[st.TemporaryAddress]
+		player.totalLostHP = int64(st.LostHP)
+		player.roundPlayer.LostHP = int32(st.LostHP)
+		// HP from last card if available, otherwise use current HP
+		if len(st.SubmittedCards) > 0 {
+			player.currentHP = int64(st.SubmittedCards[len(st.SubmittedCards)-1].HealthAfter)
+		} else {
+			player.currentHP = int64(st.HP)
+		}
+	}
 }
 
 func (r *Round) calculateMultiplierByLostHP(lostHP int) uint32 {

@@ -15,7 +15,7 @@ import (
 
 type ContractClient interface {
 	CreateRoomContract(evt *types.RequireContractCreationEvent) error
-	SetRoundReady(evt *types.RequireSetupNewRoundEvent) error
+	SetTurnReady(evt *types.RequireSetupNewTurnEvent) error
 }
 
 type GameHandler interface {

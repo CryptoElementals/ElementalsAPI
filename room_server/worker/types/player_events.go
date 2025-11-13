@@ -13,6 +13,24 @@ type GameReadyEvent struct {
 	ContractAddress string
 }
 
+type TurnReadyEvent struct {
+	GameID      uint
+	RoundNumber uint32
+	TurnNumber  uint32
+}
+
+type PlayerTurnInfo struct {
+	PlayerAddress PlayerAddress
+	SubmittedCard *dao.RoundSubmittedCard
+}
+
+type TurnCompletedEvent struct {
+	GameID         uint
+	RoundNumber    uint32
+	TurnNumber     uint32
+	PlayerTurnInfo []*PlayerTurnInfo
+}
+
 type RoundPartialReadyEvent struct {
 	GameID       uint
 	RoundNumber  uint32

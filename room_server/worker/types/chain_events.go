@@ -13,3 +13,10 @@ type RequireSetupNewRoundEvent struct {
 	RoundNumber     uint32
 	ContractAddress string
 }
+
+type RequireSetupNewTurnEvent struct {
+	GameID          uint
+	RoundNumber     uint32
+	TurnNumber      uint32
+	ContractAddress string
+}

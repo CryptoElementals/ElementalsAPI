@@ -90,6 +90,13 @@ func (c *Chain) SetRoundReady(evt *types.RequireSetupNewRoundEvent) error {
 	return nil
 }
 
+func (c *Chain) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
+	// TODO: Implement turn setup on chain
+	// This is a stub function for now
+	log.Infow("SetTurnReady called (stub)", "game id", evt.GameID, "round number", evt.RoundNumber, "turn number", evt.TurnNumber)
+	return nil
+}
+
 func (c *Chain) batchSendTxs(evt *batchTxEvent) {
 	c.handleChainEvents(evt)
 }
@@ -262,12 +269,28 @@ func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, blockTime int64, ga
 	player.FromProto(tx.CommitmentsOnChain.Address)
 	roundNumber := tx.CommitmentsOnChain.RoundNumber
 	commitment := tx.CommitmentsOnChain.Commitment
+
+	// Determine commitment index by counting existing commitments for this player in this round
+	// Commitments are sent one at a time, so count existing ones and add 1
+	existingTxs, err := db.GetCommitmentOnChainTx(gameID, roundNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get existing commitment transactions: %v", err)
+	}
+	commitmentCount := uint32(0)
+	for _, existingTx := range existingTxs {
+		if existingTx.TemporaryAddress == player.TemporaryAddress {
+			commitmentCount++
+		}
+	}
+	commitmentIndex := commitmentCount + 1 // 1-based (1, 2, 3)
+
 	commitmentOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
-		GameID:      gameID,
-		Address:     player,
-		RoundNumber: roundNumber,
-		Commitment:  commitment,
-		TimeStamp:   blockTime,
+		GameID:          gameID,
+		Address:         player,
+		RoundNumber:     roundNumber,
+		Commitment:      commitment,
+		CommitmentIndex: commitmentIndex, // 1-based (1, 2, 3)
+		TimeStamp:       blockTime,
 	}, true)
 	batchTx.Add(commitmentOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
@@ -293,16 +316,22 @@ func (c *Chain) cardsOnChain(batchTx *types.EventBatch, blockTime int64, gameID 
 	for i := range cardsUint {
 		cardsUint[i] = uint(tx.CardsOnChain.Cards[i])
 	}
-	cardsOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardsOnChain{
-		GameID:      gameID,
-		Address:     player,
-		RoundNumber: roundNumber,
-		Salt:        salt,
-		Cards:       cardsUint,
-		TimeStamp:   blockTime,
-	}, true)
-	batchTx.Add(cardsOnChainEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), cardsOnChainEvent)
+
+	// Send separate events for each card (one by one)
+	for i, card := range cardsUint {
+		cardOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+			GameID:      gameID,
+			Address:     player,
+			RoundNumber: roundNumber,
+			Salt:        salt,
+			Card:        card,          // Send one card at a time
+			CardIndex:   uint32(i + 1), // CardIndex is 1-based (1, 2, 3) - matches CommitmentIndex
+			TimeStamp:   blockTime,
+		}, true)
+		batchTx.Add(cardOnChainEvent)
+		c.workerManager.SendEvent(fmt.Sprint(gameID), cardOnChainEvent)
+	}
+
 	return db.SaveCardsOnChainTx(&dao.CardsOnChainTx{
 		GameID:           gameID,
 		ContractAddress:  tx.CardsOnChain.RoomContractAddress,

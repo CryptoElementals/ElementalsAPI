@@ -61,3 +61,17 @@ func (mr *MockContractClientMockRecorder) SetRoundReady(arg0 interface{}) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRoundReady", reflect.TypeOf((*MockContractClient)(nil).SetRoundReady), arg0)
 }
+
+// SetTurnReady mocks base method.
+func (m *MockContractClient) SetTurnReady(arg0 *types.RequireSetupNewTurnEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetTurnReady", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetTurnReady indicates an expected call of SetTurnReady.
+func (mr *MockContractClientMockRecorder) SetTurnReady(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTurnReady", reflect.TypeOf((*MockContractClient)(nil).SetTurnReady), arg0)
+}

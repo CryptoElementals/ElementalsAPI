@@ -51,6 +51,10 @@ func (s *Service) SetRoundReady(evt *types.RequireSetupNewRoundEvent) error {
 	return s.chain.SetRoundReady(evt)
 }
 
+func (s *Service) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
+	return s.chain.SetTurnReady(evt)
+}
+
 func (s *Service) Start() error {
 	return s.chain.Start()
 }

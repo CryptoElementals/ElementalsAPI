@@ -106,11 +106,11 @@ func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) er
 			return
 		}
 		delete(r.gamesMap, evt.GameID)
-		for _, player := range game.gamePlayers {
+		for _, player := range game.Round.gamePlayers {
 			if player == nil {
 				continue
 			}
-			delete(r.playerToGameMap, *player.addr)
+			delete(r.playerToGameMap, player.PlayerAddress())
 		}
 	}()
 	return nil
@@ -175,45 +175,49 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 	return game.GetGamePhase(), nil
 }
 
-func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) {
-	for _, player := range players {
-		if game, ok := r.playerToGameMap[player]; ok {
-			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
-		}
-	}
-	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
-	err := game.saveGame()
-	if err != nil {
-		return 0, err
-	}
-	err = game.pushStateToContractCreating()
-	if err != nil {
-		return 0, err
-	}
+// registerGame registers a game in the game manager's maps
+func (r *GameManager) registerGame(game *Game, players []types.PlayerAddress) {
 	r.gamesMap[game.gameInfo.ID] = game
 	for _, player := range players {
 		r.playerToGameMap[player] = game
 	}
 	game.createSelf()
+}
+
+// validatePlayersNotInGame checks if any of the players are already in a game
+func (r *GameManager) validatePlayersNotInGame(players []types.PlayerAddress) error {
+	for _, player := range players {
+		if game, ok := r.playerToGameMap[player]; ok {
+			return fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
+		}
+	}
+	return nil
+}
+
+func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) {
+	if err := r.validatePlayersNotInGame(players); err != nil {
+		return 0, err
+	}
+	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
+	if err := game.saveGame(); err != nil {
+		return 0, err
+	}
+	if err := game.pushStateToContractCreating(); err != nil {
+		return 0, err
+	}
+	r.registerGame(game, players)
 	return game.gameInfo.ID, nil
 }
 
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
-	for _, player := range players {
-		if game, ok := r.playerToGameMap[player]; ok {
-			return 0, fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
-		}
-	}
-	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
-	err := game.saveGame()
-	if err != nil {
+	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	r.gamesMap[game.gameInfo.ID] = game
-	for _, player := range players {
-		r.playerToGameMap[player] = game
+	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
+	if err := game.saveGame(); err != nil {
+		return 0, err
 	}
-	game.createSelf()
+	r.registerGame(game, players)
 	return game.gameInfo.ID, nil
 }
 
@@ -231,8 +235,7 @@ func (r *GameManager) recoverGames() error {
 			continue
 		}
 
-		players := game.gamePlayers
-		for _, player := range players {
+		for _, player := range game.Round.gamePlayers {
 			addr := player.PlayerAddress()
 			if _, ok := r.playerToGameMap[addr]; ok {
 				log.Errorf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)

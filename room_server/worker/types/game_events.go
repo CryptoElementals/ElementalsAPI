@@ -25,6 +25,13 @@ type NewRoundSetupComplete struct {
 	TimeStamp   int64
 }
 
+type NewTurnSetupComplete struct {
+	GameID      uint
+	RoundNumber uint32
+	TurnNumber  uint32
+	TimeStamp   int64
+}
+
 type RoomContractCreated struct {
 	GameID              uint
 	RoomContractAddress string
@@ -32,19 +39,21 @@ type RoomContractCreated struct {
 }
 
 type PlayerCommitmentOnChain struct {
-	GameID      uint
-	Address     PlayerAddress
-	RoundNumber uint32
-	Commitment  []byte
-	TimeStamp   int64
+	GameID          uint
+	Address         PlayerAddress
+	RoundNumber     uint32
+	Commitment      []byte
+	CommitmentIndex uint32 // Index of the commitment being submitted (1, 2, or 3)
+	TimeStamp       int64
 }
 
-type PlayerCardsOnChain struct {
+type PlayerCardOnChain struct {
 	GameID      uint
 	Address     PlayerAddress
 	RoundNumber uint32
 	Salt        []byte
-	Cards       []uint
+	Card        uint
+	CardIndex   uint32 // Index of the card being submitted (1, 2, or 3)
 	TimeStamp   int64
 }
 
