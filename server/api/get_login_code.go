@@ -83,6 +83,12 @@ func (task *GetLoginCodeTask) Run(c *gin.Context) (Response, error) {
 		r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 		nonce = r.Intn(900000) + 100000
 		session.Set(key, nonce)
+
+		// when first time to login,
+		// (1) save nonce to session
+		// (2) generate session id
+		// (3) save session to redis
+		// (4) Set-Cookie cookie with key/value pair to response headers
 		err := session.Save()
 		if err != nil {
 			log.Errorf("%s, save nonce to session failed, %s", task.Request.RequestUUID, err.Error())
