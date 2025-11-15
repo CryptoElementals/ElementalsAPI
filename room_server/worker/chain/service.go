@@ -22,9 +22,10 @@ func NewService(ctx context.Context,
 	chainID int64,
 	client bind.ContractBackend,
 	roomManagerContractAddress string,
+	roomV2ContractAddress string,
 	wallets []*wallet.Wallet,
 	dataCache cache.Cache, isDevelop ...bool) (*Service, error) {
-	chain, err := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, wallets, dataCache, isDevelop...)
+	chain, err := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, roomV2ContractAddress, wallets, dataCache, isDevelop...)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +54,16 @@ func (s *Service) SetRoundReady(evt *types.RequireSetupNewRoundEvent) error {
 
 func (s *Service) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
 	return s.chain.SetTurnReady(evt)
+}
+
+// SubmitPlayerCommitmentsBatch submits multiple player commitments in a batch
+func (s *Service) SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error {
+	return s.chain.submitPlayerCommitmentsBatch(events)
+}
+
+// SubmitPlayerCardsBatch submits multiple player cards in a batch
+func (s *Service) SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error {
+	return s.chain.submitPlayerCardsBatch(events)
 }
 
 func (s *Service) Start() error {

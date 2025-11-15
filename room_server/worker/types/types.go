@@ -89,15 +89,14 @@ func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
 type Event struct {
 	Sender  string
 	EventID string
-	AckChan chan struct{} `json:",omitempty"`
-	Error   error
+	AckChan chan any `json:",omitempty"` // Response channel that returns error or any value
 	Data    any
 }
 
 func NewEvent(sender string, evt any, needAck ...bool) *Event {
-	var ack chan struct{}
+	var ack chan any
 	if len(needAck) > 0 && needAck[0] {
-		ack = make(chan struct{})
+		ack = make(chan any, 1) // Buffered channel to avoid blocking
 	}
 	eid := uuid.NewString()
 	return &Event{
@@ -108,9 +107,16 @@ func NewEvent(sender string, evt any, needAck ...bool) *Event {
 	}
 }
 
-func (e *Event) Await() error {
-	<-e.AckChan
-	return e.Error
+// Await waits for the response from AckChan and returns the value or error
+func (e *Event) Await() (any, error) {
+	if e.AckChan == nil {
+		return nil, nil
+	}
+	response := <-e.AckChan
+	if err, ok := response.(error); ok {
+		return nil, err
+	}
+	return response, nil
 }
 
 func AssertInterface[T any](evt *Event) (T, error) {
@@ -136,7 +142,7 @@ func (b *EventBatch) Add(evt *Event) {
 
 func (b *EventBatch) Wait() {
 	for _, e := range b.evt {
-		e.Await()
+		_, _ = e.Await() // Ignore response and error for batch operations
 	}
 }
 

@@ -56,12 +56,13 @@ func (w *Worker) Run() {
 		case event := <-w.msgQueue:
 			log.Debugw("worker received event", "worker id", w.Id, "event", types.ToJsonLoggable(event))
 			err := w.handler.Handle(w.ctx, event)
-			if err != nil {
-				event.Error = err
-				log.Debugw("worker handle event failed", "worker id", w.Id, "event", types.ToJsonLoggable(event), "err", err)
-			}
 			if event.AckChan != nil {
-				close(event.AckChan)
+				if err != nil {
+					log.Debugw("worker handle event failed", "worker id", w.Id, "event", types.ToJsonLoggable(event), "err", err)
+					event.AckChan <- err
+				} else {
+					close(event.AckChan)
+				}
 			}
 		}
 	}

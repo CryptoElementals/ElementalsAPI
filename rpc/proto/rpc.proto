@@ -20,6 +20,8 @@ service RpcService {
     rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
     rpc GetGameTimeoutConfig(google.protobuf.Empty)returns(TimeoutConfig);
+    rpc SubmitPlayerCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
+    rpc SubmitPlayerCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
 
     // token related logic
     rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
@@ -222,4 +224,23 @@ message TxCardsOnChain {
     uint32 round_number = 3;
     bytes salt = 4;
     repeated uint32 cards = 5;
+}
+
+message SubmitPlayerCommitmentRequest {
+    uint32 GameID = 1;
+    PlayerAddress Address = 2;
+    uint32 RoundNumber = 3;
+    bytes Commitment = 4;
+    uint32 CommitmentIndex = 5;
+    bytes Signature = 6;
+}
+
+message SubmitPlayerCardRequest {
+    uint32 GameID = 1;
+    PlayerAddress Address = 2;
+    uint32 RoundNumber = 3;
+    bytes Salt = 4;
+    uint32 Card = 5;
+    uint32 CardIndex = 6;
+    bytes Signature = 7;
 }

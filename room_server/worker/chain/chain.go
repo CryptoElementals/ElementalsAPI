@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +33,7 @@ type Chain struct {
 	createRoomTxToGameID cache.Cache
 	gameContractToRoomID cache.Cache
 	roomMgrClient        *concurrentRoomClient
+	roomV2Client         *concurrentRoomV2Client
 }
 
 func NewChain(
@@ -42,6 +42,7 @@ func NewChain(
 	chainID int64,
 	client bind.ContractBackend,
 	roomManagerContractAddressHex string,
+	roomV2ContractAddressHex string,
 	wallets []*wallet.Wallet,
 	dataCache cache.Cache,
 	isDevelop ...bool,
@@ -51,12 +52,21 @@ func NewChain(
 		log.Errorf("newConcurrentRoomManagerClient: create room manager client failed: %s", err.Error())
 		return nil, err
 	}
+	var roomV2Cli *concurrentRoomV2Client
+	if roomV2ContractAddressHex != "" {
+		roomV2Cli, err = newConcurrentRoomV2Client(ctx, client, roomV2ContractAddressHex, wallets, chainID, isDevelop...)
+		if err != nil {
+			log.Errorf("newConcurrentRoomV2Client: create room v2 client failed: %s", err.Error())
+			return nil, err
+		}
+	}
 	return &Chain{
 		ctx:                  ctx,
 		workerManager:        workerManager,
 		createRoomTxToGameID: cache.WithPrefix("create_room_tx_to_game_id", dataCache),
 		gameContractToRoomID: cache.WithPrefix("game_contract_to_room_id", dataCache),
 		roomMgrClient:        roomMgrCli,
+		roomV2Client:         roomV2Cli,
 	}, nil
 }
 
@@ -91,10 +101,8 @@ func (c *Chain) SetRoundReady(evt *types.RequireSetupNewRoundEvent) error {
 }
 
 func (c *Chain) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
-	// TODO: Implement turn setup on chain
-	// This is a stub function for now
-	log.Infow("SetTurnReady called (stub)", "game id", evt.GameID, "round number", evt.RoundNumber, "turn number", evt.TurnNumber)
-	return nil
+	// Use RoomV2 contract StartANewCard (which is actually startANewTurn)
+	return c.startANewTurn(evt.GameID)
 }
 
 func (c *Chain) batchSendTxs(evt *batchTxEvent) {
@@ -216,23 +224,6 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 		}
 	}
 	batchTx.Wait()
-}
-
-func (c *Chain) getRoomIDByContract(contractAddress string) (uint, error) {
-	contractAddress = strings.ToLower(contractAddress)
-	gidStr, err := c.gameContractToRoomID.Get(contractAddress)
-	if err == nil {
-		gid, err := strconv.Atoi(gidStr)
-		if err == nil {
-			return uint(gid), nil
-		}
-	}
-	dbRoom, err := db.GetCreateRoomTxByContract(contractAddress)
-	if err != nil {
-		return 0, err
-	}
-	c.gameContractToRoomID.Set(contractAddress, fmt.Sprint(dbRoom.GameID), int(time.Hour.Seconds()))
-	return dbRoom.GameID, nil
 }
 
 func (c *Chain) contractCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, blockHash string, blockNumber uint64, tx *proto.Transaction_RoomContractCreated) error {

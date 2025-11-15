@@ -124,3 +124,28 @@ func (c *RpcClient) GetRoundTimeoutConfig(ctx context.Context) (*proto.TimeoutCo
 	}
 	return timeoutCfg, nil
 }
+
+func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error {
+	_, err := c.client.SubmitPlayerCommitment(ctx, &proto.SubmitPlayerCommitmentRequest{
+		GameID:          uint32(gameID),
+		Address:         addr.ToProto(),
+		RoundNumber:     roundNumber,
+		Commitment:      commitment,
+		CommitmentIndex: commitmentIndex,
+		Signature:       signature,
+	})
+	return err
+}
+
+func (c *RpcClient) SubmitPlayerCard(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error {
+	_, err := c.client.SubmitPlayerCard(ctx, &proto.SubmitPlayerCardRequest{
+		GameID:      uint32(gameID),
+		Address:     addr.ToProto(),
+		RoundNumber: roundNumber,
+		Salt:        salt,
+		Card:        uint32(card),
+		CardIndex:   cardIndex,
+		Signature:   signature,
+	})
+	return err
+}

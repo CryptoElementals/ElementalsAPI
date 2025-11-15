@@ -17,6 +17,9 @@ type GameArgs struct {
 	RoundConfirmTimeoutRedundancy int64
 	RoundTimeoutRedundancy        int64
 	ContinueTimeoutRedundancy     int64
+
+	// pool processing interval in seconds
+	PoolProcessingInterval int64
 }
 
 type Game struct {
