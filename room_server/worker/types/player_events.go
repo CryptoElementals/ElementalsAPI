@@ -9,8 +9,8 @@ type GameCreatedEvent struct {
 }
 
 type GameReadyEvent struct {
-	GameID          uint
-	ContractAddress string
+	GameID uint
+	// ContractAddress removed - always uses RoomV2 contract address
 }
 
 type TurnReadyEvent struct {

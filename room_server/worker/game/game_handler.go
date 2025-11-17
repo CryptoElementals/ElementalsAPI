@@ -154,7 +154,8 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 	if err != nil {
 		return err
 	}
-	g.gameInfo.RoomContract = evt.RoomContractAddress
+	// RoomContractAddress removed - always uses RoomV2 contract address
+	// g.gameInfo.RoomContract is kept for backward compatibility but not used
 	g.currentRound.round.SetupOnChainAt = evt.TimeStamp
 	err = g.saveGame()
 	if err != nil {
@@ -163,8 +164,7 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 
 	// Send game ready event (only once when contract is created)
 	gameReadyEvt := types.NewEvent(g.workerID(), &types.GameReadyEvent{
-		GameID:          g.gameInfo.ID,
-		ContractAddress: evt.RoomContractAddress,
+		GameID: g.gameInfo.ID,
 	})
 	g.sendEventsToAllPlayers(gameReadyEvt)
 

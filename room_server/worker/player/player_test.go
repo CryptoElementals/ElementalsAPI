@@ -167,8 +167,7 @@ func TestPlayerEventHandler(t *testing.T) {
 	require.Equal(t, player1Struct.status, proto.PlayerStatus_PLAYER_IN_GAME)
 
 	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameReadyEvent{
-		GameID:          uint(gameID),
-		ContractAddress: "0x123",
+		GameID: uint(gameID),
 	}))
 	evt = <-player1Chan
 	require.EqualExportedValues(t, &proto.Event{

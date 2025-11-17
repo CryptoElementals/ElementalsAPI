@@ -2,7 +2,6 @@ package game
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -225,9 +224,7 @@ func (g *Game) setupNewTurn() error {
 	if g.currentRound.round.RoundNumber == 1 && g.getCurrentTurnNumber() == 1 {
 		return nil
 	}
-	if g.gameInfo.RoomContract == "" {
-		return errors.New("room contract empty, cannot setup new turn")
-	}
+	// RoomContract check removed - always uses RoomV2 contract address
 	turnNumber := g.getCurrentTurnNumber()
 	log.Infow("setup new turn", "game id", g.gameInfo.ID, "round number", g.currentRound.round.RoundNumber, "turn number", turnNumber)
 	err := g.sendTurnReady()
@@ -318,10 +315,9 @@ func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
 
 func (g *Game) sendTurnReady() error {
 	return g.chainSvc.SetTurnReady(&types.RequireSetupNewTurnEvent{
-		GameID:          g.gameInfo.ID,
-		ContractAddress: g.gameInfo.RoomContract,
-		RoundNumber:     uint32(g.currentRound.round.RoundNumber),
-		TurnNumber:      g.getCurrentTurnNumber(),
+		GameID:      g.gameInfo.ID,
+		RoundNumber: uint32(g.currentRound.round.RoundNumber),
+		TurnNumber:  g.getCurrentTurnNumber(),
 	})
 }
 

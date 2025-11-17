@@ -134,7 +134,7 @@ func TestChainContractInteraction(t *testing.T) {
 
 	evtMatcher := tt.NewEventTypeMatcher(
 		&types.RoomContractCreated{},
-		&types.NewRoundSetupComplete{},
+		&types.NewTurnSetupComplete{},
 		&types.PlayerCommitmentOnChain{},
 		&types.PlayerCardOnChain{},
 	)
@@ -148,53 +148,57 @@ func TestChainContractInteraction(t *testing.T) {
 		Transactions: []*proto.Transaction{
 			{
 				TxHash: txHash,
-				Tx: &proto.Transaction_RoomContractCreated{
-					RoomContractCreated: &proto.TxRoomContractCreated{
-						RoomContractAddress: roomContractAddress,
+				Tx: &proto.Transaction_GameCreated{
+					GameCreated: &proto.TxGameCreated{
+						GameId: int64(gameID),
 					},
 				},
 			},
 			{
-				TxHash: []byte("RoomContractSetup"),
-				Tx: &proto.Transaction_RoomContractSetupReady{
-					RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
-						RoomContractAddress: roomContractAddress,
-						RoundNumber:         2,
+				TxHash: []byte("GameTurnSetupReady"),
+				Tx: &proto.Transaction_GameTurnSetupReady{
+					GameTurnSetupReady: &proto.TxGameTurnSetupReady{
+						GameId:      int64(gameID),
+						RoundNumber: 2,
+						TurnNumber:  1,
 					},
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CommitmentsOnChain"),
-				Tx: &proto.Transaction_CommitmentsOnChain{
-					CommitmentsOnChain: &proto.TxCommitmentsOnChain{
-						RoomContractAddress: roomContractAddress,
-						Address:             player1.ToProto(),
-						RoundNumber:         2,
-						Commitment:          []byte("0xcommitment"),
+				TxHash: []byte("Transaction_CommitmentOnChain"),
+				Tx: &proto.Transaction_CommitmentOnChain{
+					CommitmentOnChain: &proto.TxCommitmentOnChain{
+						GameId:      int64(gameID),
+						Address:     player1.ToProto(),
+						RoundNumber: 2,
+						TurnNumber:  1,
+						Commitment:  []byte("0xcommitment"),
 					},
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CardsOnChain"),
-				Tx: &proto.Transaction_CardsOnChain{
-					CardsOnChain: &proto.TxCardsOnChain{
-						RoomContractAddress: roomContractAddress,
-						Address:             player1.ToProto(),
-						RoundNumber:         2,
-						Salt:                []byte("0x123"),
-						Cards:               []uint32{1, 2, 3},
+				TxHash: []byte("Transaction_CardOnChain"),
+				Tx: &proto.Transaction_CardOnChain{
+					CardOnChain: &proto.TxCardOnChain{
+						GameId:      int64(gameID),
+						Address:     player1.ToProto(),
+						RoundNumber: 2,
+						TurnNumber:  1,
+						Salt:        []byte("0x123"),
+						CardId:      1,
 					},
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CardsOnChain"),
-				Tx: &proto.Transaction_CardsOnChain{
-					CardsOnChain: &proto.TxCardsOnChain{
-						RoomContractAddress: roomContractAddress,
-						Address:             player2.ToProto(),
-						RoundNumber:         2,
-						Salt:                []byte("0x123"),
-						Cards:               []uint32{4, 5, 6},
+				TxHash: []byte("Transaction_CardOnChain"),
+				Tx: &proto.Transaction_CardOnChain{
+					CardOnChain: &proto.TxCardOnChain{
+						GameId:      int64(gameID),
+						Address:     player2.ToProto(),
+						RoundNumber: 2,
+						TurnNumber:  1,
+						Salt:        []byte("0x123"),
+						CardId:      4,
 					},
 				},
 			},

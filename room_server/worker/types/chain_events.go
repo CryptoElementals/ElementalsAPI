@@ -15,8 +15,8 @@ type RequireSetupNewRoundEvent struct {
 }
 
 type RequireSetupNewTurnEvent struct {
-	GameID          uint
-	RoundNumber     uint32
-	TurnNumber      uint32
-	ContractAddress string
+	GameID      uint
+	RoundNumber uint32
+	TurnNumber  uint32
+	// ContractAddress removed - always uses RoomV2 contract address
 }

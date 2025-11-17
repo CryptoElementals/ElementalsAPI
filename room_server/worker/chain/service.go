@@ -21,11 +21,11 @@ func NewService(ctx context.Context,
 	workerManager *worker.WorkerManager,
 	chainID int64,
 	client bind.ContractBackend,
-	roomManagerContractAddress string,
+	roomManagerContractAddress string, // This parameter is kept for backward compatibility but not used
 	roomV2ContractAddress string,
 	wallets []*wallet.Wallet,
 	dataCache cache.Cache, isDevelop ...bool) (*Service, error) {
-	chain, err := NewChain(ctx, workerManager, chainID, client, roomManagerContractAddress, roomV2ContractAddress, wallets, dataCache, isDevelop...)
+	chain, err := NewChain(ctx, workerManager, chainID, client, roomV2ContractAddress, wallets, dataCache, isDevelop...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,10 +46,6 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 
 func (s *Service) CreateRoomContract(evt *types.RequireContractCreationEvent) error {
 	return s.chain.CreateRoomContract(evt)
-}
-
-func (s *Service) SetRoundReady(evt *types.RequireSetupNewRoundEvent) error {
-	return s.chain.SetRoundReady(evt)
 }
 
 func (s *Service) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {

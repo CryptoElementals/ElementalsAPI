@@ -188,10 +188,10 @@ message Transaction {
     bytes tx_hash = 1;
     uint32 game_id = 2;
     oneof tx {
-        TxRoomContractCreated room_contract_created = 3;
-        TxRoomContractRoundSetupReady room_contract_setup_ready = 4;
-        TxCommitmentsOnChain commitments_on_chain = 5;
-        TxCardsOnChain cards_on_chain = 6;
+        TxGameCreated game_created = 3;
+        TxGameTurnSetupReady game_turn_setup_ready = 4;
+        TxCommitmentOnChain commitment_on_chain = 5;
+        TxCardOnChain card_on_chain = 6;
     };
 }
 
@@ -202,28 +202,31 @@ message TransactionBatch {
     repeated Transaction transactions = 4;
 }
 
-message TxRoomContractCreated {
-    string room_contract_address = 1;
+message TxGameCreated {
+    int64 game_id = 1;
 }
 
-message TxRoomContractRoundSetupReady {
-    string room_contract_address = 1;
+message TxGameTurnSetupReady {
+    int64 game_id = 1;
     uint32 round_number = 2;
+    uint32 turn_number = 3;
 }
 
-message TxCommitmentsOnChain {
-    string room_contract_address = 1;
+message TxCommitmentOnChain {
+    int64 game_id = 1;
     PlayerAddress address = 2;
     uint32 round_number = 3;
-    bytes commitment = 4;
+    uint32 turn_number = 4;
+    bytes commitment = 5;
 }
 
-message TxCardsOnChain {
-    string room_contract_address = 1;
+message TxCardOnChain {
+    int64 game_id = 1;
     PlayerAddress address = 2;
     uint32 round_number = 3;
-    bytes salt = 4;
-    repeated uint32 cards = 5;
+    uint32 turn_number = 4;
+    bytes salt = 5;
+    uint32 card_id = 6;
 }
 
 message SubmitPlayerCommitmentRequest {
@@ -231,7 +234,7 @@ message SubmitPlayerCommitmentRequest {
     PlayerAddress Address = 2;
     uint32 RoundNumber = 3;
     bytes Commitment = 4;
-    uint32 CommitmentIndex = 5;
+    uint32 TurnNumber = 5;
     bytes Signature = 6;
 }
 
@@ -241,6 +244,6 @@ message SubmitPlayerCardRequest {
     uint32 RoundNumber = 3;
     bytes Salt = 4;
     uint32 Card = 5;
-    uint32 CardIndex = 6;
+    uint32 TurnNumber = 6;
     bytes Signature = 7;
 }

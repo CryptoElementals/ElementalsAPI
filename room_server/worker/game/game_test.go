@@ -78,8 +78,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
 		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
-			GameID:              gid,
-			RoomContractAddress: "0x123",
+			GameID: gid,
 		})
 		testWorkerManager.SendEvent(wid, contractEvt)
 		return nil

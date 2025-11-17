@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -9,7 +10,9 @@ import (
 	"time"
 
 	contract "github.com/CryptoElementals/common/contracts"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -55,16 +58,115 @@ func newConcurrentRoomV2Client(
 	}, nil
 }
 
-// sendBatchSubmitCardsHash submits multiple commitments as a batch
-func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(
-	events []struct {
-		gameID      uint
-		commitment  []byte
-		cardIndex   uint32
-		roundNumber uint32
-		signature   []byte
-	},
+// sendCreateRoomTx sends CreateRoom transaction to RoomV2 contract
+func (c *concurrentRoomV2Client) sendCreateRoomTx(
+	player1Bytes8, player2Bytes8 [8]byte,
+	player1TemporaryAddress, player2TemporaryAddress common.Address,
+	roundTimeout, totalRound, totalCardIndex, initialHP, gameID *big.Int,
 ) (string, error) {
+	bindOpts := <-c.optsPool
+	defer func() {
+		c.optsPool <- bindOpts
+	}()
+
+	tx, err := c.roomV2Ctr.CreateRoom(
+		bindOpts,
+		player1Bytes8,
+		player2Bytes8,
+		player1TemporaryAddress,
+		player2TemporaryAddress,
+		roundTimeout,
+		totalRound,
+		totalCardIndex,
+		initialHP,
+		gameID,
+	)
+	if err != nil {
+		log.Errorf("sendCreateRoomTx: create room failed: %s", err.Error())
+		return "", fmt.Errorf("create room failed: %s", err.Error())
+	}
+	return strings.ToLower(tx.Hash().String()), nil
+}
+
+func (c *Chain) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
+	// Use RoomV2 contract StartANewCard (which is actually startANewTurn)
+	return c.startANewTurn(evt.GameID)
+}
+
+func (c *Chain) createNewRoom(evt *types.RequireContractCreationEvent) error {
+	if c.roomV2Client == nil {
+		return errors.New("room v2 client not initialized")
+	}
+
+	player1WalletAddress := common.HexToAddress(evt.Players[0].WalletAddress)
+	player2WalletAddress := common.HexToAddress(evt.Players[1].WalletAddress)
+	player1TemporaryAddress := common.HexToAddress(evt.Players[0].TemporaryAddress)
+	player2TemporaryAddress := common.HexToAddress(evt.Players[1].TemporaryAddress)
+
+	// Convert wallet addresses to bytes8 (first 8 bytes of address)
+	var player1Bytes8 [8]byte
+	var player2Bytes8 [8]byte
+	copy(player1Bytes8[:], player1WalletAddress[:8])
+	copy(player2Bytes8[:], player2WalletAddress[:8])
+
+	roundTimeoutBigInt := big.NewInt(evt.RoundTimeout)
+	totalRoundBigInt := big.NewInt(evt.MaxRoundNumber)
+	totalCardIndexBigInt := big.NewInt(3) // 3 cards per round
+	initialHPBigInt := big.NewInt(evt.InitialHP)
+	gameIdBigInt := big.NewInt(int64(evt.GameID))
+
+	retryCnt := 3
+	for {
+		select {
+		case <-c.ctx.Done():
+			return errors.New("create new room failed, context canceled")
+		default:
+			if retryCnt == 0 {
+				return errors.New("send create new room tx failed")
+			}
+			retryCnt--
+			txHash, err := c.roomV2Client.sendCreateRoomTx(
+				player1Bytes8,
+				player2Bytes8,
+				player1TemporaryAddress,
+				player2TemporaryAddress,
+				roundTimeoutBigInt,
+				totalRoundBigInt,
+				totalCardIndexBigInt,
+				initialHPBigInt,
+				gameIdBigInt,
+			)
+			if err != nil {
+				log.Errorw("send create new room tx failed", "err", err)
+				// not retriable error
+				if strings.Contains(strings.ToLower(err.Error()), "revert") {
+					return err
+				}
+				time.Sleep(time.Second)
+				continue
+			}
+			log.Infow("createNewRoom: create new room success", "tx hash", txHash, "game id", evt.GameID)
+			const cacheTTL = 3600 // 1 hour in seconds
+			c.createRoomTxToGameID.Set(txHash, fmt.Sprint(evt.GameID), cacheTTL)
+			createRoomTxModel := &dao.CreateRoomTx{
+				GameID:       evt.GameID,
+				Status:       dao.TxStatusSent,
+				TxHash:       txHash,
+				RoundTimeout: time.Duration(evt.RoundTimeout) * time.Second,
+				MaxRounds:    uint64(evt.MaxRoundNumber),
+			}
+			err = db.SaveCreateRoomTx(createRoomTxModel)
+			if err != nil {
+				log.Errorw("save create room tx failed", "err", err)
+				continue
+			}
+			return nil
+		}
+	}
+}
+
+// sendBatchSubmitCardsHash submits multiple commitments as a batch
+func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.SubmitPlayerCommitment) (string, error) {
 	if len(events) == 0 {
 		return "", fmt.Errorf("no events to submit")
 	}
@@ -83,17 +185,17 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(
 
 	for i, evt := range events {
 		// Convert commitment to bytes32
-		if len(evt.commitment) != 32 {
-			return "", fmt.Errorf("commitment must be 32 bytes, got %d at index %d", len(evt.commitment), i)
+		if len(evt.Commitment) != 32 {
+			return "", fmt.Errorf("commitment must be 32 bytes, got %d at index %d", len(evt.Commitment), i)
 		}
 		var commitmentHash [32]byte
-		copy(commitmentHash[:], evt.commitment)
+		copy(commitmentHash[:], evt.Commitment)
 
-		gameIDs[i] = big.NewInt(int64(evt.gameID))
+		gameIDs[i] = big.NewInt(int64(evt.GameID))
 		commitments[i] = commitmentHash
-		cardIndexes[i] = big.NewInt(int64(evt.cardIndex))
-		rounds[i] = big.NewInt(int64(evt.roundNumber))
-		signatures[i] = evt.signature
+		cardIndexes[i] = big.NewInt(int64(evt.CommitmentIndex))
+		rounds[i] = big.NewInt(int64(evt.RoundNumber))
+		signatures[i] = evt.Signature
 	}
 
 	tx, err := c.roomV2Ctr.BatchSubmitCardsHash(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
@@ -105,16 +207,7 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(
 }
 
 // sendBatchSubmitCards submits multiple cards as a batch
-func (c *concurrentRoomV2Client) sendBatchSubmitCards(
-	events []struct {
-		gameID      uint
-		card        uint
-		salt        []byte
-		cardIndex   uint32
-		roundNumber uint32
-		signature   []byte
-	},
-) (string, error) {
+func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlayerCard) (string, error) {
 	if len(events) == 0 {
 		return "", fmt.Errorf("no events to submit")
 	}
@@ -134,15 +227,16 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(
 
 	for i, evt := range events {
 		// Convert card to string
-		cardStr := fmt.Sprintf("%d", evt.card)
-		saltStr := string(evt.salt)
+		cardStr := fmt.Sprintf("%d", evt.Card)
+		// Convert salt bytes to hex string for proper encoding
+		saltStr := hex.EncodeToString(evt.Salt)
 
-		gameIDs[i] = big.NewInt(int64(evt.gameID))
+		gameIDs[i] = big.NewInt(int64(evt.GameID))
 		cards[i] = cardStr
 		salts[i] = saltStr
-		cardIndexes[i] = big.NewInt(int64(evt.cardIndex))
-		rounds[i] = big.NewInt(int64(evt.roundNumber))
-		signatures[i] = evt.signature
+		cardIndexes[i] = big.NewInt(int64(evt.CardIndex))
+		rounds[i] = big.NewInt(int64(evt.RoundNumber))
+		signatures[i] = evt.Signature
 	}
 
 	tx, err := c.roomV2Ctr.BatchSubmitCards(bindOpts, gameIDs, cards, salts, cardIndexes, rounds, signatures)
@@ -163,34 +257,9 @@ func (c *Chain) submitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitm
 		return nil
 	}
 
-	// Prepare batch data
-	batchEvents := make([]struct {
-		gameID      uint
-		commitment  []byte
-		cardIndex   uint32
-		roundNumber uint32
-		signature   []byte
-	}, len(events))
-
-	for i, evt := range events {
-		batchEvents[i] = struct {
-			gameID      uint
-			commitment  []byte
-			cardIndex   uint32
-			roundNumber uint32
-			signature   []byte
-		}{
-			gameID:      evt.GameID,
-			commitment:  evt.Commitment,
-			cardIndex:   evt.CommitmentIndex,
-			roundNumber: evt.RoundNumber,
-			signature:   evt.Signature,
-		}
-	}
-
 	return c.retryBatchSubmission(
 		func() (string, error) {
-			return c.roomV2Client.sendBatchSubmitCardsHash(batchEvents)
+			return c.roomV2Client.sendBatchSubmitCardsHash(events)
 		},
 		"submit player commitments batch",
 		len(events),
@@ -207,37 +276,9 @@ func (c *Chain) submitPlayerCardsBatch(events []*types.SubmitPlayerCard) error {
 		return nil
 	}
 
-	// Prepare batch data
-	batchEvents := make([]struct {
-		gameID      uint
-		card        uint
-		salt        []byte
-		cardIndex   uint32
-		roundNumber uint32
-		signature   []byte
-	}, len(events))
-
-	for i, evt := range events {
-		batchEvents[i] = struct {
-			gameID      uint
-			card        uint
-			salt        []byte
-			cardIndex   uint32
-			roundNumber uint32
-			signature   []byte
-		}{
-			gameID:      evt.GameID,
-			card:        evt.Card,
-			salt:        evt.Salt,
-			cardIndex:   evt.CardIndex,
-			roundNumber: evt.RoundNumber,
-			signature:   evt.Signature,
-		}
-	}
-
 	return c.retryBatchSubmission(
 		func() (string, error) {
-			return c.roomV2Client.sendBatchSubmitCards(batchEvents)
+			return c.roomV2Client.sendBatchSubmitCards(events)
 		},
 		"submit player cards batch",
 		len(events),

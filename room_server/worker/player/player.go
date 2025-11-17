@@ -17,7 +17,6 @@ type Player struct {
 	address      types.PlayerAddress
 	publisher    Publisher
 	workerManger *worker.WorkerManager
-	status       proto.PlayerStatus
 }
 
 func NewPlayer(ctx context.Context,
@@ -94,8 +93,7 @@ func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyE
 			Type: proto.EventType_TYPE_GAME_CREATED,
 			Event: &proto.Event_GameReady{
 				GameReady: &proto.GameReady{
-					GameId:          uint32(evt.GameID),
-					ContractAddress: evt.ContractAddress,
+					GameId: uint32(evt.GameID),
 				},
 			},
 		},

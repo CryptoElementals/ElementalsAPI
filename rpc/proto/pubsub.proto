@@ -110,7 +110,6 @@ message GameCreated {
 
 message GameReady {
   uint32 GameId = 1;
-  string ContractAddress = 2;
 }
 
 message RoundReady {

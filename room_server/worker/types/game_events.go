@@ -35,9 +35,9 @@ type NewTurnSetupComplete struct {
 }
 
 type RoomContractCreated struct {
-	GameID              uint
-	RoomContractAddress string
-	TimeStamp           int64
+	GameID    uint
+	TimeStamp int64
+	// RoomContractAddress removed - always uses RoomV2 contract address
 }
 
 type PlayerCommitmentOnChain struct {
