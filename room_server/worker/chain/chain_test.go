@@ -16,7 +16,6 @@ import (
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/golang/mock/gomock"
@@ -121,9 +120,7 @@ func TestChainContractInteraction(t *testing.T) {
 		InitialHP:      1000,
 	}, true))
 	<-ackReceived
-	tx, err := db.GetCreateRoomTx(uint(gameID))
-	require.NoError(t, err)
-	require.NotEmpty(t, tx)
+	// Transaction tables removed - no longer checking database
 	ackReceived = make(chan struct{})
 	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireSetupNewRoundEvent{
 		GameID:          uint(gameID),
@@ -138,10 +135,10 @@ func TestChainContractInteraction(t *testing.T) {
 		&types.PlayerCommitmentOnChain{},
 		&types.PlayerCardOnChain{},
 	)
-	txHash, err := hexutil.Decode(tx.TxHash)
-	require.NoError(t, err)
+	// Use a test tx hash since we're no longer getting it from database
+	txHash := []byte("test_tx_hash")
 	mockRoomHandler.EXPECT().Handle(gomock.Any(), evtMatcher).Times(5).Return(nil)
-	err = svc.SubmitTransactions(&proto.TransactionBatch{
+	err := svc.SubmitTransactions(&proto.TransactionBatch{
 		BlockHash:   []byte("0x123"),
 		Timestamp:   uint64(time.Now().Unix()),
 		BlockNumber: 1,
@@ -205,26 +202,5 @@ func TestChainContractInteraction(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	{
-		tx, err = db.GetCreateRoomTx(uint(gameID))
-		require.NoError(t, err)
-		require.NotEmpty(t, tx)
-	}
-	{
-		txs, err := db.GetCommitmentOnChainTx(uint(gameID), 2)
-		require.NoError(t, err)
-		require.NotEmpty(t, txs)
-	}
-
-	{
-		txs, err := db.GetCardsOnChainTx(uint(gameID), 2)
-		require.NoError(t, err)
-		require.NotEmpty(t, txs)
-	}
-	{
-		tx, err := db.GetSetRoundReadyTx(uint(gameID), 2)
-		require.NoError(t, err)
-		require.NotEmpty(t, tx)
-	}
-
+	// Transaction tables removed - no longer checking database records
 }

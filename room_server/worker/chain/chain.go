@@ -7,9 +7,7 @@ import (
 	"strings"
 
 	"github.com/CryptoElementals/common/cache"
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -27,8 +25,6 @@ type batchTxEvent struct {
 type Chain struct {
 	ctx                   context.Context
 	workerManager         *worker.WorkerManager
-	createRoomTxToGameID  cache.Cache
-	gameContractToRoomID  cache.Cache
 	roomV2Client          *concurrentRoomV2Client
 	roomV2ContractAddress string
 }
@@ -54,25 +50,13 @@ func NewChain(
 	return &Chain{
 		ctx:                   ctx,
 		workerManager:         workerManager,
-		createRoomTxToGameID:  cache.WithPrefix("create_room_tx_to_game_id", dataCache),
-		gameContractToRoomID:  cache.WithPrefix("game_contract_to_room_id", dataCache),
 		roomV2Client:          roomV2Cli,
 		roomV2ContractAddress: strings.ToLower(roomV2ContractAddressHex),
 	}, nil
 }
 
 func (c *Chain) Start() error {
-	txs, err := db.ListCreateRoomTxWithNoContractAddr()
-	if err != nil {
-		return err
-	}
-	const cacheTTL = 3600 // 1 hour in seconds
-	for _, tx := range txs {
-		err = c.createRoomTxToGameID.Set(tx.TxHash, fmt.Sprint(tx.GameID), cacheTTL)
-		if err != nil {
-			return err
-		}
-	}
+	// No longer needed - transaction tables removed
 	return nil
 }
 
@@ -116,20 +100,14 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 
 func (c *Chain) gameCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameCreated) error {
 	// For RoomV2, there's only one contract address, so RoomContractAddress is not needed
-	roomContract := c.roomV2ContractAddress
 	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
 		GameID:    gameID,
 		TimeStamp: blockTime,
 	}, true)
 	batchTx.Add(contractCreatedEvt)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
-	const cacheTTL = 3600 // 1 hour in seconds
-	c.gameContractToRoomID.Set(roomContract, fmt.Sprint(gameID), cacheTTL)
-	err := c.createRoomTxToGameID.Delete(txHash)
-	if err != nil {
-		log.Errorf("createRoomTxToGameID: delete tx with hash %s from cache failed: %s", txHash, err.Error())
-	}
-	return db.UpdateCreateRoomTxBlockHashAndContractByGameID(gameID, blockHash, blockNumber, roomContract)
+	// Transaction tables removed - no longer saving to database
+	return nil
 }
 
 func (c *Chain) gameTurnSetupReady(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameTurnSetupReady) error {
@@ -164,17 +142,8 @@ func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, blockTime int64, ga
 	}, true)
 	batchTx.Add(commitmentOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
-	return db.SaveCommitmentOnChainTx(&dao.CommitmentOnChainTx{
-		GameID:           gameID,
-		ContractAddress:  c.roomV2ContractAddress,
-		TxHash:           txHash,
-		BlockHash:        blockHash,
-		BlockNumber:      blockNumber,
-		Status:           dao.TxStatusSent,
-		RoundNumber:      uint64(roundNumber),
-		WalletAddress:    player.WalletAddress,
-		TemporaryAddress: player.TemporaryAddress,
-	})
+	// Transaction tables removed - no longer saving to database
+	return nil
 }
 
 func (c *Chain) cardOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardOnChain) error {
@@ -199,16 +168,6 @@ func (c *Chain) cardOnChain(batchTx *types.EventBatch, blockTime int64, gameID u
 	}, true)
 	batchTx.Add(cardOnChainEvent)
 	c.workerManager.SendEvent(fmt.Sprint(gameID), cardOnChainEvent)
-
-	return db.SaveCardsOnChainTx(&dao.CardsOnChainTx{
-		GameID:           gameID,
-		ContractAddress:  c.roomV2ContractAddress,
-		TxHash:           txHash,
-		BlockHash:        blockHash,
-		BlockNumber:      blockNumber,
-		Status:           dao.TxStatusSent,
-		RoundNumber:      uint64(roundNumber),
-		WalletAddress:    player.WalletAddress,
-		TemporaryAddress: player.TemporaryAddress,
-	})
+	// Transaction tables removed - no longer saving to database
+	return nil
 }

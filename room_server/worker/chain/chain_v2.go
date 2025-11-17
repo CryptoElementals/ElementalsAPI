@@ -10,9 +10,7 @@ import (
 	"time"
 
 	contract "github.com/CryptoElementals/common/contracts"
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -146,20 +144,7 @@ func (c *Chain) createNewRoom(evt *types.RequireContractCreationEvent) error {
 				continue
 			}
 			log.Infow("createNewRoom: create new room success", "tx hash", txHash, "game id", evt.GameID)
-			const cacheTTL = 3600 // 1 hour in seconds
-			c.createRoomTxToGameID.Set(txHash, fmt.Sprint(evt.GameID), cacheTTL)
-			createRoomTxModel := &dao.CreateRoomTx{
-				GameID:       evt.GameID,
-				Status:       dao.TxStatusSent,
-				TxHash:       txHash,
-				RoundTimeout: time.Duration(evt.RoundTimeout) * time.Second,
-				MaxRounds:    uint64(evt.MaxRoundNumber),
-			}
-			err = db.SaveCreateRoomTx(createRoomTxModel)
-			if err != nil {
-				log.Errorw("save create room tx failed", "err", err)
-				continue
-			}
+			// Transaction tables removed - no longer saving to database
 			return nil
 		}
 	}
