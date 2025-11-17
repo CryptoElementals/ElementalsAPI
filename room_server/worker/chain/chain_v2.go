@@ -96,16 +96,20 @@ func (c *Chain) createNewRoom(evt *types.RequireContractCreationEvent) error {
 		return errors.New("room v2 client not initialized")
 	}
 
-	player1WalletAddress := common.HexToAddress(evt.Players[0].WalletAddress)
-	player2WalletAddress := common.HexToAddress(evt.Players[1].WalletAddress)
-	player1TemporaryAddress := common.HexToAddress(evt.Players[0].TemporaryAddress)
-	player2TemporaryAddress := common.HexToAddress(evt.Players[1].TemporaryAddress)
-
-	// Convert wallet addresses to bytes8 (first 8 bytes of address)
+	// Convert player IDs (uint64) to bytes8 for contract call
 	var player1Bytes8 [8]byte
 	var player2Bytes8 [8]byte
-	copy(player1Bytes8[:], player1WalletAddress[:8])
-	copy(player2Bytes8[:], player2WalletAddress[:8])
+	// Convert uint64 ID to [8]byte (big-endian)
+	player1IDBig := big.NewInt(int64(evt.Players[0].Id))
+	player2IDBig := big.NewInt(int64(evt.Players[1].Id))
+	player1Bytes := player1IDBig.Bytes()
+	player2Bytes := player2IDBig.Bytes()
+	// Copy to bytes8 arrays (right-aligned, big-endian)
+	copy(player1Bytes8[8-len(player1Bytes):], player1Bytes)
+	copy(player2Bytes8[8-len(player2Bytes):], player2Bytes)
+
+	player1TemporaryAddress := common.HexToAddress(evt.Players[0].TemporaryAddress)
+	player2TemporaryAddress := common.HexToAddress(evt.Players[1].TemporaryAddress)
 
 	roundTimeoutBigInt := big.NewInt(evt.RoundTimeout)
 	totalRoundBigInt := big.NewInt(evt.MaxRoundNumber)

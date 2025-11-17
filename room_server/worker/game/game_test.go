@@ -52,12 +52,12 @@ func prepareCards(t *testing.T) {
 
 func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 	playerAddress1 := types.PlayerAddress{
-		WalletAddress:    "1",
+		Id:               1,
 		TemporaryAddress: "1",
 	}
 
 	playerAddress2 := types.PlayerAddress{
-		WalletAddress:    "2",
+		Id:               2,
 		TemporaryAddress: "2",
 	}
 	roundCompleteEventNumber := expectedRoundNumber - 1
@@ -278,12 +278,12 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
-		WalletAddress:    "1",
+		Id:               1,
 		TemporaryAddress: "1",
 	}
 
 	playerAddress2 := types.PlayerAddress{
-		WalletAddress:    "2",
+		Id:               2,
 		TemporaryAddress: "2",
 	}
 

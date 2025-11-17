@@ -170,7 +170,7 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 			players := make([]*proto.GamePhasePlayer, 0, len(continueInfo.Players))
 			for _, playerInfo := range continueInfo.Players {
 				addr := types.NewPlayerAddress(
-					playerInfo.WalletAddress,
+					playerInfo.Id,
 					playerInfo.TemporaryAddress,
 				).ToProto()
 				players = append(players, &proto.GamePhasePlayer{

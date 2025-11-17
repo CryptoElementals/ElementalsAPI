@@ -31,19 +31,19 @@ const (
 )
 
 type PlayerAddress struct {
-	WalletAddress    string
+	Id               uint64
 	TemporaryAddress string
 }
 
-func NewPlayerAddress(walletAddress, temporaryAddress string) *PlayerAddress {
+func NewPlayerAddress(id uint64, temporaryAddress string) *PlayerAddress {
 	return &PlayerAddress{
-		WalletAddress:    strings.ToLower(walletAddress),
+		Id:               id,
 		TemporaryAddress: strings.ToLower(temporaryAddress),
 	}
 }
 
 func (a *PlayerAddress) String() string {
-	return fmt.Sprintf("%s_%s", a.WalletAddress, a.TemporaryAddress)
+	return fmt.Sprintf("%d_%s", a.Id, a.TemporaryAddress)
 }
 
 func (a *PlayerAddress) Parse(str string) error {
@@ -51,38 +51,44 @@ func (a *PlayerAddress) Parse(str string) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid player address")
 	}
-	a.WalletAddress = strings.ToLower(parts[0])
+	var id uint64
+	_, err := fmt.Sscanf(parts[0], "%d", &id)
+	if err != nil {
+		return fmt.Errorf("invalid player id: %w", err)
+	}
+	a.Id = id
 	a.TemporaryAddress = strings.ToLower(parts[1])
 	return nil
 }
 
 func (a *PlayerAddress) ToDao() *dao.GamePlayerInfo {
 	return &dao.GamePlayerInfo{
-		WalletAddress:    a.WalletAddress,
+		PlayerId:         int64(a.Id),
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }
 
 func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
-		WalletAddress:    a.WalletAddress,
+		Id:               int64(a.Id),
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }
 
 func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
+		Id:               0, // Id not included when using ToProtoNoWallet
 		TemporaryAddress: strings.ToLower(a.TemporaryAddress),
 	}
 }
 
 func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
-	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.Id = uint64(player.PlayerId)
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
-	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.Id = uint64(player.Id)
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 

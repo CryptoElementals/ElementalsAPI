@@ -51,11 +51,11 @@ func TestPlayerJoinExitQueue(t *testing.T) {
 	testService := NewService(context.Background(), testPubsubServer, testWorkerManager, mockGameInfoGetter, mockQueueInfoGetter)
 	testPubsubServer.SetPlayerManager(testService)
 	player1 := types.PlayerAddress{
-		WalletAddress:    "player1",
+		Id:               1,
 		TemporaryAddress: "temp1",
 	}
 	player2 := types.PlayerAddress{
-		WalletAddress:    "player2",
+		Id:               2,
 		TemporaryAddress: "temp2",
 	}
 	mockQueueHandler.EXPECT().Handle(gomock.Any(), gomock.Any()).AnyTimes().
@@ -114,11 +114,11 @@ func TestPlayerEventHandler(t *testing.T) {
 	testService := NewService(context.Background(), testPubsubServer, testWorkerManager, mockGameInfoGetter, mockQueueInfoGetter)
 	testPubsubServer.SetPlayerManager(testService)
 	player1 := types.PlayerAddress{
-		WalletAddress:    "player1",
+		Id:               1,
 		TemporaryAddress: "temp1",
 	}
 	player2 := types.PlayerAddress{
-		WalletAddress:    "player2",
+		Id:               2,
 		TemporaryAddress: "temp2",
 	}
 	conn, err := client.DailGrpcEndpoint(fmt.Sprintf("localhost:%d", pubsubPort))

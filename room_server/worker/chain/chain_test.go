@@ -97,11 +97,11 @@ func TestChainContractInteraction(t *testing.T) {
 	roomWorkerID := "123"
 	gameID := 123
 	player1 := types.PlayerAddress{
-		WalletAddress:    "0x123",
+		Id:               123,
 		TemporaryAddress: "0x456",
 	}
 	player2 := types.PlayerAddress{
-		WalletAddress:    "0x789",
+		Id:               789,
 		TemporaryAddress: "0xabc",
 	}
 

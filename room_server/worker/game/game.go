@@ -30,7 +30,7 @@ func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
 }
 
 func (p *gamePlayer) String() string {
-	return fmt.Sprintf("%s_%s", p.player.WalletAddress, p.player.TemporaryAddress)
+	return fmt.Sprintf("%d_%s", p.player.PlayerId, p.player.TemporaryAddress)
 }
 
 type Game struct {
@@ -270,7 +270,7 @@ func (g *Game) setupNewRound() {
 	}
 	for _, player := range g.currentRound.gamePlayers {
 		playerRoundInfo := &dao.PlayerRoundInfo{
-			WalletAddress:    player.player.WalletAddress,
+			PlayerId:         player.player.PlayerId,
 			TemporaryAddress: player.player.TemporaryAddress,
 			SubmittedCards:   make([]*dao.RoundSubmittedCard, 0),
 		}
@@ -330,7 +330,7 @@ func (g *Game) abortedGameResult() *dao.GameResult {
 	}
 	for _, player := range g.currentRound.gamePlayers {
 		playerReward := &dao.PlayerReward{
-			WalletAddress:    player.player.WalletAddress,
+			PlayerId:         player.player.PlayerId,
 			TemporaryAddress: player.player.TemporaryAddress,
 		}
 		gameRes.BattleReward.PlayerRewards = append(gameRes.BattleReward.PlayerRewards, playerReward)

@@ -48,7 +48,7 @@ var shengRelations = map[string]string{
 type battleEffect struct {
 	Type                   proto.BattleEffectType
 	Value                  int
-	TargetWalletAddress    string
+	TargetPlayerId         int64
 	TargetTemporaryAddress string
 	Description            string
 }
@@ -75,7 +75,7 @@ const (
 type gameEndState struct {
 	HP               int
 	Multiplier       uint32
-	WalletAddress    string
+	PlayerId         int64
 	TemporaryAddress string
 	Status           playerStatus
 }
@@ -197,7 +197,7 @@ func (r *Round) initializePlayerStates(playerCount int) []*playerBattleState {
 			HP:               int(player.currentHP),
 			Multiplier:       r.calculateMultiplierByLostHP(int(player.totalLostHP)),
 			LostHP:           int(player.totalLostHP),
-			WalletAddress:    p.WalletAddress,
+			PlayerId:         p.PlayerId,
 			TemporaryAddress: p.TemporaryAddress,
 			Status:           status,
 			SubmittedCards:   p.SubmittedCards,
@@ -242,9 +242,9 @@ func (r *Round) executeBattle(states []*playerBattleState, playerCards [][]*dao.
 // processCardBattle processes a single card battle between two players
 func (r *Round) processCardBattle(p1, p2 *playerBattleState, card1, card2 *dao.Card, cardIdx int) {
 	// Get elemental relation
-	relation := r.getElementalRelation(card1, card2, p1.WalletAddress, p2.WalletAddress)
-	effects1 := r.buildPlayerEffects(relation.P1Type, card1, card2, p1.WalletAddress, p1.TemporaryAddress, p2.WalletAddress)
-	effects2 := r.buildPlayerEffects(relation.P2Type, card2, card1, p2.WalletAddress, p2.TemporaryAddress, p1.WalletAddress)
+	relation := r.getElementalRelation(card1, card2, p1.PlayerId, p2.PlayerId)
+	effects1 := r.buildPlayerEffects(relation.P1Type, card1, card2, p1.PlayerId, p1.TemporaryAddress, p2.PlayerId)
+	effects2 := r.buildPlayerEffects(relation.P2Type, card2, card1, p2.PlayerId, p2.TemporaryAddress, p1.PlayerId)
 
 	// Record initial state
 	p1BeforeHP := p1.HP
@@ -294,7 +294,7 @@ func (r *Round) buildGameResult(states []*playerBattleState, playerCount int) (b
 		gameEndStates[i] = &gameEndState{
 			HP:               st.HP,
 			Multiplier:       st.Multiplier,
-			WalletAddress:    st.WalletAddress,
+			PlayerId:         st.PlayerId,
 			TemporaryAddress: st.TemporaryAddress,
 			Status:           st.Status,
 		}
@@ -315,10 +315,18 @@ func (r *Round) buildGameResult(states []*playerBattleState, playerCount int) (b
 		// Build battle reward
 		battleReward := r.calculateBattleReward(states, grType, winner, temporaryAddress, finalMul, playerStatuses)
 
+		// Parse first winner ID from winner string (can be multiple separated by "|")
+		var winnerPlayerId int64
+		if winner != "" {
+			winnerIds := strings.Split(winner, "|")
+			if len(winnerIds) > 0 {
+				fmt.Sscanf(winnerIds[0], "%d", &winnerPlayerId)
+			}
+		}
 		gameResult = &dao.GameResult{
 			GameID:                 r.round.GameID,
 			Multiplier:             int32(finalMul),
-			WinnerWalletAddress:    winner,
+			WinnerPlayerId:         winnerPlayerId,
 			WinnerTemporaryAddress: temporaryAddress,
 			GameResultType:         proto.GameResultType(grType),
 			BattleReward:           battleReward,
@@ -367,7 +375,7 @@ func (r *Round) InitializeBattleStates() error {
 			HP:               int(player.currentHP),
 			Multiplier:       r.calculateMultiplierByLostHP(int(player.totalLostHP)),
 			LostHP:           int(player.totalLostHP),
-			WalletAddress:    p.WalletAddress,
+			PlayerId:         p.PlayerId,
 			TemporaryAddress: p.TemporaryAddress,
 			Status:           r.determinePlayerStatus(p),
 			SubmittedCards:   p.SubmittedCards,
@@ -429,7 +437,7 @@ func (r *Round) checkGameOverFromBattleStates() (bool, *dao.GameResult) {
 		gameEndStates = append(gameEndStates, &gameEndState{
 			HP:               st.HP,
 			Multiplier:       st.Multiplier,
-			WalletAddress:    st.WalletAddress,
+			PlayerId:         st.PlayerId,
 			TemporaryAddress: st.TemporaryAddress,
 			Status:           st.Status,
 		})
@@ -456,10 +464,18 @@ func (r *Round) checkGameOverFromBattleStates() (bool, *dao.GameResult) {
 		// Build battle reward
 		battleReward := r.calculateBattleReward(states, grType, winner, temporaryAddress, finalMul, playerStatuses)
 
+		// Parse first winner ID from winner string (can be multiple separated by "|")
+		var winnerPlayerId int64
+		if winner != "" {
+			winnerIds := strings.Split(winner, "|")
+			if len(winnerIds) > 0 {
+				fmt.Sscanf(winnerIds[0], "%d", &winnerPlayerId)
+			}
+		}
 		gameResult = &dao.GameResult{
 			GameID:                 r.round.GameID,
 			Multiplier:             int32(finalMul),
-			WinnerWalletAddress:    winner,
+			WinnerPlayerId:         winnerPlayerId,
 			WinnerTemporaryAddress: temporaryAddress,
 			GameResultType:         proto.GameResultType(grType),
 			BattleReward:           battleReward,
@@ -587,51 +603,48 @@ func (r *Round) calculateMultiplierByLostHP(lostHP int) uint32 {
 	return newMultiplier
 }
 
-func (r *Round) getElementalRelation(card1, card2 *dao.Card, wallet1, wallet2 string) *elementalRelation {
-	addr1 := truncateAddress(wallet1)
-	addr2 := truncateAddress(wallet2)
-
+func (r *Round) getElementalRelation(card1, card2 *dao.Card, playerId1, playerId2 int64) *elementalRelation {
 	// Check Ke (overpower) relations
 	if target, hasRelation := keRelations[card1.ElementType]; hasRelation && target == card2.ElementType {
-		return r.buildRelation("overpower", "overpowered", card1.ElementType, addr1, card2.ElementType, addr2)
+		return r.buildRelation("overpower", "overpowered", card1.ElementType, playerId1, card2.ElementType, playerId2)
 	}
 	if target, hasRelation := keRelations[card2.ElementType]; hasRelation && target == card1.ElementType {
-		return r.buildRelation("overpowered", "overpower", card1.ElementType, addr1, card2.ElementType, addr2)
+		return r.buildRelation("overpowered", "overpower", card1.ElementType, playerId1, card2.ElementType, playerId2)
 	}
 
 	// Check Sheng (nurture) relations
 	if target, hasRelation := shengRelations[card1.ElementType]; hasRelation && target == card2.ElementType {
-		return r.buildRelation("nurture", "nurtured", card1.ElementType, addr1, card2.ElementType, addr2)
+		return r.buildRelation("nurture", "nurtured", card1.ElementType, playerId1, card2.ElementType, playerId2)
 	}
 	if target, hasRelation := shengRelations[card2.ElementType]; hasRelation && target == card1.ElementType {
-		return r.buildRelation("nurtured", "nurture", card1.ElementType, addr1, card2.ElementType, addr2)
+		return r.buildRelation("nurtured", "nurture", card1.ElementType, playerId1, card2.ElementType, playerId2)
 	}
 
 	// Even (tie)
 	return &elementalRelation{
 		P1Type:        "even",
 		P2Type:        "even",
-		P1Description: fmt.Sprintf("%s(%s) and %s(%s) are even", card1.ElementType, addr1, card2.ElementType, addr2),
-		P2Description: fmt.Sprintf("%s(%s) and %s(%s) are even", card2.ElementType, addr2, card1.ElementType, addr1),
+		P1Description: fmt.Sprintf("%s(%d) and %s(%d) are even", card1.ElementType, playerId1, card2.ElementType, playerId2),
+		P2Description: fmt.Sprintf("%s(%d) and %s(%d) are even", card2.ElementType, playerId2, card1.ElementType, playerId1),
 	}
 }
 
 // buildRelation builds an elemental relation structure
-func (r *Round) buildRelation(p1Type, p2Type string, elem1, addr1, elem2, addr2 string) *elementalRelation {
+func (r *Round) buildRelation(p1Type, p2Type string, elem1 string, playerId1 int64, elem2 string, playerId2 int64) *elementalRelation {
 	var p1Desc, p2Desc string
 	switch p1Type {
 	case "overpower":
-		p1Desc = fmt.Sprintf("%s(%s) overpowers %s(%s)", elem1, addr1, elem2, addr2)
-		p2Desc = fmt.Sprintf("%s(%s) is overpowered by %s(%s)", elem2, addr2, elem1, addr1)
+		p1Desc = fmt.Sprintf("%s(%d) overpowers %s(%d)", elem1, playerId1, elem2, playerId2)
+		p2Desc = fmt.Sprintf("%s(%d) is overpowered by %s(%d)", elem2, playerId2, elem1, playerId1)
 	case "overpowered":
-		p1Desc = fmt.Sprintf("%s(%s) is overpowered by %s(%s)", elem1, addr1, elem2, addr2)
-		p2Desc = fmt.Sprintf("%s(%s) overpowers %s(%s)", elem2, addr2, elem1, addr1)
+		p1Desc = fmt.Sprintf("%s(%d) is overpowered by %s(%d)", elem1, playerId1, elem2, playerId2)
+		p2Desc = fmt.Sprintf("%s(%d) overpowers %s(%d)", elem2, playerId2, elem1, playerId1)
 	case "nurture":
-		p1Desc = fmt.Sprintf("%s(%s) nurtures %s(%s)", elem1, addr1, elem2, addr2)
-		p2Desc = fmt.Sprintf("%s(%s) is nurtured by %s(%s)", elem2, addr2, elem1, addr1)
+		p1Desc = fmt.Sprintf("%s(%d) nurtures %s(%d)", elem1, playerId1, elem2, playerId2)
+		p2Desc = fmt.Sprintf("%s(%d) is nurtured by %s(%d)", elem2, playerId2, elem1, playerId1)
 	case "nurtured":
-		p1Desc = fmt.Sprintf("%s(%s) is nurtured by %s(%s)", elem1, addr1, elem2, addr2)
-		p2Desc = fmt.Sprintf("%s(%s) nurtures %s(%s)", elem2, addr2, elem1, addr1)
+		p1Desc = fmt.Sprintf("%s(%d) is nurtured by %s(%d)", elem1, playerId1, elem2, playerId2)
+		p2Desc = fmt.Sprintf("%s(%d) nurtures %s(%d)", elem2, playerId2, elem1, playerId1)
 	}
 	return &elementalRelation{
 		P1Type:        p1Type,
@@ -648,13 +661,11 @@ func truncateAddress(address string) string {
 	return address[:6] + "..." + address[len(address)-4:]
 }
 
-func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfWallet, selfTemp, opponentWallet string) []battleEffect {
+func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfPlayerId int64, selfTemp string, opponentPlayerId int64) []battleEffect {
 	var effects []battleEffect
-	selfAddr := truncateAddress(selfWallet)
-	oppAddr := truncateAddress(opponentWallet)
 
 	desc := func(action string) string {
-		return fmt.Sprintf("%s(%s) %s %s(%s)", selfCard.ElementType, selfAddr, action, opponentCard.ElementType, oppAddr)
+		return fmt.Sprintf("%s(%d) %s %s(%d)", selfCard.ElementType, selfPlayerId, action, opponentCard.ElementType, opponentPlayerId)
 	}
 
 	switch playerType {
@@ -668,7 +679,7 @@ func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 				Type:                   proto.BattleEffectType_ATTACK,
 				Value:                  attackValue,
 				Description:            desc(action),
-				TargetWalletAddress:    selfWallet,
+				TargetPlayerId:         selfPlayerId,
 				TargetTemporaryAddress: selfTemp,
 			})
 		}
@@ -679,7 +690,7 @@ func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 			Type:                   proto.BattleEffectType_HEAL,
 			Value:                  selfCard.LifeForce,
 			Description:            desc("is healed by"),
-			TargetWalletAddress:    selfWallet,
+			TargetPlayerId:         selfPlayerId,
 			TargetTemporaryAddress: selfTemp,
 		})
 	case "even":
@@ -687,7 +698,7 @@ func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 			Type:                   proto.BattleEffectType_ATTACK,
 			Value:                  opponentCard.Attack - selfCard.Defense,
 			Description:            desc("is attacked by"),
-			TargetWalletAddress:    selfWallet,
+			TargetPlayerId:         selfPlayerId,
 			TargetTemporaryAddress: selfTemp,
 		})
 	}
@@ -719,7 +730,7 @@ func (r *Round) battleEffectsToDaoEffects(effects []battleEffect) []*dao.CardEff
 			Type:                   effect.Type,
 			Value:                  int32(effect.Value),
 			Description:            effect.Description,
-			TargetWalletAddress:    effect.TargetWalletAddress,
+			TargetPlayerId:         effect.TargetPlayerId,
 			TargetTemporaryAddress: effect.TargetTemporaryAddress,
 		}
 	}
@@ -745,7 +756,8 @@ func (r *Round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 	// Count surrendered players
 	surrenderedCount := 0
 	maxLoserMul := uint32(1)
-	var winners, winnerTemps []string
+	var winnerPlayerIds []int64
+	var winnerTemps []string
 
 	for _, state := range states {
 		if state.Status == playerStatusSurrendered {
@@ -763,11 +775,11 @@ func (r *Round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 		// Build winner lists
 		for _, state := range states {
 			if state.Status != playerStatusSurrendered {
-				winners = append(winners, state.WalletAddress)
+				winnerPlayerIds = append(winnerPlayerIds, state.PlayerId)
 				winnerTemps = append(winnerTemps, state.TemporaryAddress)
 			}
 		}
-		return r.buildResult(true, gameResultKO, winners, winnerTemps, maxLoserMul)
+		return r.buildResult(true, gameResultKO, winnerPlayerIds, winnerTemps, maxLoserMul)
 	}
 
 	// Check offline players
@@ -788,11 +800,11 @@ func (r *Round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 		}
 		for _, state := range states {
 			if state.Status == playerStatusOnline {
-				winners = append(winners, state.WalletAddress)
+				winnerPlayerIds = append(winnerPlayerIds, state.PlayerId)
 				winnerTemps = append(winnerTemps, state.TemporaryAddress)
 			}
 		}
-		return r.buildResult(true, gameResultNormal, winners, winnerTemps, offlineMaxMul)
+		return r.buildResult(true, gameResultNormal, winnerPlayerIds, winnerTemps, offlineMaxMul)
 	}
 
 	// Check by HP
@@ -801,13 +813,13 @@ func (r *Round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 
 func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool) (bool, gameResultType, string, string, uint32) {
 	hps := make([]int, len(states))
-	addresses := make([]string, len(states))
+	playerIds := make([]int64, len(states))
 	temps := make([]string, len(states))
 	multipliers := make([]uint32, len(states))
 
 	for i, state := range states {
 		hps[i] = state.HP
-		addresses[i] = state.WalletAddress
+		playerIds[i] = state.PlayerId
 		temps[i] = state.TemporaryAddress
 		multipliers[i] = state.Multiplier
 	}
@@ -839,7 +851,7 @@ func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		}
 	}
 
-	var winners []string
+	var winnerPlayerIds []int64
 	var winnerTemps []string
 	var gType gameResultType
 	var finalMultiplier uint32 = 1
@@ -849,7 +861,7 @@ func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		maxLoserMul := uint32(1)
 		for i, hp := range hps {
 			if hp > 0 {
-				winners = append(winners, addresses[i])
+				winnerPlayerIds = append(winnerPlayerIds, playerIds[i])
 				winnerTemps = append(winnerTemps, temps[i])
 			} else {
 				if multipliers[i] > maxLoserMul {
@@ -874,7 +886,7 @@ func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		maxLoserMul := uint32(1)
 		for i, hp := range hps {
 			if hp == maxHP {
-				winners = append(winners, addresses[i])
+				winnerPlayerIds = append(winnerPlayerIds, playerIds[i])
 				winnerTemps = append(winnerTemps, temps[i])
 			} else {
 				if multipliers[i] > maxLoserMul {
@@ -885,14 +897,18 @@ func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		finalMultiplier = maxLoserMul
 	}
 
-	return r.buildResult(true, gType, winners, winnerTemps, finalMultiplier)
+	return r.buildResult(true, gType, winnerPlayerIds, winnerTemps, finalMultiplier)
 }
 
-func (r *Round) buildResult(over bool, gType gameResultType, winners, winnerTemps []string, mul uint32) (bool, gameResultType, string, string, uint32) {
+func (r *Round) buildResult(over bool, gType gameResultType, winnerPlayerIds []int64, winnerTemps []string, mul uint32) (bool, gameResultType, string, string, uint32) {
 	winnersStr := ""
 	winnerTempsStr := ""
-	if len(winners) > 0 {
-		winnersStr = strings.Join(winners, "|")
+	if len(winnerPlayerIds) > 0 {
+		winnerIdStrs := make([]string, len(winnerPlayerIds))
+		for i, id := range winnerPlayerIds {
+			winnerIdStrs[i] = fmt.Sprintf("%d", id)
+		}
+		winnersStr = strings.Join(winnerIdStrs, "|")
 		winnerTempsStr = strings.Join(winnerTemps, "|")
 	}
 	return over, gType, winnersStr, winnerTempsStr, mul
@@ -903,14 +919,14 @@ type playerBattleState struct {
 	HP               int
 	Multiplier       uint32
 	LostHP           int
-	WalletAddress    string
+	PlayerId         int64
 	TemporaryAddress string
 	Status           playerStatus
 	SubmittedCards   []*dao.RoundSubmittedCard
 	Surrendered      bool
 }
 
-func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameResultType, winner, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
+func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameResultType, winnerPlayerIdsStr, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
 	baseStake := config.GameParams.BaseStake
 	var playerRewards []*dao.PlayerReward
 	var systemFee int
@@ -925,7 +941,7 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 		for _, st := range states {
 			status := playerStatuses[st.TemporaryAddress]
 			playerRewards = append(playerRewards, &dao.PlayerReward{
-				WalletAddress:          st.WalletAddress,
+				PlayerId:               st.PlayerId,
 				TemporaryAddress:       st.TemporaryAddress,
 				TokenChange:            int32(-tokenDeduction),
 				PointChange:            int32(pointGain),
@@ -937,7 +953,7 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 		systemFee = tokenDeduction * len(states)
 
 	case gameResultNormal, gameResultKO:
-		if winner != "" {
+		if winnerPlayerIdsStr != "" {
 			winnerTemporaryList := strings.Split(temporaryAddress, "|")
 			winnerTemporaryAddresses := make(map[string]bool, len(winnerTemporaryList))
 			for _, addr := range winnerTemporaryList {
@@ -978,7 +994,7 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 				}
 
 				playerRewards = append(playerRewards, &dao.PlayerReward{
-					WalletAddress:          st.WalletAddress,
+					PlayerId:               st.PlayerId,
 					TemporaryAddress:       st.TemporaryAddress,
 					TokenChange:            int32(tokenChange),
 					PointChange:            int32(pointChange),
@@ -1012,7 +1028,7 @@ func (r *Round) handleServerTimeout() (bool, *dao.GameResult, error) {
 			hasCommitment = true
 		}
 		playerRewards = append(playerRewards, &dao.PlayerReward{
-			WalletAddress:          p.WalletAddress,
+			PlayerId:               p.PlayerId,
 			TemporaryAddress:       p.TemporaryAddress,
 			TokenChange:            0,
 			PointChange:            0,
@@ -1025,7 +1041,7 @@ func (r *Round) handleServerTimeout() (bool, *dao.GameResult, error) {
 	gameResult := &dao.GameResult{
 		GameID:                 r.round.GameID,
 		Multiplier:             0,
-		WinnerWalletAddress:    "",
+		WinnerPlayerId:         0,
 		WinnerTemporaryAddress: "",
 		GameResultType:         proto.GameResultType_GAME_TIE,
 		BattleReward: &dao.BattleReward{

@@ -40,7 +40,7 @@ func TestJoinExitQueue(t *testing.T) {
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "temporary1",
 	}
 	evt := types.NewEvent(player1.String(), &types.JoinQueueEvent{
@@ -65,15 +65,15 @@ func TestGameMatched(t *testing.T) {
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "temporary1",
 	}
 	player1DuplicatedWallet := types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1, // Same ID as player1
 		TemporaryAddress: "temporary3",
 	}
 	player2 := types.PlayerAddress{
-		WalletAddress:    "wallet2",
+		Id:               2,
 		TemporaryAddress: "temporary2",
 	}
 

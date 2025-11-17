@@ -52,7 +52,7 @@ type Round struct {
 type PlayerRoundInfo struct {
 	BaseModel
 	RoundID          uint                  `json:"round_id"`
-	WalletAddress    string                `gorm:"not null;index:idx_wallet_address,length:42;size:42" json:"wallet_address"`
+	PlayerId         int64                 `gorm:"not null;index:idx_player_id" json:"player_id"`
 	TemporaryAddress string                `json:"temporary_address"`
 	PlayerReady      bool                  `json:"player_ready"`
 	LostHP           int32                 `json:"lost_hp"`
@@ -83,21 +83,21 @@ type CardEffect struct {
 	Type                   proto.BattleEffectType
 	Value                  int32
 	Description            string
-	TargetWalletAddress    string
+	TargetPlayerId         int64
 	TargetTemporaryAddress string
 }
 
 type GamePlayerInfo struct {
 	BaseModel
 	GameID           uint   `json:"game_id"`
-	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
+	PlayerId         int64  `gorm:"not null;index:address" json:"player_id"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
 
 type PlayerReward struct {
 	BaseModel
 	BattleRewardID         uint
-	WalletAddress          string `gorm:"not null;index:wallet_address" json:"wallet_address"`
+	PlayerId               int64  `gorm:"not null;index:wallet_address" json:"player_id"`
 	TemporaryAddress       string
 	TokenChange            int32
 	PointChange            int32
@@ -117,7 +117,7 @@ type GameResult struct {
 	BaseModel
 	GameID                 uint
 	Multiplier             int32
-	WinnerWalletAddress    string
+	WinnerPlayerId         int64
 	WinnerTemporaryAddress string
 	GameResultType         proto.GameResultType
 	BattleReward           *BattleReward
