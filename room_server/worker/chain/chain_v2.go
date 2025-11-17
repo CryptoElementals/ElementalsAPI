@@ -96,12 +96,12 @@ func (c *Chain) createNewRoom(evt *types.RequireContractCreationEvent) error {
 		return errors.New("room v2 client not initialized")
 	}
 
-	// Convert player IDs (uint64) to bytes8 for contract call
+	// Convert player IDs (int64) to bytes8 for contract call
 	var player1Bytes8 [8]byte
 	var player2Bytes8 [8]byte
-	// Convert uint64 ID to [8]byte (big-endian)
-	player1IDBig := big.NewInt(int64(evt.Players[0].Id))
-	player2IDBig := big.NewInt(int64(evt.Players[1].Id))
+	// Convert int64 ID to [8]byte (big-endian)
+	player1IDBig := big.NewInt(evt.Players[0].Id)
+	player2IDBig := big.NewInt(evt.Players[1].Id)
 	player1Bytes := player1IDBig.Bytes()
 	player2Bytes := player2IDBig.Bytes()
 	// Copy to bytes8 arrays (right-aligned, big-endian)

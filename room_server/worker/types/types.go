@@ -31,11 +31,11 @@ const (
 )
 
 type PlayerAddress struct {
-	Id               uint64
+	Id               int64
 	TemporaryAddress string
 }
 
-func NewPlayerAddress(id uint64, temporaryAddress string) *PlayerAddress {
+func NewPlayerAddress(id int64, temporaryAddress string) *PlayerAddress {
 	return &PlayerAddress{
 		Id:               id,
 		TemporaryAddress: strings.ToLower(temporaryAddress),
@@ -51,7 +51,7 @@ func (a *PlayerAddress) Parse(str string) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid player address")
 	}
-	var id uint64
+	var id int64
 	_, err := fmt.Sscanf(parts[0], "%d", &id)
 	if err != nil {
 		return fmt.Errorf("invalid player id: %w", err)
@@ -63,14 +63,14 @@ func (a *PlayerAddress) Parse(str string) error {
 
 func (a *PlayerAddress) ToDao() *dao.GamePlayerInfo {
 	return &dao.GamePlayerInfo{
-		PlayerId:         int64(a.Id),
+		PlayerId:         a.Id,
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }
 
 func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
-		Id:               int64(a.Id),
+		Id:               a.Id,
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }
@@ -83,12 +83,12 @@ func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
 }
 
 func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
-	a.Id = uint64(player.PlayerId)
+	a.Id = player.PlayerId
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
-	a.Id = uint64(player.Id)
+	a.Id = player.Id
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 

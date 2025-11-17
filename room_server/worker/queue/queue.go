@@ -204,7 +204,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	bots := Set[types.PlayerAddress]{}
 	q.lock.Lock()
 	for _, p := range event.GameInfo.Players {
-		addr := types.NewPlayerAddress(uint64(p.PlayerId), p.TemporaryAddress)
+		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
 		isBot := q.botMgr.releaseInGameBot(*addr)
 		if isBot {
 			bots.Add(*addr)
