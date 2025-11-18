@@ -1,7 +1,8 @@
 package main
 
 var (
-	playerAddress string
+	playerAddress string // Used for legacy token commands (deprecated, use playerId instead)
+	playerId      int64  // Used for queue and game commands
 
 	points          int64
 	tokens          int64
@@ -15,7 +16,6 @@ var (
 	dbName             string
 	chainRpc           string
 	roomServerEndpoint string
-	accountWalletPath  string
 	tempWalletPath     string
 	gameID             uint
 	tempAddress        string

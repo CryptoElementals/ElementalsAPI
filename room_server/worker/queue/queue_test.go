@@ -36,11 +36,11 @@ func TestMain(m *testing.M) {
 
 func TestJoinExitQueue(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "temporary1",
 	}
 	evt := types.NewEvent(player1.String(), &types.JoinQueueEvent{
@@ -61,19 +61,19 @@ func TestJoinExitQueue(t *testing.T) {
 
 func TestGameMatched(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "temporary1",
 	}
 	player1DuplicatedWallet := types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1, // Same ID as player1
 		TemporaryAddress: "temporary3",
 	}
 	player2 := types.PlayerAddress{
-		WalletAddress:    "wallet2",
+		Id:               2,
 		TemporaryAddress: "temporary2",
 	}
 

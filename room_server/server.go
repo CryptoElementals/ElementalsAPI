@@ -72,7 +72,7 @@ func New(ctx context.Context,
 		}
 	}
 
-	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, wallets, c)
+	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, cfg.ChainCfg.RoomV2ContractAddress, wallets, c)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func New(ctx context.Context,
 	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.ShouldRecverGames)
 	s.gameSvc = gameSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
-		cfg.GameParams.ContinueTimeout,cfg.GameParams.ContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
+		cfg.GameParams.ContinueTimeout, cfg.GameParams.ContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc

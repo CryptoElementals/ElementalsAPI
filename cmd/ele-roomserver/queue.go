@@ -24,7 +24,7 @@ var queueJoinCmd = &cobra.Command{
 	Use:   "join",
 	Short: "join queue",
 	Run: func(cmd *cobra.Command, args []string) {
-		addr := types.NewPlayerAddress(playerAddress, tempAddress)
+		addr := types.NewPlayerAddress(playerId, tempAddress)
 		client, err := rpc.NewClient(roomServerEndpoint)
 		if err != nil {
 			fmt.Printf("connect to room server failed: %s", err.Error())
@@ -47,7 +47,7 @@ var queueExitCmd = &cobra.Command{
 	Use:   "exit",
 	Short: "exit queue",
 	Run: func(cmd *cobra.Command, args []string) {
-		addr := types.NewPlayerAddress(playerAddress, tempAddress)
+		addr := types.NewPlayerAddress(playerId, tempAddress)
 		client, err := rpc.NewClient(roomServerEndpoint)
 		if err != nil {
 			fmt.Printf("connect to room server failed: %s", err.Error())
@@ -70,7 +70,7 @@ var queueCheckCmd = &cobra.Command{
 	Use:   "check-addr",
 	Short: "check queue for a dedicated address",
 	Run: func(cmd *cobra.Command, args []string) {
-		addr := types.NewPlayerAddress(playerAddress, tempAddress)
+		addr := types.NewPlayerAddress(playerId, tempAddress)
 		client, err := rpc.NewClient(roomServerEndpoint)
 		if err != nil {
 			fmt.Printf("connect to room server failed: %s", err.Error())
@@ -86,17 +86,17 @@ var queueCheckCmd = &cobra.Command{
 			fmt.Printf("exit queue failed: %s", err.Error())
 			os.Exit(1)
 		}
-		fmt.Printf("player wallet address: %s, player temp address: %s , is in queue: %v\n", playerAddress, tempAddress, inQueue)
+		fmt.Printf("player ID: %d, player temp address: %s , is in queue: %v\n", playerId, tempAddress, inQueue)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(queueCmd)
 	queueCmd.PersistentFlags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
-	queueCmd.PersistentFlags().StringVarP(&playerAddress, "address", "a", "", "player wallet address")
+	queueCmd.PersistentFlags().Int64VarP(&playerId, "player-id", "p", 0, "player ID")
 	queueCmd.PersistentFlags().StringVarP(&tempAddress, "temp-addr", "t", "", "temporary address for locking")
 	queueCmd.MarkPersistentFlagRequired("temp-addr")
-	queueCmd.MarkPersistentFlagRequired("address")
+	queueCmd.MarkPersistentFlagRequired("player-id")
 	queueCmd.MarkPersistentFlagRequired("room-server-endpoint")
 	queueCmd.AddCommand(queueJoinCmd)
 	queueCmd.AddCommand(queueExitCmd)

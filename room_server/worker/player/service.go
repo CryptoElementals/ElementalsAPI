@@ -20,6 +20,8 @@ type GameInfoGetter interface {
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 	GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error)
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
+	HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error
+	HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error
 }
 
 type Queuer interface {
@@ -124,7 +126,7 @@ func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundN
 		PlayerAddress: address,
 	}, true)
 	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
-	err := evt.Await()
+	_, err := evt.Await()
 	return err
 }
 
@@ -145,7 +147,7 @@ func (s *Service) Surrender(address types.PlayerAddress, gameID uint) error {
 		Address: address,
 	}, true)
 	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
-	err := evt.Await()
+	_, err := evt.Await()
 	return err
 }
 
@@ -168,7 +170,7 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 			players := make([]*proto.GamePhasePlayer, 0, len(continueInfo.Players))
 			for _, playerInfo := range continueInfo.Players {
 				addr := types.NewPlayerAddress(
-					playerInfo.WalletAddress,
+					playerInfo.Id,
 					playerInfo.TemporaryAddress,
 				).ToProto()
 				players = append(players, &proto.GamePhasePlayer{
@@ -217,6 +219,31 @@ func (s *Service) GetTimeoutConfig() (*proto.TimeoutConfig, error) {
 		ContinueTimeout:     config.GameParams.ContinueTimeout,
 	}
 	return cfg, nil
+}
+
+// SubmitPlayerCommitment submits a player commitment
+func (s *Service) SubmitPlayerCommitment(address types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error {
+	return s.gameInfoGetter.HandleSubmitPlayerCommitment(&types.SubmitPlayerCommitment{
+		GameID:          gameID,
+		Address:         address,
+		RoundNumber:     roundNumber,
+		Commitment:      commitment,
+		CommitmentIndex: commitmentIndex,
+		Signature:       signature,
+	})
+}
+
+// SubmitPlayerCard submits a player card
+func (s *Service) SubmitPlayerCard(address types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error {
+	return s.gameInfoGetter.HandleSubmitPlayerCard(&types.SubmitPlayerCard{
+		GameID:      gameID,
+		Address:     address,
+		RoundNumber: roundNumber,
+		Salt:        salt,
+		Card:        card,
+		CardIndex:   cardIndex,
+		Signature:   signature,
+	})
 }
 
 func (s *Service) addPlayer(address types.PlayerAddress) error {

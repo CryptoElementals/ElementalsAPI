@@ -23,12 +23,12 @@ import (
 )
 
 type playerWallet struct {
-	accountWallet *wallet.Wallet
-	tempWallet    *wallet.Wallet
+	playerId   int64
+	tempWallet *wallet.Wallet
 }
 
 func (w *playerWallet) address() *types.PlayerAddress {
-	return types.NewPlayerAddress(w.accountWallet.GetAddrHex(), w.tempWallet.GetAddrHex())
+	return types.NewPlayerAddress(w.playerId, w.tempWallet.GetAddrHex())
 }
 
 type roundInfo struct {
@@ -96,7 +96,7 @@ func NewBot(
 	ethClient *ethclient.Client,
 	chainID *big.Int,
 ) *Bot {
-	addr := types.NewPlayerAddress(playerWallet.accountWallet.GetAddrHex(), playerWallet.tempWallet.GetAddrHex())
+	addr := types.NewPlayerAddress(playerWallet.playerId, playerWallet.tempWallet.GetAddrHex())
 	opt := &bind.TransactOpts{
 		From:    playerWallet.tempWallet.GetAddr(),
 		Context: ctx,
@@ -198,7 +198,7 @@ func (b *Bot) recoverGameInfo() error {
 	for _, player := range phase.Players {
 		// found myself
 		if player.Address.TemporaryAddress == b.addr.TemporaryAddress &&
-			player.Address.WalletAddress == b.addr.WalletAddress {
+			player.Address.Id == b.addr.Id {
 			// need confirm
 			if !player.IsConfirmed {
 				log.Infow("recover game, confirm battle", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)

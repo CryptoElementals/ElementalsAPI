@@ -31,19 +31,19 @@ const (
 )
 
 type PlayerAddress struct {
-	WalletAddress    string
+	Id               int64
 	TemporaryAddress string
 }
 
-func NewPlayerAddress(walletAddress, temporaryAddress string) *PlayerAddress {
+func NewPlayerAddress(id int64, temporaryAddress string) *PlayerAddress {
 	return &PlayerAddress{
-		WalletAddress:    strings.ToLower(walletAddress),
+		Id:               id,
 		TemporaryAddress: strings.ToLower(temporaryAddress),
 	}
 }
 
 func (a *PlayerAddress) String() string {
-	return fmt.Sprintf("%s_%s", a.WalletAddress, a.TemporaryAddress)
+	return fmt.Sprintf("%d_%s", a.Id, a.TemporaryAddress)
 }
 
 func (a *PlayerAddress) Parse(str string) error {
@@ -51,53 +51,58 @@ func (a *PlayerAddress) Parse(str string) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid player address")
 	}
-	a.WalletAddress = strings.ToLower(parts[0])
+	var id int64
+	_, err := fmt.Sscanf(parts[0], "%d", &id)
+	if err != nil {
+		return fmt.Errorf("invalid player id: %w", err)
+	}
+	a.Id = id
 	a.TemporaryAddress = strings.ToLower(parts[1])
 	return nil
 }
 
 func (a *PlayerAddress) ToDao() *dao.GamePlayerInfo {
 	return &dao.GamePlayerInfo{
-		WalletAddress:    a.WalletAddress,
+		PlayerId:         a.Id,
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }
 
 func (a *PlayerAddress) ToProto() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
-		WalletAddress:    a.WalletAddress,
+		Id:               a.Id,
 		TemporaryAddress: a.TemporaryAddress,
 	}
 }
 
 func (a *PlayerAddress) ToProtoNoWallet() *proto.PlayerAddress {
 	return &proto.PlayerAddress{
+		Id:               0, // Id not included when using ToProtoNoWallet
 		TemporaryAddress: strings.ToLower(a.TemporaryAddress),
 	}
 }
 
 func (a *PlayerAddress) FromDao(player dao.GamePlayerInfo) {
-	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.Id = player.PlayerId
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
-	a.WalletAddress = strings.ToLower(player.WalletAddress)
+	a.Id = player.Id
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
 type Event struct {
 	Sender  string
 	EventID string
-	AckChan chan struct{} `json:",omitempty"`
-	Error   error
+	AckChan chan any `json:",omitempty"` // Response channel that returns error or any value
 	Data    any
 }
 
 func NewEvent(sender string, evt any, needAck ...bool) *Event {
-	var ack chan struct{}
+	var ack chan any
 	if len(needAck) > 0 && needAck[0] {
-		ack = make(chan struct{})
+		ack = make(chan any, 1) // Buffered channel to avoid blocking
 	}
 	eid := uuid.NewString()
 	return &Event{
@@ -108,9 +113,16 @@ func NewEvent(sender string, evt any, needAck ...bool) *Event {
 	}
 }
 
-func (e *Event) Await() error {
-	<-e.AckChan
-	return e.Error
+// Await waits for the response from AckChan and returns the value or error
+func (e *Event) Await() (any, error) {
+	if e.AckChan == nil {
+		return nil, nil
+	}
+	response := <-e.AckChan
+	if err, ok := response.(error); ok {
+		return nil, err
+	}
+	return response, nil
 }
 
 func AssertInterface[T any](evt *Event) (T, error) {
@@ -136,7 +148,7 @@ func (b *EventBatch) Add(evt *Event) {
 
 func (b *EventBatch) Wait() {
 	for _, e := range b.evt {
-		e.Await()
+		_, _ = e.Await() // Ignore response and error for batch operations
 	}
 }
 

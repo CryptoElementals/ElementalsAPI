@@ -17,6 +17,9 @@ type GameArgs struct {
 	RoundConfirmTimeoutRedundancy int64
 	RoundTimeoutRedundancy        int64
 	ContinueTimeoutRedundancy     int64
+
+	// pool processing interval in seconds
+	PoolProcessingInterval int64
 }
 
 type Game struct {
@@ -48,30 +51,30 @@ type Round struct {
 // PlayerRoundInfo 回合玩家记录
 type PlayerRoundInfo struct {
 	BaseModel
-	RoundID             uint                  `json:"round_id"`
-	WalletAddress       string                `gorm:"not null;index:idx_wallet_address,length:42;size:42" json:"wallet_address"`
-	TemporaryAddress    string                `json:"temporary_address"`
-	PlayerReady         bool                  `json:"player_ready"`
-	Salt                []byte                `json:"salt"`
-	LostHP              int32                 `json:"lost_hp"`
-	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
-	SubmittedCards      []*RoundSubmittedCard `json:"submitted_cards"`      // 回合牌面记录
-	Surrendered         bool                  `json:"surrendered"`
+	RoundID          uint                  `json:"round_id"`
+	PlayerId         int64                 `gorm:"not null;index:idx_player_id" json:"player_id"`
+	TemporaryAddress string                `json:"temporary_address"`
+	PlayerReady      bool                  `json:"player_ready"`
+	LostHP           int32                 `json:"lost_hp"`
+	SubmittedCards   []*RoundSubmittedCard `json:"submitted_cards"` // 回合牌面记录
+	Surrendered      bool                  `json:"surrendered"`
 }
 
 // RoundSubmittedCard 回合牌面记录
 type RoundSubmittedCard struct {
 	BaseModel
-	PlayerRoundInfoID uint                  `json:"player_round_info_id"` // 回合唯一ID
-	CardID            uint                  `json:"card"`                 // 使用过的卡牌
-	CardNumber        uint32                `json:"card_number"`
-	HealthBefore      uint32                `json:"health_before"`
-	HealthAfter       uint32                `json:"health_after"`
-	MultiplierBefore  uint32                `json:"multiplier_before"`
-	MultiplierAfter   uint32                `json:"multiplier_after"`
-	Description       string                `json:"description"`
-	ElementRelation   proto.ElementRelation `json:"element_relation"`
-	CardEffects       []*CardEffect         `json:"card_effects"`
+	PlayerRoundInfoID   uint                  `json:"player_round_info_id"` // 回合唯一ID
+	CardID              uint                  `json:"card"`                 // 使用过的卡牌
+	CardNumber          uint32                `json:"card_number"`
+	HealthBefore        uint32                `json:"health_before"`
+	HealthAfter         uint32                `json:"health_after"`
+	MultiplierBefore    uint32                `json:"multiplier_before"`
+	MultiplierAfter     uint32                `json:"multiplier_after"`
+	Description         string                `json:"description"`
+	ElementRelation     proto.ElementRelation `json:"element_relation"`
+	CardEffects         []*CardEffect         `json:"card_effects"`
+	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
+	Salt                []byte                `json:"salt"`
 }
 
 type CardEffect struct {
@@ -80,21 +83,21 @@ type CardEffect struct {
 	Type                   proto.BattleEffectType
 	Value                  int32
 	Description            string
-	TargetWalletAddress    string
+	TargetPlayerId         int64
 	TargetTemporaryAddress string
 }
 
 type GamePlayerInfo struct {
 	BaseModel
 	GameID           uint   `json:"game_id"`
-	WalletAddress    string `gorm:"not null;index:address" json:"wallet_address"`
+	PlayerId         int64  `gorm:"not null;index:address" json:"player_id"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
 
 type PlayerReward struct {
 	BaseModel
 	BattleRewardID         uint
-	WalletAddress          string `gorm:"not null;index:wallet_address" json:"wallet_address"`
+	PlayerId               int64  `gorm:"not null;index:wallet_address" json:"player_id"`
 	TemporaryAddress       string
 	TokenChange            int32
 	PointChange            int32
@@ -114,7 +117,7 @@ type GameResult struct {
 	BaseModel
 	GameID                 uint
 	Multiplier             int32
-	WinnerWalletAddress    string
+	WinnerPlayerId         int64
 	WinnerTemporaryAddress string
 	GameResultType         proto.GameResultType
 	BattleReward           *BattleReward

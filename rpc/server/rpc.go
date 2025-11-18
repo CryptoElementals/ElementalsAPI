@@ -106,6 +106,18 @@ func (s *Rpc) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*proto.Time
 	return s.playerHandler.GetTimeoutConfig()
 }
 
+func (s *Rpc) SubmitPlayerCommitment(ctx context.Context, req *proto.SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req.Address)
+	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCommitment(addr, req.RoundNumber, req.Commitment, req.CommitmentIndex, req.Signature, uint(req.GameID))
+}
+
+func (s *Rpc) SubmitPlayerCard(ctx context.Context, req *proto.SubmitPlayerCardRequest) (*emptypb.Empty, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req.Address)
+	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCard(addr, req.RoundNumber, req.Salt, uint(req.Card), req.CardIndex, req.Signature, uint(req.GameID))
+}
+
 type ChainRequestHandler interface {
 	SubmitTransactions(req *proto.TransactionBatch) error
 }
@@ -123,4 +135,6 @@ type PlayerRequestHandler interface {
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
 	GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error)
 	GetTimeoutConfig() (*proto.TimeoutConfig, error)
+	SubmitPlayerCommitment(address types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error
+	SubmitPlayerCard(address types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error
 }

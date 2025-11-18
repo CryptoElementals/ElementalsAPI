@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -115,7 +116,7 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	if _, ok := q.queue[event.PlayerAddress]; ok {
 		return errors.New("player already in queue")
 	}
-	log.Infow("join queue", "wallet address", event.PlayerAddress.WalletAddress, "temporary address", event.PlayerAddress.TemporaryAddress)
+	log.Infow("join queue", "player id", event.PlayerAddress.Id, "temporary address", event.PlayerAddress.TemporaryAddress)
 	err := q.lockToken(&event.PlayerAddress)
 	if err != nil {
 		log.Errorf("cannot join queue, err: %s", err.Error())
@@ -125,8 +126,8 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.continueManager.removeGameByAddress(event.PlayerAddress, 0)
 	matched := false
 	for player := range q.queue {
-		// don't match players with same wallet address
-		// if player.WalletAddress == event.PlayerAddress.WalletAddress {
+		// don't match players with same player id
+		// if player.Id == event.PlayerAddress.Id {
 		// 	continue
 		// }
 		if player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
@@ -160,7 +161,9 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 	}
 
 	for _, p := range players {
-		err = db.SetLockedTokenGameID(q.ctx, p.WalletAddress, p.TemporaryAddress, gid)
+		// Convert ID to string for database call (DAO still uses WalletAddress string)
+		walletAddrStr := fmt.Sprintf("%d", p.Id)
+		err = db.SetLockedTokenGameID(q.ctx, walletAddrStr, p.TemporaryAddress, gid)
 		if err != nil {
 			// bot never lock token
 			if err == db.ErrNotFound && q.botMgr.isInGame(p) {
@@ -201,7 +204,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	bots := Set[types.PlayerAddress]{}
 	q.lock.Lock()
 	for _, p := range event.GameInfo.Players {
-		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
+		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
 		isBot := q.botMgr.releaseInGameBot(*addr)
 		if isBot {
 			bots.Add(*addr)
@@ -219,7 +222,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	go func() {
 		walletAddrs := make([]string, 0, len(event.GameInfo.Players))
 		for _, p := range event.GameInfo.Players {
-			walletAddrs = append(walletAddrs, p.WalletAddress)
+			walletAddrs = append(walletAddrs, fmt.Sprintf("%d", p.PlayerId))
 		}
 
 		resp, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
@@ -257,7 +260,9 @@ func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameCo
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
-	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
+	// Convert ID to string for database call (DAO still uses WalletAddress string)
+	walletAddrStr := fmt.Sprintf("%d", address.Id)
+	return db.LockUserToken(q.ctx, walletAddrStr, address.TemporaryAddress, q.minTokenToJoinQueue)
 }
 
 func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uint) error {
@@ -265,7 +270,8 @@ func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uin
 	tempAddresses := make([]string, 0, len(addresses))
 	for i := range addresses {
 		log.Infow("lock user tokens for continue", "addr", addresses[i].String(), "token amount", q.minTokenToJoinQueue, "game id", gameID)
-		walletAddresses = append(walletAddresses, addresses[i].WalletAddress)
+		// Convert ID to string for database call (DAO still uses WalletAddress string)
+		walletAddresses = append(walletAddresses, fmt.Sprintf("%d", addresses[i].Id))
 		tempAddresses = append(tempAddresses, addresses[i].TemporaryAddress)
 	}
 	return db.LockUserTokenForContinue(q.ctx, walletAddresses, tempAddresses, q.minTokenToJoinQueue, gameID)
@@ -273,5 +279,7 @@ func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uin
 
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	log.Infow("unlock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
-	return db.UnlockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress)
+	// Convert ID to string for database call (DAO still uses WalletAddress string)
+	walletAddrStr := fmt.Sprintf("%d", address.Id)
+	return db.UnlockUserToken(q.ctx, walletAddrStr, address.TemporaryAddress)
 }

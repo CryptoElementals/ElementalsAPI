@@ -4,6 +4,10 @@ package pubsub;
 
 import "rpc/proto/rpc.proto";
 
+import "rpc/proto/battle.proto";
+
+import "google/protobuf/empty.proto";
+
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 // PubSub服务定义
@@ -26,107 +30,123 @@ service PubSubService {
 
 // 发布消息请求
 message PublishRequest {
-  string topic = 1;
-  Event event = 2;
-  map<string, string> metadata = 3;
-  int64 timestamp = 4;
+  string Topic = 1;
+  Event Event = 2;
+  map<string, string> Metadata = 3;
+  int64 Timestamp = 4;
 }
 
 // 发布消息响应
 message PublishResponse {
-  string message_id = 1;
-  int32 subscriber_count = 2;
-  bool success = 3;
-  string error = 4;
+  string MessageId = 1;
+  int32 SubscriberCount = 2;
+  bool Success = 3;
+  string Error = 4;
 }
 
 // 订阅请求
 message SubscribeRequest {
-  string topic = 1;
-  string subscriber_id = 2;
+  string Topic = 1;
+  string SubscriberId = 2;
 }
 
 // 消息
 message Message {
-  string message_id = 1;
-  string topic = 2;
-  Event event = 3;
-  map<string, string> metadata = 4;
-  int64 timestamp = 5;
-  string publisher_id = 6;
+  string MessageId = 1;
+  string Topic = 2;
+  Event Event = 3;
+  map<string, string> Metadata = 4;
+  int64 Timestamp = 5;
+  string PublisherId = 6;
 }
 
 // 取消订阅请求
 message UnsubscribeRequest {
-  string topic = 1;
-  string subscriber_id = 2;
+  string Topic = 1;
+  string SubscriberId = 2;
 }
 
 // 取消订阅响应
 message UnsubscribeResponse {
-  bool success = 1;
-  string error = 2;
+  bool Success = 1;
+  string Error = 2;
 }
 
 // 获取主题列表请求
 message ListTopicsRequest {
-  string pattern = 1; // 可选的主题模式匹配
+  string Pattern = 1; // 可选的主题模式匹配
 }
 
 // 获取主题列表响应
 message ListTopicsResponse {
-  repeated TopicInfo topics = 1;
+  repeated TopicInfo Topics = 1;
 }
 
 // 主题信息
 message TopicInfo {
-  string name = 1;
-  int32 subscriber_count = 2;
-  int64 last_message_time = 3;
-  int64 message_count = 4;
+  string Name = 1;
+  int32 SubscriberCount = 2;
+  int64 LastMessageTime = 3;
+  int64 MessageCount = 4;
 }
 
 // 获取订阅者数量请求
 message GetSubscriberCountRequest {
-  string topic = 1;
+  string Topic = 1;
 }
 
 // 获取订阅者数量响应
 message GetSubscriberCountResponse {
-  string topic = 1;
-  int32 subscriber_count = 2;
-  bool success = 3;
-  string error = 4;
+  string Topic = 1;
+  int32 SubscriberCount = 2;
+  bool Success = 3;
+  string Error = 4;
 } 
 
 message GameCreated {
-  uint32 game_id = 1;
-  repeated rpc.PlayerAddress players = 2; 
+  uint32 GameId = 1;
+  repeated rpc.PlayerAddress Players = 2; 
 }
 
 message GameReady {
-  uint32 game_id = 1;
-  string contract_address = 2;
+  uint32 GameId = 1;
 }
 
 message RoundReady {
-  uint32 game_id = 1;
-  uint32 round_num = 2;
+  uint32 GameId = 1;
+  uint32 RoundNum = 2;
 }
 
 message CommitmentsOnChain {
-  uint32 game_id = 1;
-  uint32 round_num = 2;
+  uint32 GameId = 1;
+  uint32 RoundNum = 2;
+  uint32 CardNum = 3;
 }
 
 message CardsOnChain {
-  uint32 game_id = 1;
-  uint32 round_num = 2;
+  uint32 GameId = 1;
+  uint32 RoundNum = 2;
+  rpc.RoundSubmittedCard MyCard = 3;
+  rpc.RoundSubmittedCard RivalCard = 4;
 }
 
 message RoundCompleted {
-  uint32 game_id = 1;
-  rpc.Round round_info = 2;
+  uint32 GameId = 1;
+  rpc.Round RoundInfo = 2;
+}
+
+message GameCompleted {
+  uint32 GameId = 1;
+  battle.GameResult GameResult = 2;
+}
+
+message GameStat {
+  uint32 GameId = 1;
+  string ContractAddress = 2;
+  repeated rpc.PlayerAddress Players = 3; 
+  uint32 CurrentRoundNum = 4;
+  uint32 CurrentCardNum = 5;
+
 }
 
 enum EventType {
@@ -141,8 +161,19 @@ enum EventType {
   TYPE_GAME_COMPLETE = 8;
   TYPE_PLAYER_OFFLINE = 9;
   TYPE_CONTINUE_CANCELED = 10;
+  TYPE_STAT_SYNC = 11;
 }
 
 message Event {
-  EventType type = 1;
+  EventType Type = 1;
+  oneof Event {
+    GameCreated GameCreated = 2; // TYPE_MATCHED
+    GameReady GameReady = 3; // TYPE_GAME_CREATED
+    RoundReady RoundReady = 4; // TYPE_ROUND_READY
+    CommitmentsOnChain CommitmentsOnChain = 5; // TYPE_COMMITMENTS_ON_CHAIN
+    CardsOnChain CardsOnChain = 6; // TYPE_CARDS_ON_CHAIN
+    RoundCompleted RoundCompleted = 7; // TYPE_ROUND_COMPLETE
+    GameCompleted GameCompleted = 8; // TYPE_GAME_COMPLETE
+    google.protobuf.Empty _ = 9; // other events
+  }
 }

@@ -20,6 +20,8 @@ service RpcService {
     rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
     rpc GetGameTimeoutConfig(google.protobuf.Empty)returns(TimeoutConfig);
+    rpc SubmitPlayerCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
+    rpc SubmitPlayerCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
 
     // token related logic
     rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
@@ -49,18 +51,18 @@ message IsPlayerInQueueResponse {
 }
 
 message GetPlayerTokenRequest {
-    string WalletAddress = 1;
+    int64 id = 1;
 }
 
 message GetPlayerTokenResponse {
-    string WalletAddress = 1;
+    int64 id = 1;
     uint64 Tokens = 2;
     uint64 Points = 3;
     uint64 LockedTokens = 4;
 }
 
 message PlayerAddress {
-    string wallet_address = 1;
+    int64 id = 1;
     string temporary_address = 2;
 }
 
@@ -133,9 +135,7 @@ enum RoundStatus {
 message PlayerRoundInfo {
     PlayerAddress PlayerAddress = 1;
     bool PlayerReady = 2;
-    bytes Salt = 3;
-    bytes SubmittedCommitment = 4;
-    repeated RoundSubmittedCard SubmittedCards = 5;
+    repeated RoundSubmittedCard SubmittedCards = 3;
 }
 
 // Battle Engine related messages
@@ -150,12 +150,14 @@ message RoundSubmittedCard {
     string Description = 6;            // battle description
     battle.ElementRelation ElementRelation = 7;       // element relation type
     repeated battle.BattleEffect Effects = 8; // effects applied to this player
+    bytes SubmittedCommitment = 9;
+    bytes Salt = 10;
 }
 
 message Round {
-    int32 number = 1; // start from 1
-    RoundStatus status = 2;
-    repeated PlayerRoundInfo player_round_infos = 3;
+    int32 Number = 1; // start from 1
+    RoundStatus Status = 2;
+    repeated PlayerRoundInfo PlayerRoundInfos = 3;
 }
 
 enum GameStatus {
@@ -186,10 +188,10 @@ message Transaction {
     bytes tx_hash = 1;
     uint32 game_id = 2;
     oneof tx {
-        TxRoomContractCreated room_contract_created = 3;
-        TxRoomContractRoundSetupReady room_contract_setup_ready = 4;
-        TxCommitmentsOnChain commitments_on_chain = 5;
-        TxCardsOnChain cards_on_chain = 6;
+        TxGameCreated game_created = 3;
+        TxGameTurnSetupReady game_turn_setup_ready = 4;
+        TxCommitmentOnChain commitment_on_chain = 5;
+        TxCardOnChain card_on_chain = 6;
     };
 }
 
@@ -200,26 +202,48 @@ message TransactionBatch {
     repeated Transaction transactions = 4;
 }
 
-message TxRoomContractCreated {
-    string room_contract_address = 1;
+message TxGameCreated {
+    int64 game_id = 1;
 }
 
-message TxRoomContractRoundSetupReady {
-    string room_contract_address = 1;
+message TxGameTurnSetupReady {
+    int64 game_id = 1;
     uint32 round_number = 2;
+    uint32 turn_number = 3;
 }
 
-message TxCommitmentsOnChain {
-    string room_contract_address = 1;
+message TxCommitmentOnChain {
+    int64 game_id = 1;
     PlayerAddress address = 2;
     uint32 round_number = 3;
-    bytes commitment = 4;
+    uint32 turn_number = 4;
+    bytes commitment = 5;
 }
 
-message TxCardsOnChain {
-    string room_contract_address = 1;
+message TxCardOnChain {
+    int64 game_id = 1;
     PlayerAddress address = 2;
     uint32 round_number = 3;
-    bytes salt = 4;
-    repeated uint32 cards = 5;
+    uint32 turn_number = 4;
+    bytes salt = 5;
+    uint32 card_id = 6;
+}
+
+message SubmitPlayerCommitmentRequest {
+    uint32 GameID = 1;
+    PlayerAddress Address = 2;
+    uint32 RoundNumber = 3;
+    bytes Commitment = 4;
+    uint32 TurnNumber = 5;
+    bytes Signature = 6;
+}
+
+message SubmitPlayerCardRequest {
+    uint32 GameID = 1;
+    PlayerAddress Address = 2;
+    uint32 RoundNumber = 3;
+    bytes Salt = 4;
+    uint32 Card = 5;
+    uint32 TurnNumber = 6;
+    bytes Signature = 7;
 }

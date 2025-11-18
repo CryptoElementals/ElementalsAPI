@@ -2,10 +2,10 @@ package dao
 
 type UserToken struct {
 	BaseModel
-	WalletAddress string `gorm:"index;not null"`
-	Points        int32  `gorm:"default:0"`
-	TokenAmount   int32  `gorm:"default:0"`
-	LockedTokens  []*LockedUserToken
+	PlayerId     int64 `gorm:"index;not null"`
+	Points       int32 `gorm:"default:0"`
+	TokenAmount  int32 `gorm:"default:0"`
+	LockedTokens []*LockedUserToken
 }
 
 type LockedUserToken struct {

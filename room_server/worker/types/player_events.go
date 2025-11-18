@@ -9,8 +9,26 @@ type GameCreatedEvent struct {
 }
 
 type GameReadyEvent struct {
-	GameID          uint
-	ContractAddress string
+	GameID uint
+	// ContractAddress removed - always uses RoomV2 contract address
+}
+
+type TurnReadyEvent struct {
+	GameID      uint
+	RoundNumber uint32
+	TurnNumber  uint32
+}
+
+type PlayerTurnInfo struct {
+	PlayerAddress PlayerAddress
+	SubmittedCard *dao.RoundSubmittedCard
+}
+
+type TurnCompletedEvent struct {
+	GameID         uint
+	RoundNumber    uint32
+	TurnNumber     uint32
+	PlayerTurnInfo []*PlayerTurnInfo
 }
 
 type RoundPartialReadyEvent struct {

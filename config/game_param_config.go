@@ -25,6 +25,8 @@ type GameParamConfig struct {
 	RoundConfirmTimeoutRedundancy int64 `mapstructure:"round-confirm-timeout-redundancy"`
 	RoundTimeoutRedundancy        int64 `mapstructure:"round-timeout-redundancy"`
 	ContinueTimeoutRedundancy     int64 `mapstructure:"continue-timeout-redundancy"`
+	// pool processing interval in seconds
+	PoolProcessingInterval int64 `mapstructure:"pool-processing-interval"`
 }
 
 // 全局可读的游戏参数

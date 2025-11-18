@@ -15,7 +15,9 @@ import (
 
 type ContractClient interface {
 	CreateRoomContract(evt *types.RequireContractCreationEvent) error
-	SetRoundReady(evt *types.RequireSetupNewRoundEvent) error
+	SetTurnReady(evt *types.RequireSetupNewTurnEvent) error
+	SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error
+	SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error
 }
 
 type GameHandler interface {
@@ -28,7 +30,6 @@ type GameResultSettler interface {
 }
 
 type Service struct {
-	ctx         context.Context
 	gameManager *GameManager
 }
 
@@ -51,9 +52,10 @@ func NewService(
 		RoundConfirmTimeoutRedundancy: gameConfig.RoundConfirmTimeoutRedundancy,
 		RoundTimeoutRedundancy:        gameConfig.RoundTimeoutRedundancy,
 		ContinueTimeoutRedundancy:     gameConfig.ContinueTimeoutRedundancy,
+
+		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
 	return &Service{
-		ctx:         ctx,
 		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover),
 	}
 }
@@ -76,16 +78,13 @@ func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.Ga
 }
 
 func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
-	game := s.gameManager.GetActiveGameByID(uint(gameID))
-	if game == nil {
-		// it is a cold game now
-		return s.LoadBattleInfoFromDB(gameID, roundNum)
+	// Try to get battle info from active game first
+	roundRes, gameRes, err := s.gameManager.GetBattleInfo(uint(gameID), roundNum)
+	if err == nil {
+		return roundRes, gameRes, nil
 	}
-	roundRes, gameRes := game.GetBattleInfo(roundNum)
-	if roundRes == nil {
-		return nil, nil, errors.New("round not found")
-	}
-	return roundRes, gameRes, nil
+	// If game is not active (cold game), load from DB
+	return s.LoadBattleInfoFromDB(gameID, roundNum)
 }
 
 func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
@@ -133,4 +132,14 @@ func (s *Service) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
 
 func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	return s.gameManager.GetGamePhase(address)
+}
+
+// HandleSubmitPlayerCommitment handles a player commitment submission
+func (s *Service) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
+	return s.gameManager.HandleSubmitPlayerCommitment(evt)
+}
+
+// HandleSubmitPlayerCard handles a player card submission
+func (s *Service) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
+	return s.gameManager.HandleSubmitPlayerCard(evt)
 }

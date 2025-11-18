@@ -198,15 +198,15 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 		for _, pr := range reward.PlayerRewards {
 			// skip bot accounts
 			if _, ok := bots[types.PlayerAddress{
-				WalletAddress:    pr.WalletAddress,
+				Id:               pr.PlayerId,
 				TemporaryAddress: pr.TemporaryAddress,
 			}]; ok {
 				continue
 			}
 			userToken := &dao.UserToken{}
-			err := tx.Where("wallet_address = ?", pr.WalletAddress).Preload("LockedTokens").First(userToken).Error
+			err := tx.Where("player_id = ?", pr.PlayerId).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
-				return fmt.Errorf("find user token record from db failed, game id: %d, address: %s, err: %w", game.ID, pr.WalletAddress, err)
+				return fmt.Errorf("find user token record from db failed, game id: %d, player id: %d, err: %w", game.ID, pr.PlayerId, err)
 			}
 			userToken.TokenAmount += pr.TokenChange
 			userToken.Points += pr.PointChange

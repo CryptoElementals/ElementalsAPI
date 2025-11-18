@@ -39,7 +39,7 @@ func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 	}
 	gameResult := &proto.GameResult{
 		Multiplier:             int32(result.Multiplier),
-		WinnerWalletAddress:    result.WinnerWalletAddress,
+		WinnerPlayerId:         result.WinnerPlayerId,
 		WinnerTemporaryAddress: result.WinnerTemporaryAddress,
 		GameResultType:         result.GameResultType,
 		Reward:                 DbBattleRewardToProtoBattleReward(result.BattleReward),
@@ -64,7 +64,7 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerRew
 	var playerRewards []*proto.PlayerReward
 	for _, playerReward := range playerReward {
 		playerRewards = append(playerRewards, &proto.PlayerReward{
-			WalletAddress:          playerReward.WalletAddress,
+			PlayerId:               playerReward.PlayerId,
 			TemporaryAddress:       playerReward.TemporaryAddress,
 			TokenChange:            int32(playerReward.TokenChange),
 			PointChange:            int32(playerReward.PointChange),
@@ -81,7 +81,7 @@ func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerA
 		return nil
 	}
 	return &proto.PlayerAddress{
-		WalletAddress:    player.WalletAddress,
+		Id:               player.PlayerId,
 		TemporaryAddress: player.TemporaryAddress,
 	}
 }
@@ -113,15 +113,14 @@ func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.Playe
 		return nil
 	}
 	addr := &proto.PlayerAddress{
-		WalletAddress:    playerRoundInfo.WalletAddress,
+		Id:               playerRoundInfo.PlayerId,
 		TemporaryAddress: playerRoundInfo.TemporaryAddress,
 	}
+	// Note: Salt and SubmittedCommitment are now in RoundSubmittedCard, not PlayerRoundInfo
 	return &proto.PlayerRoundInfo{
-		PlayerAddress:       addr,
-		PlayerReady:         playerRoundInfo.PlayerReady,
-		SubmittedCards:      DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
-		Salt:                playerRoundInfo.Salt,
-		SubmittedCommitment: playerRoundInfo.SubmittedCommitment,
+		PlayerAddress:  addr,
+		PlayerReady:    playerRoundInfo.PlayerReady,
+		SubmittedCards: DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
 	}
 }
 
@@ -140,14 +139,16 @@ func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmi
 		return nil
 	}
 	return &proto.RoundSubmittedCard{
-		PlayerHealthBefore: card.HealthBefore,
-		PlayerHealthEnd:    card.HealthAfter,
-		MultiplierBefore:   card.MultiplierBefore,
-		MultiplierAfter:    card.MultiplierAfter,
-		Description:        card.Description,
-		ElementRelation:    card.ElementRelation,
-		Effects:            DbCardEffectsToProto(card.CardEffects),
-		SubmittedCardId:    uint32(card.CardID),
+		PlayerHealthBefore:  card.HealthBefore,
+		PlayerHealthEnd:     card.HealthAfter,
+		MultiplierBefore:    card.MultiplierBefore,
+		MultiplierAfter:     card.MultiplierAfter,
+		Description:         card.Description,
+		ElementRelation:     card.ElementRelation,
+		Effects:             DbCardEffectsToProto(card.CardEffects),
+		SubmittedCardId:     uint32(card.CardID),
+		SubmittedCommitment: card.SubmittedCommitment,
+		Salt:                card.Salt,
 	}
 }
 
@@ -170,7 +171,7 @@ func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
 		Type:                   effect.Type,
 		Value:                  effect.Value,
 		Description:            effect.Description,
-		TargetWalletAddress:    effect.TargetWalletAddress,
+		TargetPlayerId:         effect.TargetPlayerId,
 		TargetTemporaryAddress: effect.TargetTemporaryAddress,
 	}
 }
@@ -203,7 +204,7 @@ func DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo *dao.PlayerRoundInf
 		return nil
 	}
 	return &proto.PlayerRoundStat{
-		WalletAddress:    playerRoundInfo.WalletAddress,
+		PlayerId:         playerRoundInfo.PlayerId,
 		TemporaryAddress: playerRoundInfo.TemporaryAddress,
 		LostHP:           playerRoundInfo.LostHP,
 		CardStats:        DbRoundSubmittedCardToProtoPlayerCardStats(playerRoundInfo.SubmittedCards),
@@ -248,7 +249,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 
 	for _, playerInfo := range currentRound.PlayerRoundInfos {
 		addr := types.NewPlayerAddress(
-			playerInfo.WalletAddress,
+			playerInfo.PlayerId,
 			playerInfo.TemporaryAddress,
 		).ToProto()
 		cards := make([]uint32, 0, len(playerInfo.SubmittedCards))
@@ -260,10 +261,16 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.Game
 			cards = append(cards, uint32(sc.CardID))
 		}
 
+		// Get commitment from first card (if exists)
+		var commitment []byte
+		if len(playerInfo.SubmittedCards) > 0 {
+			commitment = playerInfo.SubmittedCards[0].SubmittedCommitment
+		}
+
 		gamePhase.Players = append(gamePhase.Players, &proto.GamePhasePlayer{
 			Address:     addr,
 			IsConfirmed: playerInfo.PlayerReady,
-			Commitment:  playerInfo.SubmittedCommitment,
+			Commitment:  commitment,
 			Cards:       cards,
 		})
 	}
