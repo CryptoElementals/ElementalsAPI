@@ -109,6 +109,10 @@ type ServerConfig struct {
 	SessionMaxAge      int    `mapstructure:"session-max-age"`
 	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
 	ServiceName        string `mapstructure:"service-name"`
+	GoogleClientID     string `mapstructure:"google-client-id"`
+	GoogleClientSecret string `mapstructure:"google-client-secret"`
+	GoogleRedirectURL  string `mapstructure:"google-redirect-url"`
+	GoogleFrontendURL  string `mapstructure:"google-frontend-url"`
 }
 
 // S3Config defines the configuration for S3 storage

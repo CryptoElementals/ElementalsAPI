@@ -22,6 +22,7 @@ func init() {
 type CollectDailyRewardRequest struct {
 	BaseRequest
 	Address string `mapstructure:"Address"`
+	Email   string `mapstructure:"Email"`
 }
 
 type CollectDailyRewardResponse struct {
@@ -73,69 +74,84 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 从请求中获取用户地址（由中间件设置）
-	address := task.Request.Address
-	if address == "" {
-		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
-		return nil, cmnErrors.MissingLoginCookie()
+	// 允许通过 Address 或 Email 领取，至少提供一个
+	requestAddress := strings.ToLower(strings.TrimSpace(task.Request.Address))
+	requestEmail := strings.TrimSpace(task.Request.Email)
+	if requestAddress == "" && requestEmail == "" {
+		log.Errorf("%s, neither address nor email provided", task.Request.RequestUUID)
+		return nil, cmnErrors.MissingParams("Address or Email")
 	}
 
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
+	// Address 流程：保持原有逻辑（检查->发放Token->更新时间）
+	if requestAddress != "" {
+		collected, err := db.HasCollectedDailyReward(requestAddress)
+		if err != nil {
+			log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, requestAddress, err)
+			return nil, cmnErrors.GetUserProfileFailed(requestAddress)
+		}
+		if collected {
+			log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestAddress)
+			return nil, cmnErrors.ActionError("Daily reward already collected")
+		}
 
-	// 检查用户是否已领取今日奖励
-	collected, err := db.HasCollectedDailyReward(lowercaseAddress)
+		// 确保用户存在
+		_, err = db.GetUserProfileByAddress(requestAddress)
+		if err != nil {
+			log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, requestAddress, err)
+			return nil, cmnErrors.GetUserProfileFailed(requestAddress)
+		}
+
+		dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
+
+		userToken, err := db.GetPlayerToken(c.Request.Context(), requestAddress)
+		if err != nil && err != gorm.ErrRecordNotFound {
+			log.Errorf("%s, failed to get user token for address %s: %v", task.Request.RequestUUID, requestAddress, err)
+			return nil, cmnErrors.OperateDbFailed()
+		}
+		if userToken == nil {
+			userToken = &dao.UserToken{
+				WalletAddress: requestAddress,
+				Points:        0,
+				TokenAmount:   dailyRewardTokens,
+			}
+		} else {
+			userToken.TokenAmount += dailyRewardTokens
+		}
+		if err = db.SaveUserToken(*userToken); err != nil {
+			log.Errorf("%s, failed to save user token for address %s: %v", task.Request.RequestUUID, requestAddress, err)
+			return nil, cmnErrors.OperateDbFailed()
+		}
+
+		if err = db.UpdateDailyRewardCollection(requestAddress); err != nil {
+			log.Errorf("%s, failed to update daily reward collection for address %s: %v", task.Request.RequestUUID, requestAddress, err)
+			return nil, cmnErrors.SaveUserProfileFailed()
+		}
+		log.Infof("%s, daily reward collected successfully for address %s, tokens: %d", task.Request.RequestUUID, requestAddress, dailyRewardTokens)
+		return task.Response, nil
+	}
+
+	// Email 流程：直接按 Email 查询/更新（不通过 Email 解析 Address）
+	collected, err := db.HasCollectedDailyRewardByEmail(requestEmail)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
+		log.Errorf("%s, failed to check daily reward collection for email %s: %v", task.Request.RequestUUID, requestEmail, err)
+		return nil, cmnErrors.GetUserProfileFailed(requestEmail)
 	}
-
-	// 如果已经领取过今日奖励，返回错误
 	if collected {
-		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, lowercaseAddress)
+		log.Errorf("%s, user %s has already collected daily reward today (email)", task.Request.RequestUUID, requestEmail)
 		return nil, cmnErrors.ActionError("Daily reward already collected")
 	}
 
-	// 获取用户档案（仅确保用户存在）
-	_, err = db.GetUserProfileByAddress(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
+	// 确保用户存在（按邮箱）
+	if _, err = db.GetUserProfileByEmail(requestEmail); err != nil {
+		log.Errorf("%s, failed to get user profile for email %s: %v", task.Request.RequestUUID, requestEmail, err)
+		return nil, cmnErrors.GetUserProfileFailed(requestEmail)
 	}
 
-	// 从配置文件获取每日奖励token数量
-	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
-
-	// 更新/创建用户的 Token 记录
-	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.OperateDbFailed()
-	}
-
-	if userToken == nil {
-		userToken = &dao.UserToken{
-			WalletAddress: lowercaseAddress,
-			Points:        0,
-			TokenAmount:   dailyRewardTokens,
-		}
-	} else {
-		userToken.TokenAmount += dailyRewardTokens
-	}
-
-	err = db.SaveUserToken(*userToken)
-	if err != nil {
-		log.Errorf("%s, failed to save user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.OperateDbFailed()
-	}
-
-	// 更新用户每日奖励领取时间
-	err = db.UpdateDailyRewardCollection(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to update daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
+	// 目前Email 模式下仅更新领取时间，还没有发放token）
+	if err = db.UpdateDailyRewardCollectionByEmail(requestEmail); err != nil {
+		log.Errorf("%s, failed to update daily reward collection for email %s: %v", task.Request.RequestUUID, requestEmail, err)
 		return nil, cmnErrors.SaveUserProfileFailed()
 	}
-
-	log.Infof("%s, daily reward collected successfully for address %s, tokens: %d", task.Request.RequestUUID, lowercaseAddress, dailyRewardTokens)
+	log.Infof("%s, daily reward collected successfully for email %s (no token distribution)", task.Request.RequestUUID, requestEmail)
 	return task.Response, nil
 }

@@ -36,11 +36,8 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 		switch authType {
 		case api.COOKIEAUTH:
 			session := sessions.Default(c)
-			sessionID := session.ID()
-			log.Debugf("Session ID: %s (Client IP: %s)", sessionID, c.ClientIP())
-			//从服务器的会话（session）中查找该 Cookie 是否存在。如果 Cookie 不存在或无效，返回错误响应，表示认证失败。
-			addr := session.Get(api.SESSION_ADDR_KEY)
-			if addr == nil {
+			userStr := session.Get(api.SESSION_USER_KEY)
+			if userStr == nil {
 				res := api.MakeErrorResponse(errors.LoginCookieInvalid(""))
 				res.SetSession(requestUUID)
 				res.SetAction(action + "Response")
@@ -51,9 +48,25 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 				return
 			}
 
-			//add addr to params 将会话中的地址信息 addr 存入请求参数中，替代原来请求中的Address（可能是假的）
-			//地址不在request里提供，而是根据cookie在redis里查
-			(*params)["Address"] = addr.(string)
+			// decode user json
+			log.Infof("userStr: %s", userStr.(string))
+			user, err := api.LoginUserFromJSON(userStr.(string))
+			if err != nil || user == nil {
+				res := api.MakeErrorResponse(errors.LoginCookieInvalid("invalid user session"))
+				res.SetSession(requestUUID)
+				res.SetAction(action + "Response")
+				resJson, _ := json.Marshal(res)
+				log.Infof("%s Send response---> client %s, %s", requestUUID, c.ClientIP(), string(resJson))
+				c.Abort()
+				c.JSON(http.StatusUnauthorized, res)
+				return
+			}
+			log.Infof("user: %+v", user)
+			// 注入身份字段，兼容钱包与邮箱
+			(*params)["Address"] = user.Address
+			(*params)["Email"] = user.Email
+
+			log.Infof("params: %+v", *params)
 		}
 
 		// 继续处理请求
