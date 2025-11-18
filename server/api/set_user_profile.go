@@ -19,10 +19,9 @@ func init() {
 
 type SetUserProfileRequest struct {
 	BaseRequest
-	Name    string `mapstructure:"Name" validate:"required,max=42"`
-	Avatar  string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
-	Address string `mapstructure:"Address"`
-	Email   string `mapstructure:"Email"`
+	Name   string `mapstructure:"Name" validate:"required,max=42"`
+	Avatar string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	UserID string `mapstructure:"UserID" validate:"required"`
 }
 
 type SetUserProfileResponse struct {
@@ -80,22 +79,10 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		err         error
 	)
 	log.Infof("%s, set user profile request: %+v", task.Request.RequestUUID, task.Request)
-	if task.Request.Address != "" {
-		lowercaseAddress := strings.ToLower(task.Request.Address)
-		userProfile, err = db.GetUserProfileByAddress(lowercaseAddress)
-		if err != nil {
-			log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-			return nil, errors.GetUserProfileFailed(lowercaseAddress)
-		}
-	} else if task.Request.Email != "" {
-		userProfile, err = db.GetUserProfileByEmail(task.Request.Email)
-		if err != nil {
-			log.Errorf("%s, failed to get user profile for email %s: %v", task.Request.RequestUUID, task.Request.Email, err)
-			return nil, errors.GetUserProfileFailed(task.Request.Email)
-		}
-	} else {
-		log.Errorf("%s, no address/email found in request", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
+	userProfile, err = db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	if err != nil || userProfile == nil {
+		log.Errorf("%s, failed to get user profile by user_id=%s: %v", task.Request.RequestUUID, task.Request.UserID, err)
+		return nil, errors.GetUserProfileFailed(task.Request.UserID)
 	}
 
 	// 更新用户档案
@@ -119,6 +106,6 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		return nil, errors.SaveUserProfileFailed()
 	}
 
-	log.Infof("%s, user profile updated successfully for user id %s", task.Request.RequestUUID, userProfile.UserID.String())
+	log.Infof("%s, user profile updated successfully for user id %d", task.Request.RequestUUID, userProfile.UserID)
 	return task.Response, nil
 }

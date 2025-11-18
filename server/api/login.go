@@ -161,10 +161,18 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 
 	var refreshToken string
 	//2 generate refresh token for user(addr)
-	user := &LoginUser{Type: LOGIN_TYPE_ADDR, Address: task.Request.Address}
+	// 先确保/获取用户档案，得到 user_id
+	var userIDStr string
+	if task.Request.Address != "" {
+		lowercaseAddress := strings.ToLower(task.Request.Address)
+		profile, _ := db.GetOrCreateUserProfile(lowercaseAddress)
+		if profile != nil {
+			userIDStr = fmt.Sprintf("%d", profile.UserID)
+		}
+	}
 	err = withRetry(10, func(retryTime int) error {
 		var saveErr error
-		refreshToken, saveErr = SaveRefreshTokenForUser(user)
+		refreshToken, saveErr = SaveRefreshTokenForUserId(userIDStr)
 		return saveErr
 	})
 	if err != nil {
@@ -172,18 +180,9 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 		return nil, err
 	}
 
-	// 创建用户档案，用户名用地址
-	if task.Request.Address != "" {
-		// 将地址转换为小写
-		lowercaseAddress := strings.ToLower(task.Request.Address)
-		_, _ = db.GetOrCreateUserProfile(lowercaseAddress)
-	}
-
 	//3 set user to session object
-	if task.Request.Address != "" {
-		if userJSON, e := user.ToJSON(); e == nil {
-			session.Set(SESSION_USER_KEY, userJSON)
-		}
+	if userIDStr != "" {
+		session.Set(SESSION_USER_KEY, userIDStr)
 	}
 	// 删除一次性的nonce，退出当前登录需要重新生成nonce，之前的session-id无法再使用，会慢慢过期
 	session.Delete(key)

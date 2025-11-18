@@ -72,7 +72,7 @@ func (s *Service) GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse,
 		log.Error("GetPlayerToken failed, err: ", err)
 		return nil, err
 	}
-	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken, walletAddress), nil
 }
 
 func (s *Service) GameResultSettlement(event *types.GameCompletedEvent) error {

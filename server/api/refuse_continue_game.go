@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -21,7 +22,7 @@ type RefuseContinueGameRequest struct {
 	BaseRequest
 	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	Address     string `mapstructure:"Address"`
+	UserID      string `mapstructure:"UserID" validate:"required"`
 }
 
 // RefuseContinueGameResponse 响应结构体
@@ -73,13 +74,14 @@ func NewRefuseContinueGameTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 通过 UserID 解析玩家地址
+	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "Failed to get player address by user id"
 		return task.Response, nil
 	}
+	address := profile.Address
 
 	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
@@ -102,7 +104,7 @@ func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
 		LastGameID: uint32(task.Request.GameID),
 	}
 
-	_, err := rpcClient.RefuseContinueGame(context.Background(), refuseContinueGameReq)
+	_, err = rpcClient.RefuseContinueGame(context.Background(), refuseContinueGameReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer RefuseContinueGame failed: " + err.Error()

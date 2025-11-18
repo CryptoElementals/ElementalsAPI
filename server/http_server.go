@@ -299,34 +299,40 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
 		// 获取或创建用户档案（邮箱已存在则直接视为登录）
-		if _, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name); err != nil {
+		userProfile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
 			return
 		}
-
-		user := &api.LoginUser{Type: api.LOGIN_TYPE_EMAIL, Email: payload.Email}
-		b, _ := json.Marshal(user)
-		session.Set(api.SESSION_USER_KEY, string(b))
+		userIDStr := fmt.Sprintf("%d", userProfile.UserID)
+		session.Set(api.SESSION_USER_KEY, userIDStr)
 		_ = session.Save()
 		// issue refresh token
-		token, err := api.SaveRefreshTokenForUser(user)
+		token, err := api.SaveRefreshTokenForUserId(userIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
 			return
 		}
-		// 重定向前端
-		if cfg.GoogleFrontendURL == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "google-frontend-url not configured"})
+		// 生成短期code（5分钟），映射到refresh_token；重定向时仅携带code
+		tempCode, err := api.SaveTempCodeForRefreshToken(token, 300)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue temp code failed"})
 			return
 		}
-		redirectURL := cfg.GoogleFrontendURL
-		// 将 refresh token 通过 query 参数返回（code=refresh_token）
-		if strings.Contains(redirectURL, "?") {
-			redirectURL = redirectURL + "&code=" + url.QueryEscape(token)
-		} else {
-			redirectURL = redirectURL + "?code=" + url.QueryEscape(token)
+		// 重定向，并在 URL 参数中附带 code
+		if cfg.GoogleFrontendURL == "" {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "frontend redirect url not configured"})
+			return
 		}
-		c.Redirect(http.StatusFound, redirectURL)
+		u, err := url.Parse(cfg.GoogleFrontendURL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid frontend redirect url"})
+			return
+		}
+		q := u.Query()
+		q.Set("code", tempCode)
+		u.RawQuery = q.Encode()
+		c.Redirect(http.StatusFound, u.String())
 		return
 	}
 }

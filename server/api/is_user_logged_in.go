@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -19,6 +20,7 @@ type IsUserLoggedInRequest struct {
 type IsUserLoggedInResponse struct {
 	BaseResponse
 	UserLoggedIn bool   `json:"UserLoggedIn"`
+	UserID       string `json:"UserID,omitempty"`
 	Address      string `json:"Address,omitempty"`
 	Email        string `json:"Email,omitempty"`
 }
@@ -72,20 +74,28 @@ func (task *IsUserLoggedInTask) Run(c *gin.Context) (Response, error) {
 	refreshToken := task.Request.RefreshToken
 
 	// 验证 RefreshToken 是否有效
-	user, err := getUserByRefreshToken(refreshToken)
+	userID, err := getUserIdByRefreshToken(refreshToken)
 	if err != nil {
 		// RefreshToken 无效或过期
 		log.Infof("%s, refresh token invalid or expired: %s", task.Request.RequestUUID, refreshToken)
 		task.Response.UserLoggedIn = false
+		task.Response.UserID = ""
 		task.Response.Address = ""
 		task.Response.Email = ""
 		return task.Response, nil
 	}
 
-	// RefreshToken 有效，钱包/邮箱已登录
-	log.Infof("%s, user logged in: %s/%s", task.Request.RequestUUID, user.Type, user.Address)
+	// RefreshToken 有效，基于 user_id 查用户档案，返回 Address/Email
+	profile, err := db.GetUserProfileByUserID(userID)
+	if err != nil || profile == nil {
+		log.Infof("%s, user profile not found for user_id: %s", task.Request.RequestUUID, userID)
+		task.Response.UserLoggedIn = false
+		return task.Response, nil
+	}
+	log.Infof("%s, user logged in: user_id=%s addr=%s email=%s", task.Request.RequestUUID, userID, profile.Address, profile.Email)
 	task.Response.UserLoggedIn = true
-	task.Response.Address = user.Address
-	task.Response.Email = user.Email
+	task.Response.UserID = userID
+	task.Response.Address = profile.Address
+	task.Response.Email = profile.Email
 	return task.Response, nil
 }

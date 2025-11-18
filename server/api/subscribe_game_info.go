@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/events"
@@ -25,7 +26,7 @@ type SubscribeGameInfoRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`     // 临时地址
 	Duration    int    `mapstructure:"Duration" validate:"min=1,max=86400"` // 连接持续时间（秒）
-	Address     string `mapstructure:"Address"`
+	UserID      string `mapstructure:"UserID" validate:"required"`
 }
 
 // SubscribeGameInfoResponse 响应结构体
@@ -87,11 +88,12 @@ func NewSubscribeGameInfoTask(data *map[string]interface{}) (Task, error) {
 
 // Run 实现事件驱动的 SSE 流式响应
 func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
-		return nil, fmt.Errorf("failed to get player address")
+	// 通过 UserID 解析玩家地址
+	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	if err != nil || profile == nil || profile.Address == "" {
+		return nil, fmt.Errorf("failed to get player address by user id")
 	}
+	address := profile.Address
 
 	// 将地址转换为小写，确保与数据库中存储的格式一致
 	address = strings.ToLower(address)

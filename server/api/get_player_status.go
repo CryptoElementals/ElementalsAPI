@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -21,7 +22,7 @@ func init() {
 type GetPlayerStatusRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	Address     string `mapstructure:"Address"`
+	UserID      string `mapstructure:"UserID" validate:"required"`
 }
 
 // GetPlayerStatusResponse 响应结构体
@@ -78,11 +79,12 @@ func NewGetPlayerStatusTask(data *map[string]interface{}) (Task, error) {
 
 // Run 执行任务
 func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
-		return nil, fmt.Errorf("failed to get player address")
+	// 通过 UserID 解析玩家地址
+	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	if err != nil || profile == nil || profile.Address == "" {
+		return nil, fmt.Errorf("failed to get player address by user id")
 	}
+	address := profile.Address
 
 	// 统一为小写
 	address = strings.ToLower(address)

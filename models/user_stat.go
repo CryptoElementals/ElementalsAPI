@@ -2,7 +2,7 @@ package dao
 
 type UserStat struct {
 	BaseModel
-	Address            string `gorm:"type:varchar(42);primaryKey;not null" json:"address"`
+	UserID             uint64 `gorm:"type:bigint;uniqueIndex;not null" json:"user_id"`
 	TotalGameCount     uint   `gorm:"default:0" json:"total_game_count"`
 	WinCount           uint   `gorm:"default:0" json:"win_count"`
 	LoseCount          uint   `gorm:"default:0" json:"lose_count"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ type ConfirmBattleRequest struct {
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`
 	Round       uint   `mapstructure:"Round" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	Address     string `mapstructure:"Address"`
+	UserID      string `mapstructure:"UserID" validate:"required"`
 }
 
 // ConfirmBattleResponse 响应结构体
@@ -74,13 +75,14 @@ func NewConfirmBattleTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 通过 UserID 解析玩家地址
+	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "Failed to get player address by user id"
 		return task.Response, nil
 	}
+	address := profile.Address
 
 	// 统一将地址转为小写
 	address = strings.ToLower(address)
@@ -103,7 +105,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 		},
 	}
 
-	_, err := rpcClient.ConfirmBattle(context.Background(), req)
+	_, err = rpcClient.ConfirmBattle(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer ConfirmBattle failed: " + err.Error()
