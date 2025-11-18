@@ -202,8 +202,8 @@ func (s *Service) GetBattleInfo(ctx context.Context, gameid uint32, roundNum uin
 	return s.gameInfoGetter.GetBattleInfo(ctx, gameid, roundNum)
 }
 
-func (s *Service) GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error) {
-	userToken, err := db.GetPlayerToken(s.ctx, walletAddress)
+func (s *Service) GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error) {
+	userToken, err := db.GetPlayerToken(s.ctx, playerId)
 	if err != nil {
 		log.Error("GetPlayerToken failed, err: ", err)
 		return nil, err

@@ -20,10 +20,10 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 	return Get().Save(&tokens).Error
 }
 
-func LockUserToken(ctx context.Context, address string, tempAddress string, tokenAmount int32) (err error) {
+func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			if err != gorm.ErrRecordNotFound {
 				return err
@@ -90,13 +90,13 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 	})
 }
 
-func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddresses []string, tokenAmount int32, gameID uint) (err error) {
+func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddresses []string, tokenAmount int32, gameID uint) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
-		for i := range addresses {
-			address := addresses[i]
+		for i := range playerIds {
+			playerId := playerIds[i]
 			tempAddress := tempAddresses[i]
 			userToken := &dao.UserToken{}
-			err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+			err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
 				if err != gorm.ErrRecordNotFound {
 					return err
@@ -145,10 +145,10 @@ func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddre
 	})
 }
 
-func UnlockUserToken(ctx context.Context, address string, tempAddress string) (err error) {
+func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}
@@ -227,9 +227,9 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 	})
 }
 
-func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error) {
+func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error) {
 	var userToken dao.UserToken
-	err := Get().Where("wallet_address = ?", address).Preload("LockedTokens").First(&userToken).Error
+	err := Get().Where("player_id = ?", playerId).Preload("LockedTokens").First(&userToken).Error
 	if err != nil {
 		return nil, err
 	}
@@ -244,10 +244,10 @@ func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error)
 	return &userToken, nil
 }
 
-func SetLockedTokenGameID(ctx context.Context, walletAddress, temporaryAddress string, gameID uint) error {
+func SetLockedTokenGameID(ctx context.Context, playerId int64, temporaryAddress string, gameID uint) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
-		err := tx.Where("wallet_address = ?", walletAddress).Preload("LockedTokens").First(userToken).Error
+		err := tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}

@@ -81,7 +81,7 @@ func (s *Rpc) SubmitTransactions(ctx context.Context, req *proto.TransactionBatc
 }
 
 func (s *Rpc) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {
-	return s.playerHandler.GetPlayerToken(req.WalletAddress)
+	return s.playerHandler.GetPlayerToken(req.Id)
 }
 func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*proto.IsPlayerInQueueResponse, error) {
 	addr := types.PlayerAddress{}
@@ -109,13 +109,15 @@ func (s *Rpc) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*proto.Time
 func (s *Rpc) SubmitPlayerCommitment(ctx context.Context, req *proto.SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.Address)
-	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCommitment(addr, req.RoundNumber, req.Commitment, req.CommitmentIndex, req.Signature, uint(req.GameID))
+	// Use TurnNumber as commitmentIndex since proto doesn't have CommitmentIndex field
+	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCommitment(addr, req.RoundNumber, req.Commitment, req.TurnNumber, req.Signature, uint(req.GameID))
 }
 
 func (s *Rpc) SubmitPlayerCard(ctx context.Context, req *proto.SubmitPlayerCardRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.Address)
-	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCard(addr, req.RoundNumber, req.Salt, uint(req.Card), req.CardIndex, req.Signature, uint(req.GameID))
+	// Use TurnNumber as cardIndex since proto doesn't have CardIndex field
+	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCard(addr, req.RoundNumber, req.Salt, uint(req.Card), req.TurnNumber, req.Signature, uint(req.GameID))
 }
 
 type ChainRequestHandler interface {
@@ -133,7 +135,7 @@ type PlayerRequestHandler interface {
 
 	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
-	GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error)
+	GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error)
 	GetTimeoutConfig() (*proto.TimeoutConfig, error)
 	SubmitPlayerCommitment(address types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error
 	SubmitPlayerCard(address types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error
