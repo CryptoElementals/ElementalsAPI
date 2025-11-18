@@ -125,7 +125,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
-			RoundNumber:   evt.RoundInfo.RoundNumber + 1,
+			RoundNumber:   evt.RoundNumber + 1,
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -136,7 +136,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
-			RoundNumber:   evt.RoundInfo.RoundNumber + 1,
+			RoundNumber:   evt.RoundNumber + 1,
 			PlayerAddress: playerAddress2,
 		}))
 		return nil

@@ -206,6 +206,7 @@ func TestPlayerEventHandler(t *testing.T) {
 	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.CommitmentsOnChainEvent{
 		GameID:      uint(gameID),
 		RoundNumber: 0,
+		TurnNumber:  1,
 	}))
 	evt = <-player1Chan
 	require.EqualExportedValues(t, &proto.Event{
@@ -213,12 +214,8 @@ func TestPlayerEventHandler(t *testing.T) {
 	}, evt)
 
 	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.RoundCompletedEvent{
-		GameID: uint(gameID),
-		RoundInfo: &dao.Round{
-			GameID:      uint(gameID),
-			RoundNumber: 0,
-			Status:      proto.RoundStatus_ROUND_COMPLETED,
-		},
+		GameID:      uint(gameID),
+		RoundNumber: 0,
 	}))
 
 	// will receive two events in a row

@@ -19,6 +19,7 @@ type GameInfoGetter interface {
 	GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 	GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error)
+	SyncGamePhase(address types.PlayerAddress) error
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
 	HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error
 	HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error
@@ -254,6 +255,8 @@ func (s *Service) addPlayer(address types.PlayerAddress) error {
 	player := NewPlayer(s.ctx, address, s.pub, s.workerManager)
 	s.players[address] = player
 	player.createSelf()
+	// Sync game phase when player worker is created
+	s.gameInfoGetter.SyncGamePhase(address)
 	return nil
 }
 

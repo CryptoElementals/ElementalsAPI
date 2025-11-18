@@ -57,6 +57,8 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		p.handleGameCompletedEvent(p.ctx, evt)
 	case *types.ContinueCanceledEvent:
 		p.handleContinueCanceledEvent(ctx, evt)
+	case *types.GamePhaseSyncEvent:
+		p.handleGamePhaseSyncEvent(p.ctx, evt)
 	}
 	return nil
 }
@@ -137,7 +139,7 @@ func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundRead
 }
 
 func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.CommitmentsOnChainEvent) error {
-	log.Debugw("publish event", "event type", proto.EventType_TYPE_COMMITMENTS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID)
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_COMMITMENTS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID, "round number", evt.RoundNumber, "turn number", evt.TurnNumber)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -146,6 +148,7 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 				CommitmentsOnChain: &proto.CommitmentsOnChain{
 					GameId:   uint32(evt.GameID),
 					RoundNum: evt.RoundNumber,
+					CardNum:  evt.TurnNumber, // CardNum in proto corresponds to TurnNumber
 				},
 			},
 		},
@@ -154,7 +157,7 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 }
 
 func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) error {
-	log.Debugw("publish event", "event type", proto.EventType_TYPE_CARDS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID)
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_CARDS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID, "round number", evt.RoundNumber, "turn number", evt.TurnNumber)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -163,6 +166,7 @@ func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOn
 				CardsOnChain: &proto.CardsOnChain{
 					GameId:   uint32(evt.GameID),
 					RoundNum: evt.RoundNumber,
+					// Note: CardsOnChain proto doesn't have TurnNumber field, but event includes it for internal use
 				},
 			},
 		},
@@ -185,13 +189,7 @@ func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.Con
 }
 
 func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.RoundCompletedEvent) error {
-	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID)
-
-	// Convert dao.Round to proto.Round (rpc.Round)
-	var roundInfo *proto.Round
-	if evt.RoundInfo != nil {
-		roundInfo = conversion.DbGameRoundToProtoGameRound(evt.RoundInfo)
-	}
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID, "round number", evt.RoundNumber)
 
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
@@ -199,8 +197,8 @@ func (p *Player) handleRoundCompletedEvent(ctx context.Context, evt *types.Round
 			Type: proto.EventType_TYPE_ROUND_COMPLETE,
 			Event: &proto.Event_RoundCompleted{
 				RoundCompleted: &proto.RoundCompleted{
-					GameId:    uint32(evt.GameID),
-					RoundInfo: roundInfo,
+					GameId:      uint32(evt.GameID),
+					RoundNumber: evt.RoundNumber,
 				},
 			},
 		},
@@ -212,35 +210,12 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 	if evt.GameInfo == nil {
 		return errors.New("game info is nil")
 	}
-	// Get the last round from GameInfo if available
-	var roundInfo *proto.Round
-	if len(evt.GameInfo.Rounds) > 0 {
-		// Get the last round
-		lastRound := evt.GameInfo.Rounds[len(evt.GameInfo.Rounds)-1]
-		roundInfo = conversion.DbGameRoundToProtoGameRound(lastRound)
-	}
-
-	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID)
-	p.publisher.Publish(ctx, &proto.PublishRequest{
-		Topic: p.address.String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_ROUND_COMPLETE,
-			Event: &proto.Event_RoundCompleted{
-				RoundCompleted: &proto.RoundCompleted{
-					GameId:    uint32(evt.GameID),
-					RoundInfo: roundInfo,
-				},
-			},
-		},
-	})
 
 	// Convert dao.GameResult to battle.GameResult
 	var battleGameResult *proto.GameResult
 	if evt.GameInfo.GameResult != nil {
-		if evt.GameInfo.GameResult != nil {
-			battleGameResult = conversion.DbGameResultToProtoGameResult(evt.GameInfo.GameResult)
-			battleGameResult.GameContinueTimeout = uint64(evt.GameInfo.GameArgs.ContinueTimeout)
-		}
+		battleGameResult = conversion.DbGameResultToProtoGameResult(evt.GameInfo.GameResult)
+		battleGameResult.GameContinueTimeout = uint64(evt.GameInfo.GameArgs.ContinueTimeout)
 	}
 
 	log.Debugw("publish event", "event type", proto.EventType_TYPE_GAME_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID)
@@ -253,6 +228,20 @@ func (p *Player) handleGameCompletedEvent(ctx context.Context, evt *types.GameCo
 					GameId:     uint32(evt.GameID),
 					GameResult: battleGameResult,
 				},
+			},
+		},
+	})
+	return nil
+}
+
+func (p *Player) handleGamePhaseSyncEvent(ctx context.Context, evt *types.GamePhaseSyncEvent) error {
+	log.Debugw("publish game phase sync event", "receiver", p.address.String())
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_GAME_PHASE_SYNC,
+			Event: &proto.Event_GamePhase{
+				GamePhase: evt.GamePhase,
 			},
 		},
 	})

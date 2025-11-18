@@ -112,6 +112,15 @@ type GetBattleInfoResponse struct {
 type GetGamePhaseRequest struct {
 }
 
+type SyncGamePhaseRequest struct {
+	Receiver *PlayerAddress
+}
+
 // GetGameResultRequest is a request event to get game result
 type GetGameResultRequest struct {
+}
+
+// GamePhaseSyncEvent is an event that sends game phase directly to player worker
+type GamePhaseSyncEvent struct {
+	GamePhase *proto.GamePhase
 }

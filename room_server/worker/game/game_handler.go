@@ -22,15 +22,14 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 		g.handleTimerEvent(evt)
 		return nil
 	case *types.GetGameInfoRequest:
-		var _ *types.GetGameInfoRequest = evt
 		return g.handleGetGameInfoRequest(event)
 	case *types.GetBattleInfoRequest:
 		return g.handleGetBattleInfoRequest(event, evt)
 	case *types.GetGamePhaseRequest:
-		var _ *types.GetGamePhaseRequest = evt
 		return g.handleGetGamePhaseRequest(event)
+	case *types.SyncGamePhaseRequest:
+		return g.handleSyncGamePhaseRequest(event, evt)
 	case *types.GetGameResultRequest:
-		var _ *types.GetGameResultRequest = evt
 		return g.handleGetGameResultRequest(event)
 	case *types.SubmitPlayerCommitment:
 		return g.handleSubmitPlayerCommitment(evt)
@@ -264,9 +263,12 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	// If all players have submitted this commitment index, allow card submission for this index
 	if g.haveAllPlayersSubmittedCommitment(commitmentIdx) {
 		// Send CommitmentsOnChain event to notify players they can submit cards for this index
+		// commitmentIdx is 0-based, but TurnNumber is 1-based (1, 2, 3)
+		turnNumber := commitmentIdx + 1
 		commitmentsOnChainEvt := types.NewEvent(g.workerID(), &types.CommitmentsOnChainEvent{
 			GameID:      g.gameInfo.ID,
 			RoundNumber: evt.RoundNumber,
+			TurnNumber:  turnNumber,
 		})
 		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
 
@@ -378,12 +380,8 @@ func (g *Game) handleTurnEnd() error {
 		}
 	}
 
-	// Send events to both players (CardsOnChainEvent and TurnCompletedEvent)
+	// Send event to both players with TurnCompletedEvent
 	g.sendEventsToAllPlayers(
-		types.NewEvent(g.workerID(), &types.CardsOnChainEvent{
-			GameID:      g.gameInfo.ID,
-			RoundNumber: roundNumber,
-		}),
 		types.NewEvent(g.workerID(), &types.TurnCompletedEvent{
 			GameID:         g.gameInfo.ID,
 			RoundNumber:    roundNumber,
@@ -423,8 +421,8 @@ func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 	// Start a new round
 	g.currentRound.round.Status = proto.RoundStatus_ROUND_COMPLETED
 	roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
-		GameID:    g.gameInfo.ID,
-		RoundInfo: g.currentRound.round,
+		GameID:      g.gameInfo.ID,
+		RoundNumber: g.currentRound.round.RoundNumber,
 	})
 	g.sendEventsToAllPlayers(roundCompletedEvt)
 
@@ -548,6 +546,21 @@ func (g *Game) handleGetGamePhaseRequest(event *types.Event) error {
 	// Send response through AckChan
 	if event.AckChan != nil {
 		event.AckChan <- gamePhase
+	}
+	return nil
+}
+
+// handleSyncGamePhaseRequest handles the SyncGamePhaseRequest event and sends game phase directly to receiver
+func (g *Game) handleSyncGamePhaseRequest(event *types.Event, reqEvt *types.SyncGamePhaseRequest) error {
+	// Get the game phase (lock is already held by Handle)
+	gamePhase := conversion.DbGameToProtoGamePhase(g.gameInfo, g.currentRound.round)
+
+	// Send game phase directly to receiver via workerManager
+	if reqEvt.Receiver != nil {
+		syncEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GamePhaseSyncEvent{
+			GamePhase: gamePhase,
+		})
+		g.workerMangerService.SendEvent(reqEvt.Receiver.String(), syncEvt)
 	}
 	return nil
 }

@@ -132,7 +132,7 @@ message CardsOnChain {
 
 message RoundCompleted {
   uint32 GameId = 1;
-  rpc.Round RoundInfo = 2;
+  uint32 RoundNumber = 2;
 }
 
 message GameCompleted {

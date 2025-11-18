@@ -134,6 +134,11 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 	return s.gameManager.GetGamePhase(address)
 }
 
+// SyncGamePhase sends the current game phase directly to the player worker
+func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
+	return s.gameManager.SyncGamePhase(address)
+}
+
 // HandleSubmitPlayerCommitment handles a player commitment submission
 func (s *Service) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
 	return s.gameManager.HandleSubmitPlayerCommitment(evt)
