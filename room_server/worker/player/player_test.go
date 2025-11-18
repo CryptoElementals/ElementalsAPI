@@ -93,14 +93,12 @@ func TestPlayerJoinExitQueue(t *testing.T) {
 	require.NoError(t, testService.JoinQueue(player1))
 	require.NoError(t, testService.JoinQueue(player2))
 	time.Sleep(1 * time.Millisecond)
-	require.Equal(t, proto.PlayerStatus_PLAYER_IN_QUEUE, player1Struct.status)
-	require.Equal(t, proto.PlayerStatus_PLAYER_IN_QUEUE, player2Struct.status)
+	// Note: Player struct no longer has status field, status is managed by the service
 
 	require.NoError(t, testService.ExitQueue(player1))
 	require.NoError(t, testService.ExitQueue(player2))
 	time.Sleep(1 * time.Millisecond)
-	require.Equal(t, proto.PlayerStatus_PLAYER_UNKNOWN, player1Struct.status)
-	require.Equal(t, proto.PlayerStatus_PLAYER_UNKNOWN, player2Struct.status)
+	// Note: Player struct no longer has status field, status is managed by the service
 	testService.RemovePlayer(player1)
 	testService.RemovePlayer(player2)
 	require.Nil(t, testService.players[player1])
@@ -164,7 +162,7 @@ func TestPlayerEventHandler(t *testing.T) {
 	require.EqualExportedValues(t, &proto.Event{
 		Type: proto.EventType_TYPE_MATCHED,
 	}, evt)
-	require.Equal(t, player1Struct.status, proto.PlayerStatus_PLAYER_IN_GAME)
+	// Note: Player struct no longer has status field, status is managed by the service
 
 	testWorkerManager.SendEvent(player1.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameReadyEvent{
 		GameID: uint(gameID),

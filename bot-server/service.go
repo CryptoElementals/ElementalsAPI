@@ -23,24 +23,21 @@ type Service struct {
 	wg           sync.WaitGroup
 }
 
-func parseWallet(path config.WalletPath) (*playerWallet, error) {
-	accountWallet, err := wallet.LoadWallet(path.AccountWallet)
-	if err != nil {
-		return nil, err
-	}
+func parseWallet(path config.WalletInfo, rpcClient *rpc.Client, ctx context.Context) (*playerWallet, error) {
 	tempWallet, err := wallet.LoadWallet(path.TemporaryWallet)
 	if err != nil {
 		return nil, err
 	}
+
 	return &playerWallet{
-		tempWallet:    tempWallet,
-		accountWallet: accountWallet,
+		playerId:   path.PlayerId,
+		tempWallet: tempWallet,
 	}, nil
 }
 
 func NewService(
 	ctx context.Context,
-	walletPaths []config.WalletPath,
+	walletInfos []config.WalletInfo,
 	chainEndpoint string,
 	roomServerEndpoint string,
 	mimicPlayers bool,
@@ -58,10 +55,10 @@ func NewService(
 	if err != nil {
 		return nil, err
 	}
-	bots := make([]*Bot, 0, len(walletPaths))
-	addresses := make([]*types.PlayerAddress, 0, len(walletPaths))
-	for _, path := range walletPaths {
-		p, err := parseWallet(path)
+	bots := make([]*Bot, 0, len(walletInfos))
+	addresses := make([]*types.PlayerAddress, 0, len(walletInfos))
+	for _, walletInfo := range walletInfos {
+		p, err := parseWallet(walletInfo, rpcClient, ctx)
 		if err != nil {
 			return nil, err
 		}

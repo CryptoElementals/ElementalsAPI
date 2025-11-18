@@ -56,7 +56,6 @@ func (ps playerState) String() string {
 
 type GameContext struct {
 	ctx             context.Context
-	wallet          *wallet.Wallet
 	temporaryWallet *wallet.Wallet
 	chainClient     *ethclient.Client
 	rpcClient       *rpc.Client
@@ -77,7 +76,7 @@ type GameContext struct {
 	cardOnChainChan       chan struct{}
 }
 
-func NewGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*GameContext, error) {
+func NewGameContext(ctx context.Context, playerId int64, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*GameContext, error) {
 	chainId, err := chainClient.ChainID(ctx)
 	if err != nil {
 		return nil, err
@@ -89,8 +88,7 @@ func NewGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 	}
 	return &GameContext{
 		ctx:                   ctx,
-		myself:                types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
-		wallet:                wallet,
+		myself:                types.NewPlayerAddress(playerId, temporaryWallet.GetAddrHex()),
 		temporaryWallet:       temporaryWallet,
 		evtChan:               make(chan *proto.Event, 10),
 		errChan:               make(chan error, 10),
@@ -132,7 +130,7 @@ func (c *GameContext) Run() error {
 					c.lock.Lock()
 					c.gameID = uint(phase.PvPInfo.GameID)
 					for _, pp := range phase.Players {
-						player := types.NewPlayerAddress(pp.Address.WalletAddress, pp.Address.TemporaryAddress)
+						player := types.NewPlayerAddress(pp.Address.Id, pp.Address.TemporaryAddress)
 						c.players = append(c.players, player)
 					}
 					c.state = playerStateWaittingConfirm

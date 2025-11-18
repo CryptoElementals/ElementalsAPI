@@ -50,11 +50,11 @@ func init() {
 
 	gameRunCmd.Flags().StringVarP(&chainRpc, "chain-rpc", "c", "", "chain rpc endpoint")
 	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
-	gameRunCmd.Flags().StringVarP(&accountWalletPath, "account-wallet-path", "a", "", "account wallet path")
+	gameRunCmd.Flags().Int64VarP(&playerId, "player-id", "p", 0, "player ID")
 	gameRunCmd.Flags().StringVarP(&tempWalletPath, "temp-wallet-path", "t", "", "temp wallet path")
 	gameRunCmd.MarkFlagRequired("chain-rpc")
 	gameRunCmd.MarkFlagRequired("room-server-endpoint")
-	gameRunCmd.MarkFlagRequired("account-wallet-path")
+	gameRunCmd.MarkFlagRequired("player-id")
 	gameRunCmd.MarkFlagRequired("temp-wallet-path")
 }
 
@@ -120,7 +120,6 @@ func (ps playerState) String() string {
 
 type gameContext struct {
 	ctx             context.Context
-	wallet          *wallet.Wallet
 	temporaryWallet *wallet.Wallet
 	chainClient     *ethclient.Client
 	rpcClient       *rpc.Client
@@ -139,7 +138,7 @@ type gameContext struct {
 	signalChan      chan struct{}
 }
 
-func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*gameContext, error) {
+func newGameContext(ctx context.Context, playerId int64, temporaryWallet *wallet.Wallet, chainClient *ethclient.Client, rpcClient *rpc.Client) (*gameContext, error) {
 	chainId, err := chainClient.ChainID(ctx)
 	if err != nil {
 		return nil, err
@@ -151,8 +150,7 @@ func newGameContext(ctx context.Context, wallet *wallet.Wallet, temporaryWallet 
 	}
 	return &gameContext{
 		ctx:             ctx,
-		myself:          types.NewPlayerAddress(wallet.GetAddrHex(), temporaryWallet.GetAddrHex()),
-		wallet:          wallet,
+		myself:          types.NewPlayerAddress(playerId, temporaryWallet.GetAddrHex()),
 		temporaryWallet: temporaryWallet,
 		evtChan:         make(chan *proto.Event, 10),
 		errChan:         make(chan error, 10),
@@ -192,7 +190,7 @@ func (c *gameContext) run() error {
 					c.lock.Lock()
 					c.gameID = uint(phase.PvPInfo.GameID)
 					for _, pp := range phase.Players {
-						player := types.NewPlayerAddress(pp.Address.WalletAddress, pp.Address.TemporaryAddress)
+						player := types.NewPlayerAddress(pp.Address.Id, pp.Address.TemporaryAddress)
 						c.players = append(c.players, player)
 					}
 					c.state = playerStateWaittingConfirm
@@ -452,18 +450,13 @@ func startGame() error {
 		return err
 	}
 	var wTemp *wallet.Wallet
-	var wAccount *wallet.Wallet
 	wTemp, err = wallet.LoadWallet(tempWalletPath)
 	if err != nil {
 		return err
 	}
 	fmt.Println("using temp account, address: ", wTemp.GetAddrHex())
-	wAccount, err = wallet.LoadWallet(accountWalletPath)
-	if err != nil {
-		return err
-	}
-	fmt.Println("using wallet account, address: ", wAccount.GetAddrHex())
-	gameContext, err := gameclient.NewGameContext(context.Background(), wAccount, wTemp, chainClient, client)
+	fmt.Println("using player ID: ", playerId)
+	gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, chainClient, client)
 	if err != nil {
 		return err
 	}

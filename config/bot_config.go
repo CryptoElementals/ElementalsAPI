@@ -5,8 +5,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-type WalletPath struct {
-	AccountWallet   string `mapstructure:"account-wallet"`
+type WalletInfo struct {
+	PlayerId        int64  `mapstructure:"player-id"`
 	TemporaryWallet string `mapstructure:"temporary-wallet"`
 }
 
@@ -14,7 +14,7 @@ type BotConfig struct {
 	LogCfg             log.Config   `mapstructure:"log"`
 	ChainCfg           ChainConfig  `mapstructure:"chain"`
 	RoomServerEndpoint string       `mapstructure:"room-server-endpoint"`
-	WalletPaths        []WalletPath `mapstructure:"wallet-paths"`
+	WalletInfos        []WalletInfo `mapstructure:"wallet-infos"`
 	MimicPlayers       bool         `mapstructure:"mimic-player"`
 }
 

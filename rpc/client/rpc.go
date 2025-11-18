@@ -91,9 +91,9 @@ func (c *RpcClient) RefuseContinueGame(ctx context.Context, addr *types.PlayerAd
 	return err
 }
 
-func (c *RpcClient) GetPlayerToken(ctx context.Context, walletAddress string) (*proto.GetPlayerTokenResponse, error) {
+func (c *RpcClient) GetPlayerToken(ctx context.Context, playerId int64) (*proto.GetPlayerTokenResponse, error) {
 	token, err := c.client.GetPlayerToken(ctx, &proto.GetPlayerTokenRequest{
-		WalletAddress: walletAddress,
+		Id: playerId,
 	})
 	if err != nil {
 		return nil, err
@@ -125,26 +125,26 @@ func (c *RpcClient) GetRoundTimeoutConfig(ctx context.Context) (*proto.TimeoutCo
 	return timeoutCfg, nil
 }
 
-func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error {
+func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, commitment []byte, turnNumber uint32, signature []byte, gameID uint) error {
 	_, err := c.client.SubmitPlayerCommitment(ctx, &proto.SubmitPlayerCommitmentRequest{
 		GameID:          uint32(gameID),
 		Address:         addr.ToProto(),
 		RoundNumber:     roundNumber,
 		Commitment:      commitment,
-		CommitmentIndex: commitmentIndex,
+		TurnNumber:      uint32(turnNumber),
 		Signature:       signature,
 	})
 	return err
 }
 
-func (c *RpcClient) SubmitPlayerCard(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error {
+func (c *RpcClient) SubmitPlayerCard(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, salt []byte, card uint, turnNumber uint32, signature []byte, gameID uint) error {
 	_, err := c.client.SubmitPlayerCard(ctx, &proto.SubmitPlayerCardRequest{
 		GameID:      uint32(gameID),
 		Address:     addr.ToProto(),
 		RoundNumber: roundNumber,
 		Salt:        salt,
 		Card:        uint32(card),
-		CardIndex:   cardIndex,
+		TurnNumber:  uint32(turnNumber),
 		Signature:   signature,
 	})
 	return err

@@ -13,7 +13,7 @@ type BotServer struct {
 }
 
 func NewBotServer(cfg *config.BotConfig) *BotServer {
-	svc, err := NewService(context.Background(), cfg.WalletPaths, cfg.ChainCfg.HttpRpc, cfg.RoomServerEndpoint, cfg.MimicPlayers)
+	svc, err := NewService(context.Background(), cfg.WalletInfos, cfg.ChainCfg.HttpRpc, cfg.RoomServerEndpoint, cfg.MimicPlayers)
 	if err != nil {
 		log.Fatalw("cannot init bot server", "err", err)
 	}
