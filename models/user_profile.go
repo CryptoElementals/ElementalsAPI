@@ -8,7 +8,7 @@ import (
 
 // UserProfile 用户档案表 - 存储用户基本信息
 type UserProfile struct {
-	UserID            int64      `gorm:"column:user_id;type:bigint;primaryKey" json:"user_id"`
+	PlayerID          int64      `gorm:"column:player_id;type:bigint;primaryKey" json:"player_id"`
 	Address           string     `gorm:"type:varchar(100)" json:"address"`
 	Email             string     `gorm:"type:varchar(200)" json:"email"`
 	Name              string     `gorm:"type:varchar(100);not null;uniqueIndex" json:"name"`
@@ -21,8 +21,8 @@ type UserProfile struct {
 
 // BeforeCreate 确保在创建记录时生成 UUID 主键
 func (u *UserProfile) BeforeCreate(tx *gorm.DB) (err error) {
-	if u.UserID == 0 {
-		u.UserID = generateSnowflakeID()
+	if u.PlayerID == 0 {
+		u.PlayerID = generateSnowflakeID()
 	}
 	return nil
 }

@@ -23,7 +23,7 @@ type ContinueGameRequest struct {
 	BaseRequest
 	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	UserID      string `mapstructure:"UserID" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // ContinueGameResponse 响应结构体
@@ -76,11 +76,11 @@ func NewContinueGameTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by user id"
+		task.Response.BaseResponse.Message = "Failed to get player address by player id"
 		return task.Response, nil
 	}
 	address := profile.Address
@@ -90,7 +90,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerToken(c.Request.Context(), profile.UserID)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user token information"
@@ -129,7 +129,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 
 	continueGameReq := &proto.ContinueGameRequest{
 		Player: &proto.PlayerAddress{
-			Id:               profile.UserID,
+			Id:               profile.PlayerID,
 			TemporaryAddress: tempAddress,
 		},
 		LastGameID: uint32(task.Request.GameID),

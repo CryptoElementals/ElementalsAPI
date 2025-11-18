@@ -22,7 +22,7 @@ type SurrenderRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`      // 游戏ID
-	UserID      string `mapstructure:"UserID" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // SurrenderResponse 响应结构体
@@ -80,10 +80,10 @@ func init() {
 
 // Run 执行任务
 func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
-		return nil, fmt.Errorf("failed to get player address by user id")
+		return nil, fmt.Errorf("failed to get player address by player id")
 	}
 	address := profile.Address
 
@@ -103,7 +103,7 @@ func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
 	req := &pb.SurrenderRequest{
 		GameID: task.Request.GameID,
 		Address: &pb.PlayerAddress{
-			Id:               profile.UserID,
+			Id:               profile.PlayerID,
 			TemporaryAddress: tempAddress,
 		},
 	}

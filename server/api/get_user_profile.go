@@ -21,12 +21,12 @@ func init() {
 
 type GetUserProfileRequest struct {
 	BaseRequest
-	UserID string `mapstructure:"UserID" validate:"required"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // UserInfo 用户信息结构体
 type UserInfo struct {
-	UserID             string            `json:"UserID"`
+	PlayerID           string            `json:"PlayerID"`
 	Address            string            `json:"Address"`
 	Email              string            `json:"Email"`
 	Name               string            `json:"Name"`
@@ -140,11 +140,11 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		userProfile *dao.UserProfile
 		err         error
 	)
-	userID := strings.TrimSpace(task.Request.UserID)
-	userProfile, err = db.GetUserProfileByUserID(userID)
+	playerID := strings.TrimSpace(task.Request.PlayerID)
+	userProfile, err = db.GetUserProfileByPlayerID(playerID)
 	if err != nil {
-		log.Errorf("%s, failed to get user profile by user_id=%s: %v", task.Request.RequestUUID, userID, err)
-		return nil, errors.GetUserProfileFailed(userID)
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, playerID, err)
+		return nil, errors.GetUserProfileFailed(playerID)
 	}
 	lookupAddress := strings.ToLower(strings.TrimSpace(userProfile.Address))
 
@@ -154,29 +154,29 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	tokenAmount := 0
 	totalGameCount := 0
 
-	// 统一基于 UserID 查询统计、代币、卡牌统计
-	if userStat, e := db.GetUserStatByUserID(userID); e == nil && userStat != nil {
+	// 统一基于 PlayerID 查询统计、代币、卡牌统计
+	if userStat, e := db.GetUserStatByPlayerID(playerID); e == nil && userStat != nil {
 		totalGameCount = int(userStat.TotalGameCount)
 		if userStat.TotalGameCount > 0 {
 			winningRate = float64(userStat.WinCount) / float64(userStat.TotalGameCount)
 			winningRate = math.Round(winningRate*100) / 100
 		}
 	} else if e != nil {
-		log.Errorf("%s, failed to get user stat by user_id=%s: %v", task.Request.RequestUUID, userID, e)
+		log.Errorf("%s, failed to get user stat by player_id=%s: %v", task.Request.RequestUUID, playerID, e)
 	}
 
-	if userToken, e := db.GetPlayerToken(c.Request.Context(), userProfile.UserID); e == nil && userToken != nil {
+	if userToken, e := db.GetPlayerToken(c.Request.Context(), userProfile.PlayerID); e == nil && userToken != nil {
 		points = int(userToken.Points)
 		tokenAmount = int(userToken.TokenAmount)
 	}
 
 	cardStatInfo := []db.CardStatInfo{}
-	if cardStats, e := db.GetCardStatsByUserID(userID); e == nil {
+	if cardStats, e := db.GetCardStatsByPlayerID(playerID); e == nil {
 		cardStatInfo = db.GetCardStatsInfo(cardStats)
 	}
 	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
 	task.Response.UserInfo = UserInfo{
-		UserID:             strconv.FormatInt(userProfile.UserID, 10),
+		PlayerID:           strconv.FormatInt(userProfile.PlayerID, 10),
 		Address:            userProfile.Address,
 		Email:              userProfile.Email,
 		Name:               userProfile.Name,
@@ -209,6 +209,6 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		}
 	}
 
-	log.Infof("%s, user profile retrieved successfully (user_id=%s, addr=%s)", task.Request.RequestUUID, userID, lookupAddress)
+	log.Infof("%s, user profile retrieved successfully (player_id=%s, addr=%s)", task.Request.RequestUUID, playerID, lookupAddress)
 	return task.Response, nil
 }

@@ -20,7 +20,7 @@ type IsUserLoggedInRequest struct {
 type IsUserLoggedInResponse struct {
 	BaseResponse
 	UserLoggedIn bool   `json:"UserLoggedIn"`
-	UserID       string `json:"UserID,omitempty"`
+	PlayerID     string `json:"PlayerID,omitempty"`
 	Address      string `json:"Address,omitempty"`
 	Email        string `json:"Email,omitempty"`
 }
@@ -74,27 +74,27 @@ func (task *IsUserLoggedInTask) Run(c *gin.Context) (Response, error) {
 	refreshToken := task.Request.RefreshToken
 
 	// 验证 RefreshToken 是否有效
-	userID, err := getUserIdByRefreshToken(refreshToken)
+	playerID, err := getUserIdByRefreshToken(refreshToken)
 	if err != nil {
 		// RefreshToken 无效或过期
 		log.Infof("%s, refresh token invalid or expired: %s", task.Request.RequestUUID, refreshToken)
 		task.Response.UserLoggedIn = false
-		task.Response.UserID = ""
+		task.Response.PlayerID = ""
 		task.Response.Address = ""
 		task.Response.Email = ""
 		return task.Response, nil
 	}
 
-	// RefreshToken 有效，基于 user_id 查用户档案，返回 Address/Email
-	profile, err := db.GetUserProfileByUserID(userID)
+	// RefreshToken 有效，基于 player_id 查用户档案，返回 Address/Email
+	profile, err := db.GetUserProfileByPlayerID(playerID)
 	if err != nil || profile == nil {
-		log.Infof("%s, user profile not found for user_id: %s", task.Request.RequestUUID, userID)
+		log.Infof("%s, user profile not found for player_id: %s", task.Request.RequestUUID, playerID)
 		task.Response.UserLoggedIn = false
 		return task.Response, nil
 	}
-	log.Infof("%s, user logged in: user_id=%s addr=%s email=%s", task.Request.RequestUUID, userID, profile.Address, profile.Email)
+	log.Infof("%s, user logged in: player_id=%s addr=%s email=%s", task.Request.RequestUUID, playerID, profile.Address, profile.Email)
 	task.Response.UserLoggedIn = true
-	task.Response.UserID = userID
+	task.Response.PlayerID = playerID
 	task.Response.Address = profile.Address
 	task.Response.Email = profile.Email
 	return task.Response, nil

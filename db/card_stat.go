@@ -26,9 +26,9 @@ func GetCardStatsByAddress(address string) ([]dao.CardStat, error) {
 	return cardStats, err
 }
 
-// GetCardStatsByUserID 根据 user_id 获取该用户的所有卡牌统计
-func GetCardStatsByUserID(userID string) ([]dao.CardStat, error) {
-	profile, err := GetUserProfileByUserID(userID)
+// GetCardStatsByPlayerID 根据 player_id 获取该用户的所有卡牌统计
+func GetCardStatsByPlayerID(playerID string) ([]dao.CardStat, error) {
+	profile, err := GetUserProfileByPlayerID(playerID)
 	if err != nil {
 		return nil, err
 	}

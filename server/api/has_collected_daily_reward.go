@@ -17,7 +17,7 @@ func init() {
 
 type HasCollectedDailyRewardRequest struct {
 	BaseRequest
-	UserID string `mapstructure:"UserID" validate:"required"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type HasCollectedDailyRewardResponse struct {
@@ -70,13 +70,13 @@ func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (Task, error) 
 }
 
 func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	userID := strings.TrimSpace(task.Request.UserID)
-	collected, err := db.HasCollectedDailyRewardByUserID(userID)
+	playerID := strings.TrimSpace(task.Request.PlayerID)
+	collected, err := db.HasCollectedDailyRewardByPlayerID(playerID)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for user_id=%s: %v", task.Request.RequestUUID, userID, err)
-		return nil, errors.GetUserProfileFailed(userID)
+		log.Errorf("%s, failed to check daily reward collection for player_id=%s: %v", task.Request.RequestUUID, playerID, err)
+		return nil, errors.GetUserProfileFailed(playerID)
 	}
 	task.Response.Collected = collected
-	log.Infof("%s, daily reward collection status checked (user_id=%s): %v", task.Request.RequestUUID, userID, collected)
+	log.Infof("%s, daily reward collection status checked (player_id=%s): %v", task.Request.RequestUUID, playerID, collected)
 	return task.Response, nil
 }

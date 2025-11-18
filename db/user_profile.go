@@ -21,15 +21,15 @@ func GetUserProfileByAddress(address string) (*dao.UserProfile, error) {
 	return &userProfile, nil
 }
 
-// GetUserProfileByUserID 根据用户ID获取用户档案
-func GetUserProfileByUserID(userID string) (*dao.UserProfile, error) {
+// GetUserProfileByPlayerID 根据玩家ID获取用户档案
+func GetUserProfileByPlayerID(playerID string) (*dao.UserProfile, error) {
 	var userProfile dao.UserProfile
-	// userID 存在于 session 中为字符串，这里解析为 uint64
-	id, err := strconv.ParseUint(userID, 10, 64)
+	// playerID 存在于 session 中为字符串，这里解析为 uint64
+	id, err := strconv.ParseUint(playerID, 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	if err := Get().Where("user_id = ?", id).First(&userProfile).Error; err != nil {
+	if err := Get().Where("player_id = ?", id).First(&userProfile).Error; err != nil {
 		return nil, err
 	}
 	return &userProfile, nil
@@ -127,9 +127,9 @@ func UpdateDailyRewardCollection(address string) error {
 
 // Removed: UpdateDailyRewardCollectionByEmail
 
-// HasCollectedDailyRewardByUserID 检查用户（按 user_id）是否已领取今日奖励
-func HasCollectedDailyRewardByUserID(userID string) (bool, error) {
-	profile, err := GetUserProfileByUserID(userID)
+// HasCollectedDailyRewardByPlayerID 检查用户（按 player_id）是否已领取今日奖励
+func HasCollectedDailyRewardByPlayerID(playerID string) (bool, error) {
+	profile, err := GetUserProfileByPlayerID(playerID)
 	if err != nil {
 		return false, err
 	}
@@ -142,14 +142,14 @@ func HasCollectedDailyRewardByUserID(userID string) (bool, error) {
 		now.YearDay() == collectedTime.YearDay(), nil
 }
 
-// UpdateDailyRewardCollectionByUserID 更新用户（按 user_id）每日奖励领取时间
-func UpdateDailyRewardCollectionByUserID(userID string) error {
-	id, err := strconv.ParseUint(userID, 10, 64)
+// UpdateDailyRewardCollectionByPlayerID 更新用户（按 player_id）每日奖励领取时间
+func UpdateDailyRewardCollectionByPlayerID(playerID string) error {
+	id, err := strconv.ParseUint(playerID, 10, 64)
 	if err != nil {
 		return err
 	}
 	now := time.Now()
 	return Get().Model(&dao.UserProfile{}).
-		Where("user_id = ?", id).
+		Where("player_id = ?", id).
 		Update("collected_reward_at", now).Error
 }

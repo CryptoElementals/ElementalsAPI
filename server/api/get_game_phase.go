@@ -23,7 +23,7 @@ func init() {
 type GetGamePhaseRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	UserID      string `mapstructure:"UserID" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // PvPInfo PvP对战信息
@@ -92,11 +92,11 @@ func NewGetGamePhaseTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by user id"
+		task.Response.BaseResponse.Message = "Failed to get player address by player id"
 		return task.Response, nil
 	}
 	address := profile.Address
@@ -114,7 +114,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		Id:               profile.UserID,
+		Id:               profile.PlayerID,
 		TemporaryAddress: tempAddress,
 	}
 
@@ -163,13 +163,13 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 		players := make([]MatchPlayer, 0)
 		for _, p := range gamePhase.Players {
 			uidStr := strconv.FormatInt(p.Address.Id, 10)
-			userProfile, err := db.GetUserProfileByUserID(uidStr)
+			userProfile, err := db.GetUserProfileByPlayerID(uidStr)
 			if err != nil || userProfile == nil {
 				continue
 			}
 			players = append(players, MatchPlayer{
 				Address:          userProfile.Address,
-				IsMyself:         p.Address.TemporaryAddress == tempAddress && p.Address.Id == profile.UserID,
+				IsMyself:         p.Address.TemporaryAddress == tempAddress && p.Address.Id == profile.PlayerID,
 				IsConfirmed:      p.IsConfirmed,
 				Cards:            p.Cards,
 				Name:             userProfile.Name,
