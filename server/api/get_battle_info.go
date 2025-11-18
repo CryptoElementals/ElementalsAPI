@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
@@ -173,9 +174,14 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 转换玩家统计信息
 	for _, player := range battleInfo.RoundResult.Players {
+		// 通过 player_id 获取用户地址
+		playerAddr := ""
+		if up, e := db.GetUserProfileByUserID(strconv.FormatInt(player.PlayerId, 10)); e == nil && up != nil {
+			playerAddr = up.Address
+		}
 		playerStat := PlayerRoundStat{
-			PlayerAddress: player.WalletAddress,
-			IsSelf:        player.WalletAddress == address,
+			PlayerAddress: playerAddr,
+			IsSelf:        player.PlayerId == profile.UserID,
 			CardStats:     make([]PlayerCardStat, 0, len(player.CardStats)),
 		}
 
@@ -201,8 +207,13 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 转换游戏结果（若有）
 	if battleInfo.GameResult != nil {
+		// Winner 地址解析
+		winnerAddr := ""
+		if up, e := db.GetUserProfileByUserID(strconv.FormatInt(battleInfo.GameResult.WinnerPlayerId, 10)); e == nil && up != nil {
+			winnerAddr = up.Address
+		}
 		gameResult := &GameResult{
-			Winner:              battleInfo.GameResult.WinnerWalletAddress,
+			Winner:              winnerAddr,
 			GameResultType:      uint32(battleInfo.GameResult.GameResultType),
 			GameFinalMultiplier: uint32(battleInfo.GameResult.Multiplier),
 		}
@@ -215,8 +226,12 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 			}
 
 			for _, pr := range battleInfo.GameResult.Reward.PlayerRewards {
+				addr := ""
+				if up, e := db.GetUserProfileByUserID(strconv.FormatInt(pr.PlayerId, 10)); e == nil && up != nil {
+					addr = up.Address
+				}
 				reward.PlayerRewards = append(reward.PlayerRewards, PlayerReward{
-					PlayerAddress: pr.WalletAddress,
+					PlayerAddress: addr,
 					TokenChange:   pr.TokenChange,
 					PointChange:   pr.PointChange,
 				})
@@ -227,7 +242,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 		if len(tempAddress) > 0 {
 			playerAddr := &proto.PlayerAddress{
-				WalletAddress:    address,
+				Id:               profile.UserID,
 				TemporaryAddress: tempAddress,
 			}
 

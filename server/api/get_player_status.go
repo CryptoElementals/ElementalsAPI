@@ -99,7 +99,7 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    address,
+		Id:               profile.UserID,
 		TemporaryAddress: tempAddress,
 	}
 

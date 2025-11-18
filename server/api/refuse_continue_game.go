@@ -98,7 +98,7 @@ func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
 
 	refuseContinueGameReq := &proto.RefuseContinueGameRequest{
 		Player: &proto.PlayerAddress{
-			WalletAddress:    address,
+			Id:               profile.UserID,
 			TemporaryAddress: tempAddress,
 		},
 		LastGameID: uint32(task.Request.GameID),

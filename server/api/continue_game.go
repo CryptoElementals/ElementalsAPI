@@ -90,7 +90,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerToken(c.Request.Context(), address)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), profile.UserID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user token information"
@@ -129,7 +129,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 
 	continueGameReq := &proto.ContinueGameRequest{
 		Player: &proto.PlayerAddress{
-			WalletAddress:    address,
+			Id:               profile.UserID,
 			TemporaryAddress: tempAddress,
 		},
 		LastGameID: uint32(task.Request.GameID),

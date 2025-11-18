@@ -16,7 +16,7 @@ rm -rf ./bin/logs/*
 
 # 2. 编译应用
 echo "2. Building application..."
-make build
+make apiserver
 if [ $? -eq 0 ]; then
     echo "   ✓ Build completed successfully"
 else

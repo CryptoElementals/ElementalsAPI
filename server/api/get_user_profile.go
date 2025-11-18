@@ -165,7 +165,7 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		log.Errorf("%s, failed to get user stat by user_id=%s: %v", task.Request.RequestUUID, userID, e)
 	}
 
-	if userToken, e := db.GetPlayerTokenByUserID(c.Request.Context(), userID); e == nil && userToken != nil {
+	if userToken, e := db.GetPlayerToken(c.Request.Context(), userProfile.UserID); e == nil && userToken != nil {
 		points = int(userToken.Points)
 		tokenAmount = int(userToken.TokenAmount)
 	}
@@ -176,7 +176,7 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	}
 	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
 	task.Response.UserInfo = UserInfo{
-		UserID:             strconv.FormatUint(userProfile.UserID, 10),
+		UserID:             strconv.FormatInt(userProfile.UserID, 10),
 		Address:            userProfile.Address,
 		Email:              userProfile.Email,
 		Name:               userProfile.Name,

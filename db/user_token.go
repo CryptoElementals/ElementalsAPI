@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
@@ -25,7 +24,7 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		// resolve user by address
-		profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+		profile, perr := GetUserProfileByUserID(strconv.FormatInt(playerId, 10))
 		if perr != nil {
 			return perr
 		}
@@ -38,7 +37,7 @@ func LockUserToken(ctx context.Context, playerId int64, tempAddress string, toke
 			// save a record if locked token is zero
 			// mostly used in test
 			if tokenAmount == 0 {
-				userToken.UserID = profile.UserID
+				userToken.PlayerId = profile.UserID
 				tx.Save(userToken)
 			}
 		}
@@ -103,7 +102,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 		for i := range playerIds {
 			playerId := playerIds[i]
 			tempAddress := tempAddresses[i]
-			profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+			profile, perr := GetUserProfileByUserID(strconv.FormatInt(playerId, 10))
 			if perr != nil {
 				return perr
 			}
@@ -116,7 +115,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 				// save a record if locked token is zero
 				// mostly used in test
 				if tokenAmount == 0 {
-					userToken.UserID = profile.UserID
+					userToken.PlayerId = profile.UserID
 					tx.Save(userToken)
 				}
 			}
@@ -160,7 +159,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 
 func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
-		profile, perr := GetUserProfileByAddress(strings.ToLower(address))
+		_, perr := GetUserProfileByUserID(strconv.FormatInt(playerId, 10))
 		if perr != nil {
 			return perr
 		}
@@ -219,10 +218,6 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 				TemporaryAddress: pr.TemporaryAddress,
 			}]; ok {
 				continue
-			}
-			profile, perr := GetUserProfileByAddress(strings.ToLower(pr.WalletAddress))
-			if perr != nil {
-				return fmt.Errorf("find user profile failed, game id: %d, address: %s, err: %w", game.ID, pr.WalletAddress, perr)
 			}
 			userToken := &dao.UserToken{}
 			err := tx.Where("player_id = ?", pr.PlayerId).Preload("LockedTokens").First(userToken).Error

@@ -8,7 +8,7 @@ import (
 
 // UserProfile 用户档案表 - 存储用户基本信息
 type UserProfile struct {
-	UserID            uint64     `gorm:"column:user_id;type:bigint;primaryKey" json:"user_id"`
+	UserID            int64      `gorm:"column:user_id;type:bigint;primaryKey" json:"user_id"`
 	Address           string     `gorm:"type:varchar(100)" json:"address"`
 	Email             string     `gorm:"type:varchar(200)" json:"email"`
 	Name              string     `gorm:"type:varchar(100);not null;uniqueIndex" json:"name"`
@@ -55,7 +55,7 @@ func nowMs() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
-func generateSnowflakeID() uint64 {
+func generateSnowflakeID() int64 {
 	const epoch = int64(1762819200000) // 2025-11-11
 	const nodeBits = 10
 	const seqBits = 12
@@ -73,7 +73,7 @@ func generateSnowflakeID() uint64 {
 		_seq = 0
 	}
 	_lastTs = ts
-	return (uint64(ts-epoch) << (nodeBits + seqBits)) |
-		(uint64(_nodeID) << seqBits) |
-		uint64(_seq)
+	return (int64(ts-epoch) << (nodeBits + seqBits)) |
+		(int64(_nodeID) << seqBits) |
+		int64(_seq)
 }

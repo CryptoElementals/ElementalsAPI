@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
@@ -113,7 +114,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    address,
+		Id:               profile.UserID,
 		TemporaryAddress: tempAddress,
 	}
 
@@ -161,20 +162,20 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	if task.Response.PvPInfo.GameID != 0 {
 		players := make([]MatchPlayer, 0)
 		for _, p := range gamePhase.Players {
-			userProfile, err := db.GetUserProfileByAddress(p.Address.WalletAddress)
-			if err != nil {
+			uidStr := strconv.FormatInt(p.Address.Id, 10)
+			userProfile, err := db.GetUserProfileByUserID(uidStr)
+			if err != nil || userProfile == nil {
 				continue
 			}
 			players = append(players, MatchPlayer{
-				Address: p.Address.WalletAddress,
-				// IsMyself:         p.Address.WalletAddress == address,
-				IsMyself:         p.Address.TemporaryAddress == tempAddress && p.Address.WalletAddress == address,
+				Address:          userProfile.Address,
+				IsMyself:         p.Address.TemporaryAddress == tempAddress && p.Address.Id == profile.UserID,
 				IsConfirmed:      p.IsConfirmed,
 				Cards:            p.Cards,
 				Name:             userProfile.Name,
 				AvatarURL:        userProfile.AvatarURL,
 				InitialHP:        int32(config.GameParams.InitialHP),
-				MaxHPOneLine:     int32(config.GameParams.InitialHP), // 暂时使用初始血量作为一行最大血量
+				MaxHPOneLine:     int32(config.GameParams.InitialHP),
 				InitialMultipler: int32(config.GameParams.InitialMultiplier),
 			})
 		}

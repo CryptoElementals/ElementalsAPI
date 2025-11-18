@@ -103,7 +103,7 @@ func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
 	req := &pb.SurrenderRequest{
 		GameID: task.Request.GameID,
 		Address: &pb.PlayerAddress{
-			WalletAddress:    address,
+			Id:               profile.UserID,
 			TemporaryAddress: tempAddress,
 		},
 	}

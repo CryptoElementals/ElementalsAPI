@@ -95,14 +95,14 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	// 发放 token
 	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
 	var userToken *dao.UserToken
-	userToken, err = db.GetPlayerTokenByUserID(c.Request.Context(), requestUserID)
+	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.UserID)
 	if err != nil && err != gorm.ErrRecordNotFound {
 		log.Errorf("%s, failed to get user token for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 	if userToken == nil {
 		userToken = &dao.UserToken{
-			UserID:      profile.UserID,
+			PlayerId:    profile.UserID,
 			Points:      0,
 			TokenAmount: dailyRewardTokens,
 		}

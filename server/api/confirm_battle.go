@@ -100,7 +100,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 		GameID:      task.Request.GameID,
 		RoundNumber: uint32(task.Request.Round),
 		PlayerAddress: &proto.PlayerAddress{
-			WalletAddress:    address,
+			Id:               profile.UserID,
 			TemporaryAddress: tempAddress,
 		},
 	}

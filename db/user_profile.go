@@ -21,8 +21,6 @@ func GetUserProfileByAddress(address string) (*dao.UserProfile, error) {
 	return &userProfile, nil
 }
 
-// Removed: GetUserProfileByEmail
-
 // GetUserProfileByUserID 根据用户ID获取用户档案
 func GetUserProfileByUserID(userID string) (*dao.UserProfile, error) {
 	var userProfile dao.UserProfile

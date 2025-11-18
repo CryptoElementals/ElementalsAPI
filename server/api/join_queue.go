@@ -105,7 +105,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
+	userToken, err := db.GetPlayerToken(c.Request.Context(), profile.UserID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user token information"
@@ -144,7 +144,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    lowercaseAddress,
+		Id:               profile.UserID,
 		TemporaryAddress: lowercaseTempAddress,
 	}
 
