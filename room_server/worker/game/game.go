@@ -21,6 +21,9 @@ type gamePlayer struct {
 	playerTurnInfos []*dao.PlayerTurnInfo
 	totalLostHP     int64
 	currentHP       int64
+	// Battle state fields (used during battle execution)
+	multiplier uint32       // Calculated from totalLostHP
+	status     playerStatus // Runtime player status during battle
 }
 
 func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
@@ -52,6 +55,14 @@ func (p *gamePlayer) getSubmittedCards() []*dao.TurnSubmittedCard {
 		}
 	}
 	return cards
+}
+
+func (g *gamePlayer) getLastSubmittedCard() *dao.TurnSubmittedCard {
+	lastSubmittedCard := g.playerTurnInfos[len(g.playerTurnInfos)-1].TurnSubmittedCard
+	if lastSubmittedCard == nil {
+		return nil
+	}
+	return lastSubmittedCard
 }
 
 // getPlayerTurnInfoForTurn returns PlayerTurnInfo for a specific turn number
@@ -107,7 +118,7 @@ func (p *gamePlayer) getLostHP() int32 {
 type Game struct {
 	ctx                 context.Context
 	gameInfo            *dao.Game
-	currentRound        *Round
+	currentRound        *round
 	workerMangerService *worker.WorkerManager
 	chainSvc            ContractClient
 	gameContextHandler  GameHandler
@@ -128,8 +139,9 @@ func NewGame(
 		daoPlayer := player.ToDao()
 		daoPlayers = append(daoPlayers, daoPlayer)
 		gamePlayers[player.TemporaryAddress] = &gamePlayer{
-			player:    daoPlayer,
-			currentHP: gameArgs.InitialHP,
+			player:     daoPlayer,
+			currentHP:  gameArgs.InitialHP,
+			multiplier: 1,
 		}
 	}
 	game := &Game{
@@ -140,7 +152,7 @@ func NewGame(
 			Type:     types.GameTypePVP,
 			GameArgs: *gameArgs,
 		},
-		currentRound:        &Round{round: nil, gamePlayers: gamePlayers, battleStates: nil},
+		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
@@ -162,7 +174,7 @@ func NewGameFromGameInfo(
 		ctx:                 ctx,
 		wg:                  wg,
 		gameInfo:            gameInfo,
-		currentRound:        &Round{round: nil, gamePlayers: gamePlayers, battleStates: nil},
+		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,

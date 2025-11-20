@@ -360,7 +360,7 @@ func (g *Game) handleTurnEnd() error {
 	roundNumber := g.currentRound.round.RoundNumber
 
 	// Execute battles for this card index
-	isGameOver, gameResult, err := g.currentRound.ExecuteCardIndex(cardIdx)
+	isGameOver, gameResult, err := g.currentRound.executeCardIndex(cardIdx)
 	if err != nil {
 		return fmt.Errorf("failed to execute card index %d: %v", cardIdx, err)
 	}
