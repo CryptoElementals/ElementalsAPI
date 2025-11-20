@@ -60,11 +60,12 @@ func (c *RpcClient) GetBattleInfo(ctx context.Context, gameID, roundNumber uint)
 	})
 }
 
-func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress, gameID, roundNumber uint) error {
+func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress, gameID, roundNumber, turnNumber uint) error {
 	_, err := c.client.ConfirmBattle(ctx, &proto.ConfirmBattleRequest{
 		PlayerAddress: addr.ToProto(),
 		GameID:        uint32(gameID),
 		RoundNumber:   uint32(roundNumber),
+		TurnNumber:    uint32(turnNumber),
 	})
 	return err
 }
@@ -127,12 +128,12 @@ func (c *RpcClient) GetRoundTimeoutConfig(ctx context.Context) (*proto.TimeoutCo
 
 func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, commitment []byte, turnNumber uint32, signature []byte, gameID uint) error {
 	_, err := c.client.SubmitPlayerCommitment(ctx, &proto.SubmitPlayerCommitmentRequest{
-		GameID:          uint32(gameID),
-		Address:         addr.ToProto(),
-		RoundNumber:     roundNumber,
-		Commitment:      commitment,
-		TurnNumber:      uint32(turnNumber),
-		Signature:       signature,
+		GameID:      uint32(gameID),
+		Address:     addr.ToProto(),
+		RoundNumber: roundNumber,
+		Commitment:  commitment,
+		TurnNumber:  uint32(turnNumber),
+		Signature:   signature,
 	})
 	return err
 }

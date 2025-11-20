@@ -86,7 +86,7 @@ func (r *GameManager) Stop() {
 	r.lock.Lock()
 	log.Info("closing game manager")
 	for _, game := range r.gamesMap {
-		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "round", game.currentRound.round.Status)
+		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "turn", game.currentRound.turnStatus)
 	}
 	r.stopped = true
 	r.lock.Unlock()
@@ -238,9 +238,6 @@ func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
 		// Player not in game, send empty game phase
 		gamePhase := &proto.GamePhase{
 			GameType: proto.GameType_PVP,
-			PvPInfo: &proto.PvPInfo{
-				Status: proto.PlayerStatus_PLAYER_UNKNOWN,
-			},
 		}
 		syncEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GamePhaseSyncEvent{
 			GamePhase: gamePhase,

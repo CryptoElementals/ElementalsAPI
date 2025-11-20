@@ -9,15 +9,12 @@ import (
 	"math/rand/v2"
 	"time"
 
-	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"golang.org/x/crypto/sha3"
 )
@@ -34,34 +31,36 @@ func (w *playerWallet) address() *types.PlayerAddress {
 type roundInfo struct {
 	roundNum   uint
 	commitment [32]byte
-	cards      string
+	cards      []uint32 // Store cards as array for easier access
 	salt       string
+	turnNumber uint32 // Track current turn number (1, 2, or 3)
 }
 
 func (i *roundInfo) prepareNewRound() {
 	i.roundNum++
-	i.cards = ""
+	i.cards = nil
 	i.commitment = [32]byte{}
 	i.salt = ""
+	i.turnNumber = 0
 }
 
 func (i *roundInfo) prepareCards() {
 	// select random cards
 	cards := make([]uint32, 5)
-	for i := range cards {
-		cards[i] = uint32(i + 1)
+	for j := range cards {
+		cards[j] = uint32(j + 1)
 	}
-	rand.Shuffle(5, func(i, j int) {
-		cards[i], cards[j] = cards[j], cards[i]
+	rand.Shuffle(5, func(j, k int) {
+		cards[j], cards[k] = cards[k], cards[j]
 	})
 
-	// calculate commitment
-	cardsStr := fmt.Sprintf("%d,%d,%d", cards[0], cards[1], cards[2])
-	i.cards = cardsStr
+	// Store first 3 cards for this round
+	i.cards = cards[:3]
 	salt := make([]byte, 32)
 	crand.Read(salt)
 	i.salt = string(salt)
-	// 计算承诺哈希
+	// Calculate commitment hash
+	cardsStr := fmt.Sprintf("%d,%d,%d", i.cards[0], i.cards[1], i.cards[2])
 	hh := sha3.NewLegacyKeccak256()
 	hh.Write([]byte(cardsStr))
 	hh.Write(salt)
@@ -70,10 +69,8 @@ func (i *roundInfo) prepareCards() {
 }
 
 type gameInfo struct {
-	id                  uint
-	currentRound        roundInfo
-	gameContractAddress string
-	gameContract        *contract.RoomContract
+	id           uint
+	currentRound roundInfo
 }
 
 type Bot struct {
@@ -140,11 +137,6 @@ func (b *Bot) run() error {
 		return err
 	}
 	needReconnect := false
-	err = b.recoverGameInfo()
-	if err != nil {
-		log.Errorw("cannot recover game", "err", err)
-		needReconnect = true
-	}
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -168,64 +160,6 @@ func (b *Bot) run() error {
 		}
 		needReconnect = false
 	}
-}
-
-func (b *Bot) recoverGameInfo() error {
-	phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
-	if err != nil {
-		log.Errorw("error get game phase", "err", err)
-		return err
-	}
-	if phase.PvPInfo.Status != proto.PlayerStatus_PLAYER_IN_GAME {
-		return nil
-	}
-	b.currentGame = &gameInfo{
-		id: uint(phase.PvPInfo.GameID),
-		currentRound: roundInfo{
-			roundNum: uint(phase.PvPInfo.RoundNumber),
-		},
-	}
-	log.Infow("recover game", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound)
-	if phase.PvPInfo.ContractAddress != "" {
-		c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
-		if err != nil {
-			log.Errorw("new room contract failed", "err", err, "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.PvPInfo.ContractAddress)
-			return err
-		}
-		b.currentGame.gameContract = c
-		b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
-	}
-	for _, player := range phase.Players {
-		// found myself
-		if player.Address.TemporaryAddress == b.addr.TemporaryAddress &&
-			player.Address.Id == b.addr.Id {
-			// need confirm
-			if !player.IsConfirmed {
-				log.Infow("recover game, confirm battle", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				err := b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
-				if err != nil {
-					log.Errorw("confirm battle failed", "addr", types.ToJsonLoggable(b.addr), "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound)
-					return err
-				}
-				return nil
-			}
-			// didn't send cards
-			if len(player.Commitment) == 0 {
-				log.Infow("recover game, submit cards", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				b.currentGame.currentRound.prepareCards()
-				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
-				if err != nil {
-					log.Errorw("submit card hash failed", "addr", types.ToJsonLoggable(b.addr), "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
-					return err
-				}
-				log.Infow("submitted card hash", "addr", types.ToJsonLoggable(b.addr), "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
-					"contract", b.currentGame.gameContractAddress, "hash", hexutil.Encode(b.currentGame.currentRound.commitment[:]), "txHash", tx.Hash().String())
-				return nil
-			}
-			return fmt.Errorf("game not recoverable, addr: %s, game: %d, round: %d", types.ToJsonLoggable(b.addr), b.currentGame.id, b.currentGame.currentRound.roundNum)
-		}
-	}
-	return fmt.Errorf("cannot find myself from game player list, addr: %s, game: %d, round: %d", types.ToJsonLoggable(b.addr), b.currentGame.id, b.currentGame.currentRound.roundNum)
 }
 
 func (b *Bot) runGameLoop() error {
@@ -258,14 +192,16 @@ func (b *Bot) runGameLoop() error {
 				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
 				if err != nil {
 					log.Errorw("error get game phase", "err", err)
+					continue
 				}
 				b.currentGame = &gameInfo{
-					id: uint(phase.PvPInfo.GameID),
+					id: uint(phase.GameID),
 					currentRound: roundInfo{
-						roundNum: 1,
+						roundNum:   uint(phase.RoundNumber),
+						turnNumber: phase.TurnNumber,
 					},
 				}
-				err = b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
+				err = b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum, b.currentGame.currentRound.turnNumber)
 				if err != nil {
 					log.Errorw("error confirm battle", "err", err, "game id", b.currentGame.id)
 				}
@@ -273,51 +209,160 @@ func (b *Bot) runGameLoop() error {
 				log.Infow("player part confirmed", "game id", b.currentGame.id, "round", b.currentGame.currentRound)
 			case proto.EventType_TYPE_GAME_CREATED:
 				log.Infow("game created", "game id", b.currentGame.id)
-				// get contract
-				phase, err := b.client.RpcClient.GetGamePhase(b.ctx, b.addr)
-				if err != nil {
-					log.Errorw("get game phase failed", "err", err, "game id", b.currentGame.id)
-				}
-
-				c, err := contract.NewRoomContract(common.HexToAddress(phase.PvPInfo.ContractAddress), b.ethClient)
-				if err != nil {
-					log.Errorw("new room contract failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound, "contract", phase.PvPInfo.ContractAddress)
-
-				}
-				b.currentGame.gameContractAddress = phase.PvPInfo.ContractAddress
-				b.currentGame.gameContract = c
+				// Game created, prepare for first round
+				b.currentGame.currentRound.roundNum = 1
+				b.currentGame.currentRound.turnNumber = 0
 			case proto.EventType_TYPE_ROUND_READY:
-				log.Infow("round ready", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				// submit commitments
+				if b.currentGame == nil {
+					log.Errorw("round ready but no current game", "addr", b.addr.String())
+					continue
+				}
+				roundReady := evt.GetRoundReady()
+				if roundReady == nil {
+					log.Errorw("round ready event missing RoundReady data", "addr", b.addr.String())
+					continue
+				}
+				log.Infow("round ready", "game id", b.currentGame.id, "round", roundReady.RoundNum)
+				// Prepare cards for this round
+				b.currentGame.currentRound.roundNum = uint(roundReady.RoundNum)
 				b.currentGame.currentRound.prepareCards()
-				tx, err := b.currentGame.gameContract.SubmitCardsHash(b.bindOpt, b.currentGame.currentRound.commitment, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
+				// Submit commitment for turn 1
+				err := b.client.RpcClient.SubmitPlayerCommitment(
+					b.ctx,
+					b.addr,
+					roundReady.RoundNum,
+					b.currentGame.currentRound.commitment[:],
+					1,   // Turn number 1
+					nil, // Signature - empty for bots
+					b.currentGame.id,
+				)
 				if err != nil {
-					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
+					log.Errorw("submit commitment failed", "err", err, "game id", b.currentGame.id, "round", roundReady.RoundNum)
+				} else {
+					log.Infow("submitted commitment", "game id", b.currentGame.id, "round", roundReady.RoundNum, "turn", 1)
 				}
-				log.Infow("submitted card hash", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
-					"contract", b.currentGame.gameContractAddress, "hash", hexutil.Encode(b.currentGame.currentRound.commitment[:]), "txHash", tx.Hash().String())
+			case proto.EventType_TYPE_TURN_READY:
+				if b.currentGame == nil {
+					log.Errorw("turn ready but no current game", "addr", b.addr.String())
+					continue
+				}
+				turnReady := evt.GetTurnReady()
+				if turnReady == nil {
+					log.Errorw("turn ready event missing TurnReady data", "addr", b.addr.String())
+					continue
+				}
+				log.Infow("turn ready", "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
+				// If this is the first turn of a round and we haven't prepared cards yet, prepare them
+				if turnReady.TurnNum == 1 && len(b.currentGame.currentRound.cards) == 0 {
+					b.currentGame.currentRound.roundNum = uint(turnReady.RoundNum)
+					b.currentGame.currentRound.prepareCards()
+				}
+				// Submit commitment for this turn
+				if int(turnReady.TurnNum) <= len(b.currentGame.currentRound.cards) {
+					err := b.client.RpcClient.SubmitPlayerCommitment(
+						b.ctx,
+						b.addr,
+						turnReady.RoundNum,
+						b.currentGame.currentRound.commitment[:],
+						turnReady.TurnNum,
+						nil, // Signature - empty for bots
+						b.currentGame.id,
+					)
+					if err != nil {
+						log.Errorw("submit commitment failed", "err", err, "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
+					} else {
+						log.Infow("submitted commitment", "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
+					}
+				}
 			case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
-				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				// submit cards
-				tx, err := b.currentGame.gameContract.SubmitCards(b.bindOpt, b.currentGame.currentRound.cards, b.currentGame.currentRound.salt, big.NewInt(int64(b.currentGame.currentRound.roundNum)))
-				if err != nil {
-					log.Errorw("submit card hash failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum, "contract", b.currentGame.gameContractAddress)
+				if b.currentGame == nil {
+					log.Errorw("commitments on chain but no current game", "addr", b.addr.String())
+					continue
 				}
-				log.Infow("submitted cards", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum,
-					"contract", b.currentGame.gameContractAddress, "cards", b.currentGame.currentRound.cards, "txHash", tx.Hash().String())
-			case proto.EventType_TYPE_CARDS_ON_CHAIN:
-				log.Infow("cards on chain", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-			case proto.EventType_TYPE_ROUND_COMPLETE:
-				log.Infow("round complete", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-				battleInfo, err := b.client.RpcClient.GetBattleInfo(b.ctx, b.currentGame.id, b.currentGame.currentRound.roundNum)
+				commitmentsOnChain := evt.GetCommitmentsOnChain()
+				if commitmentsOnChain == nil {
+					log.Errorw("commitments on chain event missing CommitmentsOnChain data", "addr", b.addr.String())
+					continue
+				}
+				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", commitmentsOnChain.CardNum)
+				// Submit card for the current turn
+				turnNumber := commitmentsOnChain.CardNum
+				if turnNumber < 1 || turnNumber > 3 {
+					log.Errorw("invalid turn number", "turn", turnNumber, "game id", b.currentGame.id)
+					continue
+				}
+				if len(b.currentGame.currentRound.cards) < int(turnNumber) {
+					log.Errorw("no card prepared for turn", "turn", turnNumber, "game id", b.currentGame.id)
+					continue
+				}
+				cardID := b.currentGame.currentRound.cards[turnNumber-1]
+				err := b.client.RpcClient.SubmitPlayerCard(
+					b.ctx,
+					b.addr,
+					commitmentsOnChain.RoundNum,
+					[]byte(b.currentGame.currentRound.salt),
+					uint(cardID),
+					turnNumber,
+					nil, // Signature - empty for bots
+					b.currentGame.id,
+				)
 				if err != nil {
-					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
+					log.Errorw("submit card failed", "err", err, "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber)
+				} else {
+					log.Infow("submitted card", "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber, "card", cardID)
+				}
+			case proto.EventType_TYPE_CARDS_ON_CHAIN:
+				if b.currentGame == nil {
+					log.Errorw("cards on chain but no current game", "addr", b.addr.String())
+					continue
+				}
+				cardsOnChain := evt.GetCardsOnChain()
+				if cardsOnChain == nil {
+					log.Errorw("cards on chain event missing CardsOnChain data", "addr", b.addr.String())
+					continue
+				}
+				log.Infow("cards on chain", "game id", b.currentGame.id, "round", cardsOnChain.RoundNum)
+			case proto.EventType_TYPE_TURN_COMPLETE:
+				if b.currentGame == nil {
+					log.Errorw("turn complete but no current game", "addr", b.addr.String())
+					continue
+				}
+				turnCompleted := evt.GetTurnCompleted()
+				if turnCompleted == nil {
+					log.Errorw("turn complete event missing TurnCompleted data", "addr", b.addr.String())
+					continue
+				}
+				log.Infow("turn complete", "game id", b.currentGame.id, "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum)
+				// Update turn number for next turn
+				b.currentGame.currentRound.turnNumber = turnCompleted.TurnNum
+			case proto.EventType_TYPE_ROUND_COMPLETE:
+				if b.currentGame == nil {
+					log.Errorw("round complete but no current game", "addr", b.addr.String())
+					continue
+				}
+				roundCompleted := evt.GetRoundCompleted()
+				if roundCompleted == nil {
+					log.Errorw("round complete event missing RoundCompleted data", "addr", b.addr.String())
+					continue
+				}
+				log.Infow("round complete", "game id", b.currentGame.id, "round", roundCompleted.RoundNumber)
+				// Get battle info to check if game is over
+				battleInfo, err := b.client.RpcClient.GetBattleInfo(b.ctx, b.currentGame.id, uint(roundCompleted.RoundNumber))
+				if err != nil {
+					log.Errorw("get battle info failed", "err", err, "game id", b.currentGame.id, "round", roundCompleted.RoundNumber)
 					continue
 				}
 				if !battleInfo.RoundResult.IsGameOver {
+					// Game continues, prepare for next round
 					b.currentGame.currentRound.prepareNewRound()
-					b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum)
-					log.Infof("confirm submitted, addr: %s, round %d, game: %d", b.addr.String(), b.currentGame.currentRound.roundNum, b.currentGame.id)
+					err = b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum, b.currentGame.currentRound.turnNumber)
+					if err != nil {
+						log.Errorw("confirm battle failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
+					} else {
+						log.Infow("confirmed battle for next round", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
+					}
+				} else {
+					log.Infow("game over", "game id", b.currentGame.id)
 				}
 			case proto.EventType_TYPE_GAME_COMPLETE:
 				log.Infow("game complete", "game id", b.currentGame.id)

@@ -12,7 +12,6 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -63,6 +62,7 @@ type GameContext struct {
 	gameID                uint
 	players               []*types.PlayerAddress
 	currentRound          uint32
+	currentTurn           uint32
 	contractAddress       string
 	myself                *types.PlayerAddress
 	contract              *contract.RoomContract
@@ -128,13 +128,14 @@ func (c *GameContext) Run() error {
 						continue
 					}
 					c.lock.Lock()
-					c.gameID = uint(phase.PvPInfo.GameID)
+					c.gameID = uint(phase.GameID)
 					for _, pp := range phase.Players {
 						player := types.NewPlayerAddress(pp.Address.Id, pp.Address.TemporaryAddress)
 						c.players = append(c.players, player)
 					}
 					c.state = playerStateWaittingConfirm
-					c.currentRound = 1
+					c.currentRound = phase.RoundNumber
+					c.currentTurn = phase.TurnNumber
 					c.lock.Unlock()
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					fmt.Println("player part confirmed")
@@ -146,14 +147,9 @@ func (c *GameContext) Run() error {
 						fmt.Println("error: ", err.Error())
 					}
 					c.lock.Lock()
-					c.gameID = uint(phase.PvPInfo.GameID)
-					c.contractAddress = phase.PvPInfo.ContractAddress
-					c.contract, err = contract.NewRoomContract(common.HexToAddress(c.contractAddress), c.chainClient)
-					if err != nil {
-						fmt.Println("error: ", err.Error())
-					}
-					c.currentRound = 1
-					fmt.Println("contract address: ", c.contractAddress)
+					c.gameID = uint(phase.GameID)
+					c.currentRound = phase.RoundNumber
+					c.currentTurn = phase.TurnNumber
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_READY:
@@ -167,11 +163,6 @@ func (c *GameContext) Run() error {
 					c.state = playerStateWaittingCardsSubmitted
 					c.lock.Unlock()
 					c.commitmentOnChainChan <- struct{}{}
-				case proto.EventType_TYPE_CARDS_ON_CHAIN:
-					c.lock.Lock()
-					fmt.Println("cards on chain")
-					c.state = playerStateWaittingRoundEnd
-					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_COMPLETE:
 					fmt.Println("round complete, please confirm to start a new round")
 					battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(c.currentRound))
@@ -234,7 +225,7 @@ func (c *GameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, c.myself, c.gameID, uint(c.currentRound))
+	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, c.myself, c.gameID, uint(c.currentRound), uint(c.currentTurn))
 	if err != nil {
 		return err
 	}

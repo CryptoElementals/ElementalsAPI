@@ -9,9 +9,9 @@ type RequireContractCreationEvent struct {
 }
 
 type RequireSetupNewRoundEvent struct {
-	GameID          uint
-	RoundNumber     uint32
-	ContractAddress string
+	GameID      uint
+	RoundNumber uint32
+	// ContractAddress removed - always uses RoomV2 contract address
 }
 
 type RequireSetupNewTurnEvent struct {

@@ -84,27 +84,29 @@ enum PlayerStatus {
     PLAYER_WAITTING_CONTINUE = 4;
 }
 
-message GamePhasePlayer {
-    PlayerAddress Address = 1;
-    bool IsConfirmed = 2;
-    bytes Commitment = 3;
-    repeated uint32 Cards = 4;
+enum PlayerTurnStatus {
+    PLAYER_TURN_UNKNOWN = 0;
+    PLAYER_TURN_READY = 1;
+    PLAYER_TURN_COMMITMENT_SUBMITTED = 2;
+    PLAYER_TURN_CARD_SUBMITTED = 3;
 }
 
-
-message PvPInfo {
-    uint32 GameID = 1;
-    PlayerStatus Status = 2;
-    string ContractAddress = 3;
-    uint64 BeginAt = 4;
-    uint64 TimeoutDuration = 5;
-    uint64 RoundNumber = 6;
-} 
+message GamePhasePlayer {
+    PlayerAddress Address = 1;
+    PlayerTurnStatus TurnStatus = 2;
+    uint32 CurrentHP = 3;
+    uint32 CurrentMultiplier = 4;
+    optional bytes Commitment = 7;
+    optional uint32 Card = 8;
+}
 
 message GamePhase {
     GameType GameType = 1;
-    repeated GamePhasePlayer Players = 2;
-    PvPInfo PvPInfo = 5;
+    uint32 GameID = 2;
+    uint32 RoundNumber = 3;
+    uint32 TurnNumber = 4;
+    int64 TurnStartAt = 5;
+    repeated GamePhasePlayer Players = 6;
 }
 
 message GetBattleInfoRequest {
@@ -121,14 +123,15 @@ message ConfirmBattleRequest {
     PlayerAddress PlayerAddress = 1;
     uint32 GameID = 2;
     uint32 RoundNumber = 3;
+    uint32 TurnNumber = 4;
 }
 
-enum RoundStatus {
-    ROUND_WAITTING_BATTLE_CONFIRMATION = 0;
-    ROUND_WAITTING_SETUP_ON_CHAIN = 1;
-    ROUND_WAITTING_COMMITMENTS = 2;
-    ROUND_WAITTING_CARDS = 3;
-    ROUND_COMPLETED = 4;
+enum TurnStatus {
+    TURN_WAITTING_BATTLE_CONFIRMATION = 0;
+    TURN_WAITTING_SETUP_ON_CHAIN = 1;
+    TURN_WAITTING_COMMITMENTS = 2;
+    TURN_WAITTING_CARDS = 3;
+    TURN_ROUND_COMPLETED = 4;  // Special state: round is completed
 }
 
 
@@ -139,8 +142,6 @@ message PlayerRoundInfo {
 }
 
 // Battle Engine related messages
-
-
 message RoundSubmittedCard {
     uint32 SubmittedCardId = 1;
     uint32 PlayerHealthBefore = 2;
@@ -156,7 +157,7 @@ message RoundSubmittedCard {
 
 message Round {
     int32 Number = 1; // start from 1
-    RoundStatus Status = 2;
+    TurnStatus Status = 2;  // Current turn status
     repeated PlayerRoundInfo PlayerRoundInfos = 3;
 }
 
@@ -175,13 +176,12 @@ enum GameType {
 
 message GameInfo {
     uint32 game_id = 1;
-    string room_contract_address = 2;
-    GameType game_type = 3;
-    GameStatus status = 4;
-    int32 initial_hp = 5;
-    repeated PlayerAddress players = 6;
-    repeated Round rounds = 7;
-    optional battle.GameResult result = 8;
+    GameType game_type = 2;
+    GameStatus status = 3;
+    int32 initial_hp = 4;
+    repeated PlayerAddress players = 5;
+    repeated Round rounds = 6;
+    optional battle.GameResult result = 7;
 }
 
 message Transaction {

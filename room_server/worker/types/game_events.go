@@ -13,6 +13,7 @@ type GameContinueEvent struct {
 type PlayerReadyEvent struct {
 	GameId        uint
 	RoundNumber   uint32
+	TurnNumber    uint32
 	PlayerAddress PlayerAddress
 }
 

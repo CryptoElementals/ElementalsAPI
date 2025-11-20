@@ -102,6 +102,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   1,
+			TurnNumber:    1,
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -113,6 +114,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   1,
+			TurnNumber:    1,
 			PlayerAddress: playerAddress2,
 		}))
 		return nil
@@ -126,6 +128,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   evt.RoundNumber + 1,
+			TurnNumber:    1, // New round starts with turn 1
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -137,6 +140,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   evt.RoundNumber + 1,
+			TurnNumber:    1, // New round starts with turn 1
 			PlayerAddress: playerAddress2,
 		}))
 		return nil

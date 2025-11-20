@@ -120,10 +120,11 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.IsPlayerInQueue(address)
 }
 
-func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32) error {
+func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32, turnNum uint32) error {
 	evt := types.NewEvent(address.String(), &types.PlayerReadyEvent{
 		GameId:        gameID,
 		RoundNumber:   roundNum,
+		TurnNumber:    turnNum,
 		PlayerAddress: address,
 	}, true)
 	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
@@ -160,9 +161,6 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		return &proto.GamePhase{
 			GameType: proto.GameType_PVP,
-			PvPInfo: &proto.PvPInfo{
-				Status: proto.PlayerStatus_PLAYER_IN_QUEUE,
-			},
 		}, nil
 	case proto.PlayerStatus_PLAYER_UNKNOWN:
 		// it might have a case that the player is not in any game, but in the continue queue
@@ -175,25 +173,19 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 					playerInfo.TemporaryAddress,
 				).ToProto()
 				players = append(players, &proto.GamePhasePlayer{
-					Address: addr,
+					Address:    addr,
+					TurnStatus: proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
 				})
 			}
 			return &proto.GamePhase{
-				GameType: proto.GameType_PVP,
-				PvPInfo: &proto.PvPInfo{
-					GameID:          uint32(continueInfo.GameID),
-					BeginAt:         uint64(continueInfo.EndTime.Unix()),
-					TimeoutDuration: uint64(continueInfo.ContinueTimeout),
-					Status:          proto.PlayerStatus_PLAYER_WAITTING_CONTINUE,
-				},
-				Players: players,
+				GameType:    proto.GameType_PVP,
+				GameID:      uint32(continueInfo.GameID),
+				TurnStartAt: continueInfo.EndTime.Unix(),
+				Players:     players,
 			}, nil
 		}
 		return &proto.GamePhase{
 			GameType: proto.GameType_PVP,
-			PvPInfo: &proto.PvPInfo{
-				Status: proto.PlayerStatus_PLAYER_UNKNOWN,
-			},
 		}, nil
 	}
 	return nil, fmt.Errorf("unknonw player status, %s", status)

@@ -43,14 +43,14 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		return p.handleNewGameEvent(p.ctx, evt)
 	case *types.GameReadyEvent:
 		p.handleGameReadyEvent(p.ctx, evt)
-	case *types.RoundReadyEvent:
-		p.handleRoundReadyEvent(p.ctx, evt)
+	case *types.TurnReadyEvent:
+		p.handleTurnReadyEvent(p.ctx, evt)
 	case *types.RoundPartialReadyEvent:
 		p.handleRoundPartialReadyEvent(p.ctx, evt)
 	case *types.CommitmentsOnChainEvent:
 		p.handleCommitmentsOnChainEvent(p.ctx, evt)
-	case *types.CardsOnChainEvent:
-		p.handleCardsOnChainEvent(p.ctx, evt)
+	case *types.TurnCompletedEvent:
+		p.handleTurnCompletedEvent(p.ctx, evt)
 	case *types.RoundCompletedEvent:
 		p.handleRoundCompletedEvent(p.ctx, evt)
 	case *types.GameCompletedEvent:
@@ -121,6 +121,24 @@ func (p *Player) handleRoundPartialReadyEvent(ctx context.Context, evt *types.Ro
 	return nil
 }
 
+func (p *Player) handleTurnReadyEvent(ctx context.Context, evt *types.TurnReadyEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_TURN_READY, "receiver", p.address.String(), "game id", evt.GameID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_TURN_READY,
+			Event: &proto.Event_TurnReady{
+				TurnReady: &proto.TurnReady{
+					GameId:   uint32(evt.GameID),
+					RoundNum: evt.RoundNumber,
+					TurnNum:  evt.TurnNumber,
+				},
+			},
+		},
+	})
+	return nil
+}
+
 func (p *Player) handleRoundReadyEvent(ctx context.Context, evt *types.RoundReadyEvent) error {
 	log.Debugw("publish event", "event type", proto.EventType_TYPE_ROUND_READY, "receiver", p.address.String(), "game id", evt.GameID)
 	p.publisher.Publish(ctx, &proto.PublishRequest{
@@ -148,25 +166,7 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 				CommitmentsOnChain: &proto.CommitmentsOnChain{
 					GameId:   uint32(evt.GameID),
 					RoundNum: evt.RoundNumber,
-					CardNum:  evt.TurnNumber, // CardNum in proto corresponds to TurnNumber
-				},
-			},
-		},
-	})
-	return nil
-}
-
-func (p *Player) handleCardsOnChainEvent(ctx context.Context, evt *types.CardsOnChainEvent) error {
-	log.Debugw("publish event", "event type", proto.EventType_TYPE_CARDS_ON_CHAIN, "receiver", p.address.String(), "game id", evt.GameID, "round number", evt.RoundNumber, "turn number", evt.TurnNumber)
-	p.publisher.Publish(ctx, &proto.PublishRequest{
-		Topic: p.address.String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_CARDS_ON_CHAIN,
-			Event: &proto.Event_CardsOnChain{
-				CardsOnChain: &proto.CardsOnChain{
-					GameId:   uint32(evt.GameID),
-					RoundNum: evt.RoundNumber,
-					// Note: CardsOnChain proto doesn't have TurnNumber field, but event includes it for internal use
+					TurnNum:  evt.TurnNumber, // CardNum in proto corresponds to TurnNumber
 				},
 			},
 		},
@@ -182,6 +182,38 @@ func (p *Player) handleContinueCanceledEvent(ctx context.Context, evt *types.Con
 			Type: proto.EventType_TYPE_CONTINUE_CANCELED,
 			Event: &proto.Event_X{
 				X: &emptypb.Empty{},
+			},
+		},
+	})
+	return nil
+}
+
+func (p *Player) handleTurnCompletedEvent(ctx context.Context, evt *types.TurnCompletedEvent) error {
+	log.Debugw("publish event", "event type", proto.EventType_TYPE_TURN_COMPLETE, "receiver", p.address.String(), "game id", evt.GameID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
+
+	// Convert types.PlayerTurnInfo to proto.PlayerTurnInfo
+	playerTurnInfos := make([]*proto.PlayerTurnInfo, 0, len(evt.PlayerTurnInfo))
+	for _, playerTurnInfo := range evt.PlayerTurnInfo {
+		if playerTurnInfo.SubmittedCard != nil {
+			protoPlayerTurnInfo := &proto.PlayerTurnInfo{
+				PlayerAddress: playerTurnInfo.PlayerAddress.ToProto(),
+				SubmittedCard: conversion.TurnSubmittedCardToProtoRoundSubmittedCard(playerTurnInfo.SubmittedCard, evt.TurnNumber), // turnNumber not needed for proto conversion
+			}
+			playerTurnInfos = append(playerTurnInfos, protoPlayerTurnInfo)
+		}
+	}
+
+	p.publisher.Publish(ctx, &proto.PublishRequest{
+		Topic: p.address.String(),
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_TURN_COMPLETE,
+			Event: &proto.Event_TurnCompleted{
+				TurnCompleted: &proto.TurnCompleted{
+					GameId:          uint32(evt.GameID),
+					RoundNum:        evt.RoundNumber,
+					TurnNum:         evt.TurnNumber,
+					PlayerTurnInfos: playerTurnInfos,
+				},
 			},
 		},
 	})

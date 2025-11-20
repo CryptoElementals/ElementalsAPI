@@ -18,7 +18,7 @@ func (g *Game) validateCommitmentSubmission(evt *types.PlayerCommitmentOnChain) 
 
 // validateCardSubmission validates the card submission including round number and returns the 0-based index, card entry, card ID, and error
 // Returns (cardIdx, cardEntry, cardID, error). If card is already submitted, cardEntry will be nil.
-func (g *Game) validateCardSubmission(evt *types.PlayerCardOnChain) (uint32, *dao.RoundSubmittedCard, uint, error) {
+func (g *Game) validateCardSubmission(evt *types.PlayerCardOnChain) (uint32, *dao.TurnSubmittedCard, uint, error) {
 	if err := g.validateRoundAndIndex(evt.RoundNumber, evt.CardIndex, evt.Address.TemporaryAddress, "card"); err != nil {
 		return 0, nil, 0, err
 	}
@@ -39,6 +39,7 @@ func (g *Game) validateCardSubmission(evt *types.PlayerCardOnChain) (uint32, *da
 		return cardIdx, nil, 0, nil // Return nil cardEntry to indicate already submitted
 	}
 
+	// Return cardID from evt since cardEntry might not have CardID set yet
 	return evt.CardIndex - 1, cardEntry, evt.Card, nil
 }
 
@@ -64,29 +65,26 @@ func (g *Game) validateRoundAndIndex(roundNumber, index uint32, playerAddr strin
 }
 
 // getAndValidateCardEntry gets the player's card entry and validates it exists with a commitment
-func (g *Game) getAndValidateCardEntry(playerAddr string, cardIndex uint32) (*dao.RoundSubmittedCard, error) {
+func (g *Game) getAndValidateCardEntry(playerAddr string, cardIndex uint32) (*dao.TurnSubmittedCard, error) {
 	player, err := g.getGamePlayer(playerAddr)
 	if err != nil {
 		log.Errorw("player not found", "game id", g.gameInfo.ID, "player address", playerAddr, "error", err)
 		return nil, fmt.Errorf("player not found: %w", err)
 	}
 
-	cardIdx := cardIndex - 1 // Convert to 0-based
-	submittedCards := player.roundPlayer.SubmittedCards
-
-	// Verify commitment exists (this also checks bounds to prevent panic)
-	if int(cardIdx) >= len(submittedCards) {
-		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIdx, "submitted cards length", len(submittedCards))
+	turnNumber := cardIndex // cardIndex is 1-based, same as turnNumber
+	playerTurnInfo := player.getPlayerTurnInfoForTurn(turnNumber)
+	if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
+		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIndex)
 		return nil, fmt.Errorf("commitment for card index %d must be submitted before card", cardIndex)
 	}
 
-	cardEntry := submittedCards[cardIdx]
-	if len(cardEntry.SubmittedCommitment) == 0 {
-		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIdx)
+	if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) == 0 {
+		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIndex)
 		return nil, fmt.Errorf("commitment for card index %d must be submitted before card", cardIndex)
 	}
 
-	return cardEntry, nil
+	return playerTurnInfo.TurnSubmittedCard, nil
 }
 
 // validatePlayerCommitment validates the commitment using similar logic as validateCommitmentSubmission

@@ -180,9 +180,9 @@ func runClient(t *testing.T,
 					t.Log("player matched")
 					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
-					gameID = uint(phase.PvPInfo.GameID)
+					gameID = uint(phase.GameID)
 					gameIDChan <- gameID
-					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
+					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					t.Log("player part confirmed")
 					partConfimredChan <- round
@@ -191,9 +191,9 @@ func runClient(t *testing.T,
 					// get contract
 					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
-					gameID = uint(phase.PvPInfo.GameID)
+					gameID = uint(phase.GameID)
 					t.Log("game phase: ", toJsonLoggable(phase))
-					require.Equal(t, fakeRoomAddress, phase.PvPInfo.ContractAddress)
+					// ContractAddress removed - always uses RoomV2 contract address from config
 				case proto.EventType_TYPE_ROUND_READY:
 					t.Log("round ready")
 					// submit commitments
@@ -251,7 +251,7 @@ func runClient(t *testing.T,
 					t.Log("battle info: ", toJsonLoggable(battleInfo))
 					if !battleInfo.RoundResult.IsGameOver {
 						round++
-						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
+						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
 						t.Logf("confirm submitted, addr: %s, round %d, game: %d", addr.String(), round, gameID)
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
