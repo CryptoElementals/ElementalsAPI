@@ -15,6 +15,7 @@ service RpcService {
     rpc ContinueGame(ContinueGameRequest) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
     rpc IsPlayerInQueue(PlayerAddress) returns (IsPlayerInQueueResponse);
+    rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
     rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
@@ -48,6 +49,10 @@ message SurrenderRequest {
 
 message IsPlayerInQueueResponse {
     bool IsInQueue = 1;
+}
+
+message GetPlayerStatusResponse {
+    PlayerStatus Status = 1;
 }
 
 message GetPlayerTokenRequest {

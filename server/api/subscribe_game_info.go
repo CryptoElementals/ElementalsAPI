@@ -225,15 +225,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_TYPE_CARDS_ON_CHAIN:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
-			Data: map[string]interface{}{
-				"EventType": "cardsOnChain",
-			},
-			Timestamp:   time.Now(),
-			RequestUUID: requestUUID,
-		}
 	case proto.EventType_TYPE_ROUND_COMPLETE:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,

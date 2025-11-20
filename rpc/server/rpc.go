@@ -92,6 +92,18 @@ func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*p
 	}, nil
 }
 
+func (s *Rpc) GetPlayerStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req)
+	status, err := s.playerHandler.GetPlayerStatus(addr)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetPlayerStatusResponse{
+		Status: status,
+	}, nil
+}
+
 func (s *Rpc) Surrender(ctx context.Context, req *proto.SurrenderRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.Address)
@@ -134,6 +146,7 @@ type PlayerRequestHandler interface {
 	Surrender(address types.PlayerAddress, gameID uint) error
 
 	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
+	GetPlayerStatus(playerAddress types.PlayerAddress) (proto.PlayerStatus, error)
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
 	GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error)
 	GetTimeoutConfig() (*proto.TimeoutConfig, error)

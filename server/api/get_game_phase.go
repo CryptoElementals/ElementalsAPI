@@ -7,7 +7,6 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -30,10 +29,10 @@ type GetGamePhaseRequest struct {
 type PvPInfo struct {
 	Phase           uint32 `json:"Phase"`           // None, Confirming, InBattle, WaitingContinue: 0123
 	GameID          uint32 `json:"GameID"`          // 游戏ID
-	ContractAddress string `json:"ContractAddress"` // 房间合约地址
-	BeginAt         uint64 `json:"BeginAt"`         // 开始时间
+	RoundNumber     uint32 `json:"RoundNumber"`     // 回合数
+	TurnNumber      uint32 `json:"TurnNumber"`      // 回合内的轮次
+	TurnStartAt     int64  `json:"TurnStartAt"`     // 轮次开始时间
 	TimeoutDuration uint64 `json:"TimeoutDuration"` // 超时时间
-	Round           uint64 `json:"Round"`           // 回合数
 }
 
 // GetGamePhaseResponse 响应结构体
@@ -125,58 +124,88 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	task.Response.PvPInfo.BeginAt = gamePhase.PvPInfo.BeginAt
-	task.Response.PvPInfo.TimeoutDuration = gamePhase.PvPInfo.TimeoutDuration
-	// task.Response.PvPInfo.TimeoutDuration = 20
-	task.Response.PvPInfo.ContractAddress = gamePhase.PvPInfo.ContractAddress
-	task.Response.PvPInfo.Round = gamePhase.PvPInfo.RoundNumber
-	if gamePhase.PvPInfo.GameID != 0 {
-		task.Response.PvPInfo.GameID = gamePhase.PvPInfo.GameID
-	}
-	log.Infof("gamePhase.PvPInfo.Status: %v (type: %T)", gamePhase.PvPInfo.Status, gamePhase.PvPInfo.Status)
-	switch gamePhase.PvPInfo.Status {
-	case proto.PlayerStatus_PLAYER_IN_QUEUE:
-		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 1
-		task.Response.BaseResponse.Message = "Player is in match queue"
-	case proto.PlayerStatus_PLAYER_MATCHED:
-		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 2
-		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
-	case proto.PlayerStatus_PLAYER_IN_GAME:
-		task.Response.Mode = uint32(gamePhase.GameType)
-		task.Response.PvPInfo.Phase = 3
-		task.Response.BaseResponse.Message = "Player has entered battle"
-	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
-		task.Response.Mode = uint32(gamePhase.GameType)
+	// Populate PvPInfo from GamePhase
+	task.Response.Mode = uint32(gamePhase.GameType)
+	task.Response.PvPInfo.GameID = gamePhase.GameID
+	task.Response.PvPInfo.RoundNumber = gamePhase.RoundNumber
+	task.Response.PvPInfo.TurnNumber = gamePhase.TurnNumber
+	task.Response.PvPInfo.TurnStartAt = gamePhase.TurnStartAt
+	task.Response.PvPInfo.TimeoutDuration = uint64(config.GameParams.ContinueTimeout)
+
+	// Determine player status from GamePhase structure
+	// If GameID == 0 and no players, check if in queue
+	if gamePhase.GameID == 0 && len(gamePhase.Players) == 0 {
+		inQueueResp, err := rpcClient.IsPlayerInQueue(context.Background(), playerAddr)
+		if err == nil && inQueueResp != nil && inQueueResp.IsInQueue {
+			task.Response.PvPInfo.Phase = 1
+			task.Response.BaseResponse.Message = "Player is in match queue"
+		} else {
+			task.Response.PvPInfo.Phase = 0
+			task.Response.BaseResponse.Message = "Player is not participating in any game"
+		}
+	} else if gamePhase.GameID == 0 && len(gamePhase.Players) > 0 {
+		// GameID == 0 but has players means waiting for continue
 		task.Response.PvPInfo.Phase = 4
 		task.Response.BaseResponse.Message = "Player is waiting for continue"
-
-	default:
-		task.Response.Mode = 0
+	} else if gamePhase.GameID != 0 {
+		// GameID != 0 means game has started
+		// Check if all players are ready (TurnStatus == PLAYER_TURN_READY) to determine if matched or in game
+		allReady := true
+		for _, p := range gamePhase.Players {
+			if p.TurnStatus != proto.PlayerTurnStatus_PLAYER_TURN_READY &&
+				p.TurnStatus != proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED &&
+				p.TurnStatus != proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED {
+				allReady = false
+				break
+			}
+		}
+		if allReady && len(gamePhase.Players) > 0 {
+			// All players ready but game just started - likely matched
+			task.Response.PvPInfo.Phase = 2
+			task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
+		} else {
+			// Game is in progress
+			task.Response.PvPInfo.Phase = 3
+			task.Response.BaseResponse.Message = "Player has entered battle"
+		}
+	} else {
 		task.Response.PvPInfo.Phase = 0
 		task.Response.BaseResponse.Message = "Player is not participating in any game"
 	}
 
 	// 补充玩家信息
-	if task.Response.PvPInfo.GameID != 0 {
-		players := make([]MatchPlayer, 0)
+	if len(gamePhase.Players) > 0 {
+		players := make([]MatchPlayer, 0, len(gamePhase.Players))
 		for _, p := range gamePhase.Players {
 			uidStr := strconv.FormatInt(p.Address.Id, 10)
 			userProfile, err := db.GetUserProfileByUserID(uidStr)
 			if err != nil || userProfile == nil {
 				continue
 			}
+
+			// Determine if player is confirmed based on TurnStatus
+			isConfirmed := p.TurnStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
+				p.TurnStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
+				p.TurnStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
+
+			// Extract cards from Card field if available
+			var cards []uint32
+			if p.Card != nil {
+				cards = []uint32{*p.Card}
+			}
+
 			players = append(players, MatchPlayer{
-				Address:          userProfile.Address,
-				IsMyself:         p.Address.TemporaryAddress == tempAddress && p.Address.Id == profile.UserID,
-				IsConfirmed:      p.IsConfirmed,
-				Cards:            p.Cards,
-				Name:             userProfile.Name,
-				AvatarURL:        userProfile.AvatarURL,
-				InitialHP:        int32(config.GameParams.InitialHP),
-				MaxHPOneLine:     int32(config.GameParams.InitialHP),
-				InitialMultipler: int32(config.GameParams.InitialMultiplier),
+				Address:           userProfile.Address,
+				IsMyself:          p.Address.TemporaryAddress == tempAddress && p.Address.Id == profile.UserID,
+				IsConfirmed:       isConfirmed,
+				Cards:             cards,
+				Name:              userProfile.Name,
+				AvatarURL:         userProfile.AvatarURL,
+				CurrentHP:         int32(p.CurrentHP),
+				CurrentMultiplier: int32(p.CurrentMultiplier),
+				InitialHP:         int32(config.GameParams.InitialHP),
+				MaxHPOneLine:      int32(config.GameParams.InitialHP),
+				InitialMultipler:  int32(config.GameParams.InitialMultiplier),
 			})
 		}
 		task.Response.Players = players
@@ -187,13 +216,15 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 }
 
 type MatchPlayer struct {
-	Address          string   `json:"Address"`
-	Name             string   `json:"Name"`
-	AvatarURL        string   `json:"AvatarURL"`
-	IsMyself         bool     `json:"IsMyself"`
-	IsConfirmed      bool     `json:"IsConfirmed"`
-	Cards            []uint32 `json:"Cards"`
-	InitialHP        int32    `json:"InitialHP"`
-	MaxHPOneLine     int32    `json:"MaxHPOneLine"`
-	InitialMultipler int32    `json:"InitialMultipler"`
+	Address           string   `json:"Address"`
+	Name              string   `json:"Name"`
+	AvatarURL         string   `json:"AvatarURL"`
+	IsMyself          bool     `json:"IsMyself"`
+	IsConfirmed       bool     `json:"IsConfirmed"`
+	Cards             []uint32 `json:"Cards"`
+	CurrentHP         int32    `json:"CurrentHP"`
+	CurrentMultiplier int32    `json:"CurrentMultiplier"`
+	InitialHP         int32    `json:"InitialHP"`
+	MaxHPOneLine      int32    `json:"MaxHPOneLine"`
+	InitialMultipler  int32    `json:"InitialMultipler"`
 }

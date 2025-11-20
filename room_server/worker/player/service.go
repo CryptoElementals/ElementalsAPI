@@ -191,6 +191,11 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 	return nil, fmt.Errorf("unknonw player status, %s", status)
 }
 
+func (s *Service) GetPlayerStatus(address types.PlayerAddress) (proto.PlayerStatus, error) {
+	status := s.getPlayerStatus(address)
+	return status, nil
+}
+
 func (s *Service) GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
 	return s.gameInfoGetter.GetBattleInfo(ctx, gameid, roundNum)
 }
