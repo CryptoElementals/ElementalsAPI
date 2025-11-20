@@ -21,7 +21,7 @@ type TurnReadyEvent struct {
 
 type PlayerTurnInfo struct {
 	PlayerAddress PlayerAddress
-	SubmittedCard *dao.RoundSubmittedCard
+	SubmittedCard *dao.TurnSubmittedCard
 }
 
 type TurnCompletedEvent struct {
@@ -47,16 +47,12 @@ type RoundReadyEvent struct {
 type CommitmentsOnChainEvent struct {
 	GameID      uint
 	RoundNumber uint32
-}
-
-type CardsOnChainEvent struct {
-	GameID      uint
-	RoundNumber uint32
+	TurnNumber  uint32
 }
 
 type RoundCompletedEvent struct {
-	GameID    uint
-	RoundInfo *dao.Round
+	GameID      uint
+	RoundNumber uint32
 }
 
 type GameCompletedEvent struct {

@@ -56,7 +56,7 @@ func (s *Rpc) GetBattleInfo(ctx context.Context, req *proto.GetBattleInfoRequest
 func (s *Rpc) ConfirmBattle(ctx context.Context, req *proto.ConfirmBattleRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.PlayerAddress)
-	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber)
+	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber, req.TurnNumber)
 }
 
 func (s *Rpc) ContinueGame(ctx context.Context, req *proto.ContinueGameRequest) (*emptypb.Empty, error) {
@@ -129,7 +129,7 @@ type PlayerRequestHandler interface {
 	ExitQueue(playerAddress types.PlayerAddress) error
 	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	ContinueGame(playerAddress types.PlayerAddress, gameID uint) error
-	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
+	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32, turnNum uint32) error
 	IsPlayerInQueue(address types.PlayerAddress) bool
 	Surrender(address types.PlayerAddress, gameID uint) error
 

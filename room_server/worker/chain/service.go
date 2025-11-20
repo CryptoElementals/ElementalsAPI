@@ -44,7 +44,7 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 	return nil
 }
 
-func (s *Service) CreateRoomContract(evt *types.RequireContractCreationEvent) error {
+func (s *Service) CreateRoomContract(evt *types.RequireGameCreationEvent) error {
 	return s.chain.CreateRoomContract(evt)
 }
 

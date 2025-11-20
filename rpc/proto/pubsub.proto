@@ -105,7 +105,13 @@ message GetSubscriberCountResponse {
 
 message GameCreated {
   uint32 GameId = 1;
-  repeated rpc.PlayerAddress Players = 2; 
+  uint32 MaxRoundNum = 2;
+  uint32 MaxTurnNum = 3;
+  uint32 InitialHP = 4;
+  uint32 InitialMultiplier = 5;
+  uint32 ConfirmTimeout = 6;
+  repeated rpc.PlayerAddress Players = 7; 
+
 }
 
 message GameReady {
@@ -117,22 +123,33 @@ message RoundReady {
   uint32 RoundNum = 2;
 }
 
+message TurnReady {
+  uint32 GameId = 1;
+  uint32 RoundNum = 2;
+  uint32 TurnNum = 3;
+}
+
 message CommitmentsOnChain {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
-  uint32 CardNum = 3;
+  uint32 TurnNum = 3;
 }
 
-message CardsOnChain {
+message PlayerTurnInfo {
+  rpc.PlayerAddress PlayerAddress = 1;
+  rpc.RoundSubmittedCard SubmittedCard = 2;
+}
+
+message TurnCompleted {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
-  rpc.RoundSubmittedCard MyCard = 3;
-  rpc.RoundSubmittedCard RivalCard = 4;
+  uint32 TurnNum = 3;
+  repeated PlayerTurnInfo PlayerTurnInfos = 4;
 }
 
 message RoundCompleted {
   uint32 GameId = 1;
-  rpc.Round RoundInfo = 2;
+  uint32 RoundNumber = 2;
 }
 
 message GameCompleted {
@@ -145,8 +162,7 @@ message GameStat {
   string ContractAddress = 2;
   repeated rpc.PlayerAddress Players = 3; 
   uint32 CurrentRoundNum = 4;
-  uint32 CurrentCardNum = 5;
-
+  uint32 CurrentTurnNum = 5;
 }
 
 enum EventType {
@@ -155,13 +171,14 @@ enum EventType {
   TYPE_PART_CONFIRMED = 2;
   TYPE_GAME_CREATED = 3;
   TYPE_ROUND_READY = 4;
-  TYPE_COMMITMENTS_ON_CHAIN = 5;
-  TYPE_CARDS_ON_CHAIN = 6;
-  TYPE_ROUND_COMPLETE = 7;
-  TYPE_GAME_COMPLETE = 8;
-  TYPE_PLAYER_OFFLINE = 9;
-  TYPE_CONTINUE_CANCELED = 10;
-  TYPE_STAT_SYNC = 11;
+  TYPE_TURN_READY = 5;
+  TYPE_COMMITMENTS_ON_CHAIN = 6;
+  TYPE_TURN_COMPLETE = 7;
+  TYPE_ROUND_COMPLETE = 8;
+  TYPE_GAME_COMPLETE = 9;
+  TYPE_PLAYER_OFFLINE = 10;
+  TYPE_CONTINUE_CANCELED = 11;
+  TYPE_GAME_PHASE_SYNC = 12;
 }
 
 message Event {
@@ -171,9 +188,11 @@ message Event {
     GameReady GameReady = 3; // TYPE_GAME_CREATED
     RoundReady RoundReady = 4; // TYPE_ROUND_READY
     CommitmentsOnChain CommitmentsOnChain = 5; // TYPE_COMMITMENTS_ON_CHAIN
-    CardsOnChain CardsOnChain = 6; // TYPE_CARDS_ON_CHAIN
+    TurnCompleted TurnCompleted = 6; // TYPE_TURN_COMPLETE
     RoundCompleted RoundCompleted = 7; // TYPE_ROUND_COMPLETE
     GameCompleted GameCompleted = 8; // TYPE_GAME_COMPLETE
-    google.protobuf.Empty _ = 9; // other events
+    rpc.GamePhase GamePhase = 9; // TYPE_GAME_PHASE_SYNC
+    TurnReady TurnReady = 10; // TYPE_TURN_READY
+    google.protobuf.Empty _ = 11; // other events
   }
 }

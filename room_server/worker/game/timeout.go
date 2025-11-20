@@ -9,10 +9,10 @@ import (
 )
 
 type timerEvent struct {
-	currentGameStatus  proto.GameStatus
-	currentRound       uint32
-	currentTurnNumber  uint32
-	currentRoundStatus proto.RoundStatus
+	currentGameStatus proto.GameStatus
+	currentRound      uint32
+	currentTurnNumber uint32
+	currentTurnStatus proto.TurnStatus
 }
 
 // timeoutFromCurentRound calculates the timeout duration for the current round state
@@ -26,14 +26,14 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 		// game waitting confirmed for the first round
 		timeoutDuration = g.gameInfo.GameArgs.GameMatchTimeout + g.gameInfo.GameArgs.GameMatchTimeoutRedundancy
 	case proto.GameStatus_GAME_RUNNING:
-		switch g.currentRound.round.Status {
-		case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
-			proto.RoundStatus_ROUND_COMPLETED,
-			proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
+		switch g.currentRound.turnStatus {
+		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION,
+			proto.TurnStatus_TURN_ROUND_COMPLETED,
+			proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
 			// waitting for confimation
 			timeoutDuration = g.gameInfo.GameArgs.RoundConfirmTimeout + g.gameInfo.GameArgs.RoundConfirmTimeoutRedundancy
-		case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS, proto.RoundStatus_ROUND_WAITTING_CARDS:
-			// round submitting cards
+		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS, proto.TurnStatus_TURN_WAITTING_CARDS:
+			// turn submitting cards
 			timeoutDuration = g.gameInfo.GameArgs.RoundTimeout + g.gameInfo.GameArgs.RoundTimeoutRedundancy
 		}
 	case proto.GameStatus_GAME_END:
@@ -41,8 +41,9 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 	}
 
 	timeout := time.Second * time.Duration(timeoutDuration)
-	if g.currentRound.round.SetupOnChainAt != 0 {
-		timeout -= time.Since(time.Unix(g.currentRound.round.SetupOnChainAt, 0))
+	currentTurn := g.currentRound.getCurrentTurn()
+	if currentTurn != nil && currentTurn.TurnStartAt > 0 {
+		timeout -= time.Since(time.Unix(currentTurn.TurnStartAt, 0))
 	}
 	return timeout
 }
@@ -54,16 +55,16 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		return
 	}
 	timerEvent := &timerEvent{
-		currentGameStatus:  g.gameInfo.Status,
-		currentRound:       g.currentRound.round.RoundNumber,
-		currentTurnNumber:  g.getCurrentTurnNumber(),
-		currentRoundStatus: g.currentRound.round.Status,
+		currentGameStatus: g.gameInfo.Status,
+		currentRound:      g.currentRound.round.RoundNumber,
+		currentTurnNumber: g.currentRound.getCurrentTurnNumber(),
+		currentTurnStatus: g.currentRound.turnStatus,
 	}
 	log.Debugw("send timer event",
 		"game id", g.gameInfo.ID,
 		"round", timerEvent.currentRound,
 		"turn", timerEvent.currentTurnNumber,
-		"round status", timerEvent.currentRoundStatus,
+		"turn status", timerEvent.currentTurnStatus,
 		"timeout", timeout.Seconds(),
 	)
 	time.AfterFunc(timeout, func() {
@@ -81,19 +82,19 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	// status changed go ahead
-	if g.currentRound.round.Status != event.currentRoundStatus {
+	if g.currentRound.turnStatus != event.currentTurnStatus {
 		return
 	}
 	// turn number changed go ahead
-	if g.getCurrentTurnNumber() != event.currentTurnNumber {
+	if g.currentRound.getCurrentTurnNumber() != event.currentTurnNumber {
 		return
 	}
 	log.Infow("timer event triggered",
 		"game id", g.gameInfo.ID,
 		"round", g.currentRound.round.RoundNumber,
-		"turn", g.getCurrentTurnNumber(),
-		"round status", g.currentRound.round.Status,
-		"turn number", g.getCurrentTurnNumber(),
+		"turn", g.currentRound.getCurrentTurnNumber(),
+		"turn status", g.currentRound.turnStatus,
+		"turn number", g.currentRound.getCurrentTurnNumber(),
 		"game status", g.gameInfo.Status)
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
@@ -103,11 +104,11 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		}
 		return
 	}
-	switch g.currentRound.round.Status {
-	case proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN, proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION:
+	switch g.currentRound.turnStatus {
+	case proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN, proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
 		// For timeout during setup or battle confirmation, abort the game
 		g.handleGameAbortInternalError()
-	case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS, proto.RoundStatus_ROUND_WAITTING_CARDS:
+	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS, proto.TurnStatus_TURN_WAITTING_CARDS:
 		g.handleTurnEnd()
 	}
 }

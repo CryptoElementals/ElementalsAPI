@@ -112,7 +112,7 @@ func TestChainContractInteraction(t *testing.T) {
 	ackReceived := make(chan struct{})
 	testWorkerManager.SpwanWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
 
-	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireContractCreationEvent{
+	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireGameCreationEvent{
 		GameID:         uint(gameID),
 		Players:        []types.PlayerAddress{player1, player2},
 		RoundTimeout:   10,
@@ -123,14 +123,14 @@ func TestChainContractInteraction(t *testing.T) {
 	// Transaction tables removed - no longer checking database
 	ackReceived = make(chan struct{})
 	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireSetupNewRoundEvent{
-		GameID:          uint(gameID),
-		RoundNumber:     2,
-		ContractAddress: roomContractAddress,
+		GameID:      uint(gameID),
+		RoundNumber: 2,
+		// ContractAddress removed - always uses RoomV2 contract address
 	}, true))
 	<-ackReceived
 
 	evtMatcher := tt.NewEventTypeMatcher(
-		&types.RoomContractCreated{},
+		&types.RoomCreated{},
 		&types.NewTurnSetupComplete{},
 		&types.PlayerCommitmentOnChain{},
 		&types.PlayerCardOnChain{},

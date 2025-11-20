@@ -91,7 +91,7 @@ func (c *Chain) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
 	return c.startANewTurn(evt.GameID)
 }
 
-func (c *Chain) createNewRoom(evt *types.RequireContractCreationEvent) error {
+func (c *Chain) createNewRoom(evt *types.RequireGameCreationEvent) error {
 	if c.roomV2Client == nil {
 		return errors.New("room v2 client not initialized")
 	}

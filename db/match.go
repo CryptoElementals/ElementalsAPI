@@ -38,9 +38,10 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 		Preload("GameResult.BattleReward").
 		Preload("GameResult.BattleReward.PlayerRewards").
 		Preload("Rounds").
-		Preload("Rounds.PlayerRoundInfos").
-		Preload("Rounds.PlayerRoundInfos.SubmittedCards").
-		Preload("Rounds.PlayerRoundInfos.SubmittedCards.CardEffects")
+		Preload("Rounds.Turns").
+		Preload("Rounds.Turns.PlayerTurnInfos").
+		Preload("Rounds.Turns.PlayerTurnInfos.TurnSubmittedCard").
+		Preload("Rounds.Turns.PlayerTurnInfos.TurnSubmittedCard.CardEffects")
 }
 
 func SaveGame(game *dao.Game) error {
@@ -49,14 +50,6 @@ func SaveGame(game *dao.Game) error {
 
 func SaveRound(round *dao.Round) error {
 	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(round).Error
-}
-
-func SavePlayerRoundInfo(playerRoundInfo *dao.PlayerRoundInfo) error {
-	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(playerRoundInfo).Error
-}
-
-func SaveRoundSubmittedCard(card *dao.RoundSubmittedCard) error {
-	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(card).Error
 }
 
 func SaveGamePlayerInfo(gamePlayerInfo *dao.GamePlayerInfo) error {
