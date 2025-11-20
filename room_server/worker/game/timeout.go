@@ -41,7 +41,7 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 	}
 
 	timeout := time.Second * time.Duration(timeoutDuration)
-	currentTurn := g.getCurrentTurn()
+	currentTurn := g.currentRound.getCurrentTurn()
 	if currentTurn != nil && currentTurn.TurnStartAt > 0 {
 		timeout -= time.Since(time.Unix(currentTurn.TurnStartAt, 0))
 	}
@@ -57,7 +57,7 @@ func (g *Game) sendTimerEventByCurrentRound() {
 	timerEvent := &timerEvent{
 		currentGameStatus: g.gameInfo.Status,
 		currentRound:      g.currentRound.round.RoundNumber,
-		currentTurnNumber: g.getCurrentTurnNumber(),
+		currentTurnNumber: g.currentRound.getCurrentTurnNumber(),
 		currentTurnStatus: g.currentRound.turnStatus,
 	}
 	log.Debugw("send timer event",
@@ -86,15 +86,15 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	// turn number changed go ahead
-	if g.getCurrentTurnNumber() != event.currentTurnNumber {
+	if g.currentRound.getCurrentTurnNumber() != event.currentTurnNumber {
 		return
 	}
 	log.Infow("timer event triggered",
 		"game id", g.gameInfo.ID,
 		"round", g.currentRound.round.RoundNumber,
-		"turn", g.getCurrentTurnNumber(),
+		"turn", g.currentRound.getCurrentTurnNumber(),
 		"turn status", g.currentRound.turnStatus,
-		"turn number", g.getCurrentTurnNumber(),
+		"turn number", g.currentRound.getCurrentTurnNumber(),
 		"game status", g.gameInfo.Status)
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
 	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {

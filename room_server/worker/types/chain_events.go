@@ -1,6 +1,6 @@
 package types
 
-type RequireContractCreationEvent struct {
+type RequireGameCreationEvent struct {
 	GameID         uint
 	InitialHP      int64
 	RoundTimeout   int64

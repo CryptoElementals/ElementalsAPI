@@ -19,6 +19,59 @@ type Round struct {
 	turnStatus   proto.TurnStatus              // Runtime turn status (not persisted in Round model)
 }
 
+// getCurrentTurnNumber returns the current turn number (1-3) for this round
+func (r *Round) getCurrentTurnNumber() uint32 {
+	return r.turnNumber
+}
+
+// getCurrentTurn gets the current Turn record
+func (r *Round) getCurrentTurn() *dao.Turn {
+	turnNumber := r.getCurrentTurnNumber()
+	idx := int(turnNumber) - 1
+	return r.round.Turns[idx]
+}
+
+// createNewTurn creates a new Turn record for the current turn number
+// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
+// Also initializes playerTurnInfos for all players to ensure the slice is large enough for the new turn
+func (r *Round) createNewTurn() *dao.Turn {
+	turnNumber := r.getCurrentTurnNumber()
+	idx := int(turnNumber) - 1
+
+	// Ensure Turns slice is large enough
+	for len(r.round.Turns) <= idx {
+		r.round.Turns = append(r.round.Turns, nil)
+	}
+
+	// Initialize playerTurnInfos for all players to ensure slice is large enough for the new turn
+	for _, player := range r.gamePlayers {
+		// Ensure slice is large enough to accommodate the new turn index
+		for len(player.playerTurnInfos) <= idx {
+			player.playerTurnInfos = append(player.playerTurnInfos, nil)
+		}
+	}
+
+	// Create new turn
+	newTurn := &dao.Turn{
+		RoundID:         r.round.ID, // Will be set when round is saved
+		TurnNumber:      turnNumber,
+		PlayerTurnInfos: make([]*dao.PlayerTurnInfo, 0),
+	}
+	r.round.Turns[idx] = newTurn
+	return newTurn
+}
+
+// getOrCreateCurrentTurn gets the current Turn record, or creates it if it doesn't exist
+// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
+func (r *Round) getOrCreateCurrentTurn() *dao.Turn {
+	// Try to get existing turn first
+	if turn := r.getCurrentTurn(); turn != nil {
+		return turn
+	}
+	// Create new turn if it doesn't exist
+	return r.createNewTurn()
+}
+
 // ElementalRelation represents the relationship between two cards
 type elementalRelation struct {
 	P1Type        string
@@ -116,10 +169,7 @@ func (r *Round) checkPlayerStatuses() (bool, bool) {
 		}
 		// Check commitment from submitted cards
 		submittedCards := gamePlayer.getSubmittedCards()
-		hasCommitment := false
-		if len(submittedCards) > 0 && len(submittedCards[0].CommitmentHash) > 0 {
-			hasCommitment = true
-		}
+		hasCommitment := len(submittedCards) > 0 && len(submittedCards[0].CommitmentHash) > 0
 		if !hasCommitment || len(submittedCards) != 3 {
 			hasOfflinePlayer = true
 		}
@@ -139,10 +189,7 @@ func (r *Round) determinePlayerStatus(gamePlayer *gamePlayer) playerStatus {
 	}
 	// Check commitment from submitted cards
 	submittedCards := gamePlayer.getSubmittedCards()
-	hasCommitment := false
-	if len(submittedCards) > 0 && len(submittedCards[0].CommitmentHash) > 0 {
-		hasCommitment = true
-	}
+	hasCommitment := len(submittedCards) > 0 && len(submittedCards[0].CommitmentHash) > 0
 	if !hasCommitment || len(submittedCards) != 3 {
 		return playerStatusOffline
 	}
@@ -373,23 +420,31 @@ func (r *Round) ExecuteCardIndex(cardIdx int) (bool, *dao.GameResult, error) {
 	}
 
 	// Fetch cards for all players for this card index
-	playerCards := make([][]*dao.Card, 0, playerCount)
+	// Collect all card IDs first, then batch fetch
+	cardIDs := make([]int, 0, playerCount)
 	playerAddresses := make([]string, 0, playerCount)
 	for _, gamePlayer := range r.gamePlayers {
 		submittedCards := gamePlayer.getSubmittedCards()
 		if cardIdx >= len(submittedCards) {
 			return false, nil, fmt.Errorf("card index %d not found for player %s", cardIdx, gamePlayer.player.TemporaryAddress)
 		}
-		cardID := int(submittedCards[cardIdx].CardID)
-		cards, err := r.getCards([]int{cardID})
-		if err != nil {
-			return false, nil, fmt.Errorf("failed to get card for player %s: %v", gamePlayer.player.TemporaryAddress, err)
-		}
-		if len(cards) == 0 {
-			return false, nil, fmt.Errorf("card not found for player %s", gamePlayer.player.TemporaryAddress)
-		}
-		playerCards = append(playerCards, cards)
+		cardIDs = append(cardIDs, int(submittedCards[cardIdx].CardID))
 		playerAddresses = append(playerAddresses, gamePlayer.player.TemporaryAddress)
+	}
+
+	// Batch fetch all cards at once
+	allCards, err := r.getCards(cardIDs)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to get cards: %v", err)
+	}
+	if len(allCards) != len(cardIDs) {
+		return false, nil, fmt.Errorf("expected %d cards but got %d", len(cardIDs), len(allCards))
+	}
+
+	// Map cards to players
+	playerCards := make([][]*dao.Card, 0, playerCount)
+	for i := 0; i < len(allCards); i++ {
+		playerCards = append(playerCards, []*dao.Card{allCards[i]})
 	}
 
 	// Execute battles for this card index between all player pairs
@@ -859,10 +914,7 @@ func (r *Round) handleServerTimeout() (bool, *dao.GameResult, error) {
 		gamePlayer.totalLostHP = int64(gamePlayer.getLostHP())
 
 		// Check commitment from first card (if exists)
-		hasCommitment := false
-		if len(submittedCards) > 0 && len(submittedCards[0].CommitmentHash) > 0 {
-			hasCommitment = true
-		}
+		hasCommitment := len(submittedCards) > 0 && len(submittedCards[0].CommitmentHash) > 0
 		playerRewards = append(playerRewards, &dao.PlayerReward{
 			PlayerId:               gamePlayer.player.PlayerId,
 			TemporaryAddress:       gamePlayer.player.TemporaryAddress,

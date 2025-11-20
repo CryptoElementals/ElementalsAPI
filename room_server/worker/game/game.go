@@ -35,7 +35,17 @@ func (p *gamePlayer) String() string {
 
 // getSubmittedCards returns all submitted cards from playerTurnInfos as TurnSubmittedCard
 func (p *gamePlayer) getSubmittedCards() []*dao.TurnSubmittedCard {
-	cards := make([]*dao.TurnSubmittedCard, 0)
+	// Count non-nil cards first to pre-allocate
+	count := 0
+	for _, turnInfo := range p.playerTurnInfos {
+		if turnInfo.TurnSubmittedCard != nil {
+			count++
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	cards := make([]*dao.TurnSubmittedCard, 0, count)
 	for _, turnInfo := range p.playerTurnInfos {
 		if turnInfo.TurnSubmittedCard != nil {
 			cards = append(cards, turnInfo.TurnSubmittedCard)
@@ -196,9 +206,17 @@ func NewGameFromGameInfo(
 		}
 		// Initialize game state from Turns
 		// Find the latest turn to determine current turn number
-		if len(g.currentRound.round.Turns) > 0 {
-			latestTurn := g.currentRound.round.Turns[len(g.currentRound.round.Turns)-1]
-			g.currentRound.turnNumber = latestTurn.TurnNumber + 1
+		// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
+		// we can find the latest turn by checking the highest index with a non-nil entry
+		latestTurnNumber := uint32(0)
+		for i := len(g.currentRound.round.Turns) - 1; i >= 0; i-- {
+			if g.currentRound.round.Turns[i] != nil {
+				latestTurnNumber = g.currentRound.round.Turns[i].TurnNumber
+				break
+			}
+		}
+		if latestTurnNumber > 0 {
+			g.currentRound.turnNumber = latestTurnNumber + 1
 			if g.currentRound.turnNumber > 3 {
 				g.currentRound.turnNumber = 1 // Round completed, will setup new round
 			}
@@ -207,12 +225,26 @@ func NewGameFromGameInfo(
 		}
 
 		// Reconstruct playerTurnInfos from Turns for runtime use
-		// Group PlayerTurnInfos by player
+		// Group PlayerTurnInfos by player, maintaining sorted order by turn number
+		// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
+		// we use turn.TurnNumber - 1 as the index to maintain sorted order in playerTurnInfos
 		playerTurnInfoMap := make(map[string][]*dao.PlayerTurnInfo)
 		for _, turn := range g.currentRound.round.Turns {
+			if turn == nil {
+				continue
+			}
+			idx := int(turn.TurnNumber) - 1
 			for _, playerTurnInfo := range turn.PlayerTurnInfos {
 				key := playerTurnInfo.TemporaryAddress
-				playerTurnInfoMap[key] = append(playerTurnInfoMap[key], playerTurnInfo)
+				// Initialize slice if needed
+				if playerTurnInfoMap[key] == nil {
+					playerTurnInfoMap[key] = make([]*dao.PlayerTurnInfo, 0, 3)
+				}
+				// Ensure slice is large enough and store at correct index to maintain sorted order
+				for len(playerTurnInfoMap[key]) <= idx {
+					playerTurnInfoMap[key] = append(playerTurnInfoMap[key], nil)
+				}
+				playerTurnInfoMap[key][idx] = playerTurnInfo
 			}
 		}
 
@@ -262,32 +294,24 @@ func (g *Game) saveGame() error {
 	err := db.SaveGame(g.gameInfo)
 	if err != nil {
 		log.Errorw("saveGame failed", "err", err, "game id", g.gameInfo.ID)
+		return err
 	}
 	return nil
 }
 
-// getOrUpdatePlayerTurnInfo gets or creates PlayerTurnInfo for current turn
-func (g *Game) getOrUpdatePlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
-	currentTurn := g.getOrCreateCurrentTurn()
-	// Check if PlayerTurnInfo already exists in current turn
-	for _, pti := range currentTurn.PlayerTurnInfos {
-		if pti.PlayerID == player.player.PlayerId && pti.TemporaryAddress == player.player.TemporaryAddress {
-			// Found matching PlayerTurnInfo in current turn
-			// Update player's playerTurnInfos if not already there
-			found := false
-			for _, existing := range player.playerTurnInfos {
-				if existing.ID == pti.ID {
-					found = true
-					return existing
-				}
-			}
-			if !found {
-				player.playerTurnInfos = append(player.playerTurnInfos, pti)
-				return pti
-			}
-			return pti
-		}
-	}
+// getPlayerTurnInfo gets PlayerTurnInfo for the current turn, returns nil if not found
+// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
+// Assumes playerTurnInfos slice is sorted by turn number
+func (g *Game) getPlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
+	turnNumber := g.currentRound.getCurrentTurnNumber()
+	pti := player.playerTurnInfos[int(turnNumber)-1]
+	return pti
+}
+
+// createPlayerTurnInfo creates a new PlayerTurnInfo for the current turn
+// Ensures it's stored at the correct index to maintain sorted order by turn number
+func (g *Game) createPlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
+	currentTurn := g.currentRound.getCurrentTurn()
 	// Create new PlayerTurnInfo for current turn
 	newPlayerTurnInfo := &dao.PlayerTurnInfo{
 		TurnID:           currentTurn.ID,
@@ -295,15 +319,27 @@ func (g *Game) getOrUpdatePlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo
 		TemporaryAddress: player.player.TemporaryAddress,
 		PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
 	}
+
 	player.playerTurnInfos = append(player.playerTurnInfos, newPlayerTurnInfo)
-	currentTurn.PlayerTurnInfos = append(currentTurn.PlayerTurnInfos, newPlayerTurnInfo)
+	currentTurn.PlayerTurnInfos = player.playerTurnInfos
 	return newPlayerTurnInfo
+}
+
+// getOrUpdatePlayerTurnInfo gets or creates PlayerTurnInfo for current turn
+func (g *Game) getOrUpdatePlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
+	// Try to get existing PlayerTurnInfo first
+	if pti := g.getPlayerTurnInfo(player); pti != nil {
+		return pti
+	}
+	// Create new PlayerTurnInfo if it doesn't exist
+	return g.createPlayerTurnInfo(player)
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
 	err := db.SaveRound(round)
 	if err != nil {
 		log.Errorw("saveRound failed", "err", err, "game id", g.gameInfo.ID, "round num", round.RoundNumber)
+		return err
 	}
 	return nil
 }
@@ -327,23 +363,15 @@ func (g *Game) pushStateToContractCreating() error {
 	return nil
 }
 
-// getCurrentTurnNumber returns the current turn number (1-3) from the Round struct
-func (g *Game) getCurrentTurnNumber() uint32 {
-	if g.currentRound == nil || g.currentRound.turnNumber == 0 {
-		return 1
-	}
-	return g.currentRound.turnNumber
-}
-
 // setupNewTurn sends event to chain manager to setup a new turn
 // Note: For the first turn of the first round, this is not needed as the contract creation handles it
 func (g *Game) setupNewTurn() error {
 	// Skip for the first turn of the first round
-	if g.currentRound.round.RoundNumber == 1 && g.getCurrentTurnNumber() == 1 {
+	if g.currentRound.round.RoundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
 		return nil
 	}
 	// RoomContract check removed - always uses RoomV2 contract address
-	turnNumber := g.getCurrentTurnNumber()
+	turnNumber := g.currentRound.getCurrentTurnNumber()
 	log.Infow("setup new turn", "game id", g.gameInfo.ID, "round number", g.currentRound.round.RoundNumber, "turn number", turnNumber)
 	err := g.sendTurnReady()
 	if err != nil {
@@ -356,35 +384,6 @@ func (g *Game) setupNewTurn() error {
 // incrementTurnNumber increments the turn number for the current round
 func (g *Game) incrementTurnNumber() {
 	g.currentRound.turnNumber++
-}
-
-// getOrCreateCurrentTurn gets or creates the current Turn record
-func (g *Game) getOrCreateCurrentTurn() *dao.Turn {
-	turnNumber := g.getCurrentTurnNumber()
-	// Check if turn already exists
-	for _, turn := range g.currentRound.round.Turns {
-		if turn.TurnNumber == turnNumber {
-			return turn
-		}
-	}
-	// Create new turn
-	newTurn := &dao.Turn{
-		RoundID:         g.currentRound.round.ID, // Will be set when round is saved
-		TurnNumber:      turnNumber,
-		PlayerTurnInfos: make([]*dao.PlayerTurnInfo, 0),
-	}
-	return newTurn
-}
-
-// getCurrentTurn gets the current Turn record, returns nil if not found
-func (g *Game) getCurrentTurn() *dao.Turn {
-	turnNumber := g.getCurrentTurnNumber()
-	for _, turn := range g.currentRound.round.Turns {
-		if turn.TurnNumber == turnNumber {
-			return turn
-		}
-	}
-	return nil
 }
 
 func (g *Game) stopGame() {
@@ -413,7 +412,7 @@ func (g *Game) setupNewRound() {
 	newRound := &dao.Round{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: roundNum,
-		Turns:       make([]*dao.Turn, 0),
+		Turns:       make([]*dao.Turn, 0, 3), // Pre-allocate for 3 turns
 	}
 	// Initialize playerTurnInfos for each player (empty at start of round)
 	for _, player := range g.currentRound.gamePlayers {
@@ -422,6 +421,12 @@ func (g *Game) setupNewRound() {
 	g.currentRound.round = newRound // Update the embedded Round's reference
 	g.currentRound.turnNumber = 1   // Start with turn 1 for each new round
 	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
+
+	// Create turn 1 record immediately when new round is set up
+	// This will also initialize playerTurnInfos for all players
+	turn1 := g.currentRound.createNewTurn()
+	turn1.RoundID = newRound.ID
+
 	g.gameInfo.Rounds = append(g.gameInfo.Rounds, newRound)
 	g.sendTimerEventByCurrentRound()
 }
@@ -447,7 +452,7 @@ func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
 }
 
 func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
-	return g.chainSvc.CreateRoomContract(&types.RequireContractCreationEvent{
+	return g.chainSvc.CreateRoomContract(&types.RequireGameCreationEvent{
 		GameID:         g.gameInfo.ID,
 		Players:        allPlayers,
 		InitialHP:      g.gameInfo.InitialHP,
@@ -460,7 +465,7 @@ func (g *Game) sendTurnReady() error {
 	return g.chainSvc.SetTurnReady(&types.RequireSetupNewTurnEvent{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: uint32(g.currentRound.round.RoundNumber),
-		TurnNumber:  g.getCurrentTurnNumber(),
+		TurnNumber:  g.currentRound.getCurrentTurnNumber(),
 	})
 }
 

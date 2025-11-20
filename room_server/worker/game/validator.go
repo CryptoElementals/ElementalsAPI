@@ -55,7 +55,7 @@ func (g *Game) validateRoundAndIndex(roundNumber, index uint32, playerAddr strin
 		return fmt.Errorf("%s index must be between 1 and 3, got %d", indexType, index)
 	}
 
-	expectedIndex := g.getCurrentTurnNumber()
+	expectedIndex := g.currentRound.getCurrentTurnNumber()
 	if index != expectedIndex {
 		log.Errorw("index mismatch", "type", indexType, "game id", g.gameInfo.ID, "round number", roundNumber, "player address", playerAddr, "expected index", expectedIndex, "got index", index)
 		return fmt.Errorf("expected %s index %d, got %d", indexType, expectedIndex, index)

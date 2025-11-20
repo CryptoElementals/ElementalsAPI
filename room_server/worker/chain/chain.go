@@ -60,7 +60,7 @@ func (c *Chain) Start() error {
 	return nil
 }
 
-func (c *Chain) CreateRoomContract(evt *types.RequireContractCreationEvent) error {
+func (c *Chain) CreateRoomContract(evt *types.RequireGameCreationEvent) error {
 	return c.createNewRoom(evt)
 }
 
@@ -100,7 +100,7 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 
 func (c *Chain) gameCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameCreated) error {
 	// For RoomV2, there's only one contract address, so RoomContractAddress is not needed
-	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
+	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
 		GameID:    gameID,
 		TimeStamp: blockTime,
 	}, true)

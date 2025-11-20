@@ -14,7 +14,7 @@ import (
 )
 
 type ContractClient interface {
-	CreateRoomContract(evt *types.RequireContractCreationEvent) error
+	CreateRoomContract(evt *types.RequireGameCreationEvent) error
 	SetTurnReady(evt *types.RequireSetupNewTurnEvent) error
 	SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error
 	SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error

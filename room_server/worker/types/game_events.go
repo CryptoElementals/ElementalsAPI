@@ -35,7 +35,7 @@ type NewTurnSetupComplete struct {
 	TimeStamp   int64
 }
 
-type RoomContractCreated struct {
+type RoomCreated struct {
 	GameID    uint
 	TimeStamp int64
 	// RoomContractAddress removed - always uses RoomV2 contract address

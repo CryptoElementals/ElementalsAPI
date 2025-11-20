@@ -35,7 +35,7 @@ func (m *MockContractClient) EXPECT() *MockContractClientMockRecorder {
 }
 
 // CreateRoomContract mocks base method.
-func (m *MockContractClient) CreateRoomContract(arg0 *types.RequireContractCreationEvent) error {
+func (m *MockContractClient) CreateRoomContract(arg0 *types.RequireGameCreationEvent) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateRoomContract", arg0)
 	ret0, _ := ret[0].(error)
