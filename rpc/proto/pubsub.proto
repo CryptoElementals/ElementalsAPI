@@ -103,7 +103,7 @@ message GetSubscriberCountResponse {
   string Error = 4;
 } 
 
-message GameCreated {
+message GameMatched {
   uint32 GameId = 1;
   uint32 MaxRoundNum = 2;
   uint32 MaxTurnNum = 3;
@@ -144,9 +144,15 @@ message TurnCompleted {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
-  repeated PlayerTurnInfo PlayerTurnInfos = 4;
+  bool IsRoundComplete = 4;
+  bool IsGameComplete = 5;
+  repeated PlayerTurnInfo PlayerTurnInfos = 6;
+  optional battle.GameResult GameResult = 7;
 }
 
+// Deprecated: RoundCompleted and GameCompleted are no longer used.
+// Round and game completion are now indicated via TurnCompleted.IsRoundComplete and TurnCompleted.IsGameComplete flags.
+// Keeping these message definitions for backward compatibility, but they should not be used in new code.
 message RoundCompleted {
   uint32 GameId = 1;
   uint32 RoundNumber = 2;
@@ -173,9 +179,9 @@ enum EventType {
   TYPE_ROUND_READY = 4;
   TYPE_TURN_READY = 5;
   TYPE_COMMITMENTS_ON_CHAIN = 6;
-  TYPE_TURN_COMPLETE = 7;
-  TYPE_ROUND_COMPLETE = 8;
-  TYPE_GAME_COMPLETE = 9;
+  TYPE_TURN_COMPLETE = 7; // Includes IsRoundComplete and IsGameComplete flags
+  TYPE_ROUND_COMPLETE = 8; // Deprecated: Use TYPE_TURN_COMPLETE with IsRoundComplete flag
+  TYPE_GAME_COMPLETE = 9; // Deprecated: Use TYPE_TURN_COMPLETE with IsGameComplete flag
   TYPE_PLAYER_OFFLINE = 10;
   TYPE_CONTINUE_CANCELED = 11;
   TYPE_GAME_PHASE_SYNC = 12;
@@ -184,13 +190,11 @@ enum EventType {
 message Event {
   EventType Type = 1;
   oneof Event {
-    GameCreated GameCreated = 2; // TYPE_MATCHED
+    GameMatched GameMatched = 2; // TYPE_MATCHED
     GameReady GameReady = 3; // TYPE_GAME_CREATED
     RoundReady RoundReady = 4; // TYPE_ROUND_READY
     CommitmentsOnChain CommitmentsOnChain = 5; // TYPE_COMMITMENTS_ON_CHAIN
-    TurnCompleted TurnCompleted = 6; // TYPE_TURN_COMPLETE
-    RoundCompleted RoundCompleted = 7; // TYPE_ROUND_COMPLETE
-    GameCompleted GameCompleted = 8; // TYPE_GAME_COMPLETE
+    TurnCompleted TurnCompleted = 6; // TYPE_TURN_COMPLETE (includes IsRoundComplete and IsGameComplete flags)
     rpc.GamePhase GamePhase = 9; // TYPE_GAME_PHASE_SYNC
     TurnReady TurnReady = 10; // TYPE_TURN_READY
     google.protobuf.Empty _ = 11; // other events

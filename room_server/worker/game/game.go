@@ -188,7 +188,9 @@ func NewGameFromGameInfo(
 				log.Errorf("expired game abort failed, game: %d, err %s", gameInfo.ID, err)
 			}
 		} else {
-			err := g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT)
+			// Check if game is over
+			isGameComplete := gameInfo.GameResult != nil
+			err := g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT, isGameComplete)
 			if err != nil {
 				log.Errorf("expired game terminate failed, game: %d, err %s", gameInfo.ID, err)
 			}

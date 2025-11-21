@@ -71,7 +71,9 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 	// Mark surrender in current turn's PlayerTurnInfo
 	playerTurnInfo := g.getPlayerTurnInfo(p)
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN // Use a status to indicate surrender
-	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER)
+	// Check if game is over
+	isGameComplete := g.gameInfo.GameResult != nil
+	return g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER, isGameComplete)
 }
 
 func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
@@ -382,20 +384,25 @@ func (g *Game) handleTurnEnd() error {
 		})
 	}
 
-	// Send event to both players with TurnCompletedEvent
-	g.sendEventsToAllPlayers(
-		types.NewEvent(g.workerID(), &types.TurnCompletedEvent{
-			GameID:         g.gameInfo.ID,
-			RoundNumber:    roundNumber,
-			TurnNumber:     turnNumber,
-			PlayerTurnInfo: playerTurnInfos,
-		}),
-	)
+	// Determine if round and/or game is complete
+	isRoundComplete := turnNumber >= 3 || isGameOver
+	isGameComplete := isGameOver
 
-	// Check if we've reached 3 turns in this round or game is over
-	if isGameOver || turnNumber >= 3 {
-		// All 3 turns completed, handle round end
-		return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL)
+	// Send event to both players with TurnCompletedEvent (includes round/game completion info)
+	turnCompletedEvt := &types.TurnCompletedEvent{
+		GameID:          g.gameInfo.ID,
+		RoundNumber:     roundNumber,
+		TurnNumber:      turnNumber,
+		IsRoundComplete: isRoundComplete,
+		IsGameComplete:  isGameComplete,
+		PlayerTurnInfo:  playerTurnInfos,
+		GameResult:      gameResult, // will be nil if game is not complete
+	}
+	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
+
+	// If round or game is complete, handle it
+	if isRoundComplete {
+		return g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL, isGameComplete)
 	}
 
 	// Otherwise, prepare for the next turn
@@ -412,24 +419,34 @@ func (g *Game) handleTurnEnd() error {
 	return nil
 }
 
-// handleRoundEnd handles the end of a round: gets game result and checks if game ends
-func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
+// completeRoundAndCheckGameEnd handles round completion and checks if game should end
+// This function consolidates the logic from handleRoundEnd and handleGameEnd
+func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, isGameComplete bool) error {
+	// Mark round as completed
 	g.currentRound.round.CompleteReason = reason
-
-	// Check if game is over (game result is set when game ends)
-	isGameOver := g.gameInfo.GameResult != nil
-
-	// Start a new round
 	g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
-	roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: g.currentRound.round.RoundNumber,
-	})
-	g.sendEventsToAllPlayers(roundCompletedEvt)
 
-	if isGameOver {
-		return g.handleGameEnd()
+	// If game is complete, handle game end
+	if isGameComplete {
+		g.currentRound.round.IsLastRound = true
+		g.gameInfo.Status = proto.GameStatus_GAME_END
+		err := g.saveGame()
+		if err != nil {
+			return err
+		}
+		// Call HandleGameCompletedEvent for game result settlement
+		completeEvt := &types.GameCompletedEvent{
+			GameID:   g.gameInfo.ID,
+			GameInfo: g.gameInfo,
+		}
+		if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+		}
+		g.stopGame()
+		return nil
 	}
+
+	// Game continues, setup new round
 	g.setupNewRound()
 	err := g.saveGame()
 	if err != nil {
@@ -439,30 +456,17 @@ func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 }
 
 // sendGameCompletedEventAndStop sends game completed event and stops the game
+// Used by abort handlers that need to trigger game result settlement
 func (g *Game) sendGameCompletedEventAndStop() {
 	completeEvt := &types.GameCompletedEvent{
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
 	}
-	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
+	// Still need to call HandleGameCompletedEvent for game result settlement
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
 		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 	}
-	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopGame()
-}
-
-// can go into game end from any other status
-func (g *Game) handleGameEnd() error {
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
-	g.currentRound.round.IsLastRound = true
-	g.gameInfo.Status = proto.GameStatus_GAME_END
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
-	g.sendGameCompletedEventAndStop()
-	return nil
 }
 
 // can go into game end from any other status

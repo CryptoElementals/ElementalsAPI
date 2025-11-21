@@ -163,26 +163,45 @@ func (c *GameContext) Run() error {
 					c.state = playerStateWaittingCardsSubmitted
 					c.lock.Unlock()
 					c.commitmentOnChainChan <- struct{}{}
-				case proto.EventType_TYPE_ROUND_COMPLETE:
-					fmt.Println("round complete, please confirm to start a new round")
-					battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(c.currentRound))
-					if err != nil {
-						fmt.Println("error: ", err.Error())
+				case proto.EventType_TYPE_TURN_COMPLETE:
+					turnCompleted := evt.GetTurnCompleted()
+					if turnCompleted == nil {
+						continue
 					}
-					fmt.Println("round result: ", types.ToJsonLoggable(battleInfo.RoundResult))
-					if !battleInfo.RoundResult.IsGameOver {
-						c.lock.Lock()
-						c.currentRound++
-						c.state = playerStateWaittingConfirm
-						c.lock.Unlock()
-					} else {
-						fmt.Println("game result: ", types.ToJsonLoggable(battleInfo.GameResult))
-					}
-				case proto.EventType_TYPE_GAME_COMPLETE:
-					fmt.Println("game complete")
+					fmt.Println("turn complete", "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum)
 					c.lock.Lock()
-					c.state = playerStateIdle
+					c.currentTurn = turnCompleted.TurnNum
 					c.lock.Unlock()
+
+					// Handle round completion
+					if turnCompleted.IsRoundComplete {
+						fmt.Println("round complete, please confirm to start a new round")
+						battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(turnCompleted.RoundNum))
+						if err != nil {
+							fmt.Println("error: ", err.Error())
+						} else {
+							fmt.Println("round result: ", types.ToJsonLoggable(battleInfo.RoundResult))
+							if !battleInfo.RoundResult.IsGameOver {
+								c.lock.Lock()
+								c.currentRound++
+								c.state = playerStateWaittingConfirm
+								c.lock.Unlock()
+							} else if turnCompleted.GameResult != nil {
+								fmt.Println("game result: ", types.ToJsonLoggable(turnCompleted.GameResult))
+							}
+						}
+					}
+
+					// Handle game completion
+					if turnCompleted.IsGameComplete {
+						fmt.Println("game complete")
+						if turnCompleted.GameResult != nil {
+							fmt.Println("game result: ", types.ToJsonLoggable(turnCompleted.GameResult))
+						}
+						c.lock.Lock()
+						c.state = playerStateIdle
+						c.lock.Unlock()
+					}
 				}
 			}
 		}

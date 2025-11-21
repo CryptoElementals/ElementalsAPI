@@ -25,10 +25,13 @@ type PlayerTurnInfo struct {
 }
 
 type TurnCompletedEvent struct {
-	GameID         uint
-	RoundNumber    uint32
-	TurnNumber     uint32
-	PlayerTurnInfo []*PlayerTurnInfo
+	GameID          uint
+	RoundNumber     uint32
+	TurnNumber      uint32
+	IsRoundComplete bool
+	IsGameComplete  bool
+	PlayerTurnInfo  []*PlayerTurnInfo
+	GameResult      *dao.GameResult // Only set when IsGameComplete is true
 }
 
 type RoundPartialReadyEvent struct {

@@ -225,21 +225,40 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_TYPE_ROUND_COMPLETE:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
-			Data: map[string]interface{}{
-				"EventType": "roundComplete",
-			},
-			Timestamp:   time.Now(),
-			RequestUUID: requestUUID,
+	case proto.EventType_TYPE_TURN_COMPLETE:
+		turnCompleted := msg.Event.GetTurnCompleted()
+		if turnCompleted == nil {
+			return events.Event{
+				Type:        events.EventTypeStatusUpdate,
+				Data:        map[string]interface{}{"EventType": "turnComplete"},
+				Timestamp:   time.Now(),
+				RequestUUID: requestUUID,
+			}
 		}
-	case proto.EventType_TYPE_GAME_COMPLETE:
+		// Check flags to determine if round or game is complete
+		if turnCompleted.IsGameComplete {
+			return events.Event{
+				Type: events.EventTypeStatusUpdate,
+				Data: map[string]interface{}{
+					"EventType": "gameComplete",
+				},
+				Timestamp:   time.Now(),
+				RequestUUID: requestUUID,
+			}
+		}
+		if turnCompleted.IsRoundComplete {
+			return events.Event{
+				Type: events.EventTypeStatusUpdate,
+				Data: map[string]interface{}{
+					"EventType": "roundComplete",
+				},
+				Timestamp:   time.Now(),
+				RequestUUID: requestUUID,
+			}
+		}
 		return events.Event{
-			Type: events.EventTypeStatusUpdate,
-			Data: map[string]interface{}{
-				"EventType": "gameComplete",
-			},
+			Type:        events.EventTypeStatusUpdate,
+			Data:        map[string]interface{}{"EventType": "turnComplete"},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
