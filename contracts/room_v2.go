@@ -31,7 +31,7 @@ var (
 
 // RoomV2ContractMetaData contains all meta data concerning the RoomV2Contract contract.
 var RoomV2ContractMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"bytes8\",\"name\":\"_player1\",\"type\":\"bytes8\"},{\"indexed\":false,\"internalType\":\"bytes8\",\"name\":\"_player2\",\"type\":\"bytes8\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalCardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"RoomCreated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"startANewCard\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"cards\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"salt\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCards\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"cardsHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCardsHash\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"bytes8\",\"name\":\"_player1\",\"type\":\"bytes8\"},{\"internalType\":\"bytes8\",\"name\":\"_player2\",\"type\":\"bytes8\"},{\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"CreateRoom\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"StartANewCard\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newManager\",\"type\":\"address\"}],\"name\":\"addManager\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[]\",\"name\":\"_gameIds\",\"type\":\"uint256[]\"},{\"internalType\":\"string[]\",\"name\":\"_cards\",\"type\":\"string[]\"},{\"internalType\":\"string[]\",\"name\":\"_salts\",\"type\":\"string[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_cardIndexes\",\"type\":\"uint256[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_rounds\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_signatures\",\"type\":\"bytes[]\"}],\"name\":\"batchSubmitCards\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[]\",\"name\":\"_gameIds\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes32[]\",\"name\":\"_cardsHashes\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_cardIndexes\",\"type\":\"uint256[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_rounds\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_signatures\",\"type\":\"bytes[]\"}],\"name\":\"batchSubmitCardsHash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameIdIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"managerIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"roomData\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"currentRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"currentCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"creator\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"player1Temp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"player2Temp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"launchTime\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"initialHP\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_player1\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_player2\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalCardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"RoomCreated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"termIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"startANewTerm\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"cards\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"salt\",\"type\":\"string\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCards\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"cardsHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCardsHash\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_player1\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_player2\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_totalCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"CreateRoom\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"StartANewTerm\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newManager\",\"type\":\"address\"}],\"name\":\"addManager\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[]\",\"name\":\"_gameIds\",\"type\":\"uint256[]\"},{\"internalType\":\"string[]\",\"name\":\"_cards\",\"type\":\"string[]\"},{\"internalType\":\"string[]\",\"name\":\"_salts\",\"type\":\"string[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_cardIndexes\",\"type\":\"uint256[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_rounds\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_signatures\",\"type\":\"bytes[]\"}],\"name\":\"batchSubmitCards\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[]\",\"name\":\"_gameIds\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes32[]\",\"name\":\"_cardsHashes\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_cardIndexes\",\"type\":\"uint256[]\"},{\"internalType\":\"uint256[]\",\"name\":\"_rounds\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes[]\",\"name\":\"_signatures\",\"type\":\"bytes[]\"}],\"name\":\"batchSubmitCardsHash\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameIdIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"managerIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"roomData\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"currentRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"currentCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"creator\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"player1Temp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"player2Temp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"launchTime\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"initialHP\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // RoomV2ContractABI is the input ABI used to generate the binding from.
@@ -358,46 +358,46 @@ func (_RoomV2Contract *RoomV2ContractCallerSession) RoomData(arg0 *big.Int) (str
 	return _RoomV2Contract.Contract.RoomData(&_RoomV2Contract.CallOpts, arg0)
 }
 
-// CreateRoom is a paid mutator transaction binding the contract method 0x39401766.
+// CreateRoom is a paid mutator transaction binding the contract method 0x7a9df21e.
 //
-// Solidity: function CreateRoom(bytes8 _player1, bytes8 _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId) returns()
-func (_RoomV2Contract *RoomV2ContractTransactor) CreateRoom(opts *bind.TransactOpts, _player1 [8]byte, _player2 [8]byte, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _totalCardIndex *big.Int, _initialHP *big.Int, _gameId *big.Int) (*types.Transaction, error) {
+// Solidity: function CreateRoom(uint256 _player1, uint256 _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId) returns()
+func (_RoomV2Contract *RoomV2ContractTransactor) CreateRoom(opts *bind.TransactOpts, _player1 *big.Int, _player2 *big.Int, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _totalCardIndex *big.Int, _initialHP *big.Int, _gameId *big.Int) (*types.Transaction, error) {
 	return _RoomV2Contract.contract.Transact(opts, "CreateRoom", _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound, _totalCardIndex, _initialHP, _gameId)
 }
 
-// CreateRoom is a paid mutator transaction binding the contract method 0x39401766.
+// CreateRoom is a paid mutator transaction binding the contract method 0x7a9df21e.
 //
-// Solidity: function CreateRoom(bytes8 _player1, bytes8 _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId) returns()
-func (_RoomV2Contract *RoomV2ContractSession) CreateRoom(_player1 [8]byte, _player2 [8]byte, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _totalCardIndex *big.Int, _initialHP *big.Int, _gameId *big.Int) (*types.Transaction, error) {
+// Solidity: function CreateRoom(uint256 _player1, uint256 _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId) returns()
+func (_RoomV2Contract *RoomV2ContractSession) CreateRoom(_player1 *big.Int, _player2 *big.Int, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _totalCardIndex *big.Int, _initialHP *big.Int, _gameId *big.Int) (*types.Transaction, error) {
 	return _RoomV2Contract.Contract.CreateRoom(&_RoomV2Contract.TransactOpts, _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound, _totalCardIndex, _initialHP, _gameId)
 }
 
-// CreateRoom is a paid mutator transaction binding the contract method 0x39401766.
+// CreateRoom is a paid mutator transaction binding the contract method 0x7a9df21e.
 //
-// Solidity: function CreateRoom(bytes8 _player1, bytes8 _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId) returns()
-func (_RoomV2Contract *RoomV2ContractTransactorSession) CreateRoom(_player1 [8]byte, _player2 [8]byte, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _totalCardIndex *big.Int, _initialHP *big.Int, _gameId *big.Int) (*types.Transaction, error) {
+// Solidity: function CreateRoom(uint256 _player1, uint256 _player2, address _player1_tmp, address _player2_tmp, uint256 _roundTimeout, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId) returns()
+func (_RoomV2Contract *RoomV2ContractTransactorSession) CreateRoom(_player1 *big.Int, _player2 *big.Int, _player1_tmp common.Address, _player2_tmp common.Address, _roundTimeout *big.Int, _totalRound *big.Int, _totalCardIndex *big.Int, _initialHP *big.Int, _gameId *big.Int) (*types.Transaction, error) {
 	return _RoomV2Contract.Contract.CreateRoom(&_RoomV2Contract.TransactOpts, _player1, _player2, _player1_tmp, _player2_tmp, _roundTimeout, _totalRound, _totalCardIndex, _initialHP, _gameId)
 }
 
-// StartANewCard is a paid mutator transaction binding the contract method 0xa59133b0.
+// StartANewTerm is a paid mutator transaction binding the contract method 0x3141380e.
 //
-// Solidity: function StartANewCard(uint256 _gameId) returns()
-func (_RoomV2Contract *RoomV2ContractTransactor) StartANewCard(opts *bind.TransactOpts, _gameId *big.Int) (*types.Transaction, error) {
-	return _RoomV2Contract.contract.Transact(opts, "StartANewCard", _gameId)
+// Solidity: function StartANewTerm(uint256 _gameId) returns()
+func (_RoomV2Contract *RoomV2ContractTransactor) StartANewTerm(opts *bind.TransactOpts, _gameId *big.Int) (*types.Transaction, error) {
+	return _RoomV2Contract.contract.Transact(opts, "StartANewTerm", _gameId)
 }
 
-// StartANewCard is a paid mutator transaction binding the contract method 0xa59133b0.
+// StartANewTerm is a paid mutator transaction binding the contract method 0x3141380e.
 //
-// Solidity: function StartANewCard(uint256 _gameId) returns()
-func (_RoomV2Contract *RoomV2ContractSession) StartANewCard(_gameId *big.Int) (*types.Transaction, error) {
-	return _RoomV2Contract.Contract.StartANewCard(&_RoomV2Contract.TransactOpts, _gameId)
+// Solidity: function StartANewTerm(uint256 _gameId) returns()
+func (_RoomV2Contract *RoomV2ContractSession) StartANewTerm(_gameId *big.Int) (*types.Transaction, error) {
+	return _RoomV2Contract.Contract.StartANewTerm(&_RoomV2Contract.TransactOpts, _gameId)
 }
 
-// StartANewCard is a paid mutator transaction binding the contract method 0xa59133b0.
+// StartANewTerm is a paid mutator transaction binding the contract method 0x3141380e.
 //
-// Solidity: function StartANewCard(uint256 _gameId) returns()
-func (_RoomV2Contract *RoomV2ContractTransactorSession) StartANewCard(_gameId *big.Int) (*types.Transaction, error) {
-	return _RoomV2Contract.Contract.StartANewCard(&_RoomV2Contract.TransactOpts, _gameId)
+// Solidity: function StartANewTerm(uint256 _gameId) returns()
+func (_RoomV2Contract *RoomV2ContractTransactorSession) StartANewTerm(_gameId *big.Int) (*types.Transaction, error) {
+	return _RoomV2Contract.Contract.StartANewTerm(&_RoomV2Contract.TransactOpts, _gameId)
 }
 
 // AddManager is a paid mutator transaction binding the contract method 0x2d06177a.
@@ -532,8 +532,8 @@ func (it *RoomV2ContractRoomCreatedIterator) Close() error {
 
 // RoomV2ContractRoomCreated represents a RoomCreated event raised by the RoomV2Contract contract.
 type RoomV2ContractRoomCreated struct {
-	Player1        [8]byte
-	Player2        [8]byte
+	Player1        *big.Int
+	Player2        *big.Int
 	Player1Tmp     common.Address
 	Player2Tmp     common.Address
 	TotalRound     *big.Int
@@ -543,9 +543,9 @@ type RoomV2ContractRoomCreated struct {
 	Raw            types.Log // Blockchain specific contextual infos
 }
 
-// FilterRoomCreated is a free log retrieval operation binding the contract event 0xfd988394d31c584a05fcf594150da0fb3514ff206a1478bde121bca8745d8e2d.
+// FilterRoomCreated is a free log retrieval operation binding the contract event 0x103b46b7007b0717433baa83443c5aa46c84bb502276b1508d3ba3ecef4aac6a.
 //
-// Solidity: event RoomCreated(bytes8 _player1, bytes8 _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId)
+// Solidity: event RoomCreated(uint256 _player1, uint256 _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId)
 func (_RoomV2Contract *RoomV2ContractFilterer) FilterRoomCreated(opts *bind.FilterOpts) (*RoomV2ContractRoomCreatedIterator, error) {
 
 	logs, sub, err := _RoomV2Contract.contract.FilterLogs(opts, "RoomCreated")
@@ -555,9 +555,9 @@ func (_RoomV2Contract *RoomV2ContractFilterer) FilterRoomCreated(opts *bind.Filt
 	return &RoomV2ContractRoomCreatedIterator{contract: _RoomV2Contract.contract, event: "RoomCreated", logs: logs, sub: sub}, nil
 }
 
-// WatchRoomCreated is a free log subscription operation binding the contract event 0xfd988394d31c584a05fcf594150da0fb3514ff206a1478bde121bca8745d8e2d.
+// WatchRoomCreated is a free log subscription operation binding the contract event 0x103b46b7007b0717433baa83443c5aa46c84bb502276b1508d3ba3ecef4aac6a.
 //
-// Solidity: event RoomCreated(bytes8 _player1, bytes8 _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId)
+// Solidity: event RoomCreated(uint256 _player1, uint256 _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId)
 func (_RoomV2Contract *RoomV2ContractFilterer) WatchRoomCreated(opts *bind.WatchOpts, sink chan<- *RoomV2ContractRoomCreated) (event.Subscription, error) {
 
 	logs, sub, err := _RoomV2Contract.contract.WatchLogs(opts, "RoomCreated")
@@ -592,9 +592,9 @@ func (_RoomV2Contract *RoomV2ContractFilterer) WatchRoomCreated(opts *bind.Watch
 	}), nil
 }
 
-// ParseRoomCreated is a log parse operation binding the contract event 0xfd988394d31c584a05fcf594150da0fb3514ff206a1478bde121bca8745d8e2d.
+// ParseRoomCreated is a log parse operation binding the contract event 0x103b46b7007b0717433baa83443c5aa46c84bb502276b1508d3ba3ecef4aac6a.
 //
-// Solidity: event RoomCreated(bytes8 _player1, bytes8 _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId)
+// Solidity: event RoomCreated(uint256 _player1, uint256 _player2, address _player1_tmp, address _player2_tmp, uint256 _totalRound, uint256 _totalCardIndex, uint256 _initialHP, uint256 _gameId)
 func (_RoomV2Contract *RoomV2ContractFilterer) ParseRoomCreated(log types.Log) (*RoomV2ContractRoomCreated, error) {
 	event := new(RoomV2ContractRoomCreated)
 	if err := _RoomV2Contract.contract.UnpackLog(event, "RoomCreated", log); err != nil {
@@ -604,9 +604,9 @@ func (_RoomV2Contract *RoomV2ContractFilterer) ParseRoomCreated(log types.Log) (
 	return event, nil
 }
 
-// RoomV2ContractStartANewCardIterator is returned from FilterStartANewCard and is used to iterate over the raw logs and unpacked data for StartANewCard events raised by the RoomV2Contract contract.
-type RoomV2ContractStartANewCardIterator struct {
-	Event *RoomV2ContractStartANewCard // Event containing the contract specifics and raw log
+// RoomV2ContractStartANewTermIterator is returned from FilterStartANewTerm and is used to iterate over the raw logs and unpacked data for StartANewTerm events raised by the RoomV2Contract contract.
+type RoomV2ContractStartANewTermIterator struct {
+	Event *RoomV2ContractStartANewTerm // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -620,7 +620,7 @@ type RoomV2ContractStartANewCardIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *RoomV2ContractStartANewCardIterator) Next() bool {
+func (it *RoomV2ContractStartANewTermIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -629,7 +629,7 @@ func (it *RoomV2ContractStartANewCardIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(RoomV2ContractStartANewCard)
+			it.Event = new(RoomV2ContractStartANewTerm)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -644,7 +644,7 @@ func (it *RoomV2ContractStartANewCardIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(RoomV2ContractStartANewCard)
+		it.Event = new(RoomV2ContractStartANewTerm)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -660,43 +660,43 @@ func (it *RoomV2ContractStartANewCardIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *RoomV2ContractStartANewCardIterator) Error() error {
+func (it *RoomV2ContractStartANewTermIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *RoomV2ContractStartANewCardIterator) Close() error {
+func (it *RoomV2ContractStartANewTermIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// RoomV2ContractStartANewCard represents a StartANewCard event raised by the RoomV2Contract contract.
-type RoomV2ContractStartANewCard struct {
-	CardIndex *big.Int
+// RoomV2ContractStartANewTerm represents a StartANewTerm event raised by the RoomV2Contract contract.
+type RoomV2ContractStartANewTerm struct {
+	TermIndex *big.Int
 	Round     *big.Int
 	GameId    *big.Int
 	Raw       types.Log // Blockchain specific contextual infos
 }
 
-// FilterStartANewCard is a free log retrieval operation binding the contract event 0x66ab3337bcb2a8aedd77f49af12a4096f6203ee8457dec12bab9010ece357edd.
+// FilterStartANewTerm is a free log retrieval operation binding the contract event 0xf47962810c219fc81762bbccc7665ff6aaaf7efe32c99b3be61bcae0a5e7fa88.
 //
-// Solidity: event startANewCard(uint256 cardIndex, uint256 round, uint256 gameId)
-func (_RoomV2Contract *RoomV2ContractFilterer) FilterStartANewCard(opts *bind.FilterOpts) (*RoomV2ContractStartANewCardIterator, error) {
+// Solidity: event startANewTerm(uint256 termIndex, uint256 round, uint256 gameId)
+func (_RoomV2Contract *RoomV2ContractFilterer) FilterStartANewTerm(opts *bind.FilterOpts) (*RoomV2ContractStartANewTermIterator, error) {
 
-	logs, sub, err := _RoomV2Contract.contract.FilterLogs(opts, "startANewCard")
+	logs, sub, err := _RoomV2Contract.contract.FilterLogs(opts, "startANewTerm")
 	if err != nil {
 		return nil, err
 	}
-	return &RoomV2ContractStartANewCardIterator{contract: _RoomV2Contract.contract, event: "startANewCard", logs: logs, sub: sub}, nil
+	return &RoomV2ContractStartANewTermIterator{contract: _RoomV2Contract.contract, event: "startANewTerm", logs: logs, sub: sub}, nil
 }
 
-// WatchStartANewCard is a free log subscription operation binding the contract event 0x66ab3337bcb2a8aedd77f49af12a4096f6203ee8457dec12bab9010ece357edd.
+// WatchStartANewTerm is a free log subscription operation binding the contract event 0xf47962810c219fc81762bbccc7665ff6aaaf7efe32c99b3be61bcae0a5e7fa88.
 //
-// Solidity: event startANewCard(uint256 cardIndex, uint256 round, uint256 gameId)
-func (_RoomV2Contract *RoomV2ContractFilterer) WatchStartANewCard(opts *bind.WatchOpts, sink chan<- *RoomV2ContractStartANewCard) (event.Subscription, error) {
+// Solidity: event startANewTerm(uint256 termIndex, uint256 round, uint256 gameId)
+func (_RoomV2Contract *RoomV2ContractFilterer) WatchStartANewTerm(opts *bind.WatchOpts, sink chan<- *RoomV2ContractStartANewTerm) (event.Subscription, error) {
 
-	logs, sub, err := _RoomV2Contract.contract.WatchLogs(opts, "startANewCard")
+	logs, sub, err := _RoomV2Contract.contract.WatchLogs(opts, "startANewTerm")
 	if err != nil {
 		return nil, err
 	}
@@ -706,8 +706,8 @@ func (_RoomV2Contract *RoomV2ContractFilterer) WatchStartANewCard(opts *bind.Wat
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(RoomV2ContractStartANewCard)
-				if err := _RoomV2Contract.contract.UnpackLog(event, "startANewCard", log); err != nil {
+				event := new(RoomV2ContractStartANewTerm)
+				if err := _RoomV2Contract.contract.UnpackLog(event, "startANewTerm", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -728,12 +728,12 @@ func (_RoomV2Contract *RoomV2ContractFilterer) WatchStartANewCard(opts *bind.Wat
 	}), nil
 }
 
-// ParseStartANewCard is a log parse operation binding the contract event 0x66ab3337bcb2a8aedd77f49af12a4096f6203ee8457dec12bab9010ece357edd.
+// ParseStartANewTerm is a log parse operation binding the contract event 0xf47962810c219fc81762bbccc7665ff6aaaf7efe32c99b3be61bcae0a5e7fa88.
 //
-// Solidity: event startANewCard(uint256 cardIndex, uint256 round, uint256 gameId)
-func (_RoomV2Contract *RoomV2ContractFilterer) ParseStartANewCard(log types.Log) (*RoomV2ContractStartANewCard, error) {
-	event := new(RoomV2ContractStartANewCard)
-	if err := _RoomV2Contract.contract.UnpackLog(event, "startANewCard", log); err != nil {
+// Solidity: event startANewTerm(uint256 termIndex, uint256 round, uint256 gameId)
+func (_RoomV2Contract *RoomV2ContractFilterer) ParseStartANewTerm(log types.Log) (*RoomV2ContractStartANewTerm, error) {
+	event := new(RoomV2ContractStartANewTerm)
+	if err := _RoomV2Contract.contract.UnpackLog(event, "startANewTerm", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log

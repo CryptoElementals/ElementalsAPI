@@ -58,7 +58,7 @@ func newConcurrentRoomV2Client(
 
 // sendCreateRoomTx sends CreateRoom transaction to RoomV2 contract
 func (c *concurrentRoomV2Client) sendCreateRoomTx(
-	player1Bytes8, player2Bytes8 [8]byte,
+	player1ID, player2ID *big.Int,
 	player1TemporaryAddress, player2TemporaryAddress common.Address,
 	roundTimeout, totalRound, totalCardIndex, initialHP, gameID *big.Int,
 ) (string, error) {
@@ -69,8 +69,8 @@ func (c *concurrentRoomV2Client) sendCreateRoomTx(
 
 	tx, err := c.roomV2Ctr.CreateRoom(
 		bindOpts,
-		player1Bytes8,
-		player2Bytes8,
+		player1ID,
+		player2ID,
 		player1TemporaryAddress,
 		player2TemporaryAddress,
 		roundTimeout,
@@ -95,19 +95,8 @@ func (c *Chain) createNewRoom(evt *types.RequireGameCreationEvent) error {
 	if c.roomV2Client == nil {
 		return errors.New("room v2 client not initialized")
 	}
-
-	// Convert player IDs (int64) to bytes8 for contract call
-	var player1Bytes8 [8]byte
-	var player2Bytes8 [8]byte
-	// Convert int64 ID to [8]byte (big-endian)
 	player1IDBig := big.NewInt(evt.Players[0].Id)
 	player2IDBig := big.NewInt(evt.Players[1].Id)
-	player1Bytes := player1IDBig.Bytes()
-	player2Bytes := player2IDBig.Bytes()
-	// Copy to bytes8 arrays (right-aligned, big-endian)
-	copy(player1Bytes8[8-len(player1Bytes):], player1Bytes)
-	copy(player2Bytes8[8-len(player2Bytes):], player2Bytes)
-
 	player1TemporaryAddress := common.HexToAddress(evt.Players[0].TemporaryAddress)
 	player2TemporaryAddress := common.HexToAddress(evt.Players[1].TemporaryAddress)
 
@@ -128,8 +117,8 @@ func (c *Chain) createNewRoom(evt *types.RequireGameCreationEvent) error {
 			}
 			retryCnt--
 			txHash, err := c.roomV2Client.sendCreateRoomTx(
-				player1Bytes8,
-				player2Bytes8,
+				player1IDBig,
+				player2IDBig,
 				player1TemporaryAddress,
 				player2TemporaryAddress,
 				roundTimeoutBigInt,
@@ -282,7 +271,7 @@ func (c *concurrentRoomV2Client) sendStartANewCard(gameID uint) (string, error) 
 	}()
 
 	gameIDBigInt := big.NewInt(int64(gameID))
-	tx, err := c.roomV2Ctr.StartANewCard(bindOpts, gameIDBigInt)
+	tx, err := c.roomV2Ctr.StartANewTerm(bindOpts, gameIDBigInt)
 	if err != nil {
 		log.Errorf("sendStartANewCard: start a new card failed: %s", err.Error())
 		return "", fmt.Errorf("start a new card failed: %s", err.Error())
