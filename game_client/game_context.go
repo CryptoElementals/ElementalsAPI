@@ -4,18 +4,18 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"math/big"
 
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/CryptoElementals/common/wallet"
 	"golang.org/x/crypto/sha3"
 )
 
 const (
-	minTurnNumber = 1
-	maxTurnNumber = 3
-	saltSize      = 32
+	saltSize = 32
 )
 
 // CardProvider is an interface for getting the card to play for a turn
@@ -33,6 +33,7 @@ type GameContext struct {
 	ctx          context.Context
 	rpcClient    *rpc.Client
 	myself       *types.PlayerAddress
+	wallet       *wallet.Wallet
 	evtChan      chan *proto.Event
 	errChan      chan error
 	cardProvider CardProvider // Interface to get card for each turn
@@ -50,6 +51,7 @@ func NewGameContext(ctx context.Context, playerId int64, temporaryWallet *wallet
 	return &GameContext{
 		ctx:       ctx,
 		myself:    types.NewPlayerAddress(playerId, temporaryWallet.GetAddrHex()),
+		wallet:    temporaryWallet,
 		evtChan:   make(chan *proto.Event, 10),
 		errChan:   make(chan error, 10),
 		rpcClient: rpcClient,
@@ -300,13 +302,26 @@ func (c *GameContext) validateRoundTurnInfo(info RoundTurnInfo, expectedTurn uin
 // submitCommitment submits the commitment via RPC
 func (c *GameContext) submitCommitment(commitment []byte) error {
 	fmt.Println("submit commitment, round: ", c.currentRound)
-	err := c.rpcClient.RpcClient.SubmitPlayerCommitment(
+	// Generate signature: game id, round number, commitment index, commitment
+	signature, err := utils.Sign(
+		[]any{
+			big.NewInt(int64(c.gameID)),
+			uint32(c.currentRound),
+			uint32(c.currentTurn),
+			commitment,
+		},
+		c.wallet.GetPrivateKey(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to generate signature: %w", err)
+	}
+	err = c.rpcClient.RpcClient.SubmitPlayerCommitment(
 		c.ctx,
 		c.myself,
 		c.currentRound,
 		commitment,
 		c.currentTurn,
-		nil, // signature - can be nil
+		signature,
 		c.gameID,
 	)
 	if err != nil {
@@ -319,14 +334,28 @@ func (c *GameContext) submitCommitment(commitment []byte) error {
 // submitCard submits the card and salt via RPC
 func (c *GameContext) submitCard(card uint32, salt string) error {
 	fmt.Println("submit cards, round: ", c.currentRound)
-	err := c.rpcClient.RpcClient.SubmitPlayerCard(
+	// Generate signature: game id, round number, card index, card, salt
+	signature, err := utils.Sign(
+		[]any{
+			big.NewInt(int64(c.gameID)),
+			uint32(c.currentRound),
+			uint32(c.currentTurn),
+			uint32(card),
+			[]byte(salt),
+		},
+		c.wallet.GetPrivateKey(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to generate signature: %w", err)
+	}
+	err = c.rpcClient.RpcClient.SubmitPlayerCard(
 		c.ctx,
 		c.myself,
 		c.currentRound,
 		[]byte(salt),
 		uint(card),
 		c.currentTurn,
-		nil, // signature - can be nil
+		signature,
 		c.gameID,
 	)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -285,13 +286,28 @@ func (b *Bot) runGameLoop() error {
 				// Submit commitment for this turn using turn number - 1 as index
 				turnIdx := int(turnReady.TurnNum) - 1
 				if turnIdx >= 0 && turnIdx < len(b.currentGame.currentRound.commitments) {
-					err := b.client.RpcClient.SubmitPlayerCommitment(
+					// Generate signature: game id, round number, commitment index, commitment
+					commitment := b.currentGame.currentRound.commitments[turnIdx][:]
+					signature, err := utils.Sign(
+						[]any{
+							big.NewInt(int64(b.currentGame.id)),
+							uint32(turnReady.RoundNum),
+							uint32(turnReady.TurnNum),
+							commitment,
+						},
+						b.w.tempWallet.GetPrivateKey(),
+					)
+					if err != nil {
+						log.Errorw("generate signature failed", "err", err, "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
+						continue
+					}
+					err = b.client.RpcClient.SubmitPlayerCommitment(
 						b.ctx,
 						b.addr,
 						turnReady.RoundNum,
-						b.currentGame.currentRound.commitments[turnIdx][:],
+						commitment,
 						turnReady.TurnNum,
-						nil, // Signature - empty for bots
+						signature,
 						b.currentGame.id,
 					)
 					if err != nil {
@@ -333,14 +349,29 @@ func (b *Bot) runGameLoop() error {
 				}
 				cardID := b.currentGame.currentRound.cards[turnIdx]
 				salt := b.currentGame.currentRound.salts[turnIdx]
-				err := b.client.RpcClient.SubmitPlayerCard(
+				// Generate signature: game id, round number, card index, card, salt
+				signature, err := utils.Sign(
+					[]any{
+						big.NewInt(int64(b.currentGame.id)),
+						uint32(commitmentsOnChain.RoundNum),
+						uint32(turnNumber),
+						uint32(cardID),
+						[]byte(salt),
+					},
+					b.w.tempWallet.GetPrivateKey(),
+				)
+				if err != nil {
+					log.Errorw("generate signature failed", "err", err, "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber)
+					continue
+				}
+				err = b.client.RpcClient.SubmitPlayerCard(
 					b.ctx,
 					b.addr,
 					commitmentsOnChain.RoundNum,
 					[]byte(salt),
 					uint(cardID),
 					turnNumber,
-					nil, // Signature - empty for bots
+					signature,
 					b.currentGame.id,
 				)
 				if err != nil {
