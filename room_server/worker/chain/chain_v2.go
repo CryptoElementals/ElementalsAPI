@@ -197,7 +197,7 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 
 	// Prepare batch arrays
 	gameIDs := make([]*big.Int, len(events))
-	cards := make([]string, len(events))
+	cards := make([]*big.Int, len(events))
 	salts := make([]string, len(events))
 	cardIndexes := make([]*big.Int, len(events))
 	rounds := make([]*big.Int, len(events))
@@ -205,12 +205,12 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 
 	for i, evt := range events {
 		// Convert card to string
-		cardStr := fmt.Sprintf("%d", evt.Card)
+		cardBigInt := big.NewInt(int64(evt.Card))
 		// Convert salt bytes to hex string for proper encoding
 		saltStr := hex.EncodeToString(evt.Salt)
 
 		gameIDs[i] = big.NewInt(int64(evt.GameID))
-		cards[i] = cardStr
+		cards[i] = cardBigInt
 		salts[i] = saltStr
 		cardIndexes[i] = big.NewInt(int64(evt.CardIndex))
 		rounds[i] = big.NewInt(int64(evt.RoundNumber))
@@ -271,7 +271,7 @@ func (c *concurrentRoomV2Client) sendStartANewCard(gameID uint) (string, error) 
 	}()
 
 	gameIDBigInt := big.NewInt(int64(gameID))
-	tx, err := c.roomV2Ctr.StartANewTerm(bindOpts, gameIDBigInt)
+	tx, err := c.roomV2Ctr.StartANewTurn(bindOpts, gameIDBigInt)
 	if err != nil {
 		log.Errorf("sendStartANewCard: start a new card failed: %s", err.Error())
 		return "", fmt.Errorf("start a new card failed: %s", err.Error())
