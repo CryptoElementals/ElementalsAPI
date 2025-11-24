@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"math/big"
 
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
@@ -305,9 +304,9 @@ func (c *GameContext) submitCommitment(commitment []byte) error {
 	// Generate signature: game id, round number, commitment index, commitment
 	signature, err := utils.Sign(
 		[]any{
-			big.NewInt(int64(c.gameID)),
-			uint32(c.currentRound),
-			uint32(c.currentTurn),
+			c.gameID,
+			c.currentRound,
+			c.currentTurn,
 			commitment,
 		},
 		c.wallet.GetPrivateKey(),
@@ -333,15 +332,16 @@ func (c *GameContext) submitCommitment(commitment []byte) error {
 
 // submitCard submits the card and salt via RPC
 func (c *GameContext) submitCard(card uint32, salt string) error {
+	cardStr := fmt.Sprintf("%d", card)
 	fmt.Println("submit cards, round: ", c.currentRound)
 	// Generate signature: game id, round number, card index, card, salt
 	signature, err := utils.Sign(
 		[]any{
-			big.NewInt(int64(c.gameID)),
-			uint32(c.currentRound),
-			uint32(c.currentTurn),
-			uint32(card),
-			[]byte(salt),
+			c.gameID,
+			c.currentRound,
+			c.currentTurn,
+			cardStr,
+			salt,
 		},
 		c.wallet.GetPrivateKey(),
 	)
