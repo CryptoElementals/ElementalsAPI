@@ -28,7 +28,7 @@ message HealthCheckResponse {
 
 // Update player statistics request
 message UpdatePlayerStatsRequest {
-  repeated string player_addresses = 1;         // Multiple player addresses
+  repeated string player_ids = 1;         // Multiple player ids
 }
 
 // Update player statistics response

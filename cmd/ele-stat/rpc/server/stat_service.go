@@ -57,40 +57,40 @@ func formatDuration(d time.Duration) string {
 
 // UpdatePlayerStats implement update player statistics RPC
 func (s *StatService) UpdatePlayerStats(ctx context.Context, req *proto.UpdatePlayerStatsRequest) (*proto.UpdatePlayerStatsResponse, error) {
-	log.Infof("Update player stats request received, addresses count: %d, addresses: %v", len(req.PlayerAddresses), req.PlayerAddresses)
+	log.Infof("Update player stats request received, count: %d, player ids: %v", len(req.PlayerIds), req.PlayerIds)
 
-	if len(req.PlayerAddresses) == 0 {
+	if len(req.PlayerIds) == 0 {
 		return &proto.UpdatePlayerStatsResponse{
 			Ok:      false,
-			Message: "No player addresses provided",
+			Message: "No player ids provided",
 		}, nil
 	}
 
 	// 调用数据库增量更新函数
-	userStats, err := db.UpdateUserStatByAddresses(req.PlayerAddresses)
+	userStats, err := db.UpdateUserStatByAddresses(req.PlayerIds)
 
 	if err != nil {
 		// 操作失败
-		log.Errorf("Failed to update player stats for addresses %v: %v", req.PlayerAddresses, err)
+		log.Errorf("Failed to update player stats for player ids %v: %v", req.PlayerIds, err)
 		return &proto.UpdatePlayerStatsResponse{
 			Ok:      false,
 			Message: fmt.Sprintf("Failed to update player stats: %v", err),
 		}, nil
 	}
 
-	cardStats, err := db.UpdateCardStatByAddresses(req.PlayerAddresses)
+	cardStats, err := db.UpdateCardStatByAddresses(req.PlayerIds) // req.PlayerAddresses contains player IDs as strings
 	if err != nil {
-		log.Errorf("Failed to update card stats for addresses %v: %v", req.PlayerAddresses, err)
+		log.Errorf("Failed to update card stats for player ids %v: %v", req.PlayerIds, err)
 		return &proto.UpdatePlayerStatsResponse{
 			Ok:      false,
-			Message: fmt.Sprintf("Failed to update card stats for addresses %v: %v", req.PlayerAddresses, err),
+			Message: fmt.Sprintf("Failed to update card stats for player ids %v: %v", req.PlayerIds, err),
 		}, nil
 	}
 
 	// 操作成功
-	log.Infof("Successfully updated player stats for %d addresses, card stats count: %d", len(userStats), len(cardStats))
+	log.Infof("Successfully updated player stats for %d players, card stats count: %d", len(userStats), len(cardStats))
 	return &proto.UpdatePlayerStatsResponse{
 		Ok:      true,
-		Message: fmt.Sprintf("Successfully processed %d addresses, card stats count: %d", len(userStats), len(cardStats)),
+		Message: fmt.Sprintf("Successfully processed %d players, card stats count: %d", len(userStats), len(cardStats)),
 	}, nil
 }
