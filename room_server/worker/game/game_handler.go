@@ -9,6 +9,8 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/utils"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Handle is the main entry point for handling events
@@ -605,12 +607,40 @@ func (g *Game) handleGetGameResultRequest(event *types.Event) error {
 func (g *Game) handleSubmitPlayerCommitment(reqEvt *types.SubmitPlayerCommitment) error {
 	// Validate the event - return error if validation fails, nil if valid
 	// The worker will automatically send the error to AckChan if present
-	return g.validatePlayerCommitment(reqEvt)
+	if err := g.validatePlayerCommitment(reqEvt); err != nil {
+		return err
+	}
+	// verify signature for: game id, round number, commitment index, commitment
+	valid, err := utils.Verify(
+		[]any{g.gameInfo.ID, reqEvt.RoundNumber, reqEvt.CommitmentIndex, reqEvt.Commitment},
+		reqEvt.Signature,
+		common.HexToAddress(reqEvt.Address.TemporaryAddress))
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }
 
 // handleSubmitPlayerCard handles the SubmitPlayerCard event
 func (g *Game) handleSubmitPlayerCard(reqEvt *types.SubmitPlayerCard) error {
 	// Validate the event - return error if validation fails, nil if valid
 	// The worker will automatically send the error to AckChan if present
-	return g.validatePlayerCard(reqEvt)
+	if err := g.validatePlayerCard(reqEvt); err != nil {
+		return err
+	}
+	// verify signature for: game id, round number, card index, card, salt
+	valid, err := utils.Verify(
+		[]any{g.gameInfo.ID, reqEvt.RoundNumber, reqEvt.CardIndex, reqEvt.Card, reqEvt.Salt},
+		reqEvt.Signature,
+		common.HexToAddress(reqEvt.Address.TemporaryAddress))
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }

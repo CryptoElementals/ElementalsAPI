@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +27,7 @@ var gameGetCmd = &cobra.Command{
 			fmt.Printf("load game failed, err: %v\n", err)
 			return
 		}
-		fmt.Printf("game info: %s\n", toJsonLoggable(game))
+		fmt.Printf("game info: %s\n", types.ToJsonLoggable(game))
 	},
 }
 

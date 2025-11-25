@@ -185,6 +185,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "matched",
+				"Message":   msg.Event.GetGameMatched(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
@@ -212,6 +213,17 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "roundReady",
+				"Message":   msg.Event.GetRoundReady(),
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_TYPE_TURN_READY:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"EventType": "turnReady",
+				"Message":   msg.Event.GetTurnReady(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
@@ -221,44 +233,28 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "commitmentsOnChain",
+				"Message":   msg.Event.GetCommitmentsOnChain(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_TURN_COMPLETE:
-		turnCompleted := msg.Event.GetTurnCompleted()
-		if turnCompleted == nil {
-			return events.Event{
-				Type:        events.EventTypeStatusUpdate,
-				Data:        map[string]interface{}{"EventType": "turnComplete"},
-				Timestamp:   time.Now(),
-				RequestUUID: requestUUID,
-			}
-		}
-		// Check flags to determine if round or game is complete
-		if turnCompleted.IsGameComplete {
-			return events.Event{
-				Type: events.EventTypeStatusUpdate,
-				Data: map[string]interface{}{
-					"EventType": "gameComplete",
-				},
-				Timestamp:   time.Now(),
-				RequestUUID: requestUUID,
-			}
-		}
-		if turnCompleted.IsRoundComplete {
-			return events.Event{
-				Type: events.EventTypeStatusUpdate,
-				Data: map[string]interface{}{
-					"EventType": "roundComplete",
-				},
-				Timestamp:   time.Now(),
-				RequestUUID: requestUUID,
-			}
-		}
 		return events.Event{
-			Type:        events.EventTypeStatusUpdate,
-			Data:        map[string]interface{}{"EventType": "turnComplete"},
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"EventType": "turnComplete",
+				"Message":   msg.Event.GetTurnCompleted(),
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_TYPE_GAME_PHASE_SYNC:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"EventType": "gamePhaseSync",
+				"Message":   msg.Event.GetGamePhase(),
+			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
