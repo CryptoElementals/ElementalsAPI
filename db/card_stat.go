@@ -167,7 +167,7 @@ func UpdateCardStatByAddresses(addresses []string) ([]*dao.CardStat, error) {
 			}
 
 			// 查询新的游戏轮次
-			var newGameRounds []dao.PlayerRoundInfo
+			var newGameRounds []dao.PlayerTurnInfo
 			query := tx.Where("wallet_address = ?", address)
 			if maxRoundInfoID > 0 {
 				query = query.Where("id > ?", maxRoundInfoID)
@@ -215,7 +215,7 @@ func UpdateCardStatByAddresses(addresses []string) ([]*dao.CardStat, error) {
 			}
 
 			// 步骤3：查询这些轮次中的卡牌提交记录
-			var cardSubmissions []dao.RoundSubmittedCard
+			var cardSubmissions []dao.TurnSubmittedCard
 			submissionErr := tx.Where("player_round_info_id IN ?", newRoundInfoIDs).
 				Select("player_round_info_id, card_id, element_relation").
 				Find(&cardSubmissions).Error
@@ -237,7 +237,7 @@ func UpdateCardStatByAddresses(addresses []string) ([]*dao.CardStat, error) {
 
 			var mapCardIDMaxRoundInfoID map[uint]uint = make(map[uint]uint)
 			for _, submission := range cardSubmissions {
-				cardID := submission.CardID
+				cardID := uint(submission.CardID)
 				stats, exists := cardUsageStats[cardID]
 				if !exists {
 					stats = struct {
@@ -266,9 +266,9 @@ func UpdateCardStatByAddresses(addresses []string) ([]*dao.CardStat, error) {
 
 				cardUsageStats[cardID] = stats
 
-				if mapCardIDMaxRoundInfoID[cardID] < submission.PlayerRoundInfoID {
-					mapCardIDMaxRoundInfoID[cardID] = submission.PlayerRoundInfoID
-				}
+				// if mapCardIDMaxRoundInfoID[cardID] < submission.PlayerRoundInfoID {
+				// 	mapCardIDMaxRoundInfoID[cardID] = submission.PlayerRoundInfoID
+				// }
 			}
 
 			// 步骤5：更新或创建卡牌统计记录

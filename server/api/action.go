@@ -46,9 +46,6 @@ const (
 	SURRENDER_LABEL            = "Surrender"
 	GET_GAME_CONFIG_LABEL      = "GetGameConfig"
 
-	// 新增：玩家状态查询
-	GET_PLAYER_STATUS_LABEL = "GetPlayerStatus"
-	// 令牌交换
 	EXCHANGE_TOKEN_LABEL = "ExchangeToken"
 )
 
