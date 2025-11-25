@@ -17,7 +17,7 @@ func init() {
 
 type GetGameConfigRequest struct {
 	BaseRequest
-	UserID string `mapstructure:"UserID" validate:"required"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type GetGameConfigResponse struct {
@@ -70,11 +70,11 @@ func NewGetGameConfigTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetGameConfigTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by user id"
+		task.Response.BaseResponse.Message = "Failed to get player address by player id"
 		return task.Response, nil
 	}
 	address := strings.ToLower(profile.Address)

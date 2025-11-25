@@ -21,7 +21,7 @@ func init() {
 
 type CollectDailyRewardRequest struct {
 	BaseRequest
-	UserID string `mapstructure:"UserID" validate:"required"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type CollectDailyRewardResponse struct {
@@ -73,36 +73,36 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 统一流程：基于 UserID 校验是否已领取 -> 发放并保存代币 -> 更新领取时间
-	requestUserID := strings.TrimSpace(task.Request.UserID)
-	profile, err := db.GetUserProfileByUserID(requestUserID)
+	// 统一流程：基于 PlayerID 校验是否已领取 -> 发放并保存代币 -> 更新领取时间
+	requestPlayerID := strings.TrimSpace(task.Request.PlayerID)
+	profile, err := db.GetUserProfileByPlayerID(requestPlayerID)
 	if err != nil {
-		log.Errorf("%s, failed to get user profile by user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
-		return nil, cmnErrors.GetUserProfileFailed(requestUserID)
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+		return nil, cmnErrors.GetUserProfileFailed(requestPlayerID)
 	}
 
 	// 校验当日是否已领取
-	collected, err := db.HasCollectedDailyRewardByUserID(requestUserID)
+	collected, err := db.HasCollectedDailyRewardByPlayerID(requestPlayerID)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
-		return nil, cmnErrors.GetUserProfileFailed(requestUserID)
+		log.Errorf("%s, failed to check daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+		return nil, cmnErrors.GetUserProfileFailed(requestPlayerID)
 	}
 	if collected {
-		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestUserID)
+		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestPlayerID)
 		return nil, cmnErrors.ActionError("Daily reward already collected")
 	}
 
 	// 发放 token
 	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
 	var userToken *dao.UserToken
-	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.UserID)
+	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
 	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
+		log.Errorf("%s, failed to get user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 	if userToken == nil {
 		userToken = &dao.UserToken{
-			PlayerId:    profile.UserID,
+			PlayerId:    profile.PlayerID,
 			Points:      0,
 			TokenAmount: dailyRewardTokens,
 		}
@@ -110,15 +110,15 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		userToken.TokenAmount += dailyRewardTokens
 	}
 	if err = db.SaveUserToken(*userToken); err != nil {
-		log.Errorf("%s, failed to save user token for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
+		log.Errorf("%s, failed to save user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 
 	// 更新领取时间
-	if err = db.UpdateDailyRewardCollectionByUserID(requestUserID); err != nil {
-		log.Errorf("%s, failed to update daily reward collection for user_id=%s: %v", task.Request.RequestUUID, requestUserID, err)
+	if err = db.UpdateDailyRewardCollectionByPlayerID(requestPlayerID); err != nil {
+		log.Errorf("%s, failed to update daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.SaveUserProfileFailed()
 	}
-	log.Infof("%s, daily reward collected successfully for user_id=%s, tokens: %d", task.Request.RequestUUID, requestUserID, dailyRewardTokens)
+	log.Infof("%s, daily reward collected successfully for player_id=%s, tokens: %d", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	return task.Response, nil
 }

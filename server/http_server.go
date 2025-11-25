@@ -224,6 +224,11 @@ func googleLoginHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		q.Set("response_type", "code")
 		q.Set("scope", "openid email profile")
 		q.Set("state", state)
+
+		if c.Query("force") == "true" {
+			q.Set("prompt", "consent")
+		}
+
 		authURL := "https://accounts.google.com/o/oauth2/auth?" + q.Encode()
 		c.Redirect(http.StatusFound, authURL)
 	}
@@ -304,11 +309,11 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
 			return
 		}
-		userIDStr := fmt.Sprintf("%d", userProfile.UserID)
-		session.Set(api.SESSION_USER_KEY, userIDStr)
+		playerIDStr := fmt.Sprintf("%d", userProfile.PlayerID)
+		session.Set(api.SESSION_USER_KEY, playerIDStr)
 		_ = session.Save()
 		// issue refresh token
-		token, err := api.SaveRefreshTokenForUserId(userIDStr)
+		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
 			return

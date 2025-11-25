@@ -161,18 +161,18 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 
 	var refreshToken string
 	//2 generate refresh token for user(addr)
-	// 先确保/获取用户档案，得到 user_id
-	var userIDStr string
+	// 先确保/获取用户档案，得到 player_id
+	var playerIDStr string
 	if task.Request.Address != "" {
 		lowercaseAddress := strings.ToLower(task.Request.Address)
 		profile, _ := db.GetOrCreateUserProfile(lowercaseAddress)
 		if profile != nil {
-			userIDStr = fmt.Sprintf("%d", profile.UserID)
+			playerIDStr = fmt.Sprintf("%d", profile.PlayerID)
 		}
 	}
 	err = withRetry(10, func(retryTime int) error {
 		var saveErr error
-		refreshToken, saveErr = SaveRefreshTokenForUserId(userIDStr)
+		refreshToken, saveErr = SaveRefreshTokenForUserId(playerIDStr)
 		return saveErr
 	})
 	if err != nil {
@@ -181,8 +181,8 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	//3 set user to session object
-	if userIDStr != "" {
-		session.Set(SESSION_USER_KEY, userIDStr)
+	if playerIDStr != "" {
+		session.Set(SESSION_USER_KEY, playerIDStr)
 	}
 	// 删除一次性的nonce，退出当前登录需要重新生成nonce，之前的session-id无法再使用，会慢慢过期
 	session.Delete(key)
