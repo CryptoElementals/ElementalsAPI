@@ -3,6 +3,7 @@ package middlewares
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
@@ -49,9 +50,9 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 				return
 			}
 
-			// 从 session 中获取 user_id，然后查询用户档案，注入 Address/Email
-			userID := userStr.(string)
-			profile, err := db.GetUserProfileByUserID(userID)
+			// 从 session 中获取 player_id，然后查询用户档案，注入 Address/Email
+			playerID := userStr.(string)
+			profile, err := db.GetUserProfileByPlayerID(playerID)
 			if err != nil || profile == nil {
 				res := api.MakeErrorResponse(errors.LoginCookieInvalid("invalid user session"))
 				res.SetSession(requestUUID)
@@ -65,7 +66,7 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 			// 注入身份字段以兼容现有 API
 			(*params)["Address"] = profile.Address
 			(*params)["Email"] = profile.Email
-			(*params)["UserID"] = profile.UserID
+			(*params)["PlayerID"] = strconv.FormatInt(profile.PlayerID, 10)
 
 			log.Infof("params: %+v", *params)
 		}

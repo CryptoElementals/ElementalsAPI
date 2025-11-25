@@ -22,7 +22,7 @@ func init() {
 type GetPlayerStatusRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	UserID      string `mapstructure:"UserID" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // GetPlayerStatusResponse 响应结构体
@@ -79,10 +79,10 @@ func NewGetPlayerStatusTask(data *map[string]interface{}) (Task, error) {
 
 // Run 执行任务
 func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
-		return nil, fmt.Errorf("failed to get player address by user id")
+		return nil, fmt.Errorf("failed to get player address by player id")
 	}
 	address := profile.Address
 
@@ -99,7 +99,7 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		Id:               profile.UserID,
+		Id:               profile.PlayerID,
 		TemporaryAddress: tempAddress,
 	}
 

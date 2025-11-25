@@ -23,7 +23,7 @@ type GetBattleInfoRequest struct {
 	BaseRequest
 	GameID      uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
 	Round       uint32 `mapstructure:"Round" validate:"required"`  // 回合号
-	UserID      string `mapstructure:"UserID" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress"` // 临时地址
 }
 
@@ -128,11 +128,11 @@ func NewGetBattleInfoTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by user id"
+		task.Response.BaseResponse.Message = "Failed to get player address by player id"
 		return task.Response, nil
 	}
 	address := profile.Address
@@ -176,12 +176,12 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 	for _, player := range battleInfo.RoundResult.Players {
 		// 通过 player_id 获取用户地址
 		playerAddr := ""
-		if up, e := db.GetUserProfileByUserID(strconv.FormatInt(player.PlayerId, 10)); e == nil && up != nil {
+		if up, e := db.GetUserProfileByPlayerID(strconv.FormatInt(player.PlayerId, 10)); e == nil && up != nil {
 			playerAddr = up.Address
 		}
 		playerStat := PlayerRoundStat{
 			PlayerAddress: playerAddr,
-			IsSelf:        player.PlayerId == profile.UserID,
+			IsSelf:        player.PlayerId == profile.PlayerID,
 			CardStats:     make([]PlayerCardStat, 0, len(player.CardStats)),
 		}
 
@@ -209,7 +209,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 	if battleInfo.GameResult != nil {
 		// Winner 地址解析
 		winnerAddr := ""
-		if up, e := db.GetUserProfileByUserID(strconv.FormatInt(battleInfo.GameResult.WinnerPlayerId, 10)); e == nil && up != nil {
+		if up, e := db.GetUserProfileByPlayerID(strconv.FormatInt(battleInfo.GameResult.WinnerPlayerId, 10)); e == nil && up != nil {
 			winnerAddr = up.Address
 		}
 		gameResult := &GameResult{
@@ -227,7 +227,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 			for _, pr := range battleInfo.GameResult.Reward.PlayerRewards {
 				addr := ""
-				if up, e := db.GetUserProfileByUserID(strconv.FormatInt(pr.PlayerId, 10)); e == nil && up != nil {
+				if up, e := db.GetUserProfileByPlayerID(strconv.FormatInt(pr.PlayerId, 10)); e == nil && up != nil {
 					addr = up.Address
 				}
 				reward.PlayerRewards = append(reward.PlayerRewards, PlayerReward{
@@ -242,7 +242,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 		if len(tempAddress) > 0 {
 			playerAddr := &proto.PlayerAddress{
-				Id:               profile.UserID,
+				Id:               profile.PlayerID,
 				TemporaryAddress: tempAddress,
 			}
 

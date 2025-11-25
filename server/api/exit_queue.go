@@ -21,7 +21,7 @@ type ExitQueueRequest struct {
 	BaseRequest
 	Mode        string `mapstructure:"Mode" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	UserID      string `mapstructure:"UserID" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // ExitQueueResponse 响应结构体
@@ -74,11 +74,11 @@ func NewExitQueueTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
-	// 通过 UserID 解析玩家地址
-	profile, err := db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	// 通过 PlayerID 解析玩家地址
+	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by user id"
+		task.Response.BaseResponse.Message = "Failed to get player address by player id"
 		return task.Response, nil
 	}
 	address := profile.Address
@@ -111,7 +111,7 @@ func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		Id:               profile.UserID,
+		Id:               profile.PlayerID,
 		TemporaryAddress: tempAddress,
 	}
 

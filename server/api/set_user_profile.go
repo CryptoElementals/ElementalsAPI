@@ -19,9 +19,9 @@ func init() {
 
 type SetUserProfileRequest struct {
 	BaseRequest
-	Name   string `mapstructure:"Name" validate:"required,max=42"`
-	Avatar string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
-	UserID string `mapstructure:"UserID" validate:"required"`
+	Name     string `mapstructure:"Name" validate:"required,max=42"`
+	Avatar   string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type SetUserProfileResponse struct {
@@ -79,10 +79,10 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		err         error
 	)
 	log.Infof("%s, set user profile request: %+v", task.Request.RequestUUID, task.Request)
-	userProfile, err = db.GetUserProfileByUserID(strings.TrimSpace(task.Request.UserID))
+	userProfile, err = db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || userProfile == nil {
-		log.Errorf("%s, failed to get user profile by user_id=%s: %v", task.Request.RequestUUID, task.Request.UserID, err)
-		return nil, errors.GetUserProfileFailed(task.Request.UserID)
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, task.Request.PlayerID, err)
+		return nil, errors.GetUserProfileFailed(task.Request.PlayerID)
 	}
 
 	// 更新用户档案
@@ -106,6 +106,6 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		return nil, errors.SaveUserProfileFailed()
 	}
 
-	log.Infof("%s, user profile updated successfully for user id %d", task.Request.RequestUUID, userProfile.UserID)
+	log.Infof("%s, user profile updated successfully for player id %d", task.Request.RequestUUID, userProfile.PlayerID)
 	return task.Response, nil
 }
