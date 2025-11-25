@@ -56,7 +56,7 @@ func (s *Rpc) GetBattleInfo(ctx context.Context, req *proto.GetBattleInfoRequest
 func (s *Rpc) ConfirmBattle(ctx context.Context, req *proto.ConfirmBattleRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.PlayerAddress)
-	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber)
+	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber, req.TurnNumber)
 }
 
 func (s *Rpc) ContinueGame(ctx context.Context, req *proto.ContinueGameRequest) (*emptypb.Empty, error) {
@@ -89,6 +89,18 @@ func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*p
 	isInQueue := s.playerHandler.IsPlayerInQueue(addr)
 	return &proto.IsPlayerInQueueResponse{
 		IsInQueue: isInQueue,
+	}, nil
+}
+
+func (s *Rpc) GetPlayerStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req)
+	status, err := s.playerHandler.GetPlayerStatus(addr)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetPlayerStatusResponse{
+		Status: status,
 	}, nil
 }
 
@@ -129,11 +141,12 @@ type PlayerRequestHandler interface {
 	ExitQueue(playerAddress types.PlayerAddress) error
 	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	ContinueGame(playerAddress types.PlayerAddress, gameID uint) error
-	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
+	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32, turnNum uint32) error
 	IsPlayerInQueue(address types.PlayerAddress) bool
 	Surrender(address types.PlayerAddress, gameID uint) error
 
 	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
+	GetPlayerStatus(playerAddress types.PlayerAddress) (proto.PlayerStatus, error)
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
 	GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error)
 	GetTimeoutConfig() (*proto.TimeoutConfig, error)

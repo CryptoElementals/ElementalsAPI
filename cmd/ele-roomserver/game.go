@@ -20,7 +20,6 @@ import (
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/c-bata/go-prompt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/sha3"
@@ -127,6 +126,7 @@ type gameContext struct {
 	gameID          uint
 	players         []*types.PlayerAddress
 	currentRound    uint32
+	currentTurn     uint32
 	contractAddress string
 	myself          *types.PlayerAddress
 	contract        *contract.RoomContract
@@ -188,13 +188,14 @@ func (c *gameContext) run() error {
 						continue
 					}
 					c.lock.Lock()
-					c.gameID = uint(phase.PvPInfo.GameID)
+					c.gameID = uint(phase.GameID)
 					for _, pp := range phase.Players {
 						player := types.NewPlayerAddress(pp.Address.Id, pp.Address.TemporaryAddress)
 						c.players = append(c.players, player)
 					}
 					c.state = playerStateWaittingConfirm
-					c.currentRound = 1
+					c.currentRound = phase.RoundNumber
+					c.currentTurn = phase.TurnNumber
 					c.lock.Unlock()
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					fmt.Println("player part confirmed")
@@ -206,14 +207,9 @@ func (c *gameContext) run() error {
 						fmt.Println("error: ", err.Error())
 					}
 					c.lock.Lock()
-					c.gameID = uint(phase.PvPInfo.GameID)
-					c.contractAddress = phase.PvPInfo.ContractAddress
-					c.contract, err = contract.NewRoomContract(common.HexToAddress(c.contractAddress), c.chainClient)
-					if err != nil {
-						fmt.Println("error: ", err.Error())
-					}
-					c.currentRound = 1
-					fmt.Println("contract address: ", c.contractAddress)
+					c.gameID = uint(phase.GameID)
+					c.currentRound = phase.RoundNumber
+					c.currentTurn = phase.TurnNumber
 					c.state = playerStateWaittingCommitmentsSubmitted
 					c.lock.Unlock()
 				case proto.EventType_TYPE_ROUND_READY:
@@ -227,31 +223,45 @@ func (c *gameContext) run() error {
 					c.state = playerStateWaittingCardsSubmitted
 					c.lock.Unlock()
 					c.signalChan <- struct{}{}
-				case proto.EventType_TYPE_CARDS_ON_CHAIN:
-					c.lock.Lock()
-					fmt.Println("cards on chain")
-					c.state = playerStateWaittingRoundEnd
-					c.lock.Unlock()
-				case proto.EventType_TYPE_ROUND_COMPLETE:
-					fmt.Println("round complete, please confirm to start a new round")
-					battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(c.currentRound))
-					if err != nil {
-						fmt.Println("error: ", err.Error())
+				case proto.EventType_TYPE_TURN_COMPLETE:
+					turnCompleted := evt.GetTurnCompleted()
+					if turnCompleted == nil {
+						continue
 					}
-					fmt.Println("round result: ", toJsonLoggable(battleInfo.RoundResult))
-					if !battleInfo.RoundResult.IsGameOver {
+					fmt.Println("turn complete", "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum)
+					c.lock.Lock()
+					c.currentTurn = turnCompleted.TurnNum
+					c.lock.Unlock()
+
+					// Handle round completion
+					if turnCompleted.IsRoundComplete {
+						fmt.Println("round complete, please confirm to start a new round")
+						battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(turnCompleted.RoundNum))
+						if err != nil {
+							fmt.Println("error: ", err.Error())
+						} else {
+							fmt.Println("round result: ", toJsonLoggable(battleInfo.RoundResult))
+							if !battleInfo.RoundResult.IsGameOver {
+								c.lock.Lock()
+								c.currentRound++
+								c.state = playerStateWaittingConfirm
+								c.lock.Unlock()
+							} else if turnCompleted.GameResult != nil {
+								fmt.Println("game result: ", toJsonLoggable(turnCompleted.GameResult))
+							}
+						}
+					}
+
+					// Handle game completion
+					if turnCompleted.IsGameComplete {
+						fmt.Println("game complete")
+						if turnCompleted.GameResult != nil {
+							fmt.Println("game result: ", toJsonLoggable(turnCompleted.GameResult))
+						}
 						c.lock.Lock()
-						c.currentRound++
-						c.state = playerStateWaittingConfirm
+						c.state = playerStateIdle
 						c.lock.Unlock()
-					} else {
-						fmt.Println("game result: ", toJsonLoggable(battleInfo.GameResult))
 					}
-				case proto.EventType_TYPE_GAME_COMPLETE:
-					fmt.Println("game complete")
-					c.lock.Lock()
-					c.state = playerStateIdle
-					c.lock.Unlock()
 				}
 			}
 		}
@@ -294,7 +304,7 @@ func (c *gameContext) ConfirmBattle() error {
 	if c.state != playerStateWaittingConfirm {
 		return fmt.Errorf("cannot confirm battle, invalid state: %s", c.state.String())
 	}
-	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, c.myself, c.gameID, uint(c.currentRound))
+	err := c.rpcClient.RpcClient.ConfirmBattle(c.ctx, c.myself, c.gameID, uint(c.currentRound), uint(c.currentTurn))
 	if err != nil {
 		return err
 	}

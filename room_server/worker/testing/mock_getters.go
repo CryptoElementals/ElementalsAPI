@@ -123,6 +123,20 @@ func (mr *MockGameInfoGetterMockRecorder) HandleSubmitPlayerCommitment(arg0 inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleSubmitPlayerCommitment", reflect.TypeOf((*MockGameInfoGetter)(nil).HandleSubmitPlayerCommitment), arg0)
 }
 
+// SyncGamePhase mocks base method.
+func (m *MockGameInfoGetter) SyncGamePhase(arg0 types.PlayerAddress) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncGamePhase", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncGamePhase indicates an expected call of SyncGamePhase.
+func (mr *MockGameInfoGetterMockRecorder) SyncGamePhase(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGamePhase", reflect.TypeOf((*MockGameInfoGetter)(nil).SyncGamePhase), arg0)
+}
+
 // MockQueuer is a mock of Queuer interface.
 type MockQueuer struct {
 	ctrl     *gomock.Controller

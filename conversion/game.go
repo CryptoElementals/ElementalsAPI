@@ -1,8 +1,6 @@
 package conversion
 
 import (
-	"sort"
-
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -13,11 +11,10 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		return nil
 	}
 	gameInfo := &proto.GameInfo{
-		GameId:              uint32(info.ID),
-		RoomContractAddress: info.RoomContract,
-		GameType:            proto.GameType(info.Type),
-		Status:              proto.GameStatus(info.Status),
-		InitialHp:           int32(info.InitialHP),
+		GameId:    uint32(info.ID),
+		GameType:  proto.GameType(info.Type),
+		Status:    proto.GameStatus(info.Status),
+		InitialHp: int32(info.InitialHP),
 	}
 	// convert players
 	for _, player := range info.Players {
@@ -90,51 +87,55 @@ func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
 	if round == nil {
 		return nil
 	}
+	// Convert Turns to PlayerRoundInfos for proto (backward compatibility)
+	// Aggregate all PlayerTurnInfos from all turns
+	playerRoundInfoMap := make(map[string]*proto.PlayerRoundInfo)
+	for _, turn := range round.Turns {
+		for _, playerTurnInfo := range turn.PlayerTurnInfos {
+			key := playerTurnInfo.TemporaryAddress
+			if _, exists := playerRoundInfoMap[key]; !exists {
+				playerRoundInfoMap[key] = &proto.PlayerRoundInfo{
+					PlayerAddress: &proto.PlayerAddress{
+						Id:               playerTurnInfo.PlayerID,
+						TemporaryAddress: playerTurnInfo.TemporaryAddress,
+					},
+					PlayerReady: playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
+						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
+						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED,
+					SubmittedCards: make([]*proto.RoundSubmittedCard, 0),
+				}
+			}
+			// Convert TurnSubmittedCard to proto RoundSubmittedCard
+			if playerTurnInfo.TurnSubmittedCard != nil {
+				roundCard := TurnSubmittedCardToProtoRoundSubmittedCard(playerTurnInfo.TurnSubmittedCard, turn.TurnNumber)
+				playerRoundInfoMap[key].SubmittedCards = append(playerRoundInfoMap[key].SubmittedCards, roundCard)
+			}
+		}
+	}
+
+	// Convert map to slice
+	playerRoundInfos := make([]*proto.PlayerRoundInfo, 0, len(playerRoundInfoMap))
+	for _, pri := range playerRoundInfoMap {
+		playerRoundInfos = append(playerRoundInfos, pri)
+	}
+
+	// Determine status from CompleteReason
+	status := proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
+	if round.CompleteReason != proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL {
+		status = proto.TurnStatus_TURN_ROUND_COMPLETED
+	} else if len(round.Turns) > 0 {
+		status = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
+	}
+
 	return &proto.Round{
 		Number:           int32(round.RoundNumber),
-		Status:           proto.RoundStatus(round.Status),
-		PlayerRoundInfos: DbPlayerRoundInfosToProto(round.PlayerRoundInfos),
+		Status:           status,
+		PlayerRoundInfos: playerRoundInfos,
 	}
 }
 
-func DbPlayerRoundInfosToProto(playerRoundInfos []*dao.PlayerRoundInfo) []*proto.PlayerRoundInfo {
-	if len(playerRoundInfos) == 0 {
-		return nil
-	}
-	var playerRoundInfosProto []*proto.PlayerRoundInfo
-	for _, playerRoundInfo := range playerRoundInfos {
-		playerRoundInfosProto = append(playerRoundInfosProto, DbPlayerRoundInfoToProto(playerRoundInfo))
-	}
-	return playerRoundInfosProto
-}
-
-func DbPlayerRoundInfoToProto(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundInfo {
-	if playerRoundInfo == nil {
-		return nil
-	}
-	addr := &proto.PlayerAddress{
-		Id:               playerRoundInfo.PlayerId,
-		TemporaryAddress: playerRoundInfo.TemporaryAddress,
-	}
-	// Note: Salt and SubmittedCommitment are now in RoundSubmittedCard, not PlayerRoundInfo
-	return &proto.PlayerRoundInfo{
-		PlayerAddress:  addr,
-		PlayerReady:    playerRoundInfo.PlayerReady,
-		SubmittedCards: DbRoundSubmittedCardsToProto(playerRoundInfo.SubmittedCards),
-	}
-}
-
-func DbRoundSubmittedCardsToProto(cards []*dao.RoundSubmittedCard) []*proto.RoundSubmittedCard {
-	if len(cards) == 0 {
-		return nil
-	}
-	var cardsProto []*proto.RoundSubmittedCard
-	for _, card := range cards {
-		cardsProto = append(cardsProto, DbRoundSubmittedCardToProto(card))
-	}
-	return cardsProto
-}
-func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmittedCard {
+// TurnSubmittedCardToProtoRoundSubmittedCard converts TurnSubmittedCard to proto RoundSubmittedCard
+func TurnSubmittedCardToProtoRoundSubmittedCard(card *dao.TurnSubmittedCard, turnNumber uint32) *proto.RoundSubmittedCard {
 	if card == nil {
 		return nil
 	}
@@ -146,8 +147,8 @@ func DbRoundSubmittedCardToProto(card *dao.RoundSubmittedCard) *proto.RoundSubmi
 		Description:         card.Description,
 		ElementRelation:     card.ElementRelation,
 		Effects:             DbCardEffectsToProto(card.CardEffects),
-		SubmittedCardId:     uint32(card.CardID),
-		SubmittedCommitment: card.SubmittedCommitment,
+		SubmittedCardId:     card.CardID,
+		SubmittedCommitment: card.CommitmentHash,
 		Salt:                card.Salt,
 	}
 }
@@ -180,54 +181,69 @@ func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
 	if round == nil {
 		return nil
 	}
+	// Convert Turns to PlayerRoundStats for proto
+	// Aggregate all PlayerTurnInfos from all turns
+	playerRoundStatMap := make(map[string]*proto.PlayerRoundStat)
+	var totalLostHP map[string]int32 = make(map[string]int32)
+
+	for _, turn := range round.Turns {
+		for _, playerTurnInfo := range turn.PlayerTurnInfos {
+			key := playerTurnInfo.TemporaryAddress
+			if _, exists := playerRoundStatMap[key]; !exists {
+				playerRoundStatMap[key] = &proto.PlayerRoundStat{
+					PlayerId:         playerTurnInfo.PlayerID,
+					TemporaryAddress: playerTurnInfo.TemporaryAddress,
+					CardStats:        make([]*proto.PlayerCardStat, 0),
+				}
+				totalLostHP[key] = 0
+			}
+			// Convert TurnSubmittedCard to PlayerCardStat
+			if playerTurnInfo.TurnSubmittedCard != nil {
+				cardStat := TurnSubmittedCardToProtoPlayerCardStat(len(playerRoundStatMap[key].CardStats), playerTurnInfo.TurnSubmittedCard)
+				playerRoundStatMap[key].CardStats = append(playerRoundStatMap[key].CardStats, cardStat)
+				// Calculate lost HP
+				if playerTurnInfo.TurnSubmittedCard.HealthBefore > playerTurnInfo.TurnSubmittedCard.HealthAfter {
+					totalLostHP[key] += int32(playerTurnInfo.TurnSubmittedCard.HealthBefore - playerTurnInfo.TurnSubmittedCard.HealthAfter)
+				}
+			}
+		}
+	}
+
+	// Set LostHP for each player
+	for key, stat := range playerRoundStatMap {
+		stat.LostHP = totalLostHP[key]
+	}
+
+	// Convert map to slice
+	playerRoundStats := make([]*proto.PlayerRoundStat, 0, len(playerRoundStatMap))
+	for _, stat := range playerRoundStatMap {
+		playerRoundStats = append(playerRoundStats, stat)
+	}
+
+	// Get round end time from latest turn if available
+	var roundEndTime uint64
+	if len(round.Turns) > 0 {
+		latestTurn := round.Turns[len(round.Turns)-1]
+		if latestTurn.TurnStartAt > 0 {
+			roundEndTime = uint64(latestTurn.TurnStartAt)
+		}
+	}
+
 	return &proto.RoundResult{
-		Players:      DbPlayerRoundInfosToProtoPlayerRoundStats(round.PlayerRoundInfos),
+		Players:      playerRoundStats,
 		RoundNumber:  round.RoundNumber,
 		IsGameOver:   round.IsLastRound,
-		RoundEndTime: uint64(round.RoundEndTime),
+		RoundEndTime: roundEndTime,
 	}
 }
 
-func DbPlayerRoundInfosToProtoPlayerRoundStats(playerRoundInfo []*dao.PlayerRoundInfo) []*proto.PlayerRoundStat {
-	if len(playerRoundInfo) == 0 {
-		return nil
-	}
-	var playerRoundStats []*proto.PlayerRoundStat
-	for _, playerRoundInfo := range playerRoundInfo {
-		playerRoundStats = append(playerRoundStats, DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo))
-	}
-	return playerRoundStats
-}
-
-func DbPlayerRoundInfoToProtoPlayerRoundStat(playerRoundInfo *dao.PlayerRoundInfo) *proto.PlayerRoundStat {
-	if playerRoundInfo == nil {
-		return nil
-	}
-	return &proto.PlayerRoundStat{
-		PlayerId:         playerRoundInfo.PlayerId,
-		TemporaryAddress: playerRoundInfo.TemporaryAddress,
-		LostHP:           playerRoundInfo.LostHP,
-		CardStats:        DbRoundSubmittedCardToProtoPlayerCardStats(playerRoundInfo.SubmittedCards),
-	}
-}
-
-func DbRoundSubmittedCardToProtoPlayerCardStats(roundSubmittedCard []*dao.RoundSubmittedCard) []*proto.PlayerCardStat {
-	if len(roundSubmittedCard) == 0 {
-		return nil
-	}
-	var playerCardStats []*proto.PlayerCardStat
-	for i, card := range roundSubmittedCard {
-		playerCardStats = append(playerCardStats, DbRoundSubmittedCardToProtoPlayerCardStat(i, card))
-	}
-	return playerCardStats
-}
-
-func DbRoundSubmittedCardToProtoPlayerCardStat(i int, card *dao.RoundSubmittedCard) *proto.PlayerCardStat {
+// TurnSubmittedCardToProtoPlayerCardStat converts TurnSubmittedCard to proto PlayerCardStat
+func TurnSubmittedCardToProtoPlayerCardStat(cardNumber int, card *dao.TurnSubmittedCard) *proto.PlayerCardStat {
 	if card == nil {
 		return nil
 	}
 	return &proto.PlayerCardStat{
-		CardNumber:       int32(i),
+		CardNumber:       int32(cardNumber),
 		CardID:           int32(card.CardID),
 		HPBefore:         int32(card.HealthBefore),
 		HPAfter:          int32(card.HealthAfter),
@@ -239,79 +255,94 @@ func DbRoundSubmittedCardToProtoPlayerCardStat(i int, card *dao.RoundSubmittedCa
 	}
 }
 
-func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round) *proto.GamePhase {
+func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round, turnNumber uint32, turnStartAt int64) *proto.GamePhase {
 	if game == nil || currentRound == nil {
 		return nil
 	}
+
+	// Find current turn
+	var currentTurn *dao.Turn
+	for _, turn := range currentRound.Turns {
+		if turn.TurnNumber == turnNumber {
+			currentTurn = turn
+			break
+		}
+	}
+
+	// Get player count from turns or estimate
+	playerCount := 0
+	if currentTurn != nil {
+		playerCount = len(currentTurn.PlayerTurnInfos)
+	} else if len(currentRound.Turns) > 0 {
+		playerCount = len(currentRound.Turns[0].PlayerTurnInfos)
+	}
+
 	gamePhase := &proto.GamePhase{
-		GameType: proto.GameType(game.Type),
+		GameType:    proto.GameType(game.Type),
+		GameID:      uint32(game.ID),
+		RoundNumber: uint32(currentRound.RoundNumber),
+		TurnNumber:  turnNumber,
+		TurnStartAt: turnStartAt,
+		Players:     make([]*proto.GamePhasePlayer, 0, playerCount),
 	}
 
-	for _, playerInfo := range currentRound.PlayerRoundInfos {
-		addr := types.NewPlayerAddress(
-			playerInfo.PlayerId,
-			playerInfo.TemporaryAddress,
-		).ToProto()
-		cards := make([]uint32, 0, len(playerInfo.SubmittedCards))
-		sort.Slice(playerInfo.SubmittedCards, func(i, j int) bool {
-			return playerInfo.SubmittedCards[i].CardNumber < playerInfo.SubmittedCards[j].CardNumber
-		})
+	// Build players from current turn's PlayerTurnInfos
+	if currentTurn != nil {
+		for _, playerTurnInfo := range currentTurn.PlayerTurnInfos {
+			addr := types.NewPlayerAddress(
+				playerTurnInfo.PlayerID,
+				playerTurnInfo.TemporaryAddress,
+			).ToProto()
 
-		for _, sc := range playerInfo.SubmittedCards {
-			cards = append(cards, uint32(sc.CardID))
+			// Get turn status from PlayerTurnInfo
+			turnStatus := playerTurnInfo.PlayerStatus
+			var commitment *[]byte
+			var card *uint32
+
+			// Get card info from TurnSubmittedCard if available
+			if playerTurnInfo.TurnSubmittedCard != nil {
+				if playerTurnInfo.TurnSubmittedCard.CardID != 0 {
+					cardVal := playerTurnInfo.TurnSubmittedCard.CardID
+					card = &cardVal
+				}
+				if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) > 0 {
+					commitmentVal := playerTurnInfo.TurnSubmittedCard.CommitmentHash
+					commitment = &commitmentVal
+				}
+			}
+
+			// Calculate current HP and multiplier from TurnSubmittedCard
+			var currentHP uint32
+			var currentMultiplier uint32
+			if playerTurnInfo.TurnSubmittedCard != nil {
+				currentHP = playerTurnInfo.TurnSubmittedCard.HealthAfter
+				currentMultiplier = playerTurnInfo.TurnSubmittedCard.MultiplierAfter
+			} else {
+				// Use initial values if no card submitted yet
+				currentHP = uint32(game.InitialHP)
+				currentMultiplier = 1
+			}
+
+			player := &proto.GamePhasePlayer{
+				Address:           addr,
+				TurnStatus:        turnStatus,
+				CurrentHP:         currentHP,
+				CurrentMultiplier: currentMultiplier,
+			}
+
+			if commitment != nil {
+				player.Commitment = *commitment
+			}
+			if card != nil {
+				player.Card = card
+			}
+
+			gamePhase.Players = append(gamePhase.Players, player)
 		}
-
-		// Get commitment from first card (if exists)
-		var commitment []byte
-		if len(playerInfo.SubmittedCards) > 0 {
-			commitment = playerInfo.SubmittedCards[0].SubmittedCommitment
-		}
-
-		gamePhase.Players = append(gamePhase.Players, &proto.GamePhasePlayer{
-			Address:     addr,
-			IsConfirmed: playerInfo.PlayerReady,
-			Commitment:  commitment,
-			Cards:       cards,
-		})
-	}
-	playerStatus := proto.PlayerStatus(0)
-	timeoutDuration := int64(0)
-	beginAt := uint64(currentRound.SetupOnChainAt)
-	switch game.Status {
-	case proto.GameStatus_GAME_INIT:
-		playerStatus = proto.PlayerStatus_PLAYER_MATCHED
-		// game waitting confirmed for the first round
-		timeoutDuration = game.GameArgs.GameMatchTimeout
-	case proto.GameStatus_GAME_RUNNING:
-		playerStatus = proto.PlayerStatus_PLAYER_IN_GAME
-		switch currentRound.Status {
-		case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION,
-			proto.RoundStatus_ROUND_COMPLETED,
-			proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
-			// waitting for confimation
-			timeoutDuration = game.GameArgs.RoundConfirmTimeout
-		case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS, proto.RoundStatus_ROUND_WAITTING_CARDS:
-			// round submitting cards
-			timeoutDuration = game.GameArgs.RoundTimeout
-		}
-	case proto.GameStatus_GAME_END:
-		playerStatus = proto.PlayerStatus_PLAYER_UNKNOWN
-		// round continue
-		timeoutDuration = game.ContinueTimeout
-		beginAt = uint64(game.UpdatedAt.Unix())
+	} else {
+		// No turn found, return empty game phase with initial state
+		// This can happen if turn hasn't been created yet
 	}
 
-	if beginAt == 0 {
-		beginAt = uint64(currentRound.CreatedAt.Unix())
-	}
-
-	gamePhase.PvPInfo = &proto.PvPInfo{
-		GameID:          uint32(game.ID),
-		Status:          playerStatus,
-		ContractAddress: game.RoomContract,
-		BeginAt:         beginAt,
-		TimeoutDuration: uint64(timeoutDuration),
-		RoundNumber:     uint64(currentRound.RoundNumber),
-	}
 	return gamePhase
 }

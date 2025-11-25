@@ -86,7 +86,7 @@ func (r *GameManager) Stop() {
 	r.lock.Lock()
 	log.Info("closing game manager")
 	for _, game := range r.gamesMap {
-		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "round", game.currentRound.round.Status)
+		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "turn", game.currentRound.turnStatus)
 	}
 	r.stopped = true
 	r.lock.Unlock()
@@ -227,6 +227,31 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 	}
 
 	return gamePhase, nil
+}
+
+// SyncGamePhase sends the current game phase directly to the player worker via workerManager
+func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
+	r.lock.RLock()
+	game, ok := r.playerToGameMap[address]
+	r.lock.RUnlock()
+	if !ok {
+		// Player not in game, send empty game phase
+		gamePhase := &proto.GamePhase{
+			GameType: proto.GameType_PVP,
+		}
+		syncEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GamePhaseSyncEvent{
+			GamePhase: gamePhase,
+		})
+		r.workerManager.SendEvent(address.String(), syncEvt)
+		return nil
+	}
+
+	// Send SyncGamePhaseRequest to game worker, which will send game phase directly to player worker
+	reqEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.SyncGamePhaseRequest{
+		Receiver: &address,
+	}, false) // No AckChan needed since game worker sends directly to receiver
+	r.workerManager.SendEvent(game.WorkerID(), reqEvt)
+	return nil
 }
 
 func (r *GameManager) GetBattleInfo(gameID uint, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {

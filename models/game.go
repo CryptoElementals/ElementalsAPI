@@ -38,43 +38,43 @@ type Game struct {
 // Round 回合记录
 type Round struct {
 	BaseModel
-	GameID           uint                      `json:"game_id"`            // 匹配唯一ID
-	RoundNumber      uint32                    `json:"round_number"`       // 回合数
-	Status           proto.RoundStatus         `json:"status"`             // 状态: waiting, matched, confirmed, cancelled
-	PlayerRoundInfos []*PlayerRoundInfo        `json:"player_round_infos"` // 回合玩家记录
-	SetupOnChainAt   int64                     `json:"setup_on_chain_at"`
-	IsLastRound      bool                      `json:"is_last_round"`
-	CompleteReason   proto.RoundCompleteReason `json:"complete_reason"`
-	RoundEndTime     int64                     `json:"round_end_at"`
+	GameID         uint                      `json:"game_id"`      // 匹配唯一ID
+	RoundNumber    uint32                    `json:"round_number"` // 回合数
+	Turns          []*Turn                   `json:"turns"`
+	IsLastRound    bool                      `json:"is_last_round"`
+	CompleteReason proto.RoundCompleteReason `json:"complete_reason"`
 }
 
-// PlayerRoundInfo 回合玩家记录
-type PlayerRoundInfo struct {
+type Turn struct {
 	BaseModel
-	RoundID          uint                  `json:"round_id"`
-	PlayerId         int64                 `gorm:"not null;index:idx_player_id" json:"player_id"`
-	TemporaryAddress string                `json:"temporary_address"`
-	PlayerReady      bool                  `json:"player_ready"`
-	LostHP           int32                 `json:"lost_hp"`
-	SubmittedCards   []*RoundSubmittedCard `json:"submitted_cards"` // 回合牌面记录
-	Surrendered      bool                  `json:"surrendered"`
+	RoundID         uint              `json:"round_id"`
+	TurnNumber      uint32            `json:"turn_number"`
+	TurnStartAt     int64             `json:"turn_start_at"`
+	PlayerTurnInfos []*PlayerTurnInfo `json:"player_turn_infos"`
 }
 
-// RoundSubmittedCard 回合牌面记录
-type RoundSubmittedCard struct {
+type PlayerTurnInfo struct {
 	BaseModel
-	PlayerRoundInfoID   uint                  `json:"player_round_info_id"` // 回合唯一ID
-	CardID              uint                  `json:"card"`                 // 使用过的卡牌
-	CardNumber          uint32                `json:"card_number"`
-	HealthBefore        uint32                `json:"health_before"`
-	HealthAfter         uint32                `json:"health_after"`
-	MultiplierBefore    uint32                `json:"multiplier_before"`
-	MultiplierAfter     uint32                `json:"multiplier_after"`
-	Description         string                `json:"description"`
-	ElementRelation     proto.ElementRelation `json:"element_relation"`
-	CardEffects         []*CardEffect         `json:"card_effects"`
-	SubmittedCommitment []byte                `json:"submitted_commitment"` // 牌面哈希值
-	Salt                []byte                `json:"salt"`
+	TurnID            uint                   `json:"turn_id"`
+	PlayerID          int64                  `json:"player_id"`
+	PlayerStatus      proto.PlayerTurnStatus `json:"player_status"`
+	TemporaryAddress  string                 `json:"temporary_address"`
+	TurnSubmittedCard *TurnSubmittedCard     `json:"turn_submitted_card"`
+}
+
+// Not a table
+type TurnSubmittedCard struct {
+	CommitmentHash []byte `json:"commitment_hash"`
+	CardID         uint32 `json:"card_id"`
+	Salt           []byte `json:"salt"`
+
+	HealthBefore     uint32                `json:"health_before"`
+	HealthAfter      uint32                `json:"health_after"`
+	MultiplierBefore uint32                `json:"multiplier_before"`
+	MultiplierAfter  uint32                `json:"multiplier_after"`
+	Description      string                `json:"description"`
+	ElementRelation  proto.ElementRelation `json:"element_relation"`
+	CardEffects      []*CardEffect         `json:"card_effects"`
 }
 
 type CardEffect struct {
@@ -97,7 +97,7 @@ type GamePlayerInfo struct {
 type PlayerReward struct {
 	BaseModel
 	BattleRewardID         uint
-	PlayerId               int64  `gorm:"not null;index:wallet_address" json:"player_id"`
+	PlayerId               int64 `gorm:"not null;index:wallet_address" json:"player_id"`
 	TemporaryAddress       string
 	TokenChange            int32
 	PointChange            int32

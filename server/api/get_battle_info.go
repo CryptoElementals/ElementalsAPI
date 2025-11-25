@@ -253,9 +253,6 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 				return task.Response, nil
 			}
 			log.Debugf("RequestUUID: %s, gamePhase: %+v", task.Request.BaseRequest.RequestUUID, gamePhase)
-
-			//gameResult.GameEndAt = gamePhase.PvPInfo.BeginAt
-			gameResult.GameContinueTimeout = gamePhase.PvPInfo.TimeoutDuration
 		}
 
 		task.Response.GameResult = gameResult

@@ -14,7 +14,7 @@ import (
 )
 
 type ContractClient interface {
-	CreateRoomContract(evt *types.RequireContractCreationEvent) error
+	CreateRoomContract(evt *types.RequireGameCreationEvent) error
 	SetTurnReady(evt *types.RequireSetupNewTurnEvent) error
 	SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error
 	SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error
@@ -132,6 +132,11 @@ func (s *Service) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
 
 func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	return s.gameManager.GetGamePhase(address)
+}
+
+// SyncGamePhase sends the current game phase directly to the player worker
+func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
+	return s.gameManager.SyncGamePhase(address)
 }
 
 // HandleSubmitPlayerCommitment handles a player commitment submission

@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -22,15 +20,14 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 		g.handleTimerEvent(evt)
 		return nil
 	case *types.GetGameInfoRequest:
-		var _ *types.GetGameInfoRequest = evt
 		return g.handleGetGameInfoRequest(event)
 	case *types.GetBattleInfoRequest:
 		return g.handleGetBattleInfoRequest(event, evt)
 	case *types.GetGamePhaseRequest:
-		var _ *types.GetGamePhaseRequest = evt
 		return g.handleGetGamePhaseRequest(event)
+	case *types.SyncGamePhaseRequest:
+		return g.handleSyncGamePhaseRequest(event, evt)
 	case *types.GetGameResultRequest:
-		var _ *types.GetGameResultRequest = evt
 		return g.handleGetGameResultRequest(event)
 	case *types.SubmitPlayerCommitment:
 		return g.handleSubmitPlayerCommitment(evt)
@@ -41,32 +38,26 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	// Handle game state-specific events
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT, proto.GameStatus_GAME_RUNNING:
-		err := g.handleRound(event)
-		if err != nil {
-			log.Errorf("handleRound failed, err: %v", err)
-			return err
-		}
-		return nil
+		return g.handleTurn(event)
 	case proto.GameStatus_GAME_END:
 		return errors.New("game has ended")
 	}
 	return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 }
 
-func (g *Game) handleRound(event *types.Event) error {
-	currentRound := g.currentRound.round
+func (g *Game) handleTurn(event *types.Event) error {
 	if surrenderEvt, err := types.AssertInterface[*types.SurrenderEvent](event); err == nil {
 		return g.handleSurrenderEvent(surrenderEvt)
 	}
 
-	switch currentRound.Status {
-	case proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION:
-		return g.handleWaittingRoundPlayersConfirmed(event)
-	case proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN:
+	switch g.currentRound.turnStatus {
+	case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
+		return g.handleWaittingPlayersConfirmed(event)
+	case proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
 		return g.handleGameStateWaittingSetupOnChain(event)
-	case proto.RoundStatus_ROUND_WAITTING_COMMITMENTS:
+	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
 		return g.handleGameStateWaittingCommitments(event)
-	case proto.RoundStatus_ROUND_WAITTING_CARDS:
+	case proto.TurnStatus_TURN_WAITTING_CARDS:
 		return g.handleGameStateCardSubmitted(event)
 	}
 	return nil
@@ -77,40 +68,47 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 	if err != nil {
 		return err
 	}
-	p.roundPlayer.Surrendered = true
-	g.savePlayerRoundInfo(p.roundPlayer)
-	return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER)
+	// Mark surrender in current turn's PlayerTurnInfo
+	playerTurnInfo := g.getPlayerTurnInfo(p)
+	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN // Use a status to indicate surrender
+	// Check if game is over
+	isGameComplete := g.gameInfo.GameResult != nil
+	return g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER, isGameComplete)
 }
 
-func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
+func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
 	evt, err := types.AssertInterface[*types.PlayerReadyEvent](event)
 	if err != nil {
 		return err
 	}
-	// stale events
+	// stale events - check both round and turn number
 	if evt.RoundNumber != g.currentRound.round.RoundNumber {
 		return nil
 	}
-	// might be a chain error, ignore it
+	currentTurnNumber := g.currentRound.getCurrentTurnNumber()
+	if evt.TurnNumber != currentTurnNumber {
+		return nil
+	}
 	player, err := g.getGamePlayer(evt.PlayerAddress.TemporaryAddress)
 	if err != nil {
-		log.Errorf("getGamePlayer failed, err: %v", err)
 		return err
 	}
-	player.roundPlayer.PlayerReady = true
+	// Update PlayerTurnInfo for current turn
+	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
+
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
 		GameID:       g.gameInfo.ID,
 		RoundNumber:  uint32(g.currentRound.round.RoundNumber),
 		ReadyAddress: player.PlayerAddress(),
 	}))
 	if !g.areAllPlayersReady() {
-		g.savePlayerRoundInfo(player.roundPlayer)
 		return nil
 	}
 
 	// All players confirmed battle for this turn
 	// The first round, first turn needs to create contract first
-	if g.currentRound.round.RoundNumber == 1 && g.getCurrentTurnNumber() == 1 {
+	if g.currentRound.round.RoundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 		allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
 		for _, player := range g.currentRound.gamePlayers {
@@ -121,7 +119,7 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 			g.handleGameAbortInternalError()
 			return err
 		}
-		g.currentRound.round.Status = proto.RoundStatus_ROUND_WAITTING_SETUP_ON_CHAIN
+		g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN
 	} else {
 		// For all other turns, setup new turn on chain
 		err := g.setupNewTurn()
@@ -142,22 +140,25 @@ func (g *Game) handleWaittingRoundPlayersConfirmed(event *types.Event) error {
 func (g *Game) handleGameStateWaittingSetupOnChain(event *types.Event) error {
 	defer g.sendTimerEventByCurrentRound()
 	// First round, first turn needs contract creation
-	if g.currentRound.round.RoundNumber == 1 && g.getCurrentTurnNumber() == 1 {
-		return g.handleRoomContractCreated(event)
+	if g.currentRound.round.RoundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
+		return g.handleRoomCreated(event)
 	}
 	// For all other turns, handle turn setup completion
 	return g.handleNewTurnSetupOnChain(event)
 }
 
-func (g *Game) handleRoomContractCreated(event *types.Event) error {
-	evt, err := types.AssertInterface[*types.RoomContractCreated](event)
+func (g *Game) handleRoomCreated(event *types.Event) error {
+	evt, err := types.AssertInterface[*types.RoomCreated](event)
 	if err != nil {
 		return err
 	}
-	// RoomContractAddress removed - always uses RoomV2 contract address
-	// g.gameInfo.RoomContract is kept for backward compatibility but not used
-	g.currentRound.round.SetupOnChainAt = evt.TimeStamp
-	err = g.saveGame()
+	// the turn 1 is already created in the round creation
+	currentTurn := g.currentRound.getCurrentTurn()
+	currentTurn.TurnStartAt = evt.TimeStamp
+	// For the first turn of the first round, the contract creation already handles the turn setup
+	// so we transition directly to waiting for commitments
+	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
+	err = g.saveRound(g.currentRound.round)
 	if err != nil {
 		return err
 	}
@@ -166,16 +167,6 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 	gameReadyEvt := types.NewEvent(g.workerID(), &types.GameReadyEvent{
 		GameID: g.gameInfo.ID,
 	})
-	g.sendEventsToAllPlayers(gameReadyEvt)
-
-	// For the first turn of the first round, the contract creation already handles the turn setup
-	// so we transition directly to waiting for commitments
-	g.currentRound.round.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
-	err = g.saveRound(g.currentRound.round)
-	if err != nil {
-		return err
-	}
-
 	// Send turn ready event for the first turn
 	turnReadyEvt := types.NewEvent(g.workerID(), &types.TurnReadyEvent{
 		GameID:      g.gameInfo.ID,
@@ -189,7 +180,7 @@ func (g *Game) handleRoomContractCreated(event *types.Event) error {
 		RoundStartedAt: evt.TimeStamp,
 		RoundTimeout:   g.gameInfo.RoundTimeout,
 	})
-	g.sendEventsToAllPlayers(roundReadyEvt, turnReadyEvt)
+	g.sendEventsToAllPlayers(gameReadyEvt, roundReadyEvt, turnReadyEvt)
 	return nil
 }
 
@@ -205,11 +196,15 @@ func (g *Game) handleNewTurnSetupOnChain(event *types.Event) error {
 	if evt.RoundNumber != uint32(g.currentRound.round.RoundNumber) {
 		return nil
 	}
-	if evt.TurnNumber != g.getCurrentTurnNumber() {
+	if evt.TurnNumber != g.currentRound.getCurrentTurnNumber() {
 		return nil
 	}
-	g.currentRound.round.Status = proto.RoundStatus_ROUND_WAITTING_COMMITMENTS
-	g.currentRound.round.SetupOnChainAt = evt.TimeStamp
+
+	// turn should already be created
+	currentTurn := g.currentRound.getCurrentTurn()
+	currentTurn.TurnStartAt = evt.TimeStamp
+
+	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
 	err = g.saveRound(g.currentRound.round)
 	if err != nil {
 		return err
@@ -252,32 +247,31 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		return err
 	}
 
-	// Store commitment directly in SubmittedCards
-	// Since commitmentIdx == len(SubmittedCards) (validated above), append a new entry
-	player.roundPlayer.SubmittedCards = append(player.roundPlayer.SubmittedCards, &dao.RoundSubmittedCard{
-		CardNumber:          commitmentIdx + 1,
-		SubmittedCommitment: evt.Commitment,
-	})
-
-	g.savePlayerRoundInfo(player.roundPlayer)
+	// it should already be created in the turn creation
+	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo.TurnSubmittedCard.CommitmentHash = evt.Commitment
+	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED
 
 	// If all players have submitted this commitment index, allow card submission for this index
 	if g.haveAllPlayersSubmittedCommitment(commitmentIdx) {
 		// Send CommitmentsOnChain event to notify players they can submit cards for this index
+		// commitmentIdx is 0-based, but TurnNumber is 1-based (1, 2, 3)
+		turnNumber := commitmentIdx + 1
 		commitmentsOnChainEvt := types.NewEvent(g.workerID(), &types.CommitmentsOnChainEvent{
 			GameID:      g.gameInfo.ID,
 			RoundNumber: evt.RoundNumber,
+			TurnNumber:  turnNumber,
 		})
 		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
 
 		// Change status to allow card submission for this turn
-		g.currentRound.round.Status = proto.RoundStatus_ROUND_WAITTING_CARDS
-		err = g.saveRound(g.currentRound.round)
-		if err != nil {
-			return err
-		}
-	}
+		g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_CARDS
 
+	}
+	err = g.saveRound(g.currentRound.round)
+	if err != nil {
+		return err
+	}
 	g.sendTimerEventByCurrentRound()
 	return nil
 }
@@ -303,51 +297,57 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		return err
 	}
 
-	// Update the existing card entry with CardID and Salt
-	cardEntry.CardID = cardID
-	cardEntry.Salt = evt.Salt
-
-	g.savePlayerRoundInfo(player.roundPlayer)
+	// Update the current turn's PlayerTurnInfo with CardID and Salt
+	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo.TurnSubmittedCard.CardID = uint32(cardID)
+	playerTurnInfo.TurnSubmittedCard.Salt = evt.Salt
+	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
 
 	// If all players have submitted this card index, handle turn end
 	if g.haveAllPlayersSubmittedCard(cardIdx) {
 		return g.handleTurnEnd()
 	}
-
+	err = g.saveRound(g.currentRound.round)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-// areAllPlayersReady checks if all players have confirmed battle for the current round
+// areAllPlayersReady checks if all players have confirmed battle for the current turn
 func (g *Game) areAllPlayersReady() bool {
 	for _, p := range g.currentRound.gamePlayers {
-		if !p.roundPlayer.PlayerReady {
+		if !p.isPlayerReady() {
 			return false
 		}
 	}
 	return true
 }
 
-// haveAllPlayersSubmittedCommitment checks if all players have submitted a commitment at the given index
+// haveAllPlayersSubmittedCommitment checks if all players have submitted a commitment for the current turn
 func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
+	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
-		if int(commitmentIdx) >= len(p.roundPlayer.SubmittedCards) {
+		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 			return false
 		}
-		card := p.roundPlayer.SubmittedCards[commitmentIdx]
-		if len(card.SubmittedCommitment) == 0 {
+		if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) == 0 {
 			return false
 		}
 	}
 	return true
 }
 
-// haveAllPlayersSubmittedCard checks if all players have submitted a card at the given index
+// haveAllPlayersSubmittedCard checks if all players have submitted a card for the current turn
 func (g *Game) haveAllPlayersSubmittedCard(cardIdx uint32) bool {
+	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
-		if int(cardIdx) >= len(p.roundPlayer.SubmittedCards) {
+		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 			return false
 		}
-		if p.roundPlayer.SubmittedCards[cardIdx].CardID == 0 {
+		if playerTurnInfo.TurnSubmittedCard.CardID == 0 {
 			return false
 		}
 	}
@@ -357,80 +357,96 @@ func (g *Game) haveAllPlayersSubmittedCard(cardIdx uint32) bool {
 // handleTurnEnd handles the end of a turn: executes the card, sends events, and checks if round/game ends
 func (g *Game) handleTurnEnd() error {
 	// Get card index from current turn number (turn number is 1-based, cardIdx is 0-based)
-	turnNumber := g.getCurrentTurnNumber()
+	turnNumber := g.currentRound.getCurrentTurnNumber()
 	cardIdx := int(turnNumber) - 1
 	roundNumber := g.currentRound.round.RoundNumber
 
 	// Execute battles for this card index
-	isGameOver, gameResult, err := g.currentRound.ExecuteCardIndex(cardIdx)
+	isGameOver, gameResult, err := g.currentRound.executeCardIndex(cardIdx)
 	if err != nil {
 		return fmt.Errorf("failed to execute card index %d: %v", cardIdx, err)
 	}
 	g.gameInfo.GameResult = gameResult
-	// Build PlayerTurnInfo for this turn
+
+	// Get or create current Turn record
+	currentTurn := g.currentRound.getCurrentTurn()
+	currentTurn.RoundID = g.currentRound.round.ID
+
+	// Build PlayerTurnInfo for this turn from playerTurnInfos and save to Turn record
 	playerTurnInfos := make([]*types.PlayerTurnInfo, 0, len(g.currentRound.gamePlayers))
 	for _, p := range g.currentRound.gamePlayers {
-		if cardIdx < len(p.roundPlayer.SubmittedCards) {
-			playerTurnInfos = append(playerTurnInfos, &types.PlayerTurnInfo{
-				PlayerAddress: p.PlayerAddress(),
-				SubmittedCard: p.roundPlayer.SubmittedCards[cardIdx],
-			})
-		}
+		// Get PlayerTurnInfo for current turn
+		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		// Use TurnSubmittedCard directly
+		playerTurnInfos = append(playerTurnInfos, &types.PlayerTurnInfo{
+			PlayerAddress: p.PlayerAddress(),
+			SubmittedCard: playerTurnInfo.TurnSubmittedCard,
+		})
 	}
 
-	// Send events to both players (CardsOnChainEvent and TurnCompletedEvent)
-	g.sendEventsToAllPlayers(
-		types.NewEvent(g.workerID(), &types.CardsOnChainEvent{
-			GameID:      g.gameInfo.ID,
-			RoundNumber: roundNumber,
-		}),
-		types.NewEvent(g.workerID(), &types.TurnCompletedEvent{
-			GameID:         g.gameInfo.ID,
-			RoundNumber:    roundNumber,
-			TurnNumber:     turnNumber,
-			PlayerTurnInfo: playerTurnInfos,
-		}),
-	)
+	// Determine if round and/or game is complete
+	isRoundComplete := turnNumber >= 3 || isGameOver
+	isGameComplete := isGameOver
 
-	// Check if we've reached 3 turns in this round or game is over
-	if isGameOver || turnNumber >= 3 {
-		// All 3 turns completed, handle round end
-		return g.handleRoundEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL)
+	// Send event to both players with TurnCompletedEvent (includes round/game completion info)
+	turnCompletedEvt := &types.TurnCompletedEvent{
+		GameID:          g.gameInfo.ID,
+		RoundNumber:     roundNumber,
+		TurnNumber:      turnNumber,
+		IsRoundComplete: isRoundComplete,
+		IsGameComplete:  isGameComplete,
+		PlayerTurnInfo:  playerTurnInfos,
+		GameResult:      gameResult, // will be nil if game is not complete
+	}
+	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
+
+	// If round or game is complete, handle it
+	if isRoundComplete {
+		return g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL, isGameComplete)
 	}
 
 	// Otherwise, prepare for the next turn
 	g.incrementTurnNumber()
-	for _, p := range g.currentRound.gamePlayers {
-		p.roundPlayer.PlayerReady = false
-	}
-	g.currentRound.round.Status = proto.RoundStatus_ROUND_WAITTING_BATTLE_CONFIRMATION
-	err = g.saveRound(g.currentRound.round)
-	if err != nil {
+	// Create the next turn record immediately after turn completion
+	nextTurn := g.currentRound.createNewTurn()
+	nextTurn.RoundID = g.currentRound.round.ID
+	// PlayerTurnInfos will be recreated when players submit for the new turn
+	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
+	if err = g.saveRound(g.currentRound.round); err != nil {
 		return err
 	}
 	g.sendTimerEventByCurrentRound()
 	return nil
 }
 
-// handleRoundEnd handles the end of a round: gets game result and checks if game ends
-func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
+// completeRoundAndCheckGameEnd handles round completion and checks if game should end
+// This function consolidates the logic from handleRoundEnd and handleGameEnd
+func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, isGameComplete bool) error {
+	// Mark round as completed
 	g.currentRound.round.CompleteReason = reason
-	g.currentRound.round.RoundEndTime = time.Now().Unix()
+	g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
 
-	// Check if game is over (game result is set when game ends)
-	isGameOver := g.gameInfo.GameResult != nil
-
-	// Start a new round
-	g.currentRound.round.Status = proto.RoundStatus_ROUND_COMPLETED
-	roundCompletedEvt := types.NewEvent(g.workerID(), &types.RoundCompletedEvent{
-		GameID:    g.gameInfo.ID,
-		RoundInfo: g.currentRound.round,
-	})
-	g.sendEventsToAllPlayers(roundCompletedEvt)
-
-	if isGameOver {
-		return g.handleGameEnd()
+	// If game is complete, handle game end
+	if isGameComplete {
+		g.currentRound.round.IsLastRound = true
+		g.gameInfo.Status = proto.GameStatus_GAME_END
+		err := g.saveGame()
+		if err != nil {
+			return err
+		}
+		// Call HandleGameCompletedEvent for game result settlement
+		completeEvt := &types.GameCompletedEvent{
+			GameID:   g.gameInfo.ID,
+			GameInfo: g.gameInfo,
+		}
+		if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+		}
+		g.stopGame()
+		return nil
 	}
+
+	// Game continues, setup new round
 	g.setupNewRound()
 	err := g.saveGame()
 	if err != nil {
@@ -440,30 +456,17 @@ func (g *Game) handleRoundEnd(reason proto.RoundCompleteReason) error {
 }
 
 // sendGameCompletedEventAndStop sends game completed event and stops the game
+// Used by abort handlers that need to trigger game result settlement
 func (g *Game) sendGameCompletedEventAndStop() {
 	completeEvt := &types.GameCompletedEvent{
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
 	}
-	gameCompletedEvt := types.NewEvent(g.workerID(), completeEvt)
+	// Still need to call HandleGameCompletedEvent for game result settlement
 	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
 		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 	}
-	g.sendEventsToAllPlayers(gameCompletedEvt)
 	g.stopGame()
-}
-
-// can go into game end from any other status
-func (g *Game) handleGameEnd() error {
-	g.currentRound.round.Status = proto.RoundStatus_ROUND_COMPLETED
-	g.currentRound.round.IsLastRound = true
-	g.gameInfo.Status = proto.GameStatus_GAME_END
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
-	g.sendGameCompletedEventAndStop()
-	return nil
 }
 
 // can go into game end from any other status
@@ -488,7 +491,7 @@ func (g *Game) handleGameAbortInternalError() error {
 	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
 	if g.currentRound.round != nil {
 		g.currentRound.round.IsLastRound = true
-		g.currentRound.round.Status = proto.RoundStatus_ROUND_COMPLETED
+		g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
 	}
 
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
@@ -543,11 +546,42 @@ func (g *Game) handleGetBattleInfoRequest(event *types.Event, reqEvt *types.GetB
 // handleGetGamePhaseRequest handles the GetGamePhaseRequest event and sends back a response
 func (g *Game) handleGetGamePhaseRequest(event *types.Event) error {
 	// Get the game phase (lock is already held by Handle)
-	gamePhase := conversion.DbGameToProtoGamePhase(g.gameInfo, g.currentRound.round)
+	turnNumber := g.currentRound.getCurrentTurnNumber()
+	turnStartAt := int64(0)
+	currentTurn := g.currentRound.getCurrentTurn()
+	if currentTurn != nil && currentTurn.TurnStartAt > 0 {
+		turnStartAt = currentTurn.TurnStartAt
+	} else {
+		turnStartAt = g.currentRound.round.CreatedAt.Unix()
+	}
+	gamePhase := conversion.DbGameToProtoGamePhase(g.gameInfo, g.currentRound.round, turnNumber, turnStartAt)
 
 	// Send response through AckChan
 	if event.AckChan != nil {
 		event.AckChan <- gamePhase
+	}
+	return nil
+}
+
+// handleSyncGamePhaseRequest handles the SyncGamePhaseRequest event and sends game phase directly to receiver
+func (g *Game) handleSyncGamePhaseRequest(event *types.Event, reqEvt *types.SyncGamePhaseRequest) error {
+	// Get the game phase (lock is already held by Handle)
+	turnNumber := g.currentRound.getCurrentTurnNumber()
+	turnStartAt := int64(0)
+	currentTurn := g.currentRound.getCurrentTurn()
+	if currentTurn != nil && currentTurn.TurnStartAt > 0 {
+		turnStartAt = currentTurn.TurnStartAt
+	} else {
+		turnStartAt = g.currentRound.round.CreatedAt.Unix()
+	}
+	gamePhase := conversion.DbGameToProtoGamePhase(g.gameInfo, g.currentRound.round, turnNumber, turnStartAt)
+
+	// Send game phase directly to receiver via workerManager
+	if reqEvt.Receiver != nil {
+		syncEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GamePhaseSyncEvent{
+			GamePhase: gamePhase,
+		})
+		g.workerMangerService.SendEvent(reqEvt.Receiver.String(), syncEvt)
 	}
 	return nil
 }

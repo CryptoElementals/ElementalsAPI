@@ -35,6 +35,7 @@ func TestWorkerManager_SendEvent(t *testing.T) {
 	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &types.PlayerReadyEvent{
 		GameId:        1,
 		RoundNumber:   1,
+		TurnNumber:    1,
 		PlayerAddress: types.PlayerAddress{Id: 1, TemporaryAddress: "temp"},
 	}))
 	time.Sleep(1 * time.Millisecond)
@@ -59,6 +60,7 @@ func TestWorkerManager_CloseWorker(t *testing.T) {
 	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &types.PlayerReadyEvent{
 		GameId:        1,
 		RoundNumber:   1,
+		TurnNumber:    1,
 		PlayerAddress: types.PlayerAddress{Id: 1, TemporaryAddress: "temp"},
 	}))
 	// check if worker1 is closed

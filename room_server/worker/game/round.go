@@ -10,12 +10,61 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// Round represents a game round with its players
-type Round struct {
-	round        *dao.Round
-	gamePlayers  map[string]*gamePlayer
-	battleStates map[string]*playerBattleState // Tracks HP/multipliers during progressive battle
-	turnNumber   uint32                        // Current turn number within this round (1-3), runtime state only
+// round represents a game round with its players
+type round struct {
+	round       *dao.Round
+	gamePlayers map[string]*gamePlayer // Also used for battle state during battle execution
+	turnNumber  uint32                 // Current turn number within this round (1-3), runtime state only
+	turnStatus  proto.TurnStatus       // Runtime turn status (not persisted in Round model)
+}
+
+// getCurrentTurnNumber returns the current turn number (1-3) for this round
+func (r *round) getCurrentTurnNumber() uint32 {
+	return r.turnNumber
+}
+
+// getCurrentTurn gets the current Turn record
+func (r *round) getCurrentTurn() *dao.Turn {
+	turnNumber := r.getCurrentTurnNumber()
+	idx := int(turnNumber) - 1
+	return r.round.Turns[idx]
+}
+
+// createNewTurn creates a new Turn record for the current turn number
+// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
+// Also initializes playerTurnInfos for all players to ensure the slice is large enough for the new turn
+func (r *round) createNewTurn() *dao.Turn {
+	turnNumber := r.getCurrentTurnNumber()
+	idx := int(turnNumber) - 1
+
+	// Ensure Turns slice is large enough
+	for len(r.round.Turns) <= idx {
+		r.round.Turns = append(r.round.Turns, nil)
+	}
+
+	for _, player := range r.gamePlayers {
+		player.playerTurnInfos = append(player.playerTurnInfos, &dao.PlayerTurnInfo{})
+	}
+
+	// Create new turn
+	newTurn := &dao.Turn{
+		RoundID:         r.round.ID, // Will be set when round is saved
+		TurnNumber:      turnNumber,
+		PlayerTurnInfos: make([]*dao.PlayerTurnInfo, 0),
+	}
+	r.round.Turns[idx] = newTurn
+	return newTurn
+}
+
+// getOrCreateCurrentTurn gets the current Turn record, or creates it if it doesn't exist
+// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
+func (r *round) getOrCreateCurrentTurn() *dao.Turn {
+	// Try to get existing turn first
+	if turn := r.getCurrentTurn(); turn != nil {
+		return turn
+	}
+	// Create new turn if it doesn't exist
+	return r.createNewTurn()
 }
 
 // ElementalRelation represents the relationship between two cards
@@ -80,48 +129,13 @@ type gameEndState struct {
 	Status           playerStatus
 }
 
-// ExecuteRound executes the round battle logic directly on the Round and returns a simple result
-func (r *Round) ExecuteRound() (bool, *dao.GameResult, error) {
-	// Validate round
-	if err := r.validateRound(); err != nil {
-		return false, nil, err
-	}
-
-	// Check for server timeout scenarios
-	if r.isServerTimeout() {
-		return r.handleServerTimeout()
-	}
-
-	playerCount := len(r.round.PlayerRoundInfos)
-	hasSurrenderedPlayer, hasOfflinePlayer := r.checkPlayerStatuses()
-
-	// Fetch player cards
-	playerCards := r.fetchPlayerCards(playerCount, hasOfflinePlayer)
-
-	// Initialize player states
-	states := r.initializePlayerStates(playerCount)
-
-	// Execute battle if all players are online
-	if !hasOfflinePlayer && !hasSurrenderedPlayer {
-		r.executeBattle(states, playerCards, playerCount)
-	}
-
-	// Update gamePlayers with final state
-	r.updateGamePlayersFromStates(states)
-
-	// Build game result
-	isGameOver, gameResult := r.buildGameResult(states, playerCount)
-
-	return isGameOver, gameResult, nil
-}
-
 // validateRound validates the round data
-func (r *Round) validateRound() error {
+func (r *round) validateRound() error {
 	if r.round == nil {
 		return fmt.Errorf("round is nil")
 	}
 
-	playerCount := len(r.round.PlayerRoundInfos)
+	playerCount := len(r.gamePlayers)
 	if playerCount < 2 {
 		return fmt.Errorf("at least 2 players required")
 	}
@@ -134,28 +148,23 @@ func (r *Round) validateRound() error {
 }
 
 // isServerTimeout checks if round ended due to server timeout
-func (r *Round) isServerTimeout() bool {
+func (r *round) isServerTimeout() bool {
 	return r.round.CompleteReason == proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT ||
 		r.round.CompleteReason == proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT
 }
 
 // checkPlayerStatuses checks for surrendered and offline players
-func (r *Round) checkPlayerStatuses() (bool, bool) {
+func (r *round) checkPlayerStatuses() (bool, bool) {
 	hasSurrenderedPlayer := false
 	hasOfflinePlayer := false
 
-	for _, p := range r.round.PlayerRoundInfos {
-		if p.Surrendered {
+	for _, gamePlayer := range r.gamePlayers {
+		if gamePlayer.isSurrendered() {
 			hasSurrenderedPlayer = true
 		}
-		// Check commitment from first card (if exists) and card count
-		hasCommitment := false
-		if len(p.SubmittedCards) > 0 && len(p.SubmittedCards[0].SubmittedCommitment) > 0 {
-			hasCommitment = true
-		}
-		if !hasCommitment || len(p.SubmittedCards) != 3 {
-			hasOfflinePlayer = true
-		}
+		// Check commitment from submitted cards
+		submittedCards := gamePlayer.getLastSubmittedCard()
+		hasOfflinePlayer = len(submittedCards.CommitmentHash) == 0
 		// Early exit if both conditions are already found
 		if hasSurrenderedPlayer && hasOfflinePlayer {
 			break
@@ -165,281 +174,79 @@ func (r *Round) checkPlayerStatuses() (bool, bool) {
 	return hasSurrenderedPlayer, hasOfflinePlayer
 }
 
-// fetchPlayerCards fetches cards for all players
-func (r *Round) fetchPlayerCards(playerCount int, hasOfflinePlayer bool) [][]*dao.Card {
-	if hasOfflinePlayer {
-		return nil
-	}
-
-	playerCards := make([][]*dao.Card, playerCount)
-	for i, p := range r.round.PlayerRoundInfos {
-		cardIDs := make([]int, 0, len(p.SubmittedCards))
-		for _, c := range p.SubmittedCards {
-			cardIDs = append(cardIDs, int(c.CardID))
-		}
-		cards, err := r.getCards(cardIDs)
-		if err != nil {
-			return nil
-		}
-		playerCards[i] = cards
-	}
-	return playerCards
-}
-
-// initializePlayerStates initializes the player battle states
-func (r *Round) initializePlayerStates(playerCount int) []*playerBattleState {
-	states := make([]*playerBattleState, playerCount)
-	for i, p := range r.round.PlayerRoundInfos {
-		player := r.gamePlayers[p.TemporaryAddress]
-		status := r.determinePlayerStatus(p)
-
-		states[i] = &playerBattleState{
-			HP:               int(player.currentHP),
-			Multiplier:       r.calculateMultiplierByLostHP(int(player.totalLostHP)),
-			LostHP:           int(player.totalLostHP),
-			PlayerId:         p.PlayerId,
-			TemporaryAddress: p.TemporaryAddress,
-			Status:           status,
-			SubmittedCards:   p.SubmittedCards,
-			Surrendered:      p.Surrendered,
-		}
-	}
-	return states
-}
-
-// determinePlayerStatus determines the status of a player
-func (r *Round) determinePlayerStatus(p *dao.PlayerRoundInfo) playerStatus {
-	if p.Surrendered {
+// determinePlayerStatus determines the status of a player from gamePlayer
+func (r *round) determinePlayerStatus(gamePlayer *gamePlayer) playerStatus {
+	if gamePlayer.isSurrendered() {
 		return playerStatusSurrendered
 	}
-	// Check commitment from first card (if exists) and card count
-	hasCommitment := false
-	if len(p.SubmittedCards) > 0 && len(p.SubmittedCards[0].SubmittedCommitment) > 0 {
-		hasCommitment = true
-	}
-	if !hasCommitment || len(p.SubmittedCards) != 3 {
+	// Check commitment from submitted cards
+	submittedCards := gamePlayer.getLastSubmittedCard()
+	if submittedCards == nil || len(submittedCards.CommitmentHash) == 0 {
 		return playerStatusOffline
 	}
-	return playerStatusOnline
-}
-
-// executeBattle executes the card battles
-func (r *Round) executeBattle(states []*playerBattleState, playerCards [][]*dao.Card, playerCount int) {
-	for cardIdx := 0; cardIdx < 3; cardIdx++ {
-		for i := 0; i < playerCount; i++ {
-			for j := i + 1; j < playerCount; j++ {
-				r.processCardBattle(states[i], states[j], playerCards[i][cardIdx], playerCards[j][cardIdx], cardIdx)
-			}
-		}
-
-		// Stop if any player has 0 HP
-		if r.hasAnyPlayerZeroHP(states) {
-			break
-		}
-	}
+	return playerStatusOnline // TODO: check if the player is online
 }
 
 // processCardBattle processes a single card battle between two players
-func (r *Round) processCardBattle(p1, p2 *playerBattleState, card1, card2 *dao.Card, cardIdx int) {
+func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
 	// Get elemental relation
-	relation := r.getElementalRelation(card1, card2, p1.PlayerId, p2.PlayerId)
-	effects1 := r.buildPlayerEffects(relation.P1Type, card1, card2, p1.PlayerId, p1.TemporaryAddress, p2.PlayerId)
-	effects2 := r.buildPlayerEffects(relation.P2Type, card2, card1, p2.PlayerId, p2.TemporaryAddress, p1.PlayerId)
+	relation := r.getElementalRelation(card1, card2, p1.player.PlayerId, p2.player.PlayerId)
+	effects1 := r.buildPlayerEffects(relation.P1Type, card1, card2, p1.player.PlayerId, p1.player.TemporaryAddress, p2.player.PlayerId)
+	effects2 := r.buildPlayerEffects(relation.P2Type, card2, card1, p2.player.PlayerId, p2.player.TemporaryAddress, p1.player.PlayerId)
 
 	// Record initial state
-	p1BeforeHP := p1.HP
-	p2BeforeHP := p2.HP
-	p1BeforeMul := p1.Multiplier
-	p2BeforeMul := p2.Multiplier
+	p1BeforeHP := p1.currentHP
+	p2BeforeHP := p2.currentHP
+	p1BeforeMul := p1.multiplier
+	p2BeforeMul := p2.multiplier
 
 	// Execute effects and update state
 	r.updatePlayerHPAndLostHP(p1, p1BeforeHP, r.executeEffects(effects1))
 	r.updatePlayerHPAndLostHP(p2, p2BeforeHP, r.executeEffects(effects2))
 
-	// Update submitted card stats
-	r.updateCardStats(p1.SubmittedCards, cardIdx, p1BeforeHP, p1.HP, p1BeforeMul, p1.Multiplier, relation.P1Type, relation.P1Description, effects1)
-	r.updateCardStats(p2.SubmittedCards, cardIdx, p2BeforeHP, p2.HP, p2BeforeMul, p2.Multiplier, relation.P2Type, relation.P2Description, effects2)
-}
-
-// hasAnyPlayerZeroHP checks if any player has zero HP
-func (r *Round) hasAnyPlayerZeroHP(states []*playerBattleState) bool {
-	for _, st := range states {
-		if st.HP == 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// updateGamePlayersFromStates updates gamePlayers from final states
-func (r *Round) updateGamePlayersFromStates(states []*playerBattleState) {
-	for _, st := range states {
-		player := r.gamePlayers[st.TemporaryAddress]
-		player.totalLostHP = int64(st.LostHP)
-		player.roundPlayer.LostHP = int32(st.LostHP)
-		// HP from last card if available, otherwise use current HP
-		if len(st.SubmittedCards) > 0 {
-			player.currentHP = int64(st.SubmittedCards[len(st.SubmittedCards)-1].HealthAfter)
-		} else {
-			player.currentHP = int64(st.HP)
-		}
-	}
-}
-
-// buildGameResult builds the game result from player states
-func (r *Round) buildGameResult(states []*playerBattleState, playerCount int) (bool, *dao.GameResult) {
-	// Convert to game end states
-	gameEndStates := make([]*gameEndState, playerCount)
-	for i, st := range states {
-		gameEndStates[i] = &gameEndState{
-			HP:               st.HP,
-			Multiplier:       st.Multiplier,
-			PlayerId:         st.PlayerId,
-			TemporaryAddress: st.TemporaryAddress,
-			Status:           st.Status,
-		}
-	}
-
-	// Check if game is over
-	isGameOver, grType, winner, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.round.RoundNumber)
-
-	// Build game result if game is over
-	var gameResult *dao.GameResult
-	if isGameOver {
-		// Build player status map for reward calculation
-		playerStatuses := make(map[string]playerStatus)
-		for _, st := range states {
-			playerStatuses[st.TemporaryAddress] = st.Status
-		}
-
-		// Build battle reward
-		battleReward := r.calculateBattleReward(states, grType, winner, temporaryAddress, finalMul, playerStatuses)
-
-		// Parse first winner ID from winner string (can be multiple separated by "|")
-		var winnerPlayerId int64
-		if winner != "" {
-			winnerIds := strings.Split(winner, "|")
-			if len(winnerIds) > 0 {
-				fmt.Sscanf(winnerIds[0], "%d", &winnerPlayerId)
-			}
-		}
-		gameResult = &dao.GameResult{
-			GameID:                 r.round.GameID,
-			Multiplier:             int32(finalMul),
-			WinnerPlayerId:         winnerPlayerId,
-			WinnerTemporaryAddress: temporaryAddress,
-			GameResultType:         proto.GameResultType(grType),
-			BattleReward:           battleReward,
-		}
-	}
-
-	return isGameOver, gameResult
+	r.updateCardStats(p1.getLastSubmittedCard(), int(p1BeforeHP), int(p1.currentHP), p1BeforeMul, p1.multiplier, relation.P1Type, relation.P1Description, effects1)
+	r.updateCardStats(p2.getLastSubmittedCard(), int(p2BeforeHP), int(p2.currentHP), p2BeforeMul, p2.multiplier, relation.P2Type, relation.P2Description, effects2)
 }
 
 // ===== Helper Functions =====
 
 // updatePlayerHPAndLostHP calculates HP changes and updates LostHP and Multiplier
-func (r *Round) updatePlayerHPAndLostHP(state *playerBattleState, beforeHP int, hpDelta int) {
+func (r *round) updatePlayerHPAndLostHP(player *gamePlayer, beforeHP int64, hpDelta int) {
 	// Apply delta and clamp HP to >= 0
-	state.HP += hpDelta
-	if state.HP < 0 {
-		state.HP = 0
+	player.currentHP += int64(hpDelta)
+	if player.currentHP < 0 {
+		player.currentHP = 0
 	}
 
 	// Compute non-negative damage
-	damage := beforeHP - state.HP
+	damage := int(beforeHP) - int(player.currentHP)
 	if damage < 0 {
 		damage = 0
 	}
 
 	// Accumulate LostHP and clamp to initial HP cap
-	state.LostHP += damage
-	if state.LostHP > int(config.GameParams.InitialHP) {
-		state.LostHP = int(config.GameParams.InitialHP)
+	player.totalLostHP += int64(damage)
+	if player.totalLostHP > config.GameParams.InitialHP {
+		player.totalLostHP = config.GameParams.InitialHP
 	}
 
 	// Recompute multiplier from total lost HP
-	state.Multiplier = r.calculateMultiplierByLostHP(state.LostHP)
+	player.multiplier = r.calculateMultiplierByLostHP(int(player.totalLostHP))
 }
 
-// InitializeBattleStates initializes the battleStates map from gamePlayers
-func (r *Round) InitializeBattleStates() error {
-	if r.battleStates == nil {
-		r.battleStates = make(map[string]*playerBattleState)
-	}
-
-	// Initialize states for all players
-	for _, p := range r.round.PlayerRoundInfos {
-		player := r.gamePlayers[p.TemporaryAddress]
-		r.battleStates[p.TemporaryAddress] = &playerBattleState{
-			HP:               int(player.currentHP),
-			Multiplier:       r.calculateMultiplierByLostHP(int(player.totalLostHP)),
-			LostHP:           int(player.totalLostHP),
-			PlayerId:         p.PlayerId,
-			TemporaryAddress: p.TemporaryAddress,
-			Status:           r.determinePlayerStatus(p),
-			SubmittedCards:   p.SubmittedCards,
-			Surrendered:      p.Surrendered,
-		}
-	}
-	return nil
-}
-
-// ApplyCardPair applies a single pair of cards between two players, updates states and checks game over.
-// tempAddr1 and tempAddr2 are players' temporary addresses participating in this pair battle.
-// card1 and card2 are the cards used by the respective players for this pair.
-// cardIdx is the index of the card within this round (0..2) to update submitted card stats.
-// It returns (isGameOver, gameResult, error). If not over, gameResult is nil.
-func (r *Round) ApplyCardPair(tempAddr1, tempAddr2 string, card1, card2 *dao.Card, cardIdx int) (bool, *dao.GameResult, error) {
-	if err := r.validateRound(); err != nil {
-		return false, nil, err
-	}
-	if r.isServerTimeout() {
-		return r.handleServerTimeout()
-	}
-
-	// Initialize battleStates if not already done
-	if r.battleStates == nil {
-		if err := r.InitializeBattleStates(); err != nil {
-			return false, nil, err
-		}
-	}
-
-	// Get existing battle states (they persist across pair applications)
-	st1, ok1 := r.battleStates[tempAddr1]
-	st2, ok2 := r.battleStates[tempAddr2]
-	if !ok1 || !ok2 {
-		return false, nil, fmt.Errorf("battle state not found for players")
-	}
-
-	// If either is offline/surrendered, skip battle application
-	if st1.Status != playerStatusOnline || st2.Status != playerStatusOnline {
-		// Return current state without modification
-		isGameOver, gameResult := r.checkGameOverFromBattleStates()
-		return isGameOver, gameResult, nil
-	}
-
-	// Process the card battle (updates st1 and st2 in place)
-	r.processCardBattle(st1, st2, card1, card2, cardIdx)
-
-	// Check game over using all battle states
-	isGameOver, gameResult := r.checkGameOverFromBattleStates()
-	return isGameOver, gameResult, nil
-}
-
-// checkGameOverFromBattleStates checks if game is over using current battle states
-func (r *Round) checkGameOverFromBattleStates() (bool, *dao.GameResult) {
-	// Convert battle states to game end states
-	playerCount := len(r.round.PlayerRoundInfos)
+// checkGameOverFromGamePlayers checks if game is over using current game players
+func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
+	// Convert game players to game end states
+	playerCount := len(r.gamePlayers)
 	gameEndStates := make([]*gameEndState, 0, playerCount)
 
-	for _, st := range r.battleStates {
+	for _, player := range r.gamePlayers {
 		gameEndStates = append(gameEndStates, &gameEndState{
-			HP:               st.HP,
-			Multiplier:       st.Multiplier,
-			PlayerId:         st.PlayerId,
-			TemporaryAddress: st.TemporaryAddress,
-			Status:           st.Status,
+			HP:               int(player.currentHP),
+			Multiplier:       player.multiplier,
+			PlayerId:         player.player.PlayerId,
+			TemporaryAddress: player.player.TemporaryAddress,
+			Status:           player.status,
 		})
 	}
 
@@ -451,18 +258,12 @@ func (r *Round) checkGameOverFromBattleStates() (bool, *dao.GameResult) {
 	if isGameOver {
 		// Build player status map
 		playerStatuses := make(map[string]playerStatus)
-		for _, st := range r.battleStates {
-			playerStatuses[st.TemporaryAddress] = st.Status
+		for _, player := range r.gamePlayers {
+			playerStatuses[player.player.TemporaryAddress] = player.status
 		}
 
-		// Convert to states array for reward calculation
-		states := make([]*playerBattleState, 0, len(r.battleStates))
-		for _, st := range r.battleStates {
-			states = append(states, st)
-		}
-
-		// Build battle reward
-		battleReward := r.calculateBattleReward(states, grType, winner, temporaryAddress, finalMul, playerStatuses)
+		// Build battle reward using game players
+		battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winner, temporaryAddress, finalMul, playerStatuses)
 
 		// Parse first winner ID from winner string (can be multiple separated by "|")
 		var winnerPlayerId int64
@@ -486,19 +287,17 @@ func (r *Round) checkGameOverFromBattleStates() (bool, *dao.GameResult) {
 }
 
 // updateCardStats updates the card stats in the DAO structure
-func (r *Round) updateCardStats(cards []*dao.RoundSubmittedCard, cardIdx int, beforeHP, afterHP int, beforeMul, afterMul uint32, relationType, description string, effects []battleEffect) {
-	if cardIdx < len(cards) {
-		cards[cardIdx].HealthBefore = uint32(beforeHP)
-		cards[cardIdx].HealthAfter = uint32(afterHP)
-		cards[cardIdx].MultiplierBefore = beforeMul
-		cards[cardIdx].MultiplierAfter = afterMul
-		cards[cardIdx].Description = description
-		cards[cardIdx].ElementRelation = r.mapElementRelationStringToEnum(relationType)
-		cards[cardIdx].CardEffects = r.battleEffectsToDaoEffects(effects)
-	}
+func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP int, beforeMul, afterMul uint32, relationType, description string, effects []battleEffect) {
+	card.HealthBefore = uint32(beforeHP)
+	card.HealthAfter = uint32(afterHP)
+	card.MultiplierBefore = beforeMul
+	card.MultiplierAfter = afterMul
+	card.Description = description
+	card.ElementRelation = r.mapElementRelationStringToEnum(relationType)
+	card.CardEffects = r.battleEffectsToDaoEffects(effects)
 }
 
-func (r *Round) getCards(cardIDs []int) ([]*dao.Card, error) {
+func (r *round) getCards(cardIDs []int) ([]*dao.Card, error) {
 	cards := make([]*dao.Card, 0, len(cardIDs))
 	for _, cardID := range cardIDs {
 		dbCard, err := db.GetCardByID(cardID)
@@ -510,87 +309,59 @@ func (r *Round) getCards(cardIDs []int) ([]*dao.Card, error) {
 	return cards, nil
 }
 
-// ExecuteCardIndex executes battles for a single card index (0, 1, or 2) between all players
+func (r *round) getCard(cardID int) (*dao.Card, error) {
+	dbCard, err := db.GetCardByID(cardID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get card [ID:%d]: %v", cardID, err)
+	}
+	return dbCard, nil
+}
+
+// executeCardIndex executes battles for a single card index (0, 1, or 2) between all players
 // It initializes battle states if needed and processes all player pairs for the given card index
 // Returns (isGameOver, gameResult, error)
-func (r *Round) ExecuteCardIndex(cardIdx int) (bool, *dao.GameResult, error) {
+func (r *round) executeCardIndex(cardIdx int) (bool, *dao.GameResult, error) {
 	if err := r.validateRound(); err != nil {
 		return false, nil, err
 	}
 	if r.isServerTimeout() {
 		return r.handleServerTimeout()
 	}
-
-	// Initialize battleStates if not already done
-	if r.battleStates == nil {
-		if err := r.InitializeBattleStates(); err != nil {
-			return false, nil, err
-		}
-	}
-
-	playerCount := len(r.round.PlayerRoundInfos)
 	hasSurrenderedPlayer, hasOfflinePlayer := r.checkPlayerStatuses()
-
 	// If there are offline or surrendered players, skip battle but still check game over
 	if hasOfflinePlayer || hasSurrenderedPlayer {
-		isGameOver, gameResult := r.checkGameOverFromBattleStates()
+		isGameOver, gameResult := r.checkGameOverFromGamePlayers()
 		return isGameOver, gameResult, nil
 	}
-
-	// Fetch cards for all players for this card index
-	playerCards := make([][]*dao.Card, playerCount)
-	for i, p := range r.round.PlayerRoundInfos {
-		if cardIdx >= len(p.SubmittedCards) {
-			return false, nil, fmt.Errorf("card index %d not found for player %s", cardIdx, p.TemporaryAddress)
-		}
-		cardID := int(p.SubmittedCards[cardIdx].CardID)
-		cards, err := r.getCards([]int{cardID})
+	var p1 *gamePlayer
+	var p2 *gamePlayer
+	var card1 *dao.Card
+	var card2 *dao.Card
+	for _, gamePlayer := range r.gamePlayers {
+		submittedCard := gamePlayer.getLastSubmittedCard()
+		cardID, err := r.getCard(int(submittedCard.CardID))
 		if err != nil {
-			return false, nil, fmt.Errorf("failed to get card for player %s: %v", p.TemporaryAddress, err)
+			return false, nil, fmt.Errorf("failed to get card: %v", err)
 		}
-		if len(cards) == 0 {
-			return false, nil, fmt.Errorf("card not found for player %s", p.TemporaryAddress)
-		}
-		playerCards[i] = cards
-	}
-
-	// Execute battles for this card index between all player pairs
-	for i := 0; i < playerCount; i++ {
-		for j := i + 1; j < playerCount; j++ {
-			st1 := r.battleStates[r.round.PlayerRoundInfos[i].TemporaryAddress]
-			st2 := r.battleStates[r.round.PlayerRoundInfos[j].TemporaryAddress]
-
-			// Only process if both players are online
-			if st1.Status == playerStatusOnline && st2.Status == playerStatusOnline {
-				r.processCardBattle(st1, st2, playerCards[i][0], playerCards[j][0], cardIdx)
-			}
+		if card1 == nil {
+			card1 = cardID
+			p1 = gamePlayer
+		} else if card2 == nil {
+			card2 = cardID
+			p2 = gamePlayer
 		}
 	}
 
-	// Update gamePlayers with current state
-	r.updateGamePlayersFromBattleStates()
+	if p1.status == playerStatusOnline && p2.status == playerStatusOnline {
+		r.processCardBattle(p1, p2, card1, card2)
+	}
 
-	// Check if game is over
-	isGameOver, gameResult := r.checkGameOverFromBattleStates()
+	// Check if game is over (gamePlayers are already updated in place during battle)
+	isGameOver, gameResult := r.checkGameOverFromGamePlayers()
 	return isGameOver, gameResult, nil
 }
 
-// updateGamePlayersFromBattleStates updates gamePlayers from battleStates
-func (r *Round) updateGamePlayersFromBattleStates() {
-	for _, st := range r.battleStates {
-		player := r.gamePlayers[st.TemporaryAddress]
-		player.totalLostHP = int64(st.LostHP)
-		player.roundPlayer.LostHP = int32(st.LostHP)
-		// HP from last card if available, otherwise use current HP
-		if len(st.SubmittedCards) > 0 {
-			player.currentHP = int64(st.SubmittedCards[len(st.SubmittedCards)-1].HealthAfter)
-		} else {
-			player.currentHP = int64(st.HP)
-		}
-	}
-}
-
-func (r *Round) calculateMultiplierByLostHP(lostHP int) uint32 {
+func (r *round) calculateMultiplierByLostHP(lostHP int) uint32 {
 	if lostHP <= 2000 {
 		return 1
 	}
@@ -603,7 +374,7 @@ func (r *Round) calculateMultiplierByLostHP(lostHP int) uint32 {
 	return newMultiplier
 }
 
-func (r *Round) getElementalRelation(card1, card2 *dao.Card, playerId1, playerId2 int64) *elementalRelation {
+func (r *round) getElementalRelation(card1, card2 *dao.Card, playerId1, playerId2 int64) *elementalRelation {
 	// Check Ke (overpower) relations
 	if target, hasRelation := keRelations[card1.ElementType]; hasRelation && target == card2.ElementType {
 		return r.buildRelation("overpower", "overpowered", card1.ElementType, playerId1, card2.ElementType, playerId2)
@@ -630,7 +401,7 @@ func (r *Round) getElementalRelation(card1, card2 *dao.Card, playerId1, playerId
 }
 
 // buildRelation builds an elemental relation structure
-func (r *Round) buildRelation(p1Type, p2Type string, elem1 string, playerId1 int64, elem2 string, playerId2 int64) *elementalRelation {
+func (r *round) buildRelation(p1Type, p2Type string, elem1 string, playerId1 int64, elem2 string, playerId2 int64) *elementalRelation {
 	var p1Desc, p2Desc string
 	switch p1Type {
 	case "overpower":
@@ -654,14 +425,7 @@ func (r *Round) buildRelation(p1Type, p2Type string, elem1 string, playerId1 int
 	}
 }
 
-func truncateAddress(address string) string {
-	if len(address) <= 10 {
-		return address
-	}
-	return address[:6] + "..." + address[len(address)-4:]
-}
-
-func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfPlayerId int64, selfTemp string, opponentPlayerId int64) []battleEffect {
+func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfPlayerId int64, selfTemp string, opponentPlayerId int64) []battleEffect {
 	var effects []battleEffect
 
 	desc := func(action string) string {
@@ -706,7 +470,7 @@ func (r *Round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 	return effects
 }
 
-func (r *Round) executeEffects(effects []battleEffect) int {
+func (r *round) executeEffects(effects []battleEffect) int {
 	hpDelta := 0
 	for _, effect := range effects {
 		value := effect.Value
@@ -723,7 +487,7 @@ func (r *Round) executeEffects(effects []battleEffect) int {
 	return hpDelta
 }
 
-func (r *Round) battleEffectsToDaoEffects(effects []battleEffect) []*dao.CardEffect {
+func (r *round) battleEffectsToDaoEffects(effects []battleEffect) []*dao.CardEffect {
 	daoEffects := make([]*dao.CardEffect, len(effects))
 	for i, effect := range effects {
 		daoEffects[i] = &dao.CardEffect{
@@ -737,7 +501,7 @@ func (r *Round) battleEffectsToDaoEffects(effects []battleEffect) []*dao.CardEff
 	return daoEffects
 }
 
-func (r *Round) mapElementRelationStringToEnum(s string) proto.ElementRelation {
+func (r *round) mapElementRelationStringToEnum(s string) proto.ElementRelation {
 	switch s {
 	case "overpower":
 		return proto.ElementRelation_OVER_POWER
@@ -752,7 +516,7 @@ func (r *Round) mapElementRelationStringToEnum(s string) proto.ElementRelation {
 	}
 }
 
-func (r *Round) checkGameOver(states []*gameEndState, round uint32) (bool, gameResultType, string, string, uint32) {
+func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameResultType, string, string, uint32) {
 	// Count surrendered players
 	surrenderedCount := 0
 	maxLoserMul := uint32(1)
@@ -811,7 +575,7 @@ func (r *Round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 	return r.checkGameOverByHP(states, round, false)
 }
 
-func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool) (bool, gameResultType, string, string, uint32) {
+func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool) (bool, gameResultType, string, string, uint32) {
 	hps := make([]int, len(states))
 	playerIds := make([]int64, len(states))
 	temps := make([]string, len(states))
@@ -900,7 +664,7 @@ func (r *Round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 	return r.buildResult(true, gType, winnerPlayerIds, winnerTemps, finalMultiplier)
 }
 
-func (r *Round) buildResult(over bool, gType gameResultType, winnerPlayerIds []int64, winnerTemps []string, mul uint32) (bool, gameResultType, string, string, uint32) {
+func (r *round) buildResult(over bool, gType gameResultType, winnerPlayerIds []int64, winnerTemps []string, mul uint32) (bool, gameResultType, string, string, uint32) {
 	winnersStr := ""
 	winnerTempsStr := ""
 	if len(winnerPlayerIds) > 0 {
@@ -914,35 +678,22 @@ func (r *Round) buildResult(over bool, gType gameResultType, winnerPlayerIds []i
 	return over, gType, winnersStr, winnerTempsStr, mul
 }
 
-// playerBattleState represents player state during battle
-type playerBattleState struct {
-	HP               int
-	Multiplier       uint32
-	LostHP           int
-	PlayerId         int64
-	TemporaryAddress string
-	Status           playerStatus
-	SubmittedCards   []*dao.RoundSubmittedCard
-	Surrendered      bool
-}
-
-func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameResultType, winnerPlayerIdsStr, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
+func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerIdsStr, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
 	baseStake := config.GameParams.BaseStake
 	var playerRewards []*dao.PlayerReward
 	var systemFee int
 
-	// Use states directly, no need for conversion
 	switch grType {
 	case gameResultTie:
 		tokenDeduction := int(float64(baseStake) * 0.008)
 		pointGain := int(float64(baseStake) * 0.008)
-		playerRewards = make([]*dao.PlayerReward, 0, len(states))
+		playerRewards = make([]*dao.PlayerReward, 0, len(players))
 
-		for _, st := range states {
-			status := playerStatuses[st.TemporaryAddress]
+		for _, player := range players {
+			status := playerStatuses[player.player.TemporaryAddress]
 			playerRewards = append(playerRewards, &dao.PlayerReward{
-				PlayerId:               st.PlayerId,
-				TemporaryAddress:       st.TemporaryAddress,
+				PlayerId:               player.player.PlayerId,
+				TemporaryAddress:       player.player.TemporaryAddress,
 				TokenChange:            int32(-tokenDeduction),
 				PointChange:            int32(pointGain),
 				IsOffline:              status == playerStatusOffline,
@@ -950,7 +701,7 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 				PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
 			})
 		}
-		systemFee = tokenDeduction * len(states)
+		systemFee = tokenDeduction * len(players)
 
 	case gameResultNormal, gameResultKO:
 		if winnerPlayerIdsStr != "" {
@@ -961,7 +712,7 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 			}
 
 			winnerCount := len(winnerTemporaryList)
-			loserCount := len(states) - winnerCount
+			loserCount := len(players) - winnerCount
 			totalPool := int(float64(baseStake) * float64(finalMul))
 
 			winnerTokenPerPlayer := int(float64(totalPool)*(1.0-0.016)) / winnerCount
@@ -976,10 +727,10 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 				loserPointPerPlayer = 0
 			}
 
-			playerRewards = make([]*dao.PlayerReward, 0, len(states))
-			for _, st := range states {
-				status := playerStatuses[st.TemporaryAddress]
-				isWinner := winnerTemporaryAddresses[st.TemporaryAddress]
+			playerRewards = make([]*dao.PlayerReward, 0, len(players))
+			for _, player := range players {
+				status := playerStatuses[player.player.TemporaryAddress]
+				isWinner := winnerTemporaryAddresses[player.player.TemporaryAddress]
 
 				var tokenChange, pointChange int
 				var gameResultStatus proto.PlayerGameResultStatus
@@ -994,8 +745,8 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 				}
 
 				playerRewards = append(playerRewards, &dao.PlayerReward{
-					PlayerId:               st.PlayerId,
-					TemporaryAddress:       st.TemporaryAddress,
+					PlayerId:               player.player.PlayerId,
+					TemporaryAddress:       player.player.TemporaryAddress,
 					TokenChange:            int32(tokenChange),
 					PointChange:            int32(pointChange),
 					IsOffline:              status == playerStatusOffline,
@@ -1014,26 +765,21 @@ func (r *Round) calculateBattleReward(states []*playerBattleState, grType gameRe
 	}
 }
 
-func (r *Round) handleServerTimeout() (bool, *dao.GameResult, error) {
+func (r *round) handleServerTimeout() (bool, *dao.GameResult, error) {
 	var playerRewards []*dao.PlayerReward
 
-	for _, p := range r.round.PlayerRoundInfos {
-		player := r.gamePlayers[p.TemporaryAddress]
-		player.roundPlayer.LostHP = p.LostHP
-		player.totalLostHP = int64(p.LostHP)
-
+	for _, gamePlayer := range r.gamePlayers {
+		submittedCard := gamePlayer.getLastSubmittedCard()
+		gamePlayer.totalLostHP = int64(gamePlayer.getLostHP())
+		hasCommitment := len(submittedCard.CommitmentHash) > 0
 		// Check commitment from first card (if exists)
-		hasCommitment := false
-		if len(p.SubmittedCards) > 0 && len(p.SubmittedCards[0].SubmittedCommitment) > 0 {
-			hasCommitment = true
-		}
 		playerRewards = append(playerRewards, &dao.PlayerReward{
-			PlayerId:               p.PlayerId,
-			TemporaryAddress:       p.TemporaryAddress,
+			PlayerId:               gamePlayer.player.PlayerId,
+			TemporaryAddress:       gamePlayer.player.TemporaryAddress,
 			TokenChange:            0,
 			PointChange:            0,
-			IsOffline:              !hasCommitment || len(p.SubmittedCards) < 3,
-			Surrendered:            p.Surrendered,
+			IsOffline:              !hasCommitment,
+			Surrendered:            gamePlayer.isSurrendered(),
 			PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
 		})
 	}

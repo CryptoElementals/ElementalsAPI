@@ -73,11 +73,11 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 	testWorkerManager.SpwanWorker(context.Background(), playerAddress2.String(), types.WORKER_TYPE_PLAYER, mockPlayer2)
 	testWorkerManager.SpwanWorker(context.Background(), types.CHAIN_MANAGER_ID, types.WORKER_TYPE_CHAIN, mockChain)
 	gameCreatedEvtMatcher := tt.NewEventTypeMatcher(&types.GameCreatedEvent{})
-	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireContractCreationEvent{})).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RequireContractCreationEvent)
+	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireGameCreationEvent{})).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
+		evt := event.Data.(*types.RequireGameCreationEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
+		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
 			GameID: gid,
 		})
 		testWorkerManager.SendEvent(wid, contractEvt)
@@ -102,6 +102,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   1,
+			TurnNumber:    1,
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -113,6 +114,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   1,
+			TurnNumber:    1,
 			PlayerAddress: playerAddress2,
 		}))
 		return nil
@@ -125,7 +127,8 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
-			RoundNumber:   evt.RoundInfo.RoundNumber + 1,
+			RoundNumber:   evt.RoundNumber + 1,
+			TurnNumber:    1, // New round starts with turn 1
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -136,7 +139,8 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
-			RoundNumber:   evt.RoundInfo.RoundNumber + 1,
+			RoundNumber:   evt.RoundNumber + 1,
+			TurnNumber:    1, // New round starts with turn 1
 			PlayerAddress: playerAddress2,
 		}))
 		return nil

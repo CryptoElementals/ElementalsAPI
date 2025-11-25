@@ -13,6 +13,7 @@ type GameContinueEvent struct {
 type PlayerReadyEvent struct {
 	GameId        uint
 	RoundNumber   uint32
+	TurnNumber    uint32
 	PlayerAddress PlayerAddress
 }
 
@@ -34,7 +35,7 @@ type NewTurnSetupComplete struct {
 	TimeStamp   int64
 }
 
-type RoomContractCreated struct {
+type RoomCreated struct {
 	GameID    uint
 	TimeStamp int64
 	// RoomContractAddress removed - always uses RoomV2 contract address
@@ -112,6 +113,15 @@ type GetBattleInfoResponse struct {
 type GetGamePhaseRequest struct {
 }
 
+type SyncGamePhaseRequest struct {
+	Receiver *PlayerAddress
+}
+
 // GetGameResultRequest is a request event to get game result
 type GetGameResultRequest struct {
+}
+
+// GamePhaseSyncEvent is an event that sends game phase directly to player worker
+type GamePhaseSyncEvent struct {
+	GamePhase *proto.GamePhase
 }
