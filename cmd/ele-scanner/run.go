@@ -39,20 +39,33 @@ func readRoomAbi() (*abi.ABI, error) {
 	return &roomAbi, nil
 }
 
+func readRoomV2Abi() (*abi.ABI, error) {
+	roomV2Abi, err := abi.JSON(strings.NewReader(contract.RoomV2ContractABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse contract.RoomV2ContractABI: %v", err)
+	}
+	return &roomV2Abi, nil
+}
+
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Real-time sync of Optimism chain transactions using official tools",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		roomManagerAbi, err := readRoomManagerAbi()
+		// roomManagerAbi, err := readRoomManagerAbi()
+		// if err != nil {
+		// 	fmt.Printf("readRoomManagerAbi() failed: %+v", err)
+		// 	os.Exit(-1)
+		// }
+		// roomAbi, err := readRoomAbi()
+		// if err != nil {
+		// 	fmt.Printf("readRoomAbi() failed: %+v", err)
+		// 	os.Exit(-1)
+		// }
+		roomV2Abi, err := readRoomV2Abi()
 		if err != nil {
-			fmt.Printf("readRoomManagerAbi() failed: %+v", err)
-			os.Exit(-1)
-		}
-		roomAbi, err := readRoomAbi()
-		if err != nil {
-			fmt.Printf("readRoomAbi() failed: %+v", err)
+			fmt.Printf("readRoomV2Abi() failed: %+v", err)
 			os.Exit(-1)
 		}
 		err = config.InitScannerConfig(configPath)
@@ -77,8 +90,10 @@ var runCmd = &cobra.Command{
 		gethWsRpc := config.ScannerGConf.ChainCfg.WsRpc
 		gethHttpRpc := config.ScannerGConf.ChainCfg.HttpRpc
 		roomServerHttpRpc := config.ScannerGConf.RoomServerHttpRpc
-		roomManagerAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress
-		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomManagerAddress, roomManagerAbi, roomAbi)
+		//roomManagerAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress
+		roomV2Address := config.ScannerGConf.ChainCfg.ContractConfig.RoomV2ContractAddress
+		//scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomV2Address, roomManagerAbi, roomAbi)
+		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomV2Address, roomV2Abi)
 		scanner.Run()
 
 		// Wait for interrupt signal

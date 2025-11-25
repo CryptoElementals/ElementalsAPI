@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -218,13 +217,13 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		return nil
 	}
 	go func() {
-		walletAddrs := make([]string, 0, len(event.GameInfo.Players))
+		palyerIds := make([]int64, 0, len(event.GameInfo.Players))
 		for _, p := range event.GameInfo.Players {
-			walletAddrs = append(walletAddrs, fmt.Sprintf("%d", p.PlayerId))
+			palyerIds = append(palyerIds, p.PlayerId)
 		}
 
 		resp, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
-			PlayerAddresses: walletAddrs,
+			PlayerIds: palyerIds,
 		})
 		if err != nil {
 			log.Errorw("UpdatePlayerStats error", "err", err)
@@ -232,7 +231,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 			if !resp.Ok {
 				log.Errorw("UpdatePlayerStats failed", "err", resp.Message)
 			} else {
-				log.Infow("UpdatePlayerStats success", "players", walletAddrs)
+				log.Infow("UpdatePlayerStats success", "players", palyerIds)
 			}
 		}
 	}()
