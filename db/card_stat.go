@@ -1,12 +1,10 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
-
-	"github.com/CryptoElementals/common/log"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -58,13 +56,13 @@ func UpdateCardStat(cardStat *dao.CardStat) error {
 }
 
 // GetOrCreateCardStat 获取或创建卡牌统计记录
-func GetOrCreateCardStat(address string, cardID uint) (*dao.CardStat, error) {
+func GetOrCreateCardStat(playerId int64, cardID uint) (*dao.CardStat, error) {
 	var cardStat dao.CardStat
-	err := Get().Where("address = ? AND card_name = ?", address, cardID).First(&cardStat).Error
+	err := Get().Where("player_id = ? AND card_name = ?", playerId, cardID).First(&cardStat).Error
 	if err != nil {
 		// 卡牌统计不存在，创建新记录
 		cardStat = dao.CardStat{
-			Address:    address,
+			PlayerID:   playerId,
 			CardID:     cardID,
 			RoundCount: 0,
 			UsageCount: 0,
@@ -102,269 +100,41 @@ func GetCardStatsInfo(cardStats []dao.CardStat) []CardStatInfo {
 	return result
 }
 
-func UpdateCardStatByAddresses(addresses []string) ([]*dao.CardStat, error) {
-	if len(addresses) == 0 {
+// UpdateCardStatByPlayerIDs 根据玩家ID列表增量更新卡牌统计数据
+//
+// 实现流程：
+//  1. 入口处理：去重玩家ID列表，空列表直接返回
+//  2. 事务处理：所有操作在单个事务中执行，确保原子性
+//  3. 对每个玩家：
+//     a. 查询现有统计：从 card_stats 表获取该玩家的所有卡牌统计记录
+//     - 构建 cardID -> CardStat 映射
+//     - 记录最大 RoundCount 和 LastPlayerRoundInfoID（存储的是 RoundID）
+//     b. 查询新数据：从 player_turn_infos 表查询该玩家的新 turn 记录
+//     - 如果已有记录，通过 JOIN turns 表过滤出 round_id > maxRoundID 的 turn
+//     - 只查询该玩家在新 round 中的 turn，避免查询所有玩家的 turn
+//     - 过滤掉 TurnSubmittedCard 为 nil 的记录
+//     c. 建立映射：查询 turns 表，建立 turn_id -> round_id 映射
+//     - 因为 PlayerTurnInfo 表没有 round_id 字段，需要通过 turns 表关联
+//     - 统计新增的 unique round 数量（totalNewRounds）
+//     d. 统计卡牌使用：遍历新 turn 记录，统计每张卡牌的使用情况
+//     - 统计使用次数（usageCount）
+//     - 根据 ElementRelation 判断胜负平（winCount/loseCount/tieCount）
+//     - 记录每张卡牌最新的 RoundID
+//     e. 更新/创建统计：更新或创建 card_stats 记录
+//     - 有记录则累加统计数据，更新 round_count
+//     - 无记录则创建新记录
+//     f. 同步其他卡牌：更新同一玩家下没有新数据的卡牌的 round_count
+//     - 确保所有卡牌的 round_count 保持一致（都加上新增的 round 数）
+//  4. 返回结果：返回所有更新/创建的卡牌统计记录
+func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
+	if len(playerIDs) == 0 {
 		return []*dao.CardStat{}, nil
 	}
 
-	// 去重地址
-	uniqueAddresses := make(map[string]bool)
-	var deduplicatedAddresses []string
-	for _, addr := range addresses {
-		if !uniqueAddresses[addr] {
-			uniqueAddresses[addr] = true
-			deduplicatedAddresses = append(deduplicatedAddresses, addr)
-		}
-	}
-
-	// 使用事务确保原子性
-	var results []*dao.CardStat
-	err := db.Transaction(func(tx *gorm.DB) error {
-		results = make([]*dao.CardStat, 0, len(deduplicatedAddresses))
-
-		for _, address := range deduplicatedAddresses {
-			// 步骤1：查询该地址在 card_stats 表中的所有记录
-			var existingCardStats []dao.CardStat
-			err := tx.Where("address = ?", address).Find(&existingCardStats).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to query existing card stats for address %s: %v", address, err)
-			}
-
-			// 创建地址到卡牌统计的映射
-			cardStatMap := make(map[uint]*dao.CardStat)
-			existedRoundCount := uint(0)
-			for i := range existingCardStats {
-				cardStatMap[existingCardStats[i].CardID] = &existingCardStats[i]
-				if existedRoundCount < existingCardStats[i].RoundCount {
-					existedRoundCount = existingCardStats[i].RoundCount
-				}
-			}
-
-			// 如果没有现有记录，初始化一个空的统计记录
-			if len(existingCardStats) == 0 {
-				// 创建一个默认的空统计记录，用于后续处理
-				defaultStat := &dao.CardStat{
-					Address:               address,
-					CardID:                0, // 临时ID，会在后续处理中被替换
-					RoundCount:            0, // 临时值，会在后续处理中被替换
-					UsageCount:            0,
-					WinCount:              0,
-					LoseCount:             0,
-					TieCount:              0,
-					LastPlayerRoundInfoID: 0,
-				}
-				// 将默认记录添加到映射中，确保后续逻辑能正常执行
-				cardStatMap[0] = defaultStat
-			}
-
-			// 步骤2：查询该地址在 game_round_infos 表中的新记录
-			// 获取所有卡牌的最后 round_info_id
-			var maxRoundInfoID uint = 0
-			for _, stat := range existingCardStats {
-				if stat.LastPlayerRoundInfoID > maxRoundInfoID {
-					maxRoundInfoID = stat.LastPlayerRoundInfoID
-				}
-			}
-
-			// 查询新的游戏轮次
-			var newGameRounds []dao.PlayerTurnInfo
-			query := tx.Where("wallet_address = ?", address)
-			if maxRoundInfoID > 0 {
-				query = query.Where("id > ?", maxRoundInfoID)
-			}
-			query = query.Where("player_ready > 0")
-
-			log.Debugf("query sql: %#v", query.Statement.SQL.String())
-
-			queryErr := query.Order("id ASC").Find(&newGameRounds).Error
-			if queryErr != nil && !errors.Is(queryErr, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to query new game rounds for address %s: %v", address, queryErr)
-			}
-
-			// 如果没有新的游戏轮次，直接添加到结果中
-			if len(newGameRounds) == 0 {
-				// 如果有现有记录，添加到结果中
-				if len(existingCardStats) > 0 {
-					for _, stat := range existingCardStats {
-						results = append(results, &stat)
-					}
-				} else {
-					// 如果没有现有记录，创建一个空的默认记录
-					defaultStat := &dao.CardStat{
-						Address:               address,
-						CardID:                0,
-						RoundCount:            0, // 没有新轮次，所以为0
-						UsageCount:            0,
-						WinCount:              0,
-						LoseCount:             0,
-						TieCount:              0,
-						LastPlayerRoundInfoID: 0,
-					}
-					results = append(results, defaultStat)
-				}
-				continue
-			}
-
-			//log.Debugf("address: %s, existedRoundCount: %d, len(newGameRounds): %d, newGameRounds: %#v", address, existedRoundCount, len(newGameRounds), newGameRounds)
-			log.Debugf("address: %s, existedRoundCount: %d, len(newGameRounds): %d", address, existedRoundCount, len(newGameRounds))
-
-			// 收集所有新的 round_info_id
-			var newRoundInfoIDs []uint
-			for _, round := range newGameRounds {
-				newRoundInfoIDs = append(newRoundInfoIDs, round.ID)
-			}
-
-			// 步骤3：查询这些轮次中的卡牌提交记录
-			var cardSubmissions []dao.TurnSubmittedCard
-			submissionErr := tx.Where("player_round_info_id IN ?", newRoundInfoIDs).
-				Select("player_round_info_id, card_id, element_relation").
-				Find(&cardSubmissions).Error
-			if submissionErr != nil && !errors.Is(submissionErr, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to query card submissions for address %s: %v", address, submissionErr)
-			}
-
-			// 步骤4：统计每个卡牌的使用情况
-			cardUsageStats := make(map[uint]struct {
-				roundCount uint
-				usageCount uint
-				winCount   uint
-				loseCount  uint
-				tieCount   uint
-			})
-
-			// 计算该地址的总轮次数量（所有新游戏轮次）
-			totalNewRounds := uint(len(newGameRounds))
-
-			var mapCardIDMaxRoundInfoID map[uint]uint = make(map[uint]uint)
-			for _, submission := range cardSubmissions {
-				cardID := uint(submission.CardID)
-				stats, exists := cardUsageStats[cardID]
-				if !exists {
-					stats = struct {
-						roundCount uint
-						usageCount uint
-						winCount   uint
-						loseCount  uint
-						tieCount   uint
-					}{}
-				}
-
-				// 每张卡牌在每轮游戏中只能使用一次
-				stats.usageCount++
-
-				// 根据 element_relation 判断胜负平
-				// 使用 proto 包中定义的枚举值
-				// OVER_POWER = 0, OVER_POWERED = 1, NURTURE = 2, NURTURED = 3, TIE = 4
-				switch submission.ElementRelation {
-				case proto.ElementRelation_OVER_POWER, proto.ElementRelation_NURTURED:
-					stats.winCount++
-				case proto.ElementRelation_OVER_POWERED, proto.ElementRelation_NURTURE:
-					stats.loseCount++
-				case proto.ElementRelation_TIE:
-					stats.tieCount++
-				}
-
-				cardUsageStats[cardID] = stats
-
-				// if mapCardIDMaxRoundInfoID[cardID] < submission.PlayerRoundInfoID {
-				// 	mapCardIDMaxRoundInfoID[cardID] = submission.PlayerRoundInfoID
-				// }
-			}
-
-			// 步骤5：更新或创建卡牌统计记录
-			for cardID, stats := range cardUsageStats {
-				// 查找现有记录
-				cardStat, exists := cardStatMap[cardID]
-				if !exists {
-					// 创建新记录
-					cardStat = &dao.CardStat{
-						Address:    address,
-						CardID:     cardID,
-						RoundCount: existedRoundCount + totalNewRounds, // 使用总轮次数量
-						UsageCount: stats.usageCount,
-						WinCount:   stats.winCount,
-						LoseCount:  stats.loseCount,
-						TieCount:   stats.tieCount,
-						//LastPlayerRoundInfoID: newGameRounds[len(newGameRounds)-1].ID, // 最新的轮次ID
-						LastPlayerRoundInfoID: mapCardIDMaxRoundInfoID[cardID], // 该cardID最新的轮次ID
-					}
-
-					if err := tx.Create(cardStat).Error; err != nil {
-						return fmt.Errorf("failed to create card stat for address %s, card %d: %v", address, cardID, err)
-					}
-				} else {
-					// 更新现有记录（不更新 address 和 card_id）
-					updateData := map[string]interface{}{
-						"round_count":               cardStat.RoundCount + totalNewRounds, // 使用总轮次数量
-						"usage_count":               cardStat.UsageCount + stats.usageCount,
-						"win_count":                 cardStat.WinCount + stats.winCount,
-						"lose_count":                cardStat.LoseCount + stats.loseCount,
-						"tie_count":                 cardStat.TieCount + stats.tieCount,
-						"last_player_round_info_id": mapCardIDMaxRoundInfoID[cardID],
-					}
-
-					if err := tx.Model(cardStat).Updates(updateData).Error; err != nil {
-						return fmt.Errorf("failed to update card stat for address %s, card %d: %v", address, cardID, err)
-					}
-
-					// 重新查询更新后的记录
-					if err := tx.Where("address = ? AND card_id = ?", address, cardID).First(cardStat).Error; err != nil {
-						return fmt.Errorf("failed to query updated card stat for address %s, card %d: %v", address, cardID, err)
-					}
-				}
-
-				results = append(results, cardStat)
-			}
-
-			// 更新同一地址下其他没有新数据的卡牌记录的 round_count
-			for cardID, cardStat := range cardStatMap {
-				if _, hasNewData := cardUsageStats[cardID]; !hasNewData {
-					// 跳过临时ID为0的默认记录
-					if cardID != 0 {
-						// 更新 round_count 以保持一致性
-						if totalNewRounds > 0 {
-							otherUpdateData := map[string]interface{}{
-								"round_count": cardStat.RoundCount + totalNewRounds,
-							}
-							if err := tx.Model(cardStat).Updates(otherUpdateData).Error; err != nil {
-								return fmt.Errorf("failed to update round_count for other card stat, address %s, card %d: %v", address, cardID, err)
-							}
-							// 重新查询更新后的记录
-							if err := tx.Where("address = ? AND card_id = ?", address, cardID).First(cardStat).Error; err != nil {
-								return fmt.Errorf("failed to query updated other card stat for address %s, card %d: %v", address, cardID, err)
-							}
-						}
-						// 添加到结果中
-						results = append(results, cardStat)
-					}
-				}
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return results, nil
-}
-
-func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
-	if len(playerIds) == 0 {
-		return []*dao.CardStat{}, nil
-	}
-
-	// 去重 playerIds 并转换为 int64
+	// 去重玩家ID
 	uniquePlayerIDs := make(map[int64]bool)
 	var deduplicatedPlayerIDs []int64
-	for _, playerIDStr := range playerIds {
-		playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
-		if err != nil {
-			log.Debugf("invalid player ID %s, skipping: %v", playerIDStr, err)
-			continue
-		}
+	for _, playerID := range playerIDs {
 		if !uniquePlayerIDs[playerID] {
 			uniquePlayerIDs[playerID] = true
 			deduplicatedPlayerIDs = append(deduplicatedPlayerIDs, playerID)
@@ -380,23 +150,11 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 	err := Get().Transaction(func(tx *gorm.DB) error {
 		results = make([]*dao.CardStat, 0, len(deduplicatedPlayerIDs))
 
-		for _, userID := range deduplicatedPlayerIDs {
-			// 步骤1：通过 playerId (userID) 获取 UserProfile 和 address（在事务中查询）
-			var profile dao.UserProfile
-			if err := tx.Where("user_id = ?", userID).First(&profile).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// 用户不存在，跳过
-					log.Debugf("user profile not found for player ID %d, skipping", userID)
-					continue
-				}
-				return fmt.Errorf("failed to get user profile for player ID %d: %v", userID, err)
-			}
-			address := profile.Address
-
-			// 步骤2：查询该地址在 card_stats 表中的所有记录
+		for _, playerID := range deduplicatedPlayerIDs {
+			// 步骤1：查询该玩家在 card_stats 表中的所有记录
 			var existingCardStats []dao.CardStat
-			if err := tx.Where("address = ?", address).Find(&existingCardStats).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to query existing card stats for player ID %d (address %s): %v", userID, address, err)
+			if err := tx.Where("player_id = ?", playerID).Find(&existingCardStats).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("failed to query existing card stats for player ID: %d, error: %v", playerID, err)
 			}
 
 			// 创建卡牌ID到统计记录的映射
@@ -414,47 +172,57 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 				}
 			}
 
-			// 步骤3：查询新的 PlayerTurnInfo 记录
-			// 查询该用户的所有 PlayerTurnInfo（TurnSubmittedCard 会在后续过滤）
-			var newPlayerTurnInfos []dao.PlayerTurnInfo
-			query := tx.Where("player_id = ?", userID)
+			// 步骤2：查询新的 PlayerTurnInfo 记录
+			// 使用原始 SQL 查询，手动解析 JSON 字段，避免 GORM 解析嵌套结构
+			type playerTurnInfoRow struct {
+				ID                    uint   `gorm:"column:id"`
+				TurnID                uint   `gorm:"column:turn_id"`
+				PlayerID              int64  `gorm:"column:player_id"`
+				PlayerStatus          int32  `gorm:"column:player_status"` // 使用 int32 因为 proto 枚举底层是 int32
+				TemporaryAddress      string `gorm:"column:temporary_address"`
+				TurnSubmittedCardJSON string `gorm:"column:turn_submitted_card"`
+			}
+
+			var rows []playerTurnInfoRow
+			baseQuery := "SELECT id, turn_id, player_id, player_status, temporary_address, turn_submitted_card FROM player_turn_infos WHERE player_id = ?"
+			var args []interface{}
+			args = append(args, playerID)
 
 			// 如果已有记录，只查询新的 Turn（通过 TurnID 关联到 Round，再通过 RoundID 过滤）
 			if maxRoundID > 0 {
-				// 先找到所有相关的 TurnID，这些 Turn 属于 RoundID > maxRoundID 的 Round
-				var relevantTurnIDs []uint
-				subQuery := tx.Table("turns").
-					Select("id").
-					Where("round_id > ?", maxRoundID)
-				if err := subQuery.Pluck("id", &relevantTurnIDs).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-					return fmt.Errorf("failed to query relevant turn IDs for player ID %d: %v", userID, err)
+				// 只保留该玩家在新的 round 中的 turn
+				baseQuery += " AND turn_id IN (SELECT pti.turn_id FROM player_turn_infos AS pti JOIN turns t ON pti.turn_id = t.id WHERE pti.player_id = ? AND t.round_id > ?)"
+				args = append(args, playerID, maxRoundID)
+			}
+
+			baseQuery += " ORDER BY id ASC"
+
+			if err := tx.Raw(baseQuery, args...).Scan(&rows).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("failed to query new player turn infos for player ID %d: %v", playerID, err)
+			}
+
+			// 手动解析 JSON 字段并构建 PlayerTurnInfo 列表
+			newPlayerTurnInfos := make([]dao.PlayerTurnInfo, 0, len(rows))
+			for _, row := range rows {
+				turnInfo := dao.PlayerTurnInfo{
+					BaseModel: dao.BaseModel{
+						ID: row.ID,
+					},
+					TurnID:           row.TurnID,
+					PlayerID:         row.PlayerID,
+					PlayerStatus:     proto.PlayerTurnStatus(row.PlayerStatus),
+					TemporaryAddress: row.TemporaryAddress,
 				}
 
-				if len(relevantTurnIDs) > 0 {
-					query = query.Where("turn_id IN ?", relevantTurnIDs)
-				} else {
-					// 没有新的 Turn，直接处理现有记录
-					if len(existingCardStats) > 0 {
-						for _, stat := range existingCardStats {
-							results = append(results, &stat)
-						}
+				// 解析 TurnSubmittedCard JSON
+				if row.TurnSubmittedCardJSON != "" && row.TurnSubmittedCardJSON != "null" {
+					var card dao.TurnSubmittedCard
+					if err := json.Unmarshal([]byte(row.TurnSubmittedCardJSON), &card); err == nil {
+						turnInfo.TurnSubmittedCard = &card
+						newPlayerTurnInfos = append(newPlayerTurnInfos, turnInfo)
 					}
-					continue
 				}
 			}
-
-			if err := query.Order("id ASC").Find(&newPlayerTurnInfos).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to query new player turn infos for player ID %d: %v", userID, err)
-			}
-
-			// 过滤掉 TurnSubmittedCard 为 nil 的记录
-			filteredTurnInfos := make([]dao.PlayerTurnInfo, 0, len(newPlayerTurnInfos))
-			for i := range newPlayerTurnInfos {
-				if newPlayerTurnInfos[i].TurnSubmittedCard != nil {
-					filteredTurnInfos = append(filteredTurnInfos, newPlayerTurnInfos[i])
-				}
-			}
-			newPlayerTurnInfos = filteredTurnInfos
 
 			// 如果没有新的记录，直接返回现有记录
 			if len(newPlayerTurnInfos) == 0 {
@@ -466,24 +234,26 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 				continue
 			}
 
-			// 步骤4：收集所有相关的 TurnID 和 RoundID
+			// 步骤3：收集所有相关的 TurnID 和 RoundID
 			turnIDs := make([]uint, 0, len(newPlayerTurnInfos))
-			turnIDMap := make(map[uint]*dao.PlayerTurnInfo)
 			for i := range newPlayerTurnInfos {
 				turnIDs = append(turnIDs, newPlayerTurnInfos[i].TurnID)
-				turnIDMap[newPlayerTurnInfos[i].TurnID] = &newPlayerTurnInfos[i]
 			}
 
-			// 查询这些 Turn 对应的 RoundID
-			var turns []dao.Turn
-			if err := tx.Where("id IN ?", turnIDs).Select("id, round_id").Find(&turns).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("failed to query turns for player ID %d: %v", userID, err)
+			// 查询这些 Turn 对应的 RoundID（使用原始 SQL 避免 GORM 解析嵌套结构）
+			type turnRow struct {
+				ID      uint `gorm:"column:id"`
+				RoundID uint `gorm:"column:round_id"`
+			}
+			var turnRows []turnRow
+			if err := tx.Raw("SELECT id, round_id FROM turns WHERE id IN ?", turnIDs).Scan(&turnRows).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("failed to query turns for player ID %d: %v", playerID, err)
 			}
 
 			// 创建 TurnID -> RoundID 的映射
 			turnToRoundMap := make(map[uint]uint)
 			roundIDSet := make(map[uint]bool)
-			for _, turn := range turns {
+			for _, turn := range turnRows {
 				turnToRoundMap[turn.ID] = turn.RoundID
 				roundIDSet[turn.RoundID] = true
 			}
@@ -491,7 +261,7 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 			// 计算新的 Round 数量
 			totalNewRounds := uint(len(roundIDSet))
 
-			// 步骤5：统计每个卡牌的使用情况
+			// 步骤4：统计每个卡牌的使用情况
 			cardUsageStats := make(map[uint]struct {
 				usageCount uint
 				winCount   uint
@@ -540,14 +310,14 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 				cardUsageStats[cardID] = stats
 			}
 
-			// 步骤6：更新或创建卡牌统计记录
+			// 步骤5：更新或创建卡牌统计记录
 			for cardID, stats := range cardUsageStats {
 				// 查找现有记录
 				cardStat, exists := cardStatMap[cardID]
 				if !exists {
 					// 创建新记录
 					cardStat = &dao.CardStat{
-						Address:               address,
+						PlayerID:              playerID,
 						CardID:                cardID,
 						RoundCount:            existedRoundCount + totalNewRounds,
 						UsageCount:            stats.usageCount,
@@ -558,7 +328,7 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 					}
 
 					if err := tx.Create(cardStat).Error; err != nil {
-						return fmt.Errorf("failed to create card stat for address %s, card %d: %v", address, cardID, err)
+						return fmt.Errorf("failed to create card stat for playerID %d, card %d: %v", playerID, cardID, err)
 					}
 				} else {
 					// 更新现有记录
@@ -572,19 +342,19 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 					}
 
 					if err := tx.Model(cardStat).Updates(updateData).Error; err != nil {
-						return fmt.Errorf("failed to update card stat for address %s, card %d: %v", address, cardID, err)
+						return fmt.Errorf("failed to update card stat for playerID %d, card %d: %v", playerID, cardID, err)
 					}
 
 					// 重新查询更新后的记录
-					if err := tx.Where("address = ? AND card_id = ?", address, cardID).First(cardStat).Error; err != nil {
-						return fmt.Errorf("failed to query updated card stat for address %s, card %d: %v", address, cardID, err)
+					if err := tx.Where("player_id = ? AND card_id = ?", playerID, cardID).First(cardStat).Error; err != nil {
+						return fmt.Errorf("failed to query updated card stat for playerID %d, card %d: %v", playerID, cardID, err)
 					}
 				}
 
 				results = append(results, cardStat)
 			}
 
-			// 步骤7：更新同一地址下其他没有新数据的卡牌记录的 round_count
+			// 步骤6：更新同一地址下其他没有新数据的卡牌记录的 round_count
 			for cardID, cardStat := range cardStatMap {
 				if _, hasNewData := cardUsageStats[cardID]; !hasNewData {
 					// 跳过临时ID为0的默认记录
@@ -594,11 +364,11 @@ func UpdateCardStatByPlayerIds(playerIds []string) ([]*dao.CardStat, error) {
 							"round_count": cardStat.RoundCount + totalNewRounds,
 						}
 						if err := tx.Model(cardStat).Updates(otherUpdateData).Error; err != nil {
-							return fmt.Errorf("failed to update round_count for other card stat, address %s, card %d: %v", address, cardID, err)
+							return fmt.Errorf("failed to update round_count for other card stat, player %d, card %d: %v", playerID, cardID, err)
 						}
 						// 重新查询更新后的记录
-						if err := tx.Where("address = ? AND card_id = ?", address, cardID).First(cardStat).Error; err != nil {
-							return fmt.Errorf("failed to query updated other card stat for address %s, card %d: %v", address, cardID, err)
+						if err := tx.Where("player_id = ? AND card_id = ?", playerID, cardID).First(cardStat).Error; err != nil {
+							return fmt.Errorf("failed to query updated other card stat for player %d, card %d: %v", playerID, cardID, err)
 						}
 					}
 					// 添加到结果中

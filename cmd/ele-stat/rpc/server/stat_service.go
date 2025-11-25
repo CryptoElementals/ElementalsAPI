@@ -67,7 +67,7 @@ func (s *StatService) UpdatePlayerStats(ctx context.Context, req *proto.UpdatePl
 	}
 
 	// 调用数据库增量更新函数
-	userStats, err := db.UpdateUserStatByAddresses(req.PlayerIds)
+	userStats, err := db.UpdateUserStatByPlayerIds(req.PlayerIds)
 
 	if err != nil {
 		// 操作失败
@@ -78,7 +78,7 @@ func (s *StatService) UpdatePlayerStats(ctx context.Context, req *proto.UpdatePl
 		}, nil
 	}
 
-	cardStats, err := db.UpdateCardStatByAddresses(req.PlayerIds) // req.PlayerAddresses contains player IDs as strings
+	cardStats, err := db.UpdateCardStatByPlayerIDs(req.PlayerIds) // req.PlayerAddresses contains player IDs as strings
 	if err != nil {
 		log.Errorf("Failed to update card stats for player ids %v: %v", req.PlayerIds, err)
 		return &proto.UpdatePlayerStatsResponse{
