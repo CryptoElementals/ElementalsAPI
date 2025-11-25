@@ -11,37 +11,36 @@ import (
 	"gorm.io/gorm"
 )
 
-// UpdateUserStatByAddresses 批量原子操作：增量更新多个用户统计数据
-func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
-	if len(addresses) == 0 {
+// UpdateUserStatByPlayerIds 批量原子操作：增量更新多个用户统计数据
+func UpdateUserStatByPlayerIds(playerIDs []int64) ([]*dao.UserStat, error) {
+	if len(playerIDs) == 0 {
 		return []*dao.UserStat{}, nil
 	}
 
 	// 去重地址
-	uniqueAddresses := make(map[string]bool)
-	var deduplicatedAddresses []string
-	for _, addr := range addresses {
-		if !uniqueAddresses[addr] {
-			uniqueAddresses[addr] = true
-			deduplicatedAddresses = append(deduplicatedAddresses, addr)
+	uniquePlayerIDs := make(map[int64]bool)
+	var deduplicatedPlayerIDs []int64
+	for _, playerID := range playerIDs {
+		if !uniquePlayerIDs[playerID] {
+			uniquePlayerIDs[playerID] = true
+			deduplicatedPlayerIDs = append(deduplicatedPlayerIDs, playerID)
 		}
 	}
 
 	// 使用事务确保原子性
 	var results []*dao.UserStat
 	err := Get().Transaction(func(tx *gorm.DB) error {
-		results = make([]*dao.UserStat, 0, len(deduplicatedAddresses))
+		results = make([]*dao.UserStat, 0, len(deduplicatedPlayerIDs))
 
-		for _, address := range deduplicatedAddresses {
-			address = strings.ToLower(address)
-			// 解析 user_id
-			profile, err := GetUserProfileByAddress(address)
-			if err != nil {
+		for _, playerID := range deduplicatedPlayerIDs {
+			// 在事务内查询用户档案
+			var profile dao.UserProfile
+			if err := tx.Where("player_id = ?", playerID).First(&profile).Error; err != nil {
 				// 跳过不存在的地址
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					continue
 				}
-				return fmt.Errorf("failed to get user profile for address %s: %v", address, err)
+				return fmt.Errorf("failed to get user profile for playerID %d: %v", playerID, err)
 			}
 
 			// 步骤1：查找或创建用户统计记录
@@ -70,10 +69,10 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 
 			// 步骤2：查找增量奖励记录
 			var newRewards []dao.PlayerReward
-			if err := tx.Where("wallet_address = ? AND id > ?", address, userStat.LastPlayerRewardID).
+			if err := tx.Where("player_id = ? AND id > ?", playerID, userStat.LastPlayerRewardID).
 				Order("id ASC").
 				Find(&newRewards).Error; err != nil {
-				return fmt.Errorf("failed to query new rewards for address %s: %v", address, err)
+				return fmt.Errorf("failed to query new rewards for player_id %d: %v", playerID, err)
 			}
 
 			// 如果没有新的奖励记录，直接添加到结果中
@@ -135,37 +134,6 @@ func UpdateUserStatByAddresses(addresses []string) ([]*dao.UserStat, error) {
 	}
 
 	return results, nil
-}
-
-// GetUserStatByAddress 根据地址获取用户统计数据
-func GetUserStatByAddress(address string) (*dao.UserStat, error) {
-	if address == "" {
-		return nil, fmt.Errorf("address cannot be empty")
-	}
-
-	userStat := &dao.UserStat{}
-
-	// 解析 user_id
-	profile, err := GetUserProfileByAddress(strings.ToLower(address))
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 不存在用户时返回空对象
-			return userStat, nil
-		}
-		return nil, fmt.Errorf("failed to query user profile for address %s: %v", address, err)
-	}
-
-	// 查询用户统计记录（按 player_id）
-	if err := Get().Where("player_id = ?", profile.PlayerID).First(userStat).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 如果记录不存在，返回空对象
-			return userStat, nil
-		}
-		// 其他数据库错误
-		return nil, fmt.Errorf("failed to query user stat for player_id %d: %v", profile.PlayerID, err)
-	}
-
-	return userStat, nil
 }
 
 // GetUserStatByPlayerID 根据 player_id 获取用户统计数据
