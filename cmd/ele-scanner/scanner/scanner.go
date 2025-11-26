@@ -31,10 +31,10 @@ const (
 	SubmitCardsEventName     = "submitCards"
 	StartANewRoundName       = "startANewRound"
 
-	RoomV2ContractRoomCreatedEventName     = "RoomV2ContractRoomCreated"
-	RoomV2ContractStartANewTermEventName   = "RoomV2ContractStartANewTerm"
-	RoomV2ContractSubmitCardsHashEventName = "RoomV2ContractSubmitCardsHash"
-	RoomV2ContractSubmitCardsEventName     = "RoomV2ContractSubmitCards"
+	RoomV2ContractRoomCreatedEventName    = "RoomCreated"
+	RoomV2ContractStartANewTurnEventName  = "startANewTurn"
+	RoomV2ContractSubmitCardHashEventName = "submitCard"
+	RoomV2ContractSubmitCardEventName     = "submitCardHash"
 
 	rpcSubmitTimeout = 3 * time.Second
 )
@@ -520,11 +520,9 @@ func (s *Scanner) getAndProcessBlockToBatch(blockHeight *big.Int) (*proto.Transa
 
 func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, error) {
 	txsToSubmit := make([]*proto.Transaction, 0)
-	if strings.EqualFold(tx.To, "0x4200000000000000000000000000000000000015") { // specail tx
+	if !strings.EqualFold(tx.To, s.roomV2Address) { // specail tx
 		return nil, nil
 	}
-
-	// todo: filter room manager address after 7702
 
 	// find room tx
 	hash := common.HexToHash(tx.Hash)
@@ -551,15 +549,14 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				GameId: uint32(eventData.GameId.Int64()),
 				Tx: &proto.Transaction_GameCreated{
-					GameCreated: &proto.TxGameCreated{
-						GameId: eventData.GameId.Int64(),
-					},
+					GameCreated: &proto.TxGameCreated{},
 				},
 			}
 		}
 
-		if eventName == RoomV2ContractStartANewTermEventName {
+		if eventName == RoomV2ContractStartANewTurnEventName {
 			eventData := contract.RoomV2ContractStartANewTurn{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
 				return nil, err
@@ -567,9 +564,9 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				GameId: uint32(eventData.GameId.Int64()),
 				Tx: &proto.Transaction_GameTurnSetupReady{
 					GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-						GameId:      eventData.GameId.Int64(),
 						RoundNumber: uint32(eventData.Round.Uint64()),
 						TurnNumber:  uint32(eventData.CardIndex.Uint64()),
 					},
@@ -577,16 +574,16 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 			}
 		}
 
-		if eventName == RoomV2ContractSubmitCardsHashEventName {
+		if eventName == RoomV2ContractSubmitCardHashEventName {
 			eventData := contract.RoomV2ContractSubmitCardHash{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
 				return nil, err
 			}
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				GameId: uint32(eventData.GameId.Int64()),
 				Tx: &proto.Transaction_CommitmentOnChain{
 					CommitmentOnChain: &proto.TxCommitmentOnChain{
-						GameId: eventData.GameId.Int64(),
 						Address: &proto.PlayerAddress{
 							Id:               int64(eventData.PlayerId.Uint64()),
 							TemporaryAddress: eventData.Player.Hex(),
@@ -599,7 +596,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 			}
 		}
 
-		if eventName == RoomV2ContractSubmitCardsEventName {
+		if eventName == RoomV2ContractSubmitCardEventName {
 			eventData := contract.RoomV2ContractSubmitCard{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
 				return nil, err
@@ -607,9 +604,9 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				GameId: uint32(eventData.GameId.Int64()),
 				Tx: &proto.Transaction_CardOnChain{
 					CardOnChain: &proto.TxCardOnChain{
-						GameId: eventData.GameId.Int64(),
 						Address: &proto.PlayerAddress{
 							Id:               int64(eventData.PlayerId.Uint64()),
 							TemporaryAddress: eventData.Player.Hex(),
@@ -633,9 +630,9 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 func (s *Scanner) initEventSigHashCache() error {
 	cache := &s.eventSigHashCache
 	roomEventNames := []string{RoomV2ContractRoomCreatedEventName,
-		RoomV2ContractStartANewTermEventName,
-		RoomV2ContractSubmitCardsHashEventName,
-		RoomV2ContractSubmitCardsEventName,
+		RoomV2ContractStartANewTurnEventName,
+		RoomV2ContractSubmitCardHashEventName,
+		RoomV2ContractSubmitCardEventName,
 	}
 
 	cache.mu.Lock()
