@@ -3,7 +3,6 @@ package chain
 import (
 	"context"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -24,8 +23,8 @@ func NewService(ctx context.Context,
 	roomManagerContractAddress string, // This parameter is kept for backward compatibility but not used
 	roomV2ContractAddress string,
 	wallets []*wallet.Wallet,
-	dataCache cache.Cache, isDevelop ...bool) (*Service, error) {
-	chain, err := NewChain(ctx, workerManager, chainID, client, roomV2ContractAddress, wallets, dataCache, isDevelop...)
+	isDevelop ...bool) (*Service, error) {
+	chain, err := NewChain(ctx, workerManager, chainID, client, roomV2ContractAddress, wallets, isDevelop...)
 	if err != nil {
 		return nil, err
 	}
