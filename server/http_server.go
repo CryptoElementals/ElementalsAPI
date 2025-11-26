@@ -135,8 +135,8 @@ func newRouter(wg *sync.WaitGroup, cfg *config.ServerConfig, serviceName string,
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(cfg.ServerMode), handler.Handle)
 
 	// Google OAuth endpoints
-	r.GET("/auth/login", googleLoginHandler(cfg))
-	r.GET("/auth/callback", googleCallbackHandler(cfg))
+	r.GET("/auth/google/login", googleLoginHandler(cfg))
+	r.GET("/auth/google/callback", googleCallbackHandler(cfg))
 	return r
 }
 
