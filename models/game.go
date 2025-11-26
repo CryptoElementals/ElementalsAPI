@@ -59,7 +59,7 @@ type PlayerTurnInfo struct {
 	PlayerID          int64                  `json:"player_id"`
 	PlayerStatus      proto.PlayerTurnStatus `json:"player_status"`
 	TemporaryAddress  string                 `json:"temporary_address"`
-	TurnSubmittedCard *TurnSubmittedCard     `json:"turn_submitted_card"`
+	TurnSubmittedCard *TurnSubmittedCard     `gorm:"embedded" json:"turn_submitted_card"`
 }
 
 // Not a table
@@ -79,7 +79,7 @@ type TurnSubmittedCard struct {
 
 type CardEffect struct {
 	BaseModel
-	RoundSubmittedCardID   uint
+	PlayerTurnInfoID       uint
 	Type                   proto.BattleEffectType
 	Value                  int32
 	Description            string
