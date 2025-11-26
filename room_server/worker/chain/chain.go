@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -36,7 +35,6 @@ func NewChain(
 	client bind.ContractBackend,
 	roomV2ContractAddressHex string,
 	wallets []*wallet.Wallet,
-	dataCache cache.Cache,
 	isDevelop ...bool,
 ) (*Chain, error) {
 	if roomV2ContractAddressHex == "" {
