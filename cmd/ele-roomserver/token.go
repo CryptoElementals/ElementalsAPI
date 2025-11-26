@@ -45,7 +45,7 @@ var playerSetCmd = &cobra.Command{
 		}
 		if cmd.Flags().Changed("name") {
 			profile := dao.UserProfile{
-				Address:       playerAddress,
+				PlayerID:      playerId,
 				Name:          playerName,
 				AvatarURL:     playerAvatarUrl,
 				BackgroundURL: backgroundUrl,

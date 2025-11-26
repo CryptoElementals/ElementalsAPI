@@ -39,15 +39,18 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("init db failed, err: %v", err)
 		}
+		log.Info("db initialized")
 		err = redis.Init(&config.RSGConf.RedisCfg)
 		if err != nil {
 			log.Fatalf("init redis failed, err: %v", err)
 		}
+		log.Info("redis initialized")
 
 		svr, err := roomserver.New(context.Background(), &config.RSGConf)
 		if err != nil {
 			log.Fatalf("init room server failed, err: %v", err)
 		}
+		log.Info("room server initialized")
 		err = svr.Start()
 		if err != nil {
 			log.Fatalf("start room server failed, err: %v", err)

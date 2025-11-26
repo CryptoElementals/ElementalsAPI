@@ -92,14 +92,13 @@ func (c *GameContext) Run() error {
 						fmt.Println("game matched event missing GameMatched data")
 						continue
 					}
-					fmt.Println("game matched, please confirm")
 					c.gameID = uint(matched.GameId)
 					c.players = c.players[:0] // Reuse slice, more efficient than nil
 					for _, pp := range matched.Players {
 						c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
 					}
 					c.currentRound = 1
-					c.currentTurn = 0
+					c.currentTurn = 1
 					if err := c.confirmBattle(); err != nil {
 						fmt.Println("error: ", err.Error())
 					}
@@ -196,12 +195,11 @@ func (c *GameContext) Run() error {
 						if turnCompleted.GameResult != nil {
 							fmt.Println("game result: ", types.ToJsonLoggable(turnCompleted.GameResult))
 						}
-						continue
+						return
 					}
 
 					// Handle round completion
 					if turnCompleted.IsRoundComplete {
-						fmt.Println("round complete, please confirm to start a new round")
 						battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(turnCompleted.RoundNum))
 						if err != nil {
 							fmt.Println("error: ", err.Error())
@@ -213,14 +211,12 @@ func (c *GameContext) Run() error {
 					} else {
 						// Turn complete but round not complete - increment turn number and confirm battle for next turn
 						c.currentTurn++
-						fmt.Printf("turn complete, incrementing to turn %d\n", c.currentTurn)
-
-						// Confirm battle for the next turn
-						if err := c.confirmBattle(); err != nil {
-							fmt.Printf("Failed to confirm battle for next turn: %v\n", err)
-						} else {
-							fmt.Printf("Battle confirmed for round %d, turn %d\n", c.currentRound, c.currentTurn)
-						}
+					}
+					// Confirm battle for the next turn
+					if err := c.confirmBattle(); err != nil {
+						fmt.Printf("Failed to confirm battle for next turn: %v\n", err)
+					} else {
+						fmt.Printf("Battle confirmed for round %d, turn %d\n", c.currentRound, c.currentTurn)
 					}
 				}
 			}

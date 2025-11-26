@@ -39,11 +39,9 @@ func init() {
 	rootCmd.AddCommand(gameCmd)
 	gameCmd.AddCommand(gameRunCmd)
 
-	gameRunCmd.Flags().StringVarP(&chainRpc, "chain-rpc", "c", "", "chain rpc endpoint")
 	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
 	gameRunCmd.Flags().Int64VarP(&playerId, "player-id", "p", 0, "player ID")
 	gameRunCmd.Flags().StringVarP(&tempWalletPath, "temp-wallet-path", "t", "", "temp wallet path")
-	gameRunCmd.MarkFlagRequired("chain-rpc")
 	gameRunCmd.MarkFlagRequired("room-server-endpoint")
 	gameRunCmd.MarkFlagRequired("player-id")
 	gameRunCmd.MarkFlagRequired("temp-wallet-path")
@@ -78,9 +76,6 @@ func (p *InteractiveCardProvider) GetCard(round uint32, turn uint32) (uint32, er
 }
 
 func startGame() error {
-	if chainRpc == "" || roomServerEndpoint == "" {
-		return fmt.Errorf("chain rpc and room server endpoint are required")
-	}
 	client, err := rpc.NewClient(roomServerEndpoint)
 	if err != nil {
 		return err
