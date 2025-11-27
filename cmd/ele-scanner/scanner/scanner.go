@@ -33,8 +33,8 @@ const (
 
 	RoomV2ContractRoomCreatedEventName    = "RoomCreated"
 	RoomV2ContractStartANewTurnEventName  = "startANewTurn"
-	RoomV2ContractSubmitCardHashEventName = "submitCard"
-	RoomV2ContractSubmitCardEventName     = "submitCardHash"
+	RoomV2ContractSubmitCardHashEventName = "submitCardHash"
+	RoomV2ContractSubmitCardEventName     = "submitCard"
 
 	rpcSubmitTimeout = 3 * time.Second
 )
