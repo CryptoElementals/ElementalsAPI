@@ -41,17 +41,23 @@ func (r *round) createNewTurn() *dao.Turn {
 	for len(r.round.Turns) <= idx {
 		r.round.Turns = append(r.round.Turns, nil)
 	}
-
-	for _, player := range r.gamePlayers {
-		player.playerTurnInfos = append(player.playerTurnInfos, &dao.PlayerTurnInfo{})
-	}
-
 	// Create new turn
 	newTurn := &dao.Turn{
 		RoundID:         r.round.ID, // Will be set when round is saved
 		TurnNumber:      turnNumber,
 		PlayerTurnInfos: make([]*dao.PlayerTurnInfo, 0),
 	}
+
+	for _, player := range r.gamePlayers {
+		newTurnInfo := &dao.PlayerTurnInfo{
+			PlayerID:         player.player.PlayerId,
+			TemporaryAddress: player.player.TemporaryAddress,
+			PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
+		}
+		player.playerTurnInfos = append(player.playerTurnInfos, newTurnInfo)
+		newTurn.PlayerTurnInfos = append(newTurn.PlayerTurnInfos, newTurnInfo)
+	}
+
 	r.round.Turns[idx] = newTurn
 	return newTurn
 }
@@ -164,7 +170,9 @@ func (r *round) checkPlayerStatuses() (bool, bool) {
 		}
 		// Check commitment from submitted cards
 		submittedCards := gamePlayer.getLastSubmittedCard()
-		hasOfflinePlayer = len(submittedCards.CommitmentHash) == 0
+		if submittedCards == nil || len(submittedCards.CommitmentHash) == 0 {
+			hasOfflinePlayer = true
+		}
 		// Early exit if both conditions are already found
 		if hasSurrenderedPlayer && hasOfflinePlayer {
 			break
@@ -295,18 +303,6 @@ func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP i
 	card.Description = description
 	card.ElementRelation = r.mapElementRelationStringToEnum(relationType)
 	card.CardEffects = r.battleEffectsToDaoEffects(effects)
-}
-
-func (r *round) getCards(cardIDs []int) ([]*dao.Card, error) {
-	cards := make([]*dao.Card, 0, len(cardIDs))
-	for _, cardID := range cardIDs {
-		dbCard, err := db.GetCardByID(cardID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get card [ID:%d]: %v", cardID, err)
-		}
-		cards = append(cards, dbCard)
-	}
-	return cards, nil
 }
 
 func (r *round) getCard(cardID int) (*dao.Card, error) {

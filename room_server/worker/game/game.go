@@ -3,10 +3,8 @@ package game
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -188,120 +186,114 @@ func NewGameFromGameInfo(
 				log.Errorf("expired game abort failed, game: %d, err %s", gameInfo.ID, err)
 			}
 		} else {
-			// Check if game is over
-			isGameComplete := gameInfo.GameResult != nil
-			err := g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT, isGameComplete)
+			err := g.handleGameAbortInternalError()
 			if err != nil {
-				log.Errorf("expired game terminate failed, game: %d, err %s", gameInfo.ID, err)
+				log.Errorf("expired game abort failed, game: %d, err %s", gameInfo.ID, err)
 			}
 		}
 	}
-	shouldTerminate := false
-	if time.Since(gameInfo.CreatedAt) > time.Duration(gameInfo.GameArgs.RoundTimeout)*time.Second*time.Duration(gameInfo.GameArgs.MaxRounds) {
-		shouldTerminate = true
-	}
+	terminateGame()
+	return nil
+	// if time.Since(gameInfo.CreatedAt) > time.Duration(gameInfo.GameArgs.RoundTimeout)*time.Second*time.Duration(gameInfo.GameArgs.MaxRounds) {
 
-	for _, playerInfo := range g.gameInfo.Players {
-		g.setGamePlayer(playerInfo.TemporaryAddress, &gamePlayer{
-			player:    playerInfo,
-			currentHP: g.gameInfo.InitialHP,
-		})
-	}
-	if len(g.gameInfo.Rounds) != 0 {
-		roundNum := uint32(0)
-		sort.Slice(g.gameInfo.Rounds, func(i, j int) bool {
-			return g.gameInfo.Rounds[i].RoundNumber < g.gameInfo.Rounds[j].RoundNumber
-		})
-		for _, r := range g.gameInfo.Rounds {
-			if r.RoundNumber > roundNum {
-				roundNum = r.RoundNumber
-				g.currentRound.round = r
-			}
-		}
-		// Initialize game state from Turns
-		// Find the latest turn to determine current turn number
-		// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
-		// we can find the latest turn by checking the highest index with a non-nil entry
-		latestTurnNumber := uint32(0)
-		for i := len(g.currentRound.round.Turns) - 1; i >= 0; i-- {
-			if g.currentRound.round.Turns[i] != nil {
-				latestTurnNumber = g.currentRound.round.Turns[i].TurnNumber
-				break
-			}
-		}
-		if latestTurnNumber > 0 {
-			g.currentRound.turnNumber = latestTurnNumber + 1
-			if g.currentRound.turnNumber > 3 {
-				g.currentRound.turnNumber = 1 // Round completed, will setup new round
-			}
-		} else {
-			g.currentRound.turnNumber = 1
-		}
+	// }
 
-		// Reconstruct playerTurnInfos from Turns for runtime use
-		// Group PlayerTurnInfos by player, maintaining sorted order by turn number
-		// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
-		// we use turn.TurnNumber - 1 as the index to maintain sorted order in playerTurnInfos
-		playerTurnInfoMap := make(map[string][]*dao.PlayerTurnInfo)
-		for _, turn := range g.currentRound.round.Turns {
-			if turn == nil {
-				continue
-			}
-			idx := int(turn.TurnNumber) - 1
-			for _, playerTurnInfo := range turn.PlayerTurnInfos {
-				key := playerTurnInfo.TemporaryAddress
-				// Initialize slice if needed
-				if playerTurnInfoMap[key] == nil {
-					playerTurnInfoMap[key] = make([]*dao.PlayerTurnInfo, 0, 3)
-				}
-				// Ensure slice is large enough and store at correct index to maintain sorted order
-				for len(playerTurnInfoMap[key]) <= idx {
-					playerTurnInfoMap[key] = append(playerTurnInfoMap[key], nil)
-				}
-				playerTurnInfoMap[key][idx] = playerTurnInfo
-			}
-		}
+	// for _, playerInfo := range g.gameInfo.Players {
+	// 	g.setGamePlayer(playerInfo.TemporaryAddress, &gamePlayer{
+	// 		player:    playerInfo,
+	// 		currentHP: g.gameInfo.InitialHP,
+	// 	})
+	// }
+	// if len(g.gameInfo.Rounds) != 0 {
+	// 	roundNum := uint32(0)
+	// 	sort.Slice(g.gameInfo.Rounds, func(i, j int) bool {
+	// 		return g.gameInfo.Rounds[i].RoundNumber < g.gameInfo.Rounds[j].RoundNumber
+	// 	})
+	// 	for _, r := range g.gameInfo.Rounds {
+	// 		if r.RoundNumber > roundNum {
+	// 			roundNum = r.RoundNumber
+	// 			g.currentRound.round = r
+	// 		}
+	// 	}
+	// 	// Initialize game state from Turns
+	// 	// Find the latest turn to determine current turn number
+	// 	// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
+	// 	// we can find the latest turn by checking the highest index with a non-nil entry
+	// 	latestTurnNumber := uint32(0)
+	// 	for i := len(g.currentRound.round.Turns) - 1; i >= 0; i-- {
+	// 		if g.currentRound.round.Turns[i] != nil {
+	// 			latestTurnNumber = g.currentRound.round.Turns[i].TurnNumber
+	// 			break
+	// 		}
+	// 	}
+	// 	if latestTurnNumber > 0 {
+	// 		g.currentRound.turnNumber = latestTurnNumber + 1
+	// 		if g.currentRound.turnNumber > 3 {
+	// 			g.currentRound.turnNumber = 1 // Round completed, will setup new round
+	// 		}
+	// 	} else {
+	// 		g.currentRound.turnNumber = 1
+	// 	}
 
-		// Assign reconstructed playerTurnInfos to gamePlayers
-		for key, turnInfos := range playerTurnInfoMap {
-			player, err := g.getGamePlayer(key)
-			if err != nil {
-				// should never happen
-				log.Fatalf("getGamePlayer failed, err: %v", err)
-			}
-			player.playerTurnInfos = turnInfos
-			// Calculate current HP and lost HP from submitted cards
-			submittedCards := player.getSubmittedCards()
-			if len(submittedCards) != 0 {
-				player.currentHP = currentHpFromCards(submittedCards)
-			}
-			player.totalLostHP = int64(player.getLostHP())
-		}
+	// 	// Reconstruct playerTurnInfos from Turns for runtime use
+	// 	// Group PlayerTurnInfos by player, maintaining sorted order by turn number
+	// 	// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
+	// 	// we use turn.TurnNumber - 1 as the index to maintain sorted order in playerTurnInfos
+	// 	playerTurnInfoMap := make(map[string][]*dao.PlayerTurnInfo)
+	// 	for _, turn := range g.currentRound.round.Turns {
+	// 		if turn == nil {
+	// 			continue
+	// 		}
+	// 		idx := int(turn.TurnNumber) - 1
+	// 		for _, playerTurnInfo := range turn.PlayerTurnInfos {
+	// 			key := playerTurnInfo.TemporaryAddress
+	// 			// Initialize slice if needed
+	// 			if playerTurnInfoMap[key] == nil {
+	// 				playerTurnInfoMap[key] = make([]*dao.PlayerTurnInfo, 0, 3)
+	// 			}
+	// 			// Ensure slice is large enough and store at correct index to maintain sorted order
+	// 			for len(playerTurnInfoMap[key]) <= idx {
+	// 				playerTurnInfoMap[key] = append(playerTurnInfoMap[key], nil)
+	// 			}
+	// 			playerTurnInfoMap[key][idx] = playerTurnInfo
+	// 		}
+	// 	}
 
-		// Determine round status from CompleteReason
-		if shouldTerminate {
-			terminateGame()
-			return nil
-		}
-		// Check if round is completed (CompleteReason is set or IsLastRound is true)
-		if g.currentRound.round.IsLastRound || g.currentRound.round.CompleteReason != proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL {
-			g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
-			g.setupNewRound()
-		} else {
-			// Determine status from turns
-			if len(g.currentRound.round.Turns) == 0 {
-				g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
-			} else {
-				// Default to waiting commitments if turns exist
-				g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
-			}
-			g.sendTimerEventByCurrentRound()
-		}
-	} else {
-		g.setupNewRound()
-	}
+	// 	// Assign reconstructed playerTurnInfos to gamePlayers
+	// 	for key, turnInfos := range playerTurnInfoMap {
+	// 		player, err := g.getGamePlayer(key)
+	// 		if err != nil {
+	// 			// should never happen
+	// 			log.Fatalf("getGamePlayer failed, err: %v", err)
+	// 		}
+	// 		player.playerTurnInfos = turnInfos
+	// 		// Calculate current HP and lost HP from submitted cards
+	// 		submittedCards := player.getSubmittedCards()
+	// 		if len(submittedCards) != 0 {
+	// 			player.currentHP = currentHpFromCards(submittedCards)
+	// 		}
+	// 		player.totalLostHP = int64(player.getLostHP())
+	// 	}
 
-	return g
+	// 	// Check if round is completed (CompleteReason is set or IsLastRound is true)
+	// 	if g.currentRound.round.IsLastRound || g.currentRound.round.CompleteReason != proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL {
+	// 		g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
+	// 		g.setupNewRound()
+	// 	} else {
+	// 		// Determine status from turns
+	// 		if len(g.currentRound.round.Turns) == 0 {
+	// 			g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
+	// 		} else {
+	// 			// Default to waiting commitments if turns exist
+	// 			g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
+	// 		}
+	// 		g.sendTimerEventByCurrentRound()
+	// 	}
+	// } else {
+	// 	g.setupNewRound()
+	// }
+
+	// return g
 }
 
 func (g *Game) saveGame() error {
