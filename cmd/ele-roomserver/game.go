@@ -61,7 +61,6 @@ func (p *InteractiveCardProvider) GetCard(round uint32, turn uint32) (uint32, er
 	if !p.scanner.Scan() {
 		return 0, fmt.Errorf("failed to read input")
 	}
-
 	line := strings.TrimSpace(p.scanner.Text())
 	cardNum, err := strconv.ParseUint(line, 10, 32)
 	if err != nil {
@@ -71,7 +70,7 @@ func (p *InteractiveCardProvider) GetCard(round uint32, turn uint32) (uint32, er
 	if cardNum < 1 || cardNum > 5 {
 		return 0, fmt.Errorf("card number must be between 1 and 5, got %d", cardNum)
 	}
-
+	fmt.Println("card number: ", cardNum)
 	return uint32(cardNum), nil
 }
 
@@ -98,37 +97,9 @@ func startGame() error {
 	scanner := bufio.NewScanner(os.Stdin)
 	cardProvider := NewInteractiveCardProvider(scanner)
 	gameContext.SetCardProvider(cardProvider)
-
-	for {
-		fmt.Print("> ")
-		if !scanner.Scan() {
-			// EOF or error reading input
-			if err := scanner.Err(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
-			}
-			break
-		}
-
-		line := scanner.Text()
-		line = strings.TrimSpace(line)
-
-		if line == "" {
-			continue
-		}
-
-		if line == "exit" || line == "quit" {
-			fmt.Println("Exiting...")
-			break
-		}
-
-		if line == "start" {
-			err = gameContext.Run()
-			if err != nil {
-				fmt.Println("error: ", err.Error())
-			}
-			continue
-		}
+	err = gameContext.Run()
+	if err != nil {
+		fmt.Println("error: ", err.Error())
 	}
-
 	return nil
 }
