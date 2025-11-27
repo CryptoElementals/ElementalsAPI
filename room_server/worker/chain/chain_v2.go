@@ -183,7 +183,7 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.Submit
 			"signature", hexutil.Encode(evt.Signature))
 	}
 
-	tx, err := c.roomV2Ctr.BatchSubmitCardsHash(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
+	tx, err := c.roomV2Ctr.BatchSubmitCardHashes(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
 	if err != nil {
 		log.Errorf("sendBatchSubmitCardsHash: batch submit cards hash failed: %s", err.Error())
 		return "", fmt.Errorf("batch submit cards hash failed: %s", err.Error())
