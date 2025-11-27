@@ -42,6 +42,8 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		return p.handleNewGameEvent(p.ctx, evt)
 	case *types.GameReadyEvent:
 		p.handleGameReadyEvent(p.ctx, evt)
+	case *types.RoundReadyEvent:
+		p.handleRoundReadyEvent(p.ctx, evt)
 	case *types.TurnReadyEvent:
 		p.handleTurnReadyEvent(p.ctx, evt)
 	case *types.RoundPartialReadyEvent:

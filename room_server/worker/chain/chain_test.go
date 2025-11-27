@@ -104,7 +104,7 @@ func TestChainContractInteraction(t *testing.T) {
 		TemporaryAddress: "0xabc",
 	}
 
-	svc, _ := NewService(context.Background(), testWorkerManager, int64(chainID), client, roomMamangerAddress, "", []*wallet.Wallet{w}, true)
+	svc, _ := NewService(context.Background(), testWorkerManager, int64(chainID), client, "", []*wallet.Wallet{w}, true)
 
 	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))

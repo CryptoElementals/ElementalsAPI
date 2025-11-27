@@ -72,7 +72,7 @@ func New(ctx context.Context,
 		}
 	}
 
-	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, cfg.ChainCfg.RoomV2ContractAddress, wallets)
+	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV2ContractAddress, wallets)
 	if err != nil {
 		return nil, err
 	}
@@ -99,22 +99,30 @@ func New(ctx context.Context,
 }
 
 func (s *Service) Start() error {
+	log.Info("starting chain service")
 	err := s.chainSvc.Start()
 	if err != nil {
 		return err
 	}
+	log.Info("chain service started")
+	log.Info("starting game service")
 	err = s.gameSvc.Start()
 	if err != nil {
 		return err
 	}
+	log.Info("game service started")
+	log.Info("starting queue service")
 	err = s.queueSvc.Start()
 	if err != nil {
 		return err
 	}
+	log.Info("queue service started")
+	log.Info("starting listener")
 	err = s.startListener()
 	if err != nil {
 		return err
 	}
+	log.Info("listener started")
 	return nil
 }
 

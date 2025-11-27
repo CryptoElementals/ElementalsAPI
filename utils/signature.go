@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/ecdsa"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -13,7 +14,12 @@ func Sign(values []any, privateKey *ecdsa.PrivateKey) (signature []byte, err err
 	if err != nil {
 		return nil, err
 	}
-	return crypto.Sign(hash.Bytes(), privateKey)
+	sig, err := crypto.Sign(hash.Bytes(), privateKey)
+	if err != nil {
+		return nil, err
+	}
+	sig[crypto.RecoveryIDOffset] += 27 // Transform V from 0/1 to 27/28 according to the yellow paper
+	return sig[:], nil
 }
 
 func Verify(values []any, signature []byte, expectedAddress common.Address) (bool, error) {
@@ -21,9 +27,10 @@ func Verify(values []any, signature []byte, expectedAddress common.Address) (boo
 	if err != nil {
 		return false, err
 	}
-
+	signatureSlice := slices.Clone(signature)
+	signatureSlice[crypto.RecoveryIDOffset] -= 27 // Transform V from 27/28 to 0/1 according to the yellow paper
 	// Recover public key from signature using Ethereum ECDSA recovery
-	recoveredPubKey, err := crypto.SigToPub(hash.Bytes(), signature)
+	recoveredPubKey, err := crypto.SigToPub(hash.Bytes(), signatureSlice)
 	if err != nil {
 		return false, err
 	}

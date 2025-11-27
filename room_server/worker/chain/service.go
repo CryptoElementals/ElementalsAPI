@@ -20,7 +20,6 @@ func NewService(ctx context.Context,
 	workerManager *worker.WorkerManager,
 	chainID int64,
 	client bind.ContractBackend,
-	roomManagerContractAddress string, // This parameter is kept for backward compatibility but not used
 	roomV2ContractAddress string,
 	wallets []*wallet.Wallet,
 	isDevelop ...bool) (*Service, error) {

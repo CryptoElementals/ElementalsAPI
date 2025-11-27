@@ -208,30 +208,26 @@ message TransactionBatch {
 }
 
 message TxGameCreated {
-    int64 game_id = 1;
 }
 
 message TxGameTurnSetupReady {
-    int64 game_id = 1;
-    uint32 round_number = 2;
-    uint32 turn_number = 3;
+    uint32 round_number = 1;
+    uint32 turn_number = 2;
 }
 
 message TxCommitmentOnChain {
-    int64 game_id = 1;
-    PlayerAddress address = 2;
-    uint32 round_number = 3;
-    uint32 turn_number = 4;
-    bytes commitment = 5;
+    PlayerAddress address = 1;
+    uint32 round_number = 2;
+    uint32 turn_number = 3;
+    bytes commitment = 4;
 }
 
 message TxCardOnChain {
-    int64 game_id = 1;
-    PlayerAddress address = 2;
-    uint32 round_number = 3;
-    uint32 turn_number = 4;
-    bytes salt = 5;
-    uint32 card_id = 6;
+    PlayerAddress address = 1;
+    uint32 round_number = 2;
+    uint32 turn_number = 3;
+    bytes salt = 4;
+    uint32 card_id = 5;
 }
 
 message SubmitPlayerCommitmentRequest {

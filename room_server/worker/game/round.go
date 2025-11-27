@@ -35,36 +35,25 @@ func (r *round) getCurrentTurn() *dao.Turn {
 // Also initializes playerTurnInfos for all players to ensure the slice is large enough for the new turn
 func (r *round) createNewTurn() *dao.Turn {
 	turnNumber := r.getCurrentTurnNumber()
-	idx := int(turnNumber) - 1
-
-	// Ensure Turns slice is large enough
-	for len(r.round.Turns) <= idx {
-		r.round.Turns = append(r.round.Turns, nil)
-	}
-
-	for _, player := range r.gamePlayers {
-		player.playerTurnInfos = append(player.playerTurnInfos, &dao.PlayerTurnInfo{})
-	}
 
 	// Create new turn
 	newTurn := &dao.Turn{
-		RoundID:         r.round.ID, // Will be set when round is saved
 		TurnNumber:      turnNumber,
 		PlayerTurnInfos: make([]*dao.PlayerTurnInfo, 0),
 	}
-	r.round.Turns[idx] = newTurn
-	return newTurn
-}
 
-// getOrCreateCurrentTurn gets the current Turn record, or creates it if it doesn't exist
-// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
-func (r *round) getOrCreateCurrentTurn() *dao.Turn {
-	// Try to get existing turn first
-	if turn := r.getCurrentTurn(); turn != nil {
-		return turn
+	for _, player := range r.gamePlayers {
+		newTurnInfo := &dao.PlayerTurnInfo{
+			PlayerID:         player.player.PlayerId,
+			TemporaryAddress: player.player.TemporaryAddress,
+			PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
+		}
+		player.currentTurnInfo = newTurnInfo
+		newTurn.PlayerTurnInfos = append(newTurn.PlayerTurnInfos, newTurnInfo)
 	}
-	// Create new turn if it doesn't exist
-	return r.createNewTurn()
+
+	r.round.Turns = append(r.round.Turns, newTurn)
+	return newTurn
 }
 
 // ElementalRelation represents the relationship between two cards
@@ -164,7 +153,9 @@ func (r *round) checkPlayerStatuses() (bool, bool) {
 		}
 		// Check commitment from submitted cards
 		submittedCards := gamePlayer.getLastSubmittedCard()
-		hasOfflinePlayer = len(submittedCards.CommitmentHash) == 0
+		if submittedCards == nil || len(submittedCards.CommitmentHash) == 0 {
+			hasOfflinePlayer = true
+		}
 		// Early exit if both conditions are already found
 		if hasSurrenderedPlayer && hasOfflinePlayer {
 			break
@@ -172,19 +163,6 @@ func (r *round) checkPlayerStatuses() (bool, bool) {
 	}
 
 	return hasSurrenderedPlayer, hasOfflinePlayer
-}
-
-// determinePlayerStatus determines the status of a player from gamePlayer
-func (r *round) determinePlayerStatus(gamePlayer *gamePlayer) playerStatus {
-	if gamePlayer.isSurrendered() {
-		return playerStatusSurrendered
-	}
-	// Check commitment from submitted cards
-	submittedCards := gamePlayer.getLastSubmittedCard()
-	if submittedCards == nil || len(submittedCards.CommitmentHash) == 0 {
-		return playerStatusOffline
-	}
-	return playerStatusOnline // TODO: check if the player is online
 }
 
 // processCardBattle processes a single card battle between two players
@@ -297,18 +275,6 @@ func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP i
 	card.CardEffects = r.battleEffectsToDaoEffects(effects)
 }
 
-func (r *round) getCards(cardIDs []int) ([]*dao.Card, error) {
-	cards := make([]*dao.Card, 0, len(cardIDs))
-	for _, cardID := range cardIDs {
-		dbCard, err := db.GetCardByID(cardID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get card [ID:%d]: %v", cardID, err)
-		}
-		cards = append(cards, dbCard)
-	}
-	return cards, nil
-}
-
 func (r *round) getCard(cardID int) (*dao.Card, error) {
 	dbCard, err := db.GetCardByID(cardID)
 	if err != nil {
@@ -320,7 +286,7 @@ func (r *round) getCard(cardID int) (*dao.Card, error) {
 // executeCardIndex executes battles for a single card index (0, 1, or 2) between all players
 // It initializes battle states if needed and processes all player pairs for the given card index
 // Returns (isGameOver, gameResult, error)
-func (r *round) executeCardIndex(cardIdx int) (bool, *dao.GameResult, error) {
+func (r *round) executeCardIndex() (bool, *dao.GameResult, error) {
 	if err := r.validateRound(); err != nil {
 		return false, nil, err
 	}
@@ -770,7 +736,7 @@ func (r *round) handleServerTimeout() (bool, *dao.GameResult, error) {
 
 	for _, gamePlayer := range r.gamePlayers {
 		submittedCard := gamePlayer.getLastSubmittedCard()
-		gamePlayer.totalLostHP = int64(gamePlayer.getLostHP())
+		//gamePlayer.totalLostHP = int64(gamePlayer.getLostHP())
 		hasCommitment := len(submittedCard.CommitmentHash) > 0
 		// Check commitment from first card (if exists)
 		playerRewards = append(playerRewards, &dao.PlayerReward{

@@ -73,7 +73,8 @@ func (g *Game) getAndValidateCardEntry(playerAddr string, cardIndex uint32) (*da
 	}
 
 	turnNumber := cardIndex // cardIndex is 1-based, same as turnNumber
-	playerTurnInfo := player.getPlayerTurnInfoForTurn(turnNumber)
+	var _ uint32 = turnNumber
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIndex)
 		return nil, fmt.Errorf("commitment for card index %d must be submitted before card", cardIndex)

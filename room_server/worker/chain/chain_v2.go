@@ -15,6 +15,7 @@ import (
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 type concurrentRoomV2Client struct {
@@ -174,9 +175,15 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.Submit
 		cardIndexes[i] = big.NewInt(int64(evt.CommitmentIndex))
 		rounds[i] = big.NewInt(int64(evt.RoundNumber))
 		signatures[i] = evt.Signature
+		log.Infow("sendBatchSubmitCardsHash: batch submit cards hash",
+			"game id", evt.GameID,
+			"commitment index", evt.CommitmentIndex,
+			"round number", evt.RoundNumber,
+			"commitment", hexutil.Encode(evt.Commitment),
+			"signature", hexutil.Encode(evt.Signature))
 	}
 
-	tx, err := c.roomV2Ctr.BatchSubmitCardsHash(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
+	tx, err := c.roomV2Ctr.BatchSubmitCardHashes(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
 	if err != nil {
 		log.Errorf("sendBatchSubmitCardsHash: batch submit cards hash failed: %s", err.Error())
 		return "", fmt.Errorf("batch submit cards hash failed: %s", err.Error())
