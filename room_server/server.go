@@ -72,7 +72,7 @@ func New(ctx context.Context,
 		}
 	}
 
-	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, cfg.ChainCfg.RoomV2ContractAddress, wallets)
+	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV2ContractAddress, wallets)
 	if err != nil {
 		return nil, err
 	}
