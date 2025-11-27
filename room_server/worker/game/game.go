@@ -16,7 +16,7 @@ import (
 
 type gamePlayer struct {
 	player          *dao.GamePlayerInfo
-	playerTurnInfos []*dao.PlayerTurnInfo
+	currentTurnInfo *dao.PlayerTurnInfo
 	totalLostHP     int64
 	currentHP       int64
 	// Battle state fields (used during battle execution)
@@ -35,83 +35,64 @@ func (p *gamePlayer) String() string {
 }
 
 // getSubmittedCards returns all submitted cards from playerTurnInfos as TurnSubmittedCard
-func (p *gamePlayer) getSubmittedCards() []*dao.TurnSubmittedCard {
-	// Count non-nil cards first to pre-allocate
-	count := 0
-	for _, turnInfo := range p.playerTurnInfos {
-		if turnInfo.TurnSubmittedCard != nil {
-			count++
-		}
-	}
-	if count == 0 {
-		return nil
-	}
-	cards := make([]*dao.TurnSubmittedCard, 0, count)
-	for _, turnInfo := range p.playerTurnInfos {
-		if turnInfo.TurnSubmittedCard != nil {
-			cards = append(cards, turnInfo.TurnSubmittedCard)
-		}
-	}
-	return cards
-}
+// func (p *gamePlayer) getSubmittedCards() []*dao.TurnSubmittedCard {
+// 	// Count non-nil cards first to pre-allocate
+// 	count := 0
+// 	for _, turnInfo := range p.playerTurnInfos {
+// 		if turnInfo.TurnSubmittedCard != nil {
+// 			count++
+// 		}
+// 	}
+// 	if count == 0 {
+// 		return nil
+// 	}
+// 	cards := make([]*dao.TurnSubmittedCard, 0, count)
+// 	for _, turnInfo := range p.playerTurnInfos {
+// 		if turnInfo.TurnSubmittedCard != nil {
+// 			cards = append(cards, turnInfo.TurnSubmittedCard)
+// 		}
+// 	}
+// 	return cards
+// }
 
 func (g *gamePlayer) getLastSubmittedCard() *dao.TurnSubmittedCard {
-	lastSubmittedCard := g.playerTurnInfos[len(g.playerTurnInfos)-1].TurnSubmittedCard
-	if lastSubmittedCard == nil {
-		return nil
-	}
-	return lastSubmittedCard
+	return g.currentTurnInfo.TurnSubmittedCard
 }
 
-// getPlayerTurnInfoForTurn returns PlayerTurnInfo for a specific turn number
+// getCurrentPlayerTurnInfo returns PlayerTurnInfo for a specific turn number
 // Note: This assumes playerTurnInfos are ordered by turn number, which may not always be true
 // A better approach would be to match by TurnID, but we need access to the Turn records
-func (p *gamePlayer) getPlayerTurnInfoForTurn(turnNumber uint32) *dao.PlayerTurnInfo {
-	// Try to find by index first (assuming ordered)
-	if len(p.playerTurnInfos) >= int(turnNumber) {
-		return p.playerTurnInfos[turnNumber-1]
-	}
-	// If not found by index, return the latest one (might be for current turn)
-	if len(p.playerTurnInfos) > 0 {
-		return p.playerTurnInfos[len(p.playerTurnInfos)-1]
-	}
-	return nil
+func (p *gamePlayer) getCurrentPlayerTurnInfo() *dao.PlayerTurnInfo {
+	return p.currentTurnInfo
 }
 
 // isPlayerReady checks if player is ready for current turn
 func (p *gamePlayer) isPlayerReady() bool {
 	// Check the latest turn info's status
-	if len(p.playerTurnInfos) == 0 {
+	if p.currentTurnInfo == nil {
 		return false
 	}
-	latest := p.playerTurnInfos[len(p.playerTurnInfos)-1]
-	return latest.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
-		latest.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
-		latest.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
+	return p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
+		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
+		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
 }
 
 // isSurrendered checks if player has surrendered
 func (p *gamePlayer) isSurrendered() bool {
 	// Check if any turn info indicates surrender
-	for _, turnInfo := range p.playerTurnInfos {
-		if turnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN {
-			// This might indicate surrender, but we need to check the actual status
-			// For now, we'll need to track this separately or check game state
-		}
-	}
-	return false // TODO: Need to track surrender status properly
+	return p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN
 }
 
-// getLostHP calculates lost HP from submitted cards
-func (p *gamePlayer) getLostHP() int32 {
-	lostHP := int32(0)
-	for _, card := range p.getSubmittedCards() {
-		if card.HealthBefore > card.HealthAfter {
-			lostHP += int32(card.HealthBefore - card.HealthAfter)
-		}
-	}
-	return lostHP
-}
+// // getLostHP calculates lost HP from submitted cards
+// func (p *gamePlayer) getLostHP() int32 {
+// 	lostHP := int32(0)
+// 	for _, card := range p.getSubmittedCards() {
+// 		if card.HealthBefore > card.HealthAfter {
+// 			lostHP += int32(card.HealthBefore - card.HealthAfter)
+// 		}
+// 	}
+// 	return lostHP
+// }
 
 type Game struct {
 	ctx                 context.Context
@@ -305,15 +286,6 @@ func (g *Game) saveGame() error {
 	return nil
 }
 
-// getPlayerTurnInfo gets PlayerTurnInfo for the current turn, returns nil if not found
-// Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
-// Assumes playerTurnInfos slice is sorted by turn number
-func (g *Game) getPlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
-	turnNumber := g.currentRound.getCurrentTurnNumber()
-	pti := player.playerTurnInfos[int(turnNumber)-1]
-	return pti
-}
-
 // createPlayerTurnInfo creates a new PlayerTurnInfo for the current turn
 // Ensures it's stored at the correct index to maintain sorted order by turn number
 func (g *Game) createPlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
@@ -325,20 +297,9 @@ func (g *Game) createPlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
 		TemporaryAddress: player.player.TemporaryAddress,
 		PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
 	}
-
-	player.playerTurnInfos = append(player.playerTurnInfos, newPlayerTurnInfo)
-	currentTurn.PlayerTurnInfos = player.playerTurnInfos
+	player.currentTurnInfo = newPlayerTurnInfo
+	currentTurn.PlayerTurnInfos = append(currentTurn.PlayerTurnInfos, newPlayerTurnInfo)
 	return newPlayerTurnInfo
-}
-
-// getOrUpdatePlayerTurnInfo gets or creates PlayerTurnInfo for current turn
-func (g *Game) getOrUpdatePlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
-	// Try to get existing PlayerTurnInfo first
-	if pti := g.getPlayerTurnInfo(player); pti != nil {
-		return pti
-	}
-	// Create new PlayerTurnInfo if it doesn't exist
-	return g.createPlayerTurnInfo(player)
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
@@ -358,8 +319,7 @@ func (g *Game) pushStateToContractCreating() error {
 	for _, player := range g.currentRound.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
 		// Mark player as ready for current turn
-		playerTurnInfo := g.getOrUpdatePlayerTurnInfo(player)
-		playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
+		player.currentTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
 	}
 	if err := g.sendContractCreation(allPlayers); err != nil {
 		g.handleGameAbortInternalError()
@@ -420,19 +380,13 @@ func (g *Game) setupNewRound() {
 		RoundNumber: roundNum,
 		Turns:       make([]*dao.Turn, 0, 3), // Pre-allocate for 3 turns
 	}
-	// Initialize playerTurnInfos for each player (empty at start of round)
-	for _, player := range g.currentRound.gamePlayers {
-		player.playerTurnInfos = make([]*dao.PlayerTurnInfo, 0)
-	}
 	g.currentRound.round = newRound // Update the embedded Round's reference
 	g.currentRound.turnNumber = 1   // Start with turn 1 for each new round
 	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
 
 	// Create turn 1 record immediately when new round is set up
 	// This will also initialize playerTurnInfos for all players
-	turn1 := g.currentRound.createNewTurn()
-	turn1.RoundID = newRound.ID
-
+	g.currentRound.createNewTurn()
 	g.gameInfo.Rounds = append(g.gameInfo.Rounds, newRound)
 	g.sendTimerEventByCurrentRound()
 }
@@ -443,10 +397,6 @@ func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
 			g.workerMangerService.SendEvent(player.String(), event)
 		}
 	}
-}
-
-func (g *Game) setGamePlayer(tempAddr string, player *gamePlayer) {
-	g.currentRound.gamePlayers[strings.ToLower(tempAddr)] = player
 }
 
 func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {

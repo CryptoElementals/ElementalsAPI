@@ -71,7 +71,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 		return err
 	}
 	// Mark surrender in current turn's PlayerTurnInfo
-	playerTurnInfo := g.getPlayerTurnInfo(p)
+	playerTurnInfo := p.getCurrentPlayerTurnInfo()
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN // Use a status to indicate surrender
 	// Check if game is over
 	isGameComplete := g.gameInfo.GameResult != nil
@@ -96,7 +96,7 @@ func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
 		return err
 	}
 	// Update PlayerTurnInfo for current turn
-	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
 
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
@@ -250,7 +250,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	}
 
 	// it should already be created in the turn creation
-	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.TurnSubmittedCard.CommitmentHash = evt.Commitment
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED
 
@@ -300,7 +300,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	}
 
 	// Update the current turn's PlayerTurnInfo with CardID and Salt
-	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.TurnSubmittedCard.CardID = uint32(cardID)
 	playerTurnInfo.TurnSubmittedCard.Salt = evt.Salt
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
@@ -330,7 +330,8 @@ func (g *Game) areAllPlayersReady() bool {
 func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
-		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		var _ uint32 = turnNumber
+		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 			return false
 		}
@@ -345,7 +346,8 @@ func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
 func (g *Game) haveAllPlayersSubmittedCard(cardIdx uint32) bool {
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
-		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		var _ uint32 = turnNumber
+		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 			return false
 		}
@@ -364,7 +366,7 @@ func (g *Game) handleTurnEnd() error {
 	roundNumber := g.currentRound.round.RoundNumber
 
 	// Execute battles for this card index
-	isGameOver, gameResult, err := g.currentRound.executeCardIndex(cardIdx)
+	isGameOver, gameResult, err := g.currentRound.executeCardIndex()
 	if err != nil {
 		return fmt.Errorf("failed to execute card index %d: %v", cardIdx, err)
 	}
@@ -378,7 +380,7 @@ func (g *Game) handleTurnEnd() error {
 	playerTurnInfos := make([]*types.PlayerTurnInfo, 0, len(g.currentRound.gamePlayers))
 	for _, p := range g.currentRound.gamePlayers {
 		// Get PlayerTurnInfo for current turn
-		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		// Use TurnSubmittedCard directly
 		playerTurnInfos = append(playerTurnInfos, &types.PlayerTurnInfo{
 			PlayerAddress: p.PlayerAddress(),
@@ -410,9 +412,7 @@ func (g *Game) handleTurnEnd() error {
 	// Otherwise, prepare for the next turn
 	g.incrementTurnNumber()
 	// Create the next turn record immediately after turn completion
-	nextTurn := g.currentRound.createNewTurn()
-	nextTurn.RoundID = g.currentRound.round.ID
-	// PlayerTurnInfos will be recreated when players submit for the new turn
+	g.currentRound.createNewTurn()
 	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
 	if err = g.saveRound(g.currentRound.round); err != nil {
 		return err

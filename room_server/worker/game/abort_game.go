@@ -58,7 +58,7 @@ func (g *Game) sendTurnCompletedEventForAbort() {
 			for _, p := range g.currentRound.gamePlayers {
 				// Get PlayerTurnInfo for current turn if available
 				var submittedCard *dao.TurnSubmittedCard
-				if turnInfo := p.getPlayerTurnInfoForTurn(turnNumber); turnInfo != nil && turnInfo.TurnSubmittedCard != nil {
+				if turnInfo := p.getCurrentPlayerTurnInfo(); turnInfo != nil && turnInfo.TurnSubmittedCard != nil {
 					submittedCard = turnInfo.TurnSubmittedCard
 				}
 				playerTurnInfos = append(playerTurnInfos, &types.PlayerTurnInfo{
