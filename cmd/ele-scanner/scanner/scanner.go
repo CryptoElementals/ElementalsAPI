@@ -495,9 +495,12 @@ func (s *Scanner) getAndProcessBlockToBatch(blockHeight *big.Int) (*proto.Transa
 	}
 	txsToSubmit := make([]*proto.Transaction, 0)
 	for _, tx := range parsedTxs {
-		if tx.To != "0x4200000000000000000000000000000000000015" {
-			log.Debugf("parsed tx: %+v", tx)
+		if strings.EqualFold(tx.To, s.roomV2Address) { // specail tx
+			log.Debugf("parsed special tx: %+v", tx)
+		} else {
+			continue
 		}
+
 		txs, err := s.processTx(tx)
 		if err != nil {
 			log.Errorf("processTx failed, err %s, tx %+v", err.Error(), tx)
@@ -528,7 +531,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 	hash := common.HexToHash(tx.Hash)
 	receipt, err := s.gethClient.TransactionReceipt(s.ctx, hash)
 	if err != nil {
-		return nil, err
+		return nil, err // get receipt failed, retry later
 	}
 
 	for _, vLog := range receipt.Logs {
@@ -544,7 +547,8 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 		if eventName == RoomV2ContractRoomCreatedEventName {
 			eventData := contract.RoomV2ContractRoomCreated{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
 			}
 
 			txSubmit = &proto.Transaction{
@@ -559,7 +563,8 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 		if eventName == RoomV2ContractStartANewTurnEventName {
 			eventData := contract.RoomV2ContractStartANewTurn{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
 			}
 
 			txSubmit = &proto.Transaction{
@@ -577,7 +582,8 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 		if eventName == RoomV2ContractSubmitCardHashEventName {
 			eventData := contract.RoomV2ContractSubmitCardHash{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
 			}
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
@@ -599,7 +605,8 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 		if eventName == RoomV2ContractSubmitCardEventName {
 			eventData := contract.RoomV2ContractSubmitCard{}
 			if err := s.roomV2Abi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
 			}
 
 			txSubmit = &proto.Transaction{
