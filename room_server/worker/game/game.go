@@ -474,29 +474,3 @@ func (g *Game) sendTurnReady() error {
 		TurnNumber:  g.currentRound.getCurrentTurnNumber(),
 	})
 }
-
-func (g *Game) abortedGameResult() *dao.GameResult {
-	gameRes := &dao.GameResult{
-		GameResultType: proto.GameResultType_GAME_ABORTED,
-		BattleReward: &dao.BattleReward{
-			PlayerRewards: []*dao.PlayerReward{},
-		},
-	}
-	for _, player := range g.currentRound.gamePlayers {
-		playerReward := &dao.PlayerReward{
-			PlayerId:         player.player.PlayerId,
-			TemporaryAddress: player.player.TemporaryAddress,
-		}
-		gameRes.BattleReward.PlayerRewards = append(gameRes.BattleReward.PlayerRewards, playerReward)
-	}
-	return gameRes
-}
-
-func currentHpFromCards(cards []*dao.TurnSubmittedCard) int64 {
-	if len(cards) == 0 {
-		return 0
-	}
-	// Get the last card (assuming they're ordered by turn)
-	lastCard := cards[len(cards)-1]
-	return int64(lastCard.HealthAfter)
-}

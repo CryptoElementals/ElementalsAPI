@@ -457,55 +457,6 @@ func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, is
 	return nil
 }
 
-// sendGameCompletedEventAndStop sends game completed event and stops the game
-// Used by abort handlers that need to trigger game result settlement
-func (g *Game) sendGameCompletedEventAndStop() {
-	completeEvt := &types.GameCompletedEvent{
-		GameID:   g.gameInfo.ID,
-		GameInfo: g.gameInfo,
-	}
-	// Still need to call HandleGameCompletedEvent for game result settlement
-	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
-		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-	}
-	g.stopGame()
-}
-
-// can go into game end from any other status
-func (g *Game) handleGameAbortInit() error {
-	log.Infow("game aborted", "game id", g.gameInfo.ID)
-	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
-		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
-	}
-	g.currentRound.round.IsLastRound = true
-	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
-	g.gameInfo.GameResult = g.abortedGameResult()
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
-	g.sendGameCompletedEventAndStop()
-	return nil
-}
-
-// can go into game end from any other status
-func (g *Game) handleGameAbortInternalError() error {
-	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
-	if g.currentRound.round != nil {
-		g.currentRound.round.IsLastRound = true
-		g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
-	}
-
-	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
-	g.gameInfo.GameResult = g.abortedGameResult()
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
-	g.sendGameCompletedEventAndStop()
-	return nil
-}
-
 // handleGetGameInfoRequest handles the GetGameInfoRequest event and sends back a response
 func (g *Game) handleGetGameInfoRequest(event *types.Event) error {
 	// Get the game info (lock is already held by Handle)
