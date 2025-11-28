@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -38,7 +39,7 @@ type roundInfo struct {
 
 func (i *roundInfo) prepareNewRound() {
 	i.roundNum++
-	i.turnNumber = 0 // Reset turn number for new round
+	i.turnNumber = 1 // Reset turn number for new round
 	i.cards = nil
 	i.commitments = nil
 	i.salts = nil
@@ -211,7 +212,7 @@ func (b *Bot) runGameLoop() error {
 					maxTurns:  matched.MaxTurnNum,
 					currentRound: roundInfo{
 						roundNum:    1,
-						turnNumber:  0, // Will be set when turn ready event is received
+						turnNumber:  1, // Will be set when turn ready event is received
 						commitments: nil,
 						cards:       nil,
 						salts:       nil,
@@ -250,9 +251,6 @@ func (b *Bot) runGameLoop() error {
 					continue
 				}
 				log.Infow("round ready", "game id", b.currentGame.id, "round", roundReady.RoundNum)
-				// Prepare 3 cards, salts, and commitments for this round
-				b.currentGame.currentRound.roundNum = uint(roundReady.RoundNum)
-				b.currentGame.currentRound.turnNumber = 0 // Reset turn number
 				b.currentGame.currentRound.prepareCards()
 			case proto.EventType_TYPE_TURN_READY:
 				if b.currentGame == nil {
@@ -266,13 +264,9 @@ func (b *Bot) runGameLoop() error {
 				}
 				// Validate round and turn numbers
 				expectedRoundNum := b.currentGame.currentRound.roundNum
-				expectedTurnNum := b.currentGame.currentRound.turnNumber + 1 // Next expected turn (1-3)
+				expectedTurnNum := b.currentGame.currentRound.turnNumber // Expected turn (1-3)
 				if uint(turnReady.RoundNum) != expectedRoundNum {
 					log.Errorw("round number mismatch in turn ready", "expected", expectedRoundNum, "received", turnReady.RoundNum, "game id", b.currentGame.id)
-					continue
-				}
-				if turnReady.TurnNum < 1 || turnReady.TurnNum > 3 {
-					log.Errorw("invalid turn number", "turn", turnReady.TurnNum, "game id", b.currentGame.id)
 					continue
 				}
 				if turnReady.TurnNum != expectedTurnNum {
@@ -280,18 +274,31 @@ func (b *Bot) runGameLoop() error {
 					continue
 				}
 				log.Infow("turn ready", "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
-				// Update turn number
-				b.currentGame.currentRound.turnNumber = turnReady.TurnNum
 				// Submit commitment for this turn using turn number - 1 as index
 				turnIdx := int(turnReady.TurnNum) - 1
 				if turnIdx >= 0 && turnIdx < len(b.currentGame.currentRound.commitments) {
-					err := b.client.RpcClient.SubmitPlayerCommitment(
+					// Generate signature: game id, round number, commitment index, commitment
+					commitment := b.currentGame.currentRound.commitments[turnIdx][:]
+					signature, err := utils.Sign(
+						[]any{
+							big.NewInt(int64(b.currentGame.id)),
+							uint32(turnReady.RoundNum),
+							uint32(turnReady.TurnNum),
+							commitment,
+						},
+						b.w.tempWallet.GetPrivateKey(),
+					)
+					if err != nil {
+						log.Errorw("generate signature failed", "err", err, "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
+						continue
+					}
+					err = b.client.RpcClient.SubmitPlayerCommitment(
 						b.ctx,
 						b.addr,
 						turnReady.RoundNum,
-						b.currentGame.currentRound.commitments[turnIdx][:],
+						commitment,
 						turnReady.TurnNum,
-						nil, // Signature - empty for bots
+						signature,
 						b.currentGame.id,
 					)
 					if err != nil {
@@ -327,22 +334,24 @@ func (b *Bot) runGameLoop() error {
 				// Submit card and salt for the current turn using turn number - 1 as index
 				turnNumber := commitmentsOnChain.TurnNum
 				turnIdx := int(turnNumber) - 1
-				if turnIdx < 0 || turnIdx >= 3 {
-					log.Errorw("invalid turn number", "turn", turnNumber, "game id", b.currentGame.id)
-					continue
-				}
 				cardID := b.currentGame.currentRound.cards[turnIdx]
 				salt := b.currentGame.currentRound.salts[turnIdx]
-				err := b.client.RpcClient.SubmitPlayerCard(
-					b.ctx,
-					b.addr,
-					commitmentsOnChain.RoundNum,
-					[]byte(salt),
-					uint(cardID),
-					turnNumber,
-					nil, // Signature - empty for bots
-					b.currentGame.id,
+				// Generate signature: game id, round number, card index, card, salt
+				signature, err := utils.Sign(
+					[]any{
+						big.NewInt(int64(b.currentGame.id)),
+						uint32(commitmentsOnChain.RoundNum),
+						uint32(turnNumber),
+						uint32(cardID),
+						[]byte(salt),
+					},
+					b.w.tempWallet.GetPrivateKey(),
 				)
+				if err != nil {
+					log.Errorw("generate signature failed", "err", err, "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber)
+					continue
+				}
+				err = b.client.RpcClient.SubmitPlayerCard(b.ctx, b.addr, commitmentsOnChain.RoundNum, []byte(salt), uint(cardID), turnNumber, signature, b.currentGame.id)
 				if err != nil {
 					log.Errorw("submit card failed", "err", err, "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber)
 				} else {
@@ -402,9 +411,18 @@ func (b *Bot) runGameLoop() error {
 						log.Infow("confirmed battle for next round", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
 					}
 				} else {
+					// Update turn number
+					b.currentGame.currentRound.turnNumber++
 					// Otherwise, just prepare for next turn (no action needed, will wait for next turn ready event)
 					log.Debugw("turn complete, waiting for next turn", "game id", b.currentGame.id, "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum)
 				}
+			case proto.EventType_TYPE_GAME_PHASE_SYNC:
+				gamePhaseSync := evt.GetGamePhase()
+				if gamePhaseSync == nil {
+					log.Errorw("game phase sync event missing GamePhaseSync data", "addr", b.addr.String())
+					continue
+				}
+
 			}
 		case err, ok := <-b.chanErr:
 			if !ok {

@@ -36,6 +36,15 @@ func GetUserProfileByPlayerID(playerID string) (*dao.UserProfile, error) {
 	return &userProfile, nil
 }
 
+// GetUserProfileByPlayerID 根据玩家ID获取用户档案
+func GetUserProfileByPlayerIDInt(playerID int64) (*dao.UserProfile, error) {
+	var userProfile dao.UserProfile
+	if err := Get().Where("player_id = ?", playerID).First(&userProfile).Error; err != nil {
+		return nil, err
+	}
+	return &userProfile, nil
+}
+
 // CreateUserProfile 创建用户档案
 func CreateUserProfile(userProfile *dao.UserProfile) error {
 	return Get().Create(userProfile).Error

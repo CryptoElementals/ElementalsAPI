@@ -9,6 +9,8 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/utils"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Handle is the main entry point for handling events
@@ -69,7 +71,7 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 		return err
 	}
 	// Mark surrender in current turn's PlayerTurnInfo
-	playerTurnInfo := g.getPlayerTurnInfo(p)
+	playerTurnInfo := p.getCurrentPlayerTurnInfo()
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN // Use a status to indicate surrender
 	// Check if game is over
 	isGameComplete := g.gameInfo.GameResult != nil
@@ -94,7 +96,7 @@ func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
 		return err
 	}
 	// Update PlayerTurnInfo for current turn
-	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
 
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), &types.RoundPartialReadyEvent{
@@ -248,7 +250,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	}
 
 	// it should already be created in the turn creation
-	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.TurnSubmittedCard.CommitmentHash = evt.Commitment
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED
 
@@ -298,7 +300,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	}
 
 	// Update the current turn's PlayerTurnInfo with CardID and Salt
-	playerTurnInfo := g.getPlayerTurnInfo(player)
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.TurnSubmittedCard.CardID = uint32(cardID)
 	playerTurnInfo.TurnSubmittedCard.Salt = evt.Salt
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
@@ -328,7 +330,8 @@ func (g *Game) areAllPlayersReady() bool {
 func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
-		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		var _ uint32 = turnNumber
+		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 			return false
 		}
@@ -343,7 +346,8 @@ func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
 func (g *Game) haveAllPlayersSubmittedCard(cardIdx uint32) bool {
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
-		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		var _ uint32 = turnNumber
+		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 			return false
 		}
@@ -362,7 +366,7 @@ func (g *Game) handleTurnEnd() error {
 	roundNumber := g.currentRound.round.RoundNumber
 
 	// Execute battles for this card index
-	isGameOver, gameResult, err := g.currentRound.executeCardIndex(cardIdx)
+	isGameOver, gameResult, err := g.currentRound.executeCardIndex()
 	if err != nil {
 		return fmt.Errorf("failed to execute card index %d: %v", cardIdx, err)
 	}
@@ -376,7 +380,7 @@ func (g *Game) handleTurnEnd() error {
 	playerTurnInfos := make([]*types.PlayerTurnInfo, 0, len(g.currentRound.gamePlayers))
 	for _, p := range g.currentRound.gamePlayers {
 		// Get PlayerTurnInfo for current turn
-		playerTurnInfo := p.getPlayerTurnInfoForTurn(turnNumber)
+		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		// Use TurnSubmittedCard directly
 		playerTurnInfos = append(playerTurnInfos, &types.PlayerTurnInfo{
 			PlayerAddress: p.PlayerAddress(),
@@ -408,9 +412,7 @@ func (g *Game) handleTurnEnd() error {
 	// Otherwise, prepare for the next turn
 	g.incrementTurnNumber()
 	// Create the next turn record immediately after turn completion
-	nextTurn := g.currentRound.createNewTurn()
-	nextTurn.RoundID = g.currentRound.round.ID
-	// PlayerTurnInfos will be recreated when players submit for the new turn
+	g.currentRound.createNewTurn()
 	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
 	if err = g.saveRound(g.currentRound.round); err != nil {
 		return err
@@ -452,55 +454,6 @@ func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, is
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-// sendGameCompletedEventAndStop sends game completed event and stops the game
-// Used by abort handlers that need to trigger game result settlement
-func (g *Game) sendGameCompletedEventAndStop() {
-	completeEvt := &types.GameCompletedEvent{
-		GameID:   g.gameInfo.ID,
-		GameInfo: g.gameInfo,
-	}
-	// Still need to call HandleGameCompletedEvent for game result settlement
-	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
-		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-	}
-	g.stopGame()
-}
-
-// can go into game end from any other status
-func (g *Game) handleGameAbortInit() error {
-	log.Infow("game aborted", "game id", g.gameInfo.ID)
-	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
-		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
-	}
-	g.currentRound.round.IsLastRound = true
-	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
-	g.gameInfo.GameResult = g.abortedGameResult()
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
-	g.sendGameCompletedEventAndStop()
-	return nil
-}
-
-// can go into game end from any other status
-func (g *Game) handleGameAbortInternalError() error {
-	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
-	if g.currentRound.round != nil {
-		g.currentRound.round.IsLastRound = true
-		g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
-	}
-
-	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
-	g.gameInfo.GameResult = g.abortedGameResult()
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
-	g.sendGameCompletedEventAndStop()
 	return nil
 }
 
@@ -605,12 +558,40 @@ func (g *Game) handleGetGameResultRequest(event *types.Event) error {
 func (g *Game) handleSubmitPlayerCommitment(reqEvt *types.SubmitPlayerCommitment) error {
 	// Validate the event - return error if validation fails, nil if valid
 	// The worker will automatically send the error to AckChan if present
-	return g.validatePlayerCommitment(reqEvt)
+	if err := g.validatePlayerCommitment(reqEvt); err != nil {
+		return err
+	}
+	// verify signature for: game id, round number, commitment index, commitment
+	valid, err := utils.Verify(
+		[]any{g.gameInfo.ID, reqEvt.RoundNumber, reqEvt.CommitmentIndex, reqEvt.Commitment},
+		reqEvt.Signature,
+		common.HexToAddress(reqEvt.Address.TemporaryAddress))
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }
 
 // handleSubmitPlayerCard handles the SubmitPlayerCard event
 func (g *Game) handleSubmitPlayerCard(reqEvt *types.SubmitPlayerCard) error {
 	// Validate the event - return error if validation fails, nil if valid
 	// The worker will automatically send the error to AckChan if present
-	return g.validatePlayerCard(reqEvt)
+	if err := g.validatePlayerCard(reqEvt); err != nil {
+		return err
+	}
+	// verify signature for: game id, round number, card index, card, salt
+	valid, err := utils.Verify(
+		[]any{g.gameInfo.ID, reqEvt.RoundNumber, reqEvt.CardIndex, reqEvt.Card, reqEvt.Salt},
+		reqEvt.Signature,
+		common.HexToAddress(reqEvt.Address.TemporaryAddress))
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }

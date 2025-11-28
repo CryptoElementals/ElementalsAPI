@@ -2,9 +2,10 @@ package worker
 
 import (
 	"context"
-	"fmt"
+	"reflect"
 	"sync"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
@@ -39,8 +40,9 @@ func (w *WorkerManager) SendEvent(to string, event *types.Event) {
 	// we might not find the worker, in this case, we should send an error
 	// for not blocking the sender
 	if event.AckChan != nil {
-		event.AckChan <- fmt.Errorf("worker not found: %s", to)
+		close(event.AckChan)
 	}
+	log.Errorw("worker not found", "worker id", to, "eventType", reflect.TypeOf(event.Data))
 }
 
 func (w *WorkerManager) CloseWorker(id string) {

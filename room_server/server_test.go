@@ -22,7 +22,7 @@ import (
 
 var chainRPC = "http://152.32.231.145:8545"
 var svrUrl = "localhost:30011"
-var roomManagerAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
+var roomV2ContractAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
 var fakeRoomAddress = "0x22767b2ba3cba853af78c9d91c6c520a2b5cb428"
 
 func setupTestSvc(t *testing.T, timeout ...int64) {
@@ -41,7 +41,7 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 				HttpRpc: chainRPC,
 			},
 			ContractConfig: config.ContractConfig{
-				RoomManagerAddress: roomManagerAddress,
+				RoomV2ContractAddress: roomV2ContractAddress,
 			},
 		},
 		WalletPaths: []string{tempFile},
