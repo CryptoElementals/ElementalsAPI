@@ -19,7 +19,7 @@ type UserProfile struct {
 	UpdatedAt         time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// BeforeCreate 确保在创建记录时生成 UUID 主键
+// BeforeCreate 确保在创建记录时生成主键
 func (u *UserProfile) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.PlayerID == 0 {
 		u.PlayerID = generateSnowflakeID()

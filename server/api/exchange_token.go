@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	Register(EXCHANGE_TOKEN_LABEL, NewExchangeTokenTask, COOKIEAUTH)
+	Register(EXCHANGE_TOKEN_LABEL, NewExchangeTokenTask, NOAUTH)
 }
 
 type ExchangeTokenRequest struct {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"gorm.io/gorm"
@@ -42,7 +43,26 @@ func CreateUserProfile(userProfile *dao.UserProfile) error {
 
 // UpdateUserProfile 更新用户档案
 func UpdateUserProfile(userProfile *dao.UserProfile) error {
-	return Get().Save(userProfile).Error
+	err := Get().Save(userProfile).Error
+	if err != nil {
+		// 检查是否是唯一性约束错误（用户名重复）
+		if isDuplicateEntryError(err) {
+			return cmnErrors.UserNameDuplicate(userProfile.Name)
+		}
+	}
+	return err
+}
+
+// isDuplicateEntryError 检查是否是 MySQL 唯一性约束错误
+func isDuplicateEntryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	// MySQL 唯一性约束错误通常包含 "duplicate entry" 或错误码 1062
+	return strings.Contains(errStr, "duplicate entry") ||
+		strings.Contains(errStr, "1062") ||
+		strings.Contains(errStr, "unique constraint")
 }
 
 // GetOrCreateUserProfile 获取或创建用户档案
@@ -53,8 +73,13 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			userProfile = dao.UserProfile{
 				Address: strings.ToLower(address),
-				Name:    strings.ToLower(address),
 			}
+			// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
+			if err = userProfile.BeforeCreate(Get()); err != nil {
+				return nil, err
+			}
+			// 直接使用生成的 PlayerID 设置 Name
+			userProfile.Name = strconv.FormatInt(userProfile.PlayerID, 10)
 			if err = Get().Create(&userProfile).Error; err != nil {
 				return nil, err
 			}
@@ -75,13 +100,15 @@ func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile,
 	if err != nil {
 		log.Infof("GetOrCreateUserProfileByEmail: errors.Is(err, gorm.ErrRecordNotFound): %v", errors.Is(err, gorm.ErrRecordNotFound))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			if name == "" {
-				name = email
-			}
 			userProfile = dao.UserProfile{
 				Email: email,
-				Name:  name,
 			}
+			// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
+			if err = userProfile.BeforeCreate(Get()); err != nil {
+				return nil, err
+			}
+			// 统一使用 player_id 作为默认 name
+			userProfile.Name = strconv.FormatInt(userProfile.PlayerID, 10)
 			log.Infof("GetOrCreateUserProfileByEmail: userProfile: %+v", userProfile)
 			if err = Get().Create(&userProfile).Error; err != nil {
 				log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
