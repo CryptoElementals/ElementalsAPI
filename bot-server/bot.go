@@ -17,7 +17,6 @@ import (
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"golang.org/x/crypto/sha3"
 )
 
 type playerWallet struct {
@@ -32,7 +31,7 @@ func (w *playerWallet) address() *types.PlayerAddress {
 type roundInfo struct {
 	roundNum    uint
 	turnNumber  uint32 // Current turn number (1-3)
-	commitments [][32]byte
+	commitments [][]byte
 	cards       []uint32 // Store cards as array for easier access
 	salts       []string
 }
@@ -58,23 +57,24 @@ func (i *roundInfo) prepareCards() {
 
 	// Store first 3 cards for this round
 	i.cards = allCards[:3]
-	i.commitments = make([][32]byte, 3)
+	i.commitments = make([][]byte, 3)
 	i.salts = make([]string, 3)
 
 	// Prepare commitment and salt for each card
-	for turnIdx := 0; turnIdx < 3; turnIdx++ {
+	for turnIdx := range 3 {
 		// Generate salt for this turn
 		salt := make([]byte, 32)
 		crand.Read(salt)
 		i.salts[turnIdx] = string(salt)
 
-		// Calculate commitment hash for this card
-		cardStr := fmt.Sprintf("%d", i.cards[turnIdx])
-		hh := sha3.NewLegacyKeccak256()
-		hh.Write([]byte(cardStr))
-		hh.Write(salt)
-		commitment := hh.Sum(nil)
-		copy(i.commitments[turnIdx][:], commitment)
+		// Calculate commitment hash for this card using SolidityPackedKeccak256
+		hash, _ := utils.SolidityPackedKeccak256(
+			[]any{
+				i.cards[turnIdx],
+				salt,
+			},
+		)
+		i.commitments[turnIdx] = hash.Bytes()
 	}
 }
 
@@ -278,12 +278,12 @@ func (b *Bot) runGameLoop() error {
 				turnIdx := int(turnReady.TurnNum) - 1
 				if turnIdx >= 0 && turnIdx < len(b.currentGame.currentRound.commitments) {
 					// Generate signature: game id, round number, commitment index, commitment
-					commitment := b.currentGame.currentRound.commitments[turnIdx][:]
+					commitment := b.currentGame.currentRound.commitments[turnIdx]
 					signature, err := utils.Sign(
 						[]any{
-							big.NewInt(int64(b.currentGame.id)),
-							uint32(turnReady.RoundNum),
-							uint32(turnReady.TurnNum),
+							b.currentGame.id,
+							turnReady.RoundNum,
+							turnReady.TurnNum,
 							commitment,
 						},
 						b.w.tempWallet.GetPrivateKey(),

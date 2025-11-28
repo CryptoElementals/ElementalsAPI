@@ -260,17 +260,6 @@ func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	return db.LockUserToken(q.ctx, address.Id, address.TemporaryAddress, q.minTokenToJoinQueue)
 }
 
-func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uint) error {
-	playerIds := make([]int64, 0, len(addresses))
-	tempAddresses := make([]string, 0, len(addresses))
-	for i := range addresses {
-		log.Infow("lock user tokens for continue", "addr", addresses[i].String(), "token amount", q.minTokenToJoinQueue, "game id", gameID)
-		playerIds = append(playerIds, addresses[i].Id)
-		tempAddresses = append(tempAddresses, addresses[i].TemporaryAddress)
-	}
-	return db.LockUserTokenForContinue(q.ctx, playerIds, tempAddresses, q.minTokenToJoinQueue, gameID)
-}
-
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	log.Infow("unlock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress)

@@ -333,7 +333,6 @@ func (c *GameContext) submitCommitment(commitment []byte) error {
 
 // submitCard submits the card and salt via RPC
 func (c *GameContext) submitCard(card uint32, salt string) error {
-	cardStr := fmt.Sprintf("%d", card)
 	fmt.Println("submit cards, round: ", c.currentRound)
 	// Generate signature: game id, round number, card index, card, salt
 	signature, err := utils.Sign(
@@ -341,7 +340,7 @@ func (c *GameContext) submitCard(card uint32, salt string) error {
 			c.gameID,
 			c.currentRound,
 			c.currentTurn,
-			cardStr,
+			card,
 			salt,
 		},
 		c.wallet.GetPrivateKey(),

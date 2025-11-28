@@ -14,86 +14,6 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-type gamePlayer struct {
-	player          *dao.GamePlayerInfo
-	currentTurnInfo *dao.PlayerTurnInfo
-	totalLostHP     int64
-	currentHP       int64
-	// Battle state fields (used during battle execution)
-	multiplier uint32       // Calculated from totalLostHP
-	status     playerStatus // Runtime player status during battle
-}
-
-func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
-	addr := types.PlayerAddress{}
-	addr.FromDao(*p.player)
-	return addr
-}
-
-func (p *gamePlayer) String() string {
-	return fmt.Sprintf("%d_%s", p.player.PlayerId, p.player.TemporaryAddress)
-}
-
-// getSubmittedCards returns all submitted cards from playerTurnInfos as TurnSubmittedCard
-// func (p *gamePlayer) getSubmittedCards() []*dao.TurnSubmittedCard {
-// 	// Count non-nil cards first to pre-allocate
-// 	count := 0
-// 	for _, turnInfo := range p.playerTurnInfos {
-// 		if turnInfo.TurnSubmittedCard != nil {
-// 			count++
-// 		}
-// 	}
-// 	if count == 0 {
-// 		return nil
-// 	}
-// 	cards := make([]*dao.TurnSubmittedCard, 0, count)
-// 	for _, turnInfo := range p.playerTurnInfos {
-// 		if turnInfo.TurnSubmittedCard != nil {
-// 			cards = append(cards, turnInfo.TurnSubmittedCard)
-// 		}
-// 	}
-// 	return cards
-// }
-
-func (g *gamePlayer) getLastSubmittedCard() *dao.TurnSubmittedCard {
-	return g.currentTurnInfo.TurnSubmittedCard
-}
-
-// getCurrentPlayerTurnInfo returns PlayerTurnInfo for a specific turn number
-// Note: This assumes playerTurnInfos are ordered by turn number, which may not always be true
-// A better approach would be to match by TurnID, but we need access to the Turn records
-func (p *gamePlayer) getCurrentPlayerTurnInfo() *dao.PlayerTurnInfo {
-	return p.currentTurnInfo
-}
-
-// isPlayerReady checks if player is ready for current turn
-func (p *gamePlayer) isPlayerReady() bool {
-	// Check the latest turn info's status
-	if p.currentTurnInfo == nil {
-		return false
-	}
-	return p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
-		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
-		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
-}
-
-// isSurrendered checks if player has surrendered
-func (p *gamePlayer) isSurrendered() bool {
-	// Check if any turn info indicates surrender
-	return p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN
-}
-
-// // getLostHP calculates lost HP from submitted cards
-// func (p *gamePlayer) getLostHP() int32 {
-// 	lostHP := int32(0)
-// 	for _, card := range p.getSubmittedCards() {
-// 		if card.HealthBefore > card.HealthAfter {
-// 			lostHP += int32(card.HealthBefore - card.HealthAfter)
-// 		}
-// 	}
-// 	return lostHP
-// }
-
 type Game struct {
 	ctx                 context.Context
 	gameInfo            *dao.Game
@@ -286,22 +206,6 @@ func (g *Game) saveGame() error {
 	return nil
 }
 
-// createPlayerTurnInfo creates a new PlayerTurnInfo for the current turn
-// Ensures it's stored at the correct index to maintain sorted order by turn number
-func (g *Game) createPlayerTurnInfo(player *gamePlayer) *dao.PlayerTurnInfo {
-	currentTurn := g.currentRound.getCurrentTurn()
-	// Create new PlayerTurnInfo for current turn
-	newPlayerTurnInfo := &dao.PlayerTurnInfo{
-		TurnID:           currentTurn.ID,
-		PlayerID:         player.player.PlayerId,
-		TemporaryAddress: player.player.TemporaryAddress,
-		PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
-	}
-	player.currentTurnInfo = newPlayerTurnInfo
-	currentTurn.PlayerTurnInfos = append(currentTurn.PlayerTurnInfos, newPlayerTurnInfo)
-	return newPlayerTurnInfo
-}
-
 func (g *Game) saveRound(round *dao.Round) error {
 	err := db.SaveRound(round)
 	if err != nil {
@@ -332,10 +236,6 @@ func (g *Game) pushStateToContractCreating() error {
 // setupNewTurn sends event to chain manager to setup a new turn
 // Note: For the first turn of the first round, this is not needed as the contract creation handles it
 func (g *Game) setupNewTurn() error {
-	// Skip for the first turn of the first round
-	if g.currentRound.round.RoundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
-		return nil
-	}
 	// RoomContract check removed - always uses RoomV2 contract address
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	log.Infow("setup new turn", "game id", g.gameInfo.ID, "round number", g.currentRound.round.RoundNumber, "turn number", turnNumber)
@@ -382,10 +282,6 @@ func (g *Game) setupNewRound() {
 	}
 	g.currentRound.round = newRound // Update the embedded Round's reference
 	g.currentRound.turnNumber = 1   // Start with turn 1 for each new round
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
-
-	// Create turn 1 record immediately when new round is set up
-	// This will also initialize playerTurnInfos for all players
 	g.currentRound.createNewTurn()
 	g.gameInfo.Rounds = append(g.gameInfo.Rounds, newRound)
 	g.sendTimerEventByCurrentRound()
