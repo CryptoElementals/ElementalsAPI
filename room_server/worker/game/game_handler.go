@@ -28,7 +28,7 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	case *types.GetGamePhaseRequest:
 		return g.handleGetGamePhaseRequest(event)
 	case *types.SyncGamePhaseRequest:
-		return g.handleSyncGamePhaseRequest(event, evt)
+		return g.handleSyncGamePhaseRequest(evt)
 	case *types.GetGameResultRequest:
 		return g.handleGetGameResultRequest(event)
 	case *types.SubmitPlayerCommitment:
@@ -519,7 +519,7 @@ func (g *Game) handleGetGamePhaseRequest(event *types.Event) error {
 }
 
 // handleSyncGamePhaseRequest handles the SyncGamePhaseRequest event and sends game phase directly to receiver
-func (g *Game) handleSyncGamePhaseRequest(event *types.Event, reqEvt *types.SyncGamePhaseRequest) error {
+func (g *Game) handleSyncGamePhaseRequest(reqEvt *types.SyncGamePhaseRequest) error {
 	// Get the game phase (lock is already held by Handle)
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	turnStartAt := int64(0)

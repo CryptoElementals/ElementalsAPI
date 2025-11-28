@@ -138,29 +138,6 @@ func (r *round) isServerTimeout() bool {
 		r.round.CompleteReason == proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT
 }
 
-// checkPlayerStatuses checks for surrendered and offline players
-func (r *round) checkPlayerStatuses() (bool, bool) {
-	hasSurrenderedPlayer := false
-	hasOfflinePlayer := false
-
-	for _, gamePlayer := range r.gamePlayers {
-		if gamePlayer.isSurrendered() {
-			hasSurrenderedPlayer = true
-		}
-		// Check commitment from submitted cards
-		submittedCards := gamePlayer.getLastSubmittedCard()
-		if submittedCards == nil || len(submittedCards.CommitmentHash) == 0 {
-			hasOfflinePlayer = true
-		}
-		// Early exit if both conditions are already found
-		if hasSurrenderedPlayer && hasOfflinePlayer {
-			break
-		}
-	}
-
-	return hasSurrenderedPlayer, hasOfflinePlayer
-}
-
 // processCardBattle processes a single card battle between two players
 func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
 	// Get elemental relation

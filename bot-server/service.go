@@ -23,7 +23,7 @@ type Service struct {
 	wg           sync.WaitGroup
 }
 
-func parseWallet(path config.WalletInfo, rpcClient *rpc.Client, ctx context.Context) (*playerWallet, error) {
+func parseWallet(path config.WalletInfo) (*playerWallet, error) {
 	tempWallet, err := wallet.LoadWallet(path.TemporaryWallet)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func NewService(
 	bots := make([]*Bot, 0, len(walletInfos))
 	addresses := make([]*types.PlayerAddress, 0, len(walletInfos))
 	for _, walletInfo := range walletInfos {
-		p, err := parseWallet(walletInfo, rpcClient, ctx)
+		p, err := parseWallet(walletInfo)
 		if err != nil {
 			return nil, err
 		}
