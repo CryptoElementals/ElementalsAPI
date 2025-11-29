@@ -8,6 +8,15 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+// PlayerStatus represents a player's status
+type playerStatus int32
+
+const (
+	playerStatusOnline playerStatus = iota
+	playerStatusOffline
+	playerStatusSurrendered
+)
+
 type gamePlayer struct {
 	player          *dao.GamePlayerInfo
 	currentTurnInfo *dao.PlayerTurnInfo

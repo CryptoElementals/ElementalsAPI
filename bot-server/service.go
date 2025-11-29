@@ -42,11 +42,11 @@ func NewService(
 	roomServerEndpoint string,
 	mimicPlayers bool,
 ) (*Service, error) {
-	ctx, ccl := context.WithCancel(ctx)
 	chainClient, err := ethclient.Dial(chainEndpoint)
 	if err != nil {
 		return nil, err
 	}
+	ctx, ccl := context.WithCancel(ctx)
 	chainID, err := chainClient.ChainID(ctx)
 	if err != nil {
 		return nil, err

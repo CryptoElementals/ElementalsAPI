@@ -10,49 +10,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// ElementalRelation represents the relationship between two cards
-type elementalRelation struct {
-	P1Type        string
-	P2Type        string
-	P1Description string
-	P2Description string
-}
 
-// Ke (Overpower) relations - Metal > Wood > Earth > Water > Fire > Metal
-var keRelations = map[string]string{
-	"Metal": "Wood",
-	"Wood":  "Earth",
-	"Earth": "Water",
-	"Water": "Fire",
-	"Fire":  "Metal",
-}
-
-// Sheng (Nurture) relations - Metal nurtures Water, Water nurtures Wood, etc.
-var shengRelations = map[string]string{
-	"Metal": "Water",
-	"Water": "Wood",
-	"Wood":  "Fire",
-	"Fire":  "Earth",
-	"Earth": "Metal",
-}
-
-// BattleEffect represents an effect in battle
-type battleEffect struct {
-	Type                   proto.BattleEffectType
-	Value                  int
-	TargetPlayerId         int64
-	TargetTemporaryAddress string
-	Description            string
-}
-
-// PlayerStatus represents a player's status
-type playerStatus int32
-
-const (
-	playerStatusOnline playerStatus = iota
-	playerStatusOffline
-	playerStatusSurrendered
-)
 
 // GameResultType represents the type of game result
 type gameResultType int32
@@ -141,7 +99,7 @@ func (r *round) isServerTimeout() bool {
 // processCardBattle processes a single card battle between two players
 func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
 	// Get elemental relation
-	relation := r.getElementalRelation(card1, card2, p1.player.PlayerId, p2.player.PlayerId)
+	relation := getElementalRelation(card1, card2, p1.player.PlayerId, p2.player.PlayerId)
 	effects1 := r.buildPlayerEffects(relation.P1Type, card1, card2, p1.player.PlayerId, p1.player.TemporaryAddress, p2.player.PlayerId)
 	effects2 := r.buildPlayerEffects(relation.P2Type, card2, card1, p2.player.PlayerId, p2.player.TemporaryAddress, p1.player.PlayerId)
 
@@ -242,14 +200,14 @@ func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
 }
 
 // updateCardStats updates the card stats in the DAO structure
-func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP int, beforeMul, afterMul uint32, relationType, description string, effects []battleEffect) {
+func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP int, beforeMul, afterMul uint32, relationType, description string, effects []*dao.CardEffect) {
 	card.HealthBefore = uint32(beforeHP)
 	card.HealthAfter = uint32(afterHP)
 	card.MultiplierBefore = beforeMul
 	card.MultiplierAfter = afterMul
 	card.Description = description
 	card.ElementRelation = r.mapElementRelationStringToEnum(relationType)
-	card.CardEffects = r.battleEffectsToDaoEffects(effects)
+	card.CardEffects = effects
 }
 
 func (r *round) getCard(cardID int) (*dao.Card, error) {
@@ -266,100 +224,46 @@ func (r *round) calculateMultiplierByLostHP(lostHP int) uint32 {
 	}
 	excessHP := lostHP - 2000
 	bonusMultiplier := uint32(excessHP) / 500
-	newMultiplier := 1 + bonusMultiplier
-	if newMultiplier > 9 {
-		newMultiplier = 9
-	}
+	newMultiplier := min(1+bonusMultiplier, 9)
 	return newMultiplier
 }
 
-func (r *round) getElementalRelation(card1, card2 *dao.Card, playerId1, playerId2 int64) *elementalRelation {
-	// Check Ke (overpower) relations
-	if target, hasRelation := keRelations[card1.ElementType]; hasRelation && target == card2.ElementType {
-		return r.buildRelation("overpower", "overpowered", card1.ElementType, playerId1, card2.ElementType, playerId2)
-	}
-	if target, hasRelation := keRelations[card2.ElementType]; hasRelation && target == card1.ElementType {
-		return r.buildRelation("overpowered", "overpower", card1.ElementType, playerId1, card2.ElementType, playerId2)
-	}
-
-	// Check Sheng (nurture) relations
-	if target, hasRelation := shengRelations[card1.ElementType]; hasRelation && target == card2.ElementType {
-		return r.buildRelation("nurture", "nurtured", card1.ElementType, playerId1, card2.ElementType, playerId2)
-	}
-	if target, hasRelation := shengRelations[card2.ElementType]; hasRelation && target == card1.ElementType {
-		return r.buildRelation("nurtured", "nurture", card1.ElementType, playerId1, card2.ElementType, playerId2)
-	}
-
-	// Even (tie)
-	return &elementalRelation{
-		P1Type:        "even",
-		P2Type:        "even",
-		P1Description: fmt.Sprintf("%s(%d) and %s(%d) are even", card1.ElementType, playerId1, card2.ElementType, playerId2),
-		P2Description: fmt.Sprintf("%s(%d) and %s(%d) are even", card2.ElementType, playerId2, card1.ElementType, playerId1),
-	}
-}
-
-// buildRelation builds an elemental relation structure
-func (r *round) buildRelation(p1Type, p2Type string, elem1 string, playerId1 int64, elem2 string, playerId2 int64) *elementalRelation {
-	var p1Desc, p2Desc string
-	switch p1Type {
-	case "overpower":
-		p1Desc = fmt.Sprintf("%s(%d) overpowers %s(%d)", elem1, playerId1, elem2, playerId2)
-		p2Desc = fmt.Sprintf("%s(%d) is overpowered by %s(%d)", elem2, playerId2, elem1, playerId1)
-	case "overpowered":
-		p1Desc = fmt.Sprintf("%s(%d) is overpowered by %s(%d)", elem1, playerId1, elem2, playerId2)
-		p2Desc = fmt.Sprintf("%s(%d) overpowers %s(%d)", elem2, playerId2, elem1, playerId1)
-	case "nurture":
-		p1Desc = fmt.Sprintf("%s(%d) nurtures %s(%d)", elem1, playerId1, elem2, playerId2)
-		p2Desc = fmt.Sprintf("%s(%d) is nurtured by %s(%d)", elem2, playerId2, elem1, playerId1)
-	case "nurtured":
-		p1Desc = fmt.Sprintf("%s(%d) is nurtured by %s(%d)", elem1, playerId1, elem2, playerId2)
-		p2Desc = fmt.Sprintf("%s(%d) nurtures %s(%d)", elem2, playerId2, elem1, playerId1)
-	}
-	return &elementalRelation{
-		P1Type:        p1Type,
-		P2Type:        p2Type,
-		P1Description: p1Desc,
-		P2Description: p2Desc,
-	}
-}
-
-func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfPlayerId int64, selfTemp string, opponentPlayerId int64) []battleEffect {
-	var effects []battleEffect
+func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfPlayerId int64, selfTemp string, opponentPlayerId int64) []*dao.CardEffect {
+	var effects []*dao.CardEffect
 
 	desc := func(action string) string {
 		return fmt.Sprintf("%s(%d) %s %s(%d)", selfCard.ElementType, selfPlayerId, action, opponentCard.ElementType, opponentPlayerId)
 	}
 
 	switch playerType {
-	case "overpower":
+	case RelationOverpower:
 		// No effects
-	case "overpowered":
+	case RelationOverpowered:
 		attackValue := opponentCard.Attack - selfCard.Defense
 		// Two attacks for overpowered
 		for _, action := range []string{"is attacked by", "is double attacked by"} {
-			effects = append(effects, battleEffect{
+			effects = append(effects, &dao.CardEffect{
 				Type:                   proto.BattleEffectType_ATTACK,
-				Value:                  attackValue,
+				Value:                  int32(attackValue),
 				Description:            desc(action),
 				TargetPlayerId:         selfPlayerId,
 				TargetTemporaryAddress: selfTemp,
 			})
 		}
-	case "nurture":
+	case RelationNurture:
 		// No effects
-	case "nurtured":
-		effects = append(effects, battleEffect{
+	case RelationNurtured:
+		effects = append(effects, &dao.CardEffect{
 			Type:                   proto.BattleEffectType_HEAL,
-			Value:                  selfCard.LifeForce,
+			Value:                  int32(selfCard.LifeForce),
 			Description:            desc("is healed by"),
 			TargetPlayerId:         selfPlayerId,
 			TargetTemporaryAddress: selfTemp,
 		})
-	case "even":
-		effects = append(effects, battleEffect{
+	case RelationEven:
+		effects = append(effects, &dao.CardEffect{
 			Type:                   proto.BattleEffectType_ATTACK,
-			Value:                  opponentCard.Attack - selfCard.Defense,
+			Value:                  int32(opponentCard.Attack - selfCard.Defense),
 			Description:            desc("is attacked by"),
 			TargetPlayerId:         selfPlayerId,
 			TargetTemporaryAddress: selfTemp,
@@ -369,13 +273,10 @@ func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 	return effects
 }
 
-func (r *round) executeEffects(effects []battleEffect) int {
+func (r *round) executeEffects(effects []*dao.CardEffect) int {
 	hpDelta := 0
 	for _, effect := range effects {
-		value := effect.Value
-		if value < 0 {
-			value = 0
-		}
+		value := max(int(effect.Value), 0)
 		switch effect.Type {
 		case proto.BattleEffectType_ATTACK:
 			hpDelta -= value
@@ -386,29 +287,15 @@ func (r *round) executeEffects(effects []battleEffect) int {
 	return hpDelta
 }
 
-func (r *round) battleEffectsToDaoEffects(effects []battleEffect) []*dao.CardEffect {
-	daoEffects := make([]*dao.CardEffect, len(effects))
-	for i, effect := range effects {
-		daoEffects[i] = &dao.CardEffect{
-			Type:                   effect.Type,
-			Value:                  int32(effect.Value),
-			Description:            effect.Description,
-			TargetPlayerId:         effect.TargetPlayerId,
-			TargetTemporaryAddress: effect.TargetTemporaryAddress,
-		}
-	}
-	return daoEffects
-}
-
 func (r *round) mapElementRelationStringToEnum(s string) proto.ElementRelation {
 	switch s {
-	case "overpower":
+	case RelationOverpower:
 		return proto.ElementRelation_OVER_POWER
-	case "overpowered":
+	case RelationOverpowered:
 		return proto.ElementRelation_OVER_POWERED
-	case "nurture":
+	case RelationNurture:
 		return proto.ElementRelation_NURTURE
-	case "nurtured":
+	case RelationNurtured:
 		return proto.ElementRelation_NURTURED
 	default:
 		return proto.ElementRelation_TIE
