@@ -27,16 +27,9 @@ var gameGetCmd = &cobra.Command{
 			fmt.Printf("load game failed, err: %v\n", err)
 			return
 		}
-		fmt.Printf("game info: %s\n", types.ToJsonLoggable(game))
+		fmt.Printf("game info: %s\n", types.ToJsonLoggableIndent(game))
 	},
 }
-
-// var gameAbortCmd = &cobra.Command{
-// 	Use:   "abort",
-// 	Short: "abort game",
-// 	Run: func(cmd *cobra.Command, args []string) {
-// 	},
-// }
 
 func init() {
 	gameCmd.AddCommand(gameGetCmd)
@@ -45,8 +38,4 @@ func init() {
 	gameGetCmd.Flags().StringVarP(&password, "password", "p", "", "password of mysql")
 	gameGetCmd.Flags().StringVarP(&dbName, "db-name", "d", "", "db name of mysql")
 	gameGetCmd.Flags().UintVarP(&gameID, "game-id", "i", 0, "game id")
-
-	// gameAbortCmd.Flags()
-	// gameAbortCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
-	// gameAbortCmd.Flags().UintVarP(&gameID, "game-id", "i", 0, "game id")
 }

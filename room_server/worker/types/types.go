@@ -157,6 +157,11 @@ func ToJsonLoggable(obj any) string {
 	return string(res)
 }
 
+func ToJsonLoggableIndent(obj any) string {
+	res, _ := json.MarshalIndent(obj, "", "  ")
+	return string(res)
+}
+
 type GameContinueInfo struct {
 	GameID          uint
 	EndTime         time.Time

@@ -75,6 +75,7 @@ func (s *Service) RemovePlayer(address types.PlayerAddress) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.removePlayer(address)
+	s.ExitQueue(address)
 }
 
 func (s *Service) AddBotPlayer(address types.PlayerAddress) error {
@@ -106,10 +107,6 @@ func (s *Service) JoinQueue(address types.PlayerAddress) error {
 }
 
 func (s *Service) ExitQueue(address types.PlayerAddress) error {
-	status := s.getPlayerStatus(address)
-	if status != proto.PlayerStatus_PLAYER_IN_QUEUE {
-		return nil
-	}
 	s.queue.HandleExitQueueEvent(&types.ExitQueueEvent{
 		PlayerAddress: address,
 	})
