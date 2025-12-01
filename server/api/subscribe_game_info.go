@@ -99,8 +99,8 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	address = strings.ToLower(address)
 	temp_address := strings.ToLower(task.Request.TempAddress)
 
-	// 组装 game_topic: address_tempaddress 格式
-	game_topic := fmt.Sprintf("%s_%s", address, temp_address)
+	// 组装 game_topic: PlayerID_tempaddress 格式
+	game_topic := fmt.Sprintf("%d_%s", profile.PlayerID, temp_address)
 
 	// 获取全局事件管理器
 	eventManager := events.GetGlobalEventManager()

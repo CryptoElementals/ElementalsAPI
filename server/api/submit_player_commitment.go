@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -78,13 +80,20 @@ func NewSubmitPlayerCommitmentTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
+	log.Infof("%s, SubmitPlayerCommitment request: GameID=%d, RoundNumber=%d, TurnNumber=%d, TempAddress=%s, PlayerID=%s",
+		task.Request.RequestUUID, task.Request.GameID, task.Request.RoundNumber, task.Request.TurnNumber,
+		task.Request.TempAddress, task.Request.PlayerID)
+
 	// 通过 PlayerID 解析玩家地址
 	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
 	if err != nil || profile == nil || profile.Address == "" {
+		log.Errorf("%s, Failed to get player address by player id: %v", task.Request.RequestUUID, err)
 		task.Response.BaseResponse.RetCode = 1001
 		task.Response.BaseResponse.Message = "Failed to get player address by player id"
 		return task.Response, nil
 	}
+
+	log.Infof("%s, Player profile found: PlayerID=%d, Address=%s", task.Request.RequestUUID, profile.PlayerID, profile.Address)
 
 	// 统一将地址转为小写
 	tempAddress := strings.ToLower(task.Request.TempAddress)
@@ -93,22 +102,33 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 	commitmentHex := strings.TrimPrefix(task.Request.Commitment, "0x")
 	commitmentBytes, err := hex.DecodeString(commitmentHex)
 	if err != nil {
+		log.Errorf("%s, Invalid commitment hex format: %v, commitment=%s", task.Request.RequestUUID, err, task.Request.Commitment)
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Invalid commitment hex format: " + err.Error()
 		return task.Response, nil
 	}
 
+	log.Infof("%s, Commitment decoded: length=%d, hex=%x", task.Request.RequestUUID, len(commitmentBytes), commitmentBytes)
+
 	signatureHex := strings.TrimPrefix(task.Request.Signature, "0x")
 	signatureBytes, err := hex.DecodeString(signatureHex)
 	if err != nil {
+		log.Errorf("%s, Invalid signature hex format: %v, signature=%s", task.Request.RequestUUID, err, task.Request.Signature)
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Invalid signature hex format: " + err.Error()
 		return task.Response, nil
 	}
 
+	recoveryID := uint8(0)
+	if len(signatureBytes) == crypto.SignatureLength {
+		recoveryID = signatureBytes[crypto.RecoveryIDOffset]
+	}
+	log.Infof("%s, Signature decoded: length=%d, recovery_id=%d (raw format: 0 or 1)", task.Request.RequestUUID, len(signatureBytes), recoveryID)
+
 	// 通过gRPC调用RoomServer的SubmitPlayerCommitment
 	rpcClient := client.GetGlobalRpcClient()
 	if rpcClient == nil {
+		log.Errorf("%s, gRPC client not initialized", task.Request.RequestUUID)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC client not initialized"
 		return task.Response, nil
@@ -126,13 +146,18 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 		},
 	}
 
+	log.Infof("%s, Calling RoomServer SubmitPlayerCommitment: GameID=%d, RoundNumber=%d, TurnNumber=%d, CommitmentLen=%d, SignatureLen=%d, TempAddress=%s",
+		task.Request.RequestUUID, req.GameID, req.RoundNumber, req.TurnNumber, len(req.Commitment), len(req.Signature), req.Address.TemporaryAddress)
+
 	_, err = rpcClient.SubmitPlayerCommitment(context.Background(), req)
 	if err != nil {
+		log.Errorf("%s, RoomServer SubmitPlayerCommitment failed: %v", task.Request.RequestUUID, err)
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "RoomServer SubmitPlayerCommitment failed: " + err.Error()
 		return task.Response, nil
 	}
 
+	log.Infof("%s, Successfully submitted player commitment", task.Request.RequestUUID)
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully submitted player commitment"
 	return task.Response, nil
