@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -84,7 +85,7 @@ func (c *GameContext) Run() error {
 		case <-c.ctx.Done():
 			return errors.New("context done")
 		case err := <-c.errChan:
-			fmt.Println("subscribe err: ", err)
+			log.Errorw("subscribe error", "error", err)
 		case evt, ok := <-c.evtChan:
 			if !ok {
 				return errors.New("event channel closed")
@@ -95,10 +96,10 @@ func (c *GameContext) Run() error {
 			case proto.EventType_TYPE_MATCHED:
 				matched := evt.GetGameMatched()
 				if matched == nil {
-					fmt.Println("game matched event missing GameMatched data")
+					log.Warnw("game matched event missing GameMatched data")
 					continue
 				}
-				fmt.Println("game matched", "game id", matched.GameId)
+				log.Infow("game matched", "game id", matched.GameId)
 				c.gameID = uint(matched.GameId)
 				c.players = c.players[:0] // Reuse slice, more efficient than nil
 				for _, pp := range matched.Players {
@@ -107,22 +108,22 @@ func (c *GameContext) Run() error {
 				c.currentRound = 1
 				c.currentTurn = 1
 				if err := c.confirmBattle(); err != nil {
-					fmt.Println("error: ", err.Error())
+					log.Errorw("failed to confirm battle", "error", err)
 				}
 			case proto.EventType_TYPE_PART_CONFIRMED:
-				fmt.Println("player part confirmed")
+				log.Infow("player part confirmed")
 			case proto.EventType_TYPE_GAME_CREATED:
-				fmt.Println("game created")
+				log.Infow("game created")
 			case proto.EventType_TYPE_ROUND_READY:
 				roundReady := evt.GetRoundReady()
 				if roundReady == nil {
-					fmt.Println("round ready event missing RoundReady data")
+					log.Warnw("round ready event missing RoundReady data")
 					continue
 				}
 				// Validate round number
 				expectedRoundNum := c.currentRound
 				if roundReady.RoundNum != expectedRoundNum {
-					fmt.Printf("round number mismatch: expected %d, received %d\n", expectedRoundNum, roundReady.RoundNum)
+					log.Warnw("round number mismatch", "expected", expectedRoundNum, "received", roundReady.RoundNum)
 					continue
 				}
 				c.currentRound = roundReady.RoundNum
@@ -130,7 +131,7 @@ func (c *GameContext) Run() error {
 			case proto.EventType_TYPE_TURN_READY:
 				turnReady := evt.GetTurnReady()
 				if turnReady == nil {
-					fmt.Println("turn ready event missing TurnReady data")
+					log.Warnw("turn ready event missing TurnReady data")
 					continue
 				}
 
@@ -141,46 +142,46 @@ func (c *GameContext) Run() error {
 				}
 				// Get card from provider and prepare it
 				if c.cardProvider == nil {
-					fmt.Println("Warning: card provider not set, skipping commitment submission")
+					log.Warnw("card provider not set, skipping commitment submission")
 					continue
 				}
 
 				card, err := c.cardProvider.GetCard(c.currentRound, c.currentTurn)
 				if err != nil {
-					fmt.Printf("Failed to get card from provider: %v\n", err)
+					log.Errorw("failed to get card from provider", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 					continue
 				}
 
 				// Prepare new card (generates salt and calculates commitment)
 				if err := c.prepareNewCard(card); err != nil {
-					fmt.Printf("Failed to prepare new card: %v\n", err)
+					log.Errorw("failed to prepare new card", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 					continue
 				}
 
 				// Submit commitment
 				if err := c.submitCommitment(c.commitment); err != nil {
-					fmt.Printf("Failed to submit commitment: %v\n", err)
+					log.Errorw("failed to submit commitment", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 				}
 			case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
 				commitmentsOnChain := evt.GetCommitmentsOnChain()
 				if commitmentsOnChain == nil {
-					fmt.Println("commitments on chain event missing CommitmentsOnChain data")
+					log.Warnw("commitments on chain event missing CommitmentsOnChain data")
 					continue
 				}
 				// Validate round and turn numbers
 				if !c.validateRoundTurnInfo(commitmentsOnChain, c.currentTurn) {
 					continue
 				}
-				fmt.Println("commitments on chain", "round", commitmentsOnChain.RoundNum, "turn", commitmentsOnChain.TurnNum)
+				log.Infow("commitments on chain", "round", commitmentsOnChain.RoundNum, "turn", commitmentsOnChain.TurnNum)
 
 				// Submit turn card and salt
 				if c.card == 0 || c.salt == "" {
-					fmt.Println("Warning: card or salt not set, skipping card submission")
+					log.Warnw("card or salt not set, skipping card submission", "round", c.currentRound, "turn", c.currentTurn)
 					continue
 				}
 
 				if err := c.submitCard(c.card, c.salt); err != nil {
-					fmt.Printf("Failed to submit card: %v\n", err)
+					log.Errorw("failed to submit card", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 				}
 			case proto.EventType_TYPE_TURN_COMPLETE:
 				turnCompleted := evt.GetTurnCompleted()
@@ -192,36 +193,38 @@ func (c *GameContext) Run() error {
 					continue
 				}
 
-				fmt.Println("turn complete", "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum, "isRoundComplete", turnCompleted.IsRoundComplete, "isGameComplete", turnCompleted.IsGameComplete)
+				log.Infow("turn complete",
+					"game id", c.gameID,
+					"round", turnCompleted.RoundNum,
+					"turn", turnCompleted.TurnNum,
+					"isRoundComplete", turnCompleted.IsRoundComplete,
+					"isGameComplete", turnCompleted.IsGameComplete)
 
 				// Handle game completion
 				if turnCompleted.IsGameComplete {
-					fmt.Println("game complete")
+					log.Infow("game complete", "game id", c.gameID)
 					if turnCompleted.GameResult != nil {
-						fmt.Println("game result: ", types.ToJsonLoggable(turnCompleted.GameResult))
+						log.Infow("game result", "result", types.ToJsonLoggable(turnCompleted.GameResult))
 					}
 					return nil
 				}
-
 				// Handle round completion
 				if turnCompleted.IsRoundComplete {
-					battleInfo, err := c.rpcClient.RpcClient.GetBattleInfo(c.ctx, c.gameID, uint(turnCompleted.RoundNum))
-					if err != nil {
-						fmt.Println("error: ", err.Error())
-					} else {
-						fmt.Println("round result: ", types.ToJsonLoggable(battleInfo.RoundResult))
-					}
 					c.currentRound++
 					c.currentTurn = 1 // Reset turn number for new round
 				} else {
 					// Turn complete but round not complete - increment turn number and confirm battle for next turn
 					c.currentTurn++
 				}
+
 				// Confirm battle for the next turn
 				if err := c.confirmBattle(); err != nil {
-					fmt.Printf("Failed to confirm battle for next turn: %v\n", err)
+					if turnCompleted.GameResult != nil {
+						log.Infow("game result", "result", types.ToJsonLoggable(turnCompleted.GameResult))
+					}
+					log.Errorw("failed to confirm battle for next turn", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 				} else {
-					fmt.Printf("Battle confirmed for round %d, turn %d\n", c.currentRound, c.currentTurn)
+					log.Infow("battle confirmed", "round", c.currentRound, "turn", c.currentTurn)
 				}
 			}
 		}
@@ -291,11 +294,11 @@ func (c *GameContext) calculateCommitment(card uint32, saltBytes []byte) ([]byte
 // validateRoundTurn validates that the received round and turn numbers match expected values
 func (c *GameContext) validateRoundTurn(receivedRound, receivedTurn, expectedTurn uint32) bool {
 	if receivedRound != c.currentRound {
-		fmt.Printf("round number mismatch: expected %d, received %d\n", c.currentRound, receivedRound)
+		log.Warnw("round number mismatch", "expected", c.currentRound, "received", receivedRound)
 		return false
 	}
 	if receivedTurn != expectedTurn {
-		fmt.Printf("turn number mismatch: expected %d, received %d\n", expectedTurn, receivedTurn)
+		log.Warnw("turn number mismatch", "expected", expectedTurn, "received", receivedTurn)
 		return false
 	}
 	return true
@@ -308,7 +311,7 @@ func (c *GameContext) validateRoundTurnInfo(info RoundTurnInfo, expectedTurn uin
 
 // submitCommitment submits the commitment via RPC
 func (c *GameContext) submitCommitment(commitment []byte) error {
-	fmt.Println("submit commitment, round: ", c.currentRound)
+	log.Infow("submitting commitment", "round", c.currentRound, "turn", c.currentTurn)
 	// Generate signature: game id, round number, commitment index, commitment
 	signature, err := utils.Sign(
 		[]any{
@@ -334,13 +337,13 @@ func (c *GameContext) submitCommitment(commitment []byte) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Commitment submitted successfully for round %d, turn %d\n", c.currentRound, c.currentTurn)
+	log.Infow("commitment submitted successfully", "round", c.currentRound, "turn", c.currentTurn)
 	return nil
 }
 
 // submitCard submits the card and salt via RPC
 func (c *GameContext) submitCard(card uint32, salt string) error {
-	fmt.Println("submit cards, round: ", c.currentRound)
+	log.Infow("submitting card", "round", c.currentRound, "turn", c.currentTurn)
 	// Generate signature: game id, round number, card index, card, salt
 	signature, err := utils.Sign(
 		[]any{
@@ -368,7 +371,7 @@ func (c *GameContext) submitCard(card uint32, salt string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Card submitted successfully for round %d, turn %d\n", c.currentRound, c.currentTurn)
+	log.Infow("card submitted successfully", "round", c.currentRound, "turn", c.currentTurn)
 	return nil
 }
 

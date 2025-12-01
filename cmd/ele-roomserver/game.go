@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	gameclient "github.com/CryptoElementals/common/game_client"
+	"github.com/CryptoElementals/common/log"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/spf13/cobra"
@@ -79,7 +80,9 @@ func startGame() error {
 	if err != nil {
 		return err
 	}
-
+	log.InitGlobalLogger(&log.Config{
+		Development: true,
+	})
 	var wTemp *wallet.Wallet
 	wTemp, err = wallet.LoadWallet(tempWalletPath)
 	if err != nil {
