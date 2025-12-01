@@ -26,7 +26,8 @@ type GetPlayerStatusRequest struct {
 // GetPlayerStatusResponse 响应结构体
 type GetPlayerStatusResponse struct {
 	BaseResponse
-	Status int32 `json:"Status"` // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME, 4=WAITTING_CONTINUE
+	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME, 4=WAITTING_CONTINUE
+	StatusName string `json:"StatusName"` // 状态名称：UNKNOWN, IN_QUEUE, MATCHED, IN_GAME, WAITTING_CONTINUE
 }
 
 type GetPlayerStatusTask struct {
@@ -105,8 +106,27 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	task.Response.Status = int32(resp.Status)
+	task.Response.StatusName = getPlayerStatusName(resp.Status)
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully retrieved player status"
 	return task.Response, nil
+}
+
+// getPlayerStatusName 将 PlayerStatus 枚举值转换为状态名称
+func getPlayerStatusName(status proto.PlayerStatus) string {
+	switch status {
+	case proto.PlayerStatus_PLAYER_UNKNOWN:
+		return "UNKNOWN"
+	case proto.PlayerStatus_PLAYER_IN_QUEUE:
+		return "IN_QUEUE"
+	case proto.PlayerStatus_PLAYER_MATCHED:
+		return "MATCHED"
+	case proto.PlayerStatus_PLAYER_IN_GAME:
+		return "IN_GAME"
+	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
+		return "WAITTING_CONTINUE"
+	default:
+		return "UNKNOWN"
+	}
 }
 
