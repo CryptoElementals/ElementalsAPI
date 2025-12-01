@@ -2,7 +2,6 @@ package chain
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -214,7 +213,7 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 		// Convert card to string
 		cardBigInt := big.NewInt(int64(evt.Card))
 		// Convert salt bytes to hex string for proper encoding
-		saltStr := hex.EncodeToString(evt.Salt)
+		saltStr := string(evt.Salt)
 
 		gameIDs[i] = big.NewInt(int64(evt.GameID))
 		cards[i] = cardBigInt

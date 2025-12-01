@@ -28,7 +28,7 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	case *types.GetGamePhaseRequest:
 		return g.handleGetGamePhaseRequest(event)
 	case *types.SyncGamePhaseRequest:
-		return g.handleSyncGamePhaseRequest(event, evt)
+		return g.handleSyncGamePhaseRequest(evt)
 	case *types.GetGameResultRequest:
 		return g.handleGetGameResultRequest(event)
 	case *types.SubmitPlayerCommitment:
@@ -255,7 +255,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED
 
 	// If all players have submitted this commitment index, allow card submission for this index
-	if g.haveAllPlayersSubmittedCommitment(commitmentIdx) {
+	if g.haveAllPlayersSubmittedCommitment() {
 		// Send CommitmentsOnChain event to notify players they can submit cards for this index
 		// commitmentIdx is 0-based, but TurnNumber is 1-based (1, 2, 3)
 		turnNumber := commitmentIdx + 1
@@ -306,7 +306,10 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
 
 	// If all players have submitted this card index, handle turn end
-	if g.haveAllPlayersSubmittedCard(cardIdx) {
+	if func() bool {
+		var _ uint32 = cardIdx
+		return g.haveAllPlayersSubmittedCard()
+	}() {
 		return g.handleTurnEnd()
 	}
 	err = g.saveRound(g.currentRound.round)
@@ -327,7 +330,7 @@ func (g *Game) areAllPlayersReady() bool {
 }
 
 // haveAllPlayersSubmittedCommitment checks if all players have submitted a commitment for the current turn
-func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
+func (g *Game) haveAllPlayersSubmittedCommitment() bool {
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
 		var _ uint32 = turnNumber
@@ -343,7 +346,7 @@ func (g *Game) haveAllPlayersSubmittedCommitment(commitmentIdx uint32) bool {
 }
 
 // haveAllPlayersSubmittedCard checks if all players have submitted a card for the current turn
-func (g *Game) haveAllPlayersSubmittedCard(cardIdx uint32) bool {
+func (g *Game) haveAllPlayersSubmittedCard() bool {
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	for _, p := range g.currentRound.gamePlayers {
 		var _ uint32 = turnNumber
@@ -413,7 +416,6 @@ func (g *Game) handleTurnEnd() error {
 	g.incrementTurnNumber()
 	// Create the next turn record immediately after turn completion
 	g.currentRound.createNewTurn()
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
 	if err = g.saveRound(g.currentRound.round); err != nil {
 		return err
 	}
@@ -517,7 +519,7 @@ func (g *Game) handleGetGamePhaseRequest(event *types.Event) error {
 }
 
 // handleSyncGamePhaseRequest handles the SyncGamePhaseRequest event and sends game phase directly to receiver
-func (g *Game) handleSyncGamePhaseRequest(event *types.Event, reqEvt *types.SyncGamePhaseRequest) error {
+func (g *Game) handleSyncGamePhaseRequest(reqEvt *types.SyncGamePhaseRequest) error {
 	// Get the game phase (lock is already held by Handle)
 	turnNumber := g.currentRound.getCurrentTurnNumber()
 	turnStartAt := int64(0)

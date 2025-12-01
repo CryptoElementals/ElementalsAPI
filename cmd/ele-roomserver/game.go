@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	gameclient "github.com/CryptoElementals/common/game_client"
+	"github.com/CryptoElementals/common/log"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/spf13/cobra"
@@ -79,7 +80,9 @@ func startGame() error {
 	if err != nil {
 		return err
 	}
-
+	log.InitGlobalLogger(&log.Config{
+		Development: true,
+	})
 	var wTemp *wallet.Wallet
 	wTemp, err = wallet.LoadWallet(tempWalletPath)
 	if err != nil {
@@ -87,19 +90,20 @@ func startGame() error {
 	}
 	fmt.Println("using temp account, address: ", wTemp.GetAddrHex())
 	fmt.Println("using player ID: ", playerId)
-
-	gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, client)
-	if err != nil {
-		return err
-	}
-
 	// Set up interactive card provider
 	scanner := bufio.NewScanner(os.Stdin)
 	cardProvider := NewInteractiveCardProvider(scanner)
-	gameContext.SetCardProvider(cardProvider)
-	err = gameContext.Run()
+	gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, client, cardProvider)
 	if err != nil {
-		fmt.Println("error: ", err.Error())
+		return err
 	}
-	return nil
+	err = gameContext.Subscribe()
+	if err != nil {
+		return err
+	}
+	err = gameContext.JoinQueue()
+	if err != nil {
+		return err
+	}
+	return gameContext.Run()
 }

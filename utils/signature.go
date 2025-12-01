@@ -3,7 +3,7 @@ package utils
 import (
 	"crypto/ecdsa"
 	"math/big"
-	"slices"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -18,7 +18,6 @@ func Sign(values []any, privateKey *ecdsa.PrivateKey) (signature []byte, err err
 	if err != nil {
 		return nil, err
 	}
-	sig[crypto.RecoveryIDOffset] += 27 // Transform V from 0/1 to 27/28 according to the yellow paper
 	return sig[:], nil
 }
 
@@ -27,10 +26,8 @@ func Verify(values []any, signature []byte, expectedAddress common.Address) (boo
 	if err != nil {
 		return false, err
 	}
-	signatureSlice := slices.Clone(signature)
-	signatureSlice[crypto.RecoveryIDOffset] -= 27 // Transform V from 27/28 to 0/1 according to the yellow paper
 	// Recover public key from signature using Ethereum ECDSA recovery
-	recoveredPubKey, err := crypto.SigToPub(hash.Bytes(), signatureSlice)
+	recoveredPubKey, err := crypto.SigToPub(hash.Bytes(), signature)
 	if err != nil {
 		return false, err
 	}
@@ -39,7 +36,7 @@ func Verify(values []any, signature []byte, expectedAddress common.Address) (boo
 	recoveredAddress := crypto.PubkeyToAddress(*recoveredPubKey)
 
 	// Verify if the recovered address matches the expected address
-	return recoveredAddress == expectedAddress, nil
+	return strings.EqualFold(recoveredAddress.String(), expectedAddress.String()), nil
 }
 
 func SolidityPackedKeccak256(values []any) (common.Hash, error) {
@@ -57,7 +54,7 @@ func SolidityPackedKeccak256(values []any) (common.Hash, error) {
 }
 
 // encodePackedValue 根据类型编码单个值（按照 abi.encodePacked 规则）
-func encodePackedValue(val interface{}) ([]byte, error) {
+func encodePackedValue(val any) ([]byte, error) {
 	switch v := val.(type) {
 	case common.Address:
 		// address 在 packed 编码中是 20 字节（不是 32 字节）
