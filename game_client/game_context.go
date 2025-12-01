@@ -46,32 +46,39 @@ type GameContext struct {
 	commitment   []byte
 }
 
-func NewGameContext(ctx context.Context, playerId int64, temporaryWallet *wallet.Wallet, rpcClient *rpc.Client) (*GameContext, error) {
+func NewGameContext(ctx context.Context,
+	playerId int64,
+	temporaryWallet *wallet.Wallet,
+	rpcClient *rpc.Client,
+	cardProvider CardProvider,
+) (*GameContext, error) {
 	return &GameContext{
-		ctx:       ctx,
-		myself:    types.NewPlayerAddress(playerId, temporaryWallet.GetAddrHex()),
-		wallet:    temporaryWallet,
-		evtChan:   make(chan *proto.Event, 10),
-		errChan:   make(chan error, 10),
-		rpcClient: rpcClient,
-		players:   make([]*types.PlayerAddress, 0, 4), // Pre-allocate with capacity
+		ctx:          ctx,
+		myself:       types.NewPlayerAddress(playerId, temporaryWallet.GetAddrHex()),
+		wallet:       temporaryWallet,
+		evtChan:      make(chan *proto.Event, 10),
+		errChan:      make(chan error, 10),
+		rpcClient:    rpcClient,
+		cardProvider: cardProvider,
+		players:      make([]*types.PlayerAddress, 0, 4), // Pre-allocate with capacity
 	}, nil
 }
 
-// SetCardProvider sets the card provider interface for getting cards
-func (c *GameContext) SetCardProvider(provider CardProvider) {
-	c.cardProvider = provider
+func (c *GameContext) Subscribe(id ...string) error {
+	var subId string
+	if len(id) > 0 {
+		subId = id[0]
+	} else {
+		subId = c.myself.String()
+	}
+	err := c.rpcClient.PubSubClient.Subscribe(c.myself.String(), subId, c.evtChan, c.errChan)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *GameContext) Run() error {
-	err := c.rpcClient.PubSubClient.Subscribe(c.myself.String(), c.myself.String(), c.evtChan, c.errChan)
-	if err != nil {
-		return err
-	}
-	err = c.JoinQueue()
-	if err != nil {
-		return err
-	}
 	for {
 		select {
 		case <-c.ctx.Done():

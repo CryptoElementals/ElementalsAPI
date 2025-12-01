@@ -2,15 +2,13 @@ package game
 
 import (
 	"fmt"
-	"strings"
+	"slices"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
-
-
 
 // GameResultType represents the type of game result
 type gameResultType int32
@@ -128,10 +126,7 @@ func (r *round) updatePlayerHPAndLostHP(player *gamePlayer, beforeHP int64, hpDe
 	}
 
 	// Compute non-negative damage
-	damage := int(beforeHP) - int(player.currentHP)
-	if damage < 0 {
-		damage = 0
-	}
+	damage := max(int(beforeHP)-int(player.currentHP), 0)
 
 	// Accumulate LostHP and clamp to initial HP cap
 	player.totalLostHP += int64(damage)
@@ -164,7 +159,7 @@ func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
 	}
 
 	// Check if game is over
-	isGameOver, grType, winner, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.round.RoundNumber)
+	isGameOver, grType, winnerPlayerId, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.round.RoundNumber)
 
 	// Build game result if game is over
 	var gameResult *dao.GameResult
@@ -176,16 +171,8 @@ func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
 		}
 
 		// Build battle reward using game players
-		battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winner, temporaryAddress, finalMul, playerStatuses)
+		battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winnerPlayerId, temporaryAddress, finalMul, playerStatuses)
 
-		// Parse first winner ID from winner string (can be multiple separated by "|")
-		var winnerPlayerId int64
-		if winner != "" {
-			winnerIds := strings.Split(winner, "|")
-			if len(winnerIds) > 0 {
-				fmt.Sscanf(winnerIds[0], "%d", &winnerPlayerId)
-			}
-		}
 		gameResult = &dao.GameResult{
 			GameID:                 r.round.GameID,
 			Multiplier:             int32(finalMul),
@@ -302,12 +289,15 @@ func (r *round) mapElementRelationStringToEnum(s string) proto.ElementRelation {
 	}
 }
 
-func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameResultType, string, string, uint32) {
+// isGameEndsByRoundAndTurn checks if the game ends by reaching the final round and turn
+func (r *round) isGameEndsByRoundAndTurn() bool {
+	return r.round.RoundNumber == 3 && r.getCurrentTurnNumber() == 3
+}
+
+func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameResultType, int64, string, uint32) {
 	// Count surrendered players
 	surrenderedCount := 0
 	maxLoserMul := uint32(1)
-	var winnerPlayerIds []int64
-	var winnerTemps []string
 
 	for _, state := range states {
 		if state.Status == playerStatusSurrendered {
@@ -320,16 +310,14 @@ func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 
 	if surrenderedCount > 0 {
 		if surrenderedCount == len(states) {
-			return true, gameResultTie, "", "", 1
+			return true, gameResultTie, 0, "", 1
 		}
-		// Build winner lists
+		// Find the first non-surrendered player as winner
 		for _, state := range states {
 			if state.Status != playerStatusSurrendered {
-				winnerPlayerIds = append(winnerPlayerIds, state.PlayerId)
-				winnerTemps = append(winnerTemps, state.TemporaryAddress)
+				return true, gameResultKO, state.PlayerId, state.TemporaryAddress, maxLoserMul
 			}
 		}
-		return r.buildResult(true, gameResultKO, winnerPlayerIds, winnerTemps, maxLoserMul)
 	}
 
 	// Check offline players
@@ -346,31 +334,26 @@ func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 
 	if offlineCount > 0 {
 		if offlineCount == len(states) {
-			return true, gameResultTie, "", "", 1
+			return true, gameResultTie, 0, "", 1
 		}
+		// Find the first online player as winner
 		for _, state := range states {
 			if state.Status == playerStatusOnline {
-				winnerPlayerIds = append(winnerPlayerIds, state.PlayerId)
-				winnerTemps = append(winnerTemps, state.TemporaryAddress)
+				return true, gameResultNormal, state.PlayerId, state.TemporaryAddress, offlineMaxMul
 			}
 		}
-		return r.buildResult(true, gameResultNormal, winnerPlayerIds, winnerTemps, offlineMaxMul)
 	}
 
 	// Check by HP
 	return r.checkGameOverByHP(states, round, false)
 }
 
-func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool) (bool, gameResultType, string, string, uint32) {
+func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool) (bool, gameResultType, int64, string, uint32) {
 	hps := make([]int, len(states))
-	playerIds := make([]int64, len(states))
-	temps := make([]string, len(states))
 	multipliers := make([]uint32, len(states))
 
 	for i, state := range states {
 		hps[i] = state.HP
-		playerIds[i] = state.PlayerId
-		temps[i] = state.TemporaryAddress
 		multipliers[i] = state.Multiplier
 	}
 
@@ -385,34 +368,30 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 
 	if allSameHP {
 		if firstHP == 0 {
-			return true, gameResultTie, "", "", 1
+			return true, gameResultTie, 0, "", 1
 		}
-		if hasOffline || round == 3 {
-			return true, gameResultTie, "", "", 1
+		if hasOffline || r.isGameEndsByRoundAndTurn() {
+			return true, gameResultTie, 0, "", 1
 		}
-		return false, gameResultNormal, "", "", 1
+		return false, gameResultNormal, 0, "", 1
 	}
 
-	hasZeroHP := false
-	for _, hp := range hps {
-		if hp == 0 {
-			hasZeroHP = true
-			break
-		}
-	}
+	hasZeroHP := slices.Contains(hps, 0)
 
-	var winnerPlayerIds []int64
-	var winnerTemps []string
+	var winnerPlayerId int64
+	var winnerTemp string
 	var gType gameResultType
 	var finalMultiplier uint32 = 1
 
 	if hasZeroHP {
 		gType = gameResultKO
 		maxLoserMul := uint32(1)
-		for i, hp := range hps {
-			if hp > 0 {
-				winnerPlayerIds = append(winnerPlayerIds, playerIds[i])
-				winnerTemps = append(winnerTemps, temps[i])
+		// Find the first player with HP > 0 as winner
+		for i, state := range states {
+			if hps[i] > 0 {
+				winnerPlayerId = state.PlayerId
+				winnerTemp = state.TemporaryAddress
+				break
 			} else {
 				if multipliers[i] > maxLoserMul {
 					maxLoserMul = multipliers[i]
@@ -421,8 +400,8 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		}
 		finalMultiplier = maxLoserMul
 	} else {
-		if !hasOffline && round != 3 {
-			return false, gameResultNormal, "", "", 1
+		if !hasOffline && !r.isGameEndsByRoundAndTurn() {
+			return false, gameResultNormal, 0, "", 1
 		}
 
 		gType = gameResultNormal
@@ -434,10 +413,12 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		}
 
 		maxLoserMul := uint32(1)
-		for i, hp := range hps {
-			if hp == maxHP {
-				winnerPlayerIds = append(winnerPlayerIds, playerIds[i])
-				winnerTemps = append(winnerTemps, temps[i])
+		// Find the first player with max HP as winner
+		for i, state := range states {
+			if hps[i] == maxHP {
+				winnerPlayerId = state.PlayerId
+				winnerTemp = state.TemporaryAddress
+				break
 			} else {
 				if multipliers[i] > maxLoserMul {
 					maxLoserMul = multipliers[i]
@@ -447,24 +428,10 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		finalMultiplier = maxLoserMul
 	}
 
-	return r.buildResult(true, gType, winnerPlayerIds, winnerTemps, finalMultiplier)
+	return true, gType, winnerPlayerId, winnerTemp, finalMultiplier
 }
 
-func (r *round) buildResult(over bool, gType gameResultType, winnerPlayerIds []int64, winnerTemps []string, mul uint32) (bool, gameResultType, string, string, uint32) {
-	winnersStr := ""
-	winnerTempsStr := ""
-	if len(winnerPlayerIds) > 0 {
-		winnerIdStrs := make([]string, len(winnerPlayerIds))
-		for i, id := range winnerPlayerIds {
-			winnerIdStrs[i] = fmt.Sprintf("%d", id)
-		}
-		winnersStr = strings.Join(winnerIdStrs, "|")
-		winnerTempsStr = strings.Join(winnerTemps, "|")
-	}
-	return over, gType, winnersStr, winnerTempsStr, mul
-}
-
-func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerIdsStr, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
+func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
 	baseStake := config.GameParams.BaseStake
 	var playerRewards []*dao.PlayerReward
 	var systemFee int
@@ -490,33 +457,26 @@ func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePla
 		systemFee = tokenDeduction * len(players)
 
 	case gameResultNormal, gameResultKO:
-		if winnerPlayerIdsStr != "" {
-			winnerTemporaryList := strings.Split(temporaryAddress, "|")
-			winnerTemporaryAddresses := make(map[string]bool, len(winnerTemporaryList))
-			for _, addr := range winnerTemporaryList {
-				winnerTemporaryAddresses[addr] = true
-			}
-
-			winnerCount := len(winnerTemporaryList)
-			loserCount := len(players) - winnerCount
+		if winnerPlayerId != 0 && temporaryAddress != "" {
+			loserCount := len(players) - 1
 			totalPool := int(float64(baseStake) * float64(finalMul))
 
-			winnerTokenPerPlayer := int(float64(totalPool)*(1.0-0.016)) / winnerCount
+			winnerTokenPerPlayer := int(float64(totalPool) * (1.0 - 0.016))
 			loserTokenPerPlayer := totalPool / loserCount
 
 			var winnerPointPerPlayer, loserPointPerPlayer int
 			if grType == gameResultNormal {
-				winnerPointPerPlayer = int(float64(totalPool)*0.012) / winnerCount
+				winnerPointPerPlayer = int(float64(totalPool) * 0.012)
 				loserPointPerPlayer = int(float64(totalPool)*0.004) / loserCount
 			} else {
-				winnerPointPerPlayer = int(float64(totalPool)*0.016) / winnerCount
+				winnerPointPerPlayer = int(float64(totalPool) * 0.016)
 				loserPointPerPlayer = 0
 			}
 
 			playerRewards = make([]*dao.PlayerReward, 0, len(players))
 			for _, player := range players {
 				status := playerStatuses[player.player.TemporaryAddress]
-				isWinner := winnerTemporaryAddresses[player.player.TemporaryAddress]
+				isWinner := player.player.TemporaryAddress == temporaryAddress
 
 				var tokenChange, pointChange int
 				var gameResultStatus proto.PlayerGameResultStatus

@@ -87,19 +87,20 @@ func startGame() error {
 	}
 	fmt.Println("using temp account, address: ", wTemp.GetAddrHex())
 	fmt.Println("using player ID: ", playerId)
-
-	gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, client)
-	if err != nil {
-		return err
-	}
-
 	// Set up interactive card provider
 	scanner := bufio.NewScanner(os.Stdin)
 	cardProvider := NewInteractiveCardProvider(scanner)
-	gameContext.SetCardProvider(cardProvider)
-	err = gameContext.Run()
+	gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, client, cardProvider)
 	if err != nil {
-		fmt.Println("error: ", err.Error())
+		return err
 	}
-	return nil
+	err = gameContext.Subscribe()
+	if err != nil {
+		return err
+	}
+	err = gameContext.JoinQueue()
+	if err != nil {
+		return err
+	}
+	return gameContext.Run()
 }

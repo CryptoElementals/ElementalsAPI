@@ -3,13 +3,11 @@ package botserver
 import (
 	"context"
 	crand "crypto/rand"
-	"errors"
 	"fmt"
 	"math/big"
 	"math/rand/v2"
-	"time"
 
-	"github.com/CryptoElementals/common/log"
+	gameclient "github.com/CryptoElementals/common/game_client"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -36,12 +34,28 @@ type roundInfo struct {
 	salts       []string
 }
 
-func (i *roundInfo) prepareNewRound() {
-	i.roundNum++
-	i.turnNumber = 1 // Reset turn number for new round
-	i.cards = nil
-	i.commitments = nil
-	i.salts = nil
+// GetCard makes roundInfo implement gameclient.CardProvider.
+// It selects a card for the given round/turn using its internally prepared cards.
+func (i *roundInfo) GetCard(round uint32, turn uint32) (uint32, error) {
+	// If this is a new round or cards are not prepared, prepare them.
+	if i.roundNum != uint(round) || len(i.cards) == 0 {
+		i.roundNum = uint(round)
+		i.turnNumber = 1
+		i.cards = nil
+		i.commitments = nil
+		i.salts = nil
+		i.prepareCards()
+	}
+
+	if turn == 0 {
+		return 0, fmt.Errorf("invalid turn number: %d", turn)
+	}
+	idx := int(turn - 1)
+	if idx < 0 || idx >= len(i.cards) {
+		return 0, fmt.Errorf("turn index out of range: %d (len=%d)", idx, len(i.cards))
+	}
+
+	return i.cards[idx], nil
 }
 
 // prepareCards prepares 3 cards, salts, and commitments for the current round
@@ -78,24 +92,16 @@ func (i *roundInfo) prepareCards() {
 	}
 }
 
-type gameInfo struct {
-	id           uint
-	currentRound roundInfo
-	maxRounds    uint32
-	maxTurns     uint32
-}
-
 type Bot struct {
-	ctx         context.Context
-	w           *playerWallet
-	mimicPlayer bool
-	currentGame *gameInfo
-	addr        *types.PlayerAddress
-	client      *rpc.Client
-	ethClient   *ethclient.Client
-	bindOpt     *bind.TransactOpts
-	chanEvt     chan *proto.Event
-	chanErr     chan error
+	ctx          context.Context
+	w            *playerWallet
+	addr         *types.PlayerAddress
+	client       *rpc.Client
+	ethClient    *ethclient.Client
+	bindOpt      *bind.TransactOpts
+	chanEvt      chan *proto.Event
+	chanErr      chan error
+	cardProvider gameclient.CardProvider
 }
 
 func NewBot(
@@ -120,6 +126,10 @@ func NewBot(
 		bindOpt:   opt,
 		chanEvt:   make(chan *proto.Event, 1),
 		chanErr:   make(chan error, 1),
+		cardProvider: &roundInfo{
+			roundNum:   1,
+			turnNumber: 1,
+		},
 	}
 }
 
@@ -127,308 +137,32 @@ func (b *Bot) formatBotID() string {
 	return fmt.Sprintf("bot_%s", b.addr.String())
 }
 
-func (b *Bot) resubscribe(subId string, sleepTime time.Duration) error {
-	err := b.client.PubSubClient.Unsubscribe(b.addr.String(), subId)
-	if err != nil {
-		return err
-	}
-	b.chanErr = make(chan error, 1)
-	b.chanEvt = make(chan *proto.Event, 1)
-	time.Sleep(sleepTime)
-	err = b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+func (b *Bot) run() error {
+	err := b.runGameContext()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *Bot) run() error {
-	subId := b.formatBotID()
-	err := b.client.PubSubClient.Subscribe(b.addr.String(), subId, b.chanEvt, b.chanErr)
+func (b *Bot) runGameContext() error {
+	gameContext, err := gameclient.NewGameContext(b.ctx, b.w.playerId, b.w.tempWallet, b.client, b.cardProvider)
 	if err != nil {
 		return err
 	}
-	needReconnect := false
+	err = gameContext.Subscribe(b.formatBotID())
+	if err != nil {
+		return err
+	}
 	for {
 		select {
 		case <-b.ctx.Done():
-			log.Infow("bot canceled", "addr", b.addr.String())
 			return nil
 		default:
-		}
-		if needReconnect {
-			// make sure the old game expires
-			err := b.resubscribe(subId, time.Second*90)
-			if err != nil {
-				log.Errorw("cannot resubscribe", "err", err)
-				time.Sleep(time.Second * 10)
-				continue
-			}
-		}
-		err = b.runGameLoop()
-		if err != nil {
-			needReconnect = true
-			continue
-		}
-		needReconnect = false
-	}
-}
-
-func (b *Bot) runGameLoop() error {
-	if b.mimicPlayer {
-		if b.currentGame == nil {
-			err := b.client.RpcClient.JoinQueue(b.ctx, b.addr)
+			err = gameContext.Run()
 			if err != nil {
 				return err
 			}
-			log.Infow("bot start, join queue", "addr", b.addr.String())
-		}
-	} else {
-		log.Infow("bot start, waitting for task", "addr", b.addr.String())
-	}
-	for {
-		select {
-		case <-b.ctx.Done():
-			log.Infof("context done, bot exit")
-			return nil
-		case evt, ok := <-b.chanEvt:
-			if !ok {
-				break
-			}
-			switch evt.Type {
-			case proto.EventType_TYPE_KNOWN:
-				log.Errorf("unhandled event type from: %s", b.addr)
-				return errors.New("bot received unexpected event: proto.EventType_TYPE_KNOWN")
-			case proto.EventType_TYPE_MATCHED:
-				matched := evt.GetGameMatched()
-				if matched == nil {
-					log.Errorw("game matched event missing GameMatched data", "addr", b.addr.String())
-					continue
-				}
-				// Initialize game info
-				b.currentGame = &gameInfo{
-					id:        uint(matched.GameId),
-					maxRounds: matched.MaxRoundNum,
-					maxTurns:  matched.MaxTurnNum,
-					currentRound: roundInfo{
-						roundNum:    1,
-						turnNumber:  1, // Will be set when turn ready event is received
-						commitments: nil,
-						cards:       nil,
-						salts:       nil,
-					},
-				}
-				err := b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, uint(matched.GameId), 1, 1)
-				if err != nil {
-					log.Errorw("error confirm battle", "err", err, "game id", matched.GameId)
-				}
-			case proto.EventType_TYPE_PART_CONFIRMED:
-				if b.currentGame == nil {
-					log.Errorw("part confirmed but no current game", "addr", b.addr.String())
-					continue
-				}
-				log.Infow("player part confirmed", "game id", b.currentGame.id)
-			case proto.EventType_TYPE_GAME_CREATED:
-				if b.currentGame == nil {
-					log.Errorw("game created but no current game", "addr", b.addr.String())
-					continue
-				}
-				log.Infow("game created", "game id", b.currentGame.id)
-			case proto.EventType_TYPE_ROUND_READY:
-				if b.currentGame == nil {
-					log.Errorw("round ready but no current game", "addr", b.addr.String())
-					continue
-				}
-				roundReady := evt.GetRoundReady()
-				if roundReady == nil {
-					log.Errorw("round ready event missing RoundReady data", "addr", b.addr.String())
-					continue
-				}
-				// Validate round number
-				expectedRoundNum := b.currentGame.currentRound.roundNum
-				if uint(roundReady.RoundNum) != expectedRoundNum {
-					log.Errorw("round number mismatch", "expected", expectedRoundNum, "received", roundReady.RoundNum, "game id", b.currentGame.id)
-					continue
-				}
-				log.Infow("round ready", "game id", b.currentGame.id, "round", roundReady.RoundNum)
-				b.currentGame.currentRound.prepareCards()
-			case proto.EventType_TYPE_TURN_READY:
-				if b.currentGame == nil {
-					log.Errorw("turn ready but no current game", "addr", b.addr.String())
-					continue
-				}
-				turnReady := evt.GetTurnReady()
-				if turnReady == nil {
-					log.Errorw("turn ready event missing TurnReady data", "addr", b.addr.String())
-					continue
-				}
-				// Validate round and turn numbers
-				expectedRoundNum := b.currentGame.currentRound.roundNum
-				expectedTurnNum := b.currentGame.currentRound.turnNumber // Expected turn (1-3)
-				if uint(turnReady.RoundNum) != expectedRoundNum {
-					log.Errorw("round number mismatch in turn ready", "expected", expectedRoundNum, "received", turnReady.RoundNum, "game id", b.currentGame.id)
-					continue
-				}
-				if turnReady.TurnNum != expectedTurnNum {
-					log.Errorw("turn number mismatch in turn ready", "expected", expectedTurnNum, "received", turnReady.TurnNum, "current turn", b.currentGame.currentRound.turnNumber, "game id", b.currentGame.id)
-					continue
-				}
-				log.Infow("turn ready", "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
-				// Submit commitment for this turn using turn number - 1 as index
-				turnIdx := int(turnReady.TurnNum) - 1
-				if turnIdx >= 0 && turnIdx < len(b.currentGame.currentRound.commitments) {
-					// Generate signature: game id, round number, commitment index, commitment
-					commitment := b.currentGame.currentRound.commitments[turnIdx]
-					signature, err := utils.Sign(
-						[]any{
-							b.currentGame.id,
-							turnReady.RoundNum,
-							turnReady.TurnNum,
-							commitment,
-						},
-						b.w.tempWallet.GetPrivateKey(),
-					)
-					if err != nil {
-						log.Errorw("generate signature failed", "err", err, "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
-						continue
-					}
-					err = b.client.RpcClient.SubmitPlayerCommitment(
-						b.ctx,
-						b.addr,
-						turnReady.RoundNum,
-						commitment,
-						turnReady.TurnNum,
-						signature,
-						b.currentGame.id,
-					)
-					if err != nil {
-						log.Errorw("submit commitment failed", "err", err, "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
-					} else {
-						log.Infow("submitted commitment", "game id", b.currentGame.id, "round", turnReady.RoundNum, "turn", turnReady.TurnNum)
-					}
-				} else {
-					log.Errorw("invalid turn index for commitment", "turn", turnReady.TurnNum, "game id", b.currentGame.id)
-				}
-			case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
-				if b.currentGame == nil {
-					log.Errorw("commitments on chain but no current game", "addr", b.addr.String())
-					continue
-				}
-				commitmentsOnChain := evt.GetCommitmentsOnChain()
-				if commitmentsOnChain == nil {
-					log.Errorw("commitments on chain event missing CommitmentsOnChain data", "addr", b.addr.String())
-					continue
-				}
-				// Validate round and turn numbers
-				expectedRoundNum := b.currentGame.currentRound.roundNum
-				expectedTurnNum := b.currentGame.currentRound.turnNumber
-				if uint(commitmentsOnChain.RoundNum) != expectedRoundNum {
-					log.Errorw("round number mismatch in commitments on chain", "expected", expectedRoundNum, "received", commitmentsOnChain.RoundNum, "game id", b.currentGame.id)
-					continue
-				}
-				if commitmentsOnChain.TurnNum != expectedTurnNum {
-					log.Errorw("turn number mismatch in commitments on chain", "expected", expectedTurnNum, "received", commitmentsOnChain.TurnNum, "game id", b.currentGame.id)
-					continue
-				}
-				log.Infow("commitments on chain", "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", commitmentsOnChain.TurnNum)
-				// Submit card and salt for the current turn using turn number - 1 as index
-				turnNumber := commitmentsOnChain.TurnNum
-				turnIdx := int(turnNumber) - 1
-				cardID := b.currentGame.currentRound.cards[turnIdx]
-				salt := b.currentGame.currentRound.salts[turnIdx]
-				// Generate signature: game id, round number, card index, card, salt
-				signature, err := utils.Sign(
-					[]any{
-						big.NewInt(int64(b.currentGame.id)),
-						uint32(commitmentsOnChain.RoundNum),
-						uint32(turnNumber),
-						uint32(cardID),
-						[]byte(salt),
-					},
-					b.w.tempWallet.GetPrivateKey(),
-				)
-				if err != nil {
-					log.Errorw("generate signature failed", "err", err, "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber)
-					continue
-				}
-				err = b.client.RpcClient.SubmitPlayerCard(b.ctx, b.addr, commitmentsOnChain.RoundNum, []byte(salt), uint(cardID), turnNumber, signature, b.currentGame.id)
-				if err != nil {
-					log.Errorw("submit card failed", "err", err, "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber)
-				} else {
-					log.Infow("submitted card", "game id", b.currentGame.id, "round", commitmentsOnChain.RoundNum, "turn", turnNumber, "card", cardID)
-				}
-			case proto.EventType_TYPE_TURN_COMPLETE:
-				if b.currentGame == nil {
-					log.Errorw("turn complete but no current game", "addr", b.addr.String())
-					continue
-				}
-				turnCompleted := evt.GetTurnCompleted()
-				if turnCompleted == nil {
-					log.Errorw("turn complete event missing TurnCompleted data", "addr", b.addr.String())
-					continue
-				}
-				// Validate round and turn numbers
-				expectedRoundNum := b.currentGame.currentRound.roundNum
-				expectedTurnNum := b.currentGame.currentRound.turnNumber
-				if uint(turnCompleted.RoundNum) != expectedRoundNum {
-					log.Errorw("round number mismatch in turn complete", "expected", expectedRoundNum, "received", turnCompleted.RoundNum, "game id", b.currentGame.id)
-					continue
-				}
-				if turnCompleted.TurnNum != expectedTurnNum {
-					log.Errorw("turn number mismatch in turn complete", "expected", expectedTurnNum, "received", turnCompleted.TurnNum, "game id", b.currentGame.id)
-					continue
-				}
-				log.Infow("turn complete", "game id", b.currentGame.id, "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum, "isRoundComplete", turnCompleted.IsRoundComplete, "isGameComplete", turnCompleted.IsGameComplete)
-
-				// Handle game completion
-				if turnCompleted.IsGameComplete {
-					log.Infow("game complete", "game id", b.currentGame.id)
-					// Log game result if available
-					if turnCompleted.GameResult != nil {
-						log.Infow("game result", "game id", b.currentGame.id, "winner", turnCompleted.GameResult.WinnerPlayerId, "result type", turnCompleted.GameResult.GameResultType)
-					}
-					// Send continue canceled and wait for another game
-					err := b.client.RpcClient.RefuseContinueGame(b.ctx, b.addr, b.currentGame.id)
-					if err != nil {
-						log.Errorw("error refuse continue game", "err", err)
-					}
-					b.currentGame = nil
-					return nil
-				}
-
-				// Handle round completion
-				if turnCompleted.IsRoundComplete {
-					log.Infow("round complete", "game id", b.currentGame.id, "round", turnCompleted.RoundNum)
-					// Round number increases by 1 and prepare for next round
-					b.currentGame.currentRound.prepareNewRound()
-					// Prepare cards for the next round
-					b.currentGame.currentRound.prepareCards()
-					// Confirm battle for the next round (turn 1)
-					err := b.client.RpcClient.ConfirmBattle(b.ctx, b.addr, b.currentGame.id, b.currentGame.currentRound.roundNum, 1)
-					if err != nil {
-						log.Errorw("confirm battle failed", "err", err, "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-					} else {
-						log.Infow("confirmed battle for next round", "game id", b.currentGame.id, "round", b.currentGame.currentRound.roundNum)
-					}
-				} else {
-					// Update turn number
-					b.currentGame.currentRound.turnNumber++
-					// Otherwise, just prepare for next turn (no action needed, will wait for next turn ready event)
-					log.Debugw("turn complete, waiting for next turn", "game id", b.currentGame.id, "round", turnCompleted.RoundNum, "turn", turnCompleted.TurnNum)
-				}
-			case proto.EventType_TYPE_GAME_PHASE_SYNC:
-				gamePhaseSync := evt.GetGamePhase()
-				if gamePhaseSync == nil {
-					log.Errorw("game phase sync event missing GamePhaseSync data", "addr", b.addr.String())
-					continue
-				}
-
-			}
-		case err, ok := <-b.chanErr:
-			if !ok {
-				break
-			}
-			return err
 		}
 	}
 }
