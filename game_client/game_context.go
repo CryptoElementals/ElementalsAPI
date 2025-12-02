@@ -216,7 +216,7 @@ func (c *GameContext) Run() error {
 					// Turn complete but round not complete - increment turn number and confirm battle for next turn
 					c.currentTurn++
 				}
-
+				log.Infow("turn complete", "turn completed info", types.ToJsonLoggable(turnCompleted))
 				// Confirm battle for the next turn
 				if err := c.confirmBattle(); err != nil {
 					if turnCompleted.GameResult != nil {
