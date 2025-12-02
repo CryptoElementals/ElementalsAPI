@@ -19,6 +19,13 @@ const (
 	gameResultTie
 )
 
+// Battle action description constants
+const (
+	ActionAttackedBy       = "is attacked by"
+	ActionDoubleAttackedBy = "is double attacked by"
+	ActionHealedBy         = "is healed by"
+)
+
 // GameEndState represents a player's state for game end calculation
 type gameEndState struct {
 	HP               int
@@ -228,7 +235,7 @@ func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 	case RelationOverpowered:
 		attackValue := opponentCard.Attack - selfCard.Defense
 		// Two attacks for overpowered
-		for _, action := range []string{"is attacked by", "is double attacked by"} {
+		for _, action := range []string{ActionAttackedBy, ActionDoubleAttackedBy} {
 			effects = append(effects, &dao.CardEffect{
 				Type:                   proto.BattleEffectType_ATTACK,
 				Value:                  int32(attackValue),
@@ -243,7 +250,7 @@ func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 		effects = append(effects, &dao.CardEffect{
 			Type:                   proto.BattleEffectType_HEAL,
 			Value:                  int32(selfCard.LifeForce),
-			Description:            desc("is healed by"),
+			Description:            desc(ActionHealedBy),
 			TargetPlayerId:         selfPlayerId,
 			TargetTemporaryAddress: selfTemp,
 		})
@@ -251,7 +258,7 @@ func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *da
 		effects = append(effects, &dao.CardEffect{
 			Type:                   proto.BattleEffectType_ATTACK,
 			Value:                  int32(opponentCard.Attack - selfCard.Defense),
-			Description:            desc("is attacked by"),
+			Description:            desc(ActionAttackedBy),
 			TargetPlayerId:         selfPlayerId,
 			TargetTemporaryAddress: selfTemp,
 		})
