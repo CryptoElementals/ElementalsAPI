@@ -184,6 +184,11 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	_, ok := q.queue[event.PlayerAddress]
+	if !ok {
+		log.Debugw("player not in queue", "player", event.PlayerAddress.String())
+		return nil
+	}
 	return q.removePlayerFromQueue(event.PlayerAddress)
 }
 
