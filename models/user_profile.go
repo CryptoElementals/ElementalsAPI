@@ -1,8 +1,11 @@
 package dao
 
 import (
+	"log"
+	"sync"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"gorm.io/gorm"
 )
 
@@ -43,37 +46,26 @@ func (DevTempKey) TableName() string {
 	return "dev_temp_keys"
 }
 
-// ---- Minimal Snowflake-like generator (local to avoid extra imports) ----
-// 41 bits timestamp (ms), 10 bits node id (fixed 1), 12 bits sequence
+// snowflakeNode 全局雪花ID生成器节点
 var (
-	_lastTs int64
-	_seq    uint16
-	_nodeID uint16 = 1
+	snowflakeNode *snowflake.Node
+	snowflakeOnce sync.Once
 )
 
-func nowMs() int64 {
-	return time.Now().UnixNano() / int64(time.Millisecond)
+// initSnowflakeNode 初始化雪花ID生成器节点
+func initSnowflakeNode() {
+	snowflakeOnce.Do(func() {
+		var err error
+		// 使用节点ID 1
+		snowflakeNode, err = snowflake.NewNode(1)
+		if err != nil {
+			log.Fatalf("初始化雪花ID生成器失败: %v", err)
+		}
+	})
 }
 
+// generateSnowflakeID 生成雪花ID
 func generateSnowflakeID() int64 {
-	const epoch = int64(1762819200000) // 2025-11-11
-	const nodeBits = 10
-	const seqBits = 12
-	const maxSeq = (1 << seqBits) - 1
-
-	ts := nowMs()
-	if ts == _lastTs {
-		_seq = (_seq + 1) & uint16(maxSeq)
-		if _seq == 0 {
-			for ts <= _lastTs {
-				ts = nowMs()
-			}
-		}
-	} else {
-		_seq = 0
-	}
-	_lastTs = ts
-	return (int64(ts-epoch) << (nodeBits + seqBits)) |
-		(int64(_nodeID) << seqBits) |
-		int64(_seq)
+	initSnowflakeNode()
+	return snowflakeNode.Generate().Int64()
 }

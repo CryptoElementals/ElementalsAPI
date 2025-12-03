@@ -20,6 +20,7 @@ const (
 	LOGIN_DILL_LABEL        = "LoginWeb3"
 	REFRESH_LABEL           = "RefreshTokens"
 	IS_USER_LOGGED_IN_LABEL = "IsUserLoggedIn"
+	LOGOUT_LABEL            = "Logout"
 
 	// 系统与资源
 	HEALTH_CHECK_LABEL = "HealthCheck"

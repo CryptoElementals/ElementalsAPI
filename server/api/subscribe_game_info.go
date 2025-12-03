@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/events"
@@ -88,19 +88,20 @@ func NewSubscribeGameInfoTask(data *map[string]interface{}) (Task, error) {
 
 // Run 实现事件驱动的 SSE 流式响应
 func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
-		return nil, fmt.Errorf("failed to get player address by player id")
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
+		return nil, fmt.Errorf("player id is empty")
 	}
-	address := profile.Address
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid player id: %v", err)
+	}
 
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
 	temp_address := strings.ToLower(task.Request.TempAddress)
 
 	// 组装 game_topic: PlayerID_tempaddress 格式
-	game_topic := fmt.Sprintf("%d_%s", profile.PlayerID, temp_address)
+	game_topic := fmt.Sprintf("%d_%s", playerID, temp_address)
 
 	// 获取全局事件管理器
 	eventManager := events.GetGlobalEventManager()
