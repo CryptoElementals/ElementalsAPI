@@ -308,7 +308,7 @@ func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
 		GameID:         g.gameInfo.ID,
 		Players:        allPlayers,
 		InitialHP:      g.gameInfo.InitialHP,
-		RoundTimeout:   g.gameInfo.RoundTimeout,
+		RoundTimeout:   g.gameInfo.CommitmentSubmissionTimeout, // RoundTimeout in RequireGameCreationEvent is for chain contract, not RoundReadyEvent
 		MaxRoundNumber: g.gameInfo.MaxRounds,
 	})
 }

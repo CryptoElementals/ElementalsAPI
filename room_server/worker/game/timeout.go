@@ -24,17 +24,20 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT:
 		// game waitting confirmed for the first round
-		timeoutDuration = g.gameInfo.GameArgs.GameMatchTimeout + g.gameInfo.GameArgs.GameMatchTimeoutRedundancy
+		timeoutDuration = g.gameInfo.GameArgs.ConfirmationTimeout + g.gameInfo.GameArgs.ConfirmationTimeoutRedundancy
 	case proto.GameStatus_GAME_RUNNING:
 		switch g.currentRound.turnStatus {
 		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION,
 			proto.TurnStatus_TURN_ROUND_COMPLETED,
 			proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
 			// waitting for confimation
-			timeoutDuration = g.gameInfo.GameArgs.RoundConfirmTimeout + g.gameInfo.GameArgs.RoundConfirmTimeoutRedundancy
-		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS, proto.TurnStatus_TURN_WAITTING_CARDS:
+			timeoutDuration = g.gameInfo.GameArgs.ConfirmationTimeout + g.gameInfo.GameArgs.ConfirmationTimeoutRedundancy
+		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
+			// turn submitting commitments
+			timeoutDuration = g.gameInfo.GameArgs.CommitmentSubmissionTimeout + g.gameInfo.GameArgs.CommitmentSubmissionTimeoutRedundancy
+		case proto.TurnStatus_TURN_WAITTING_CARDS:
 			// turn submitting cards
-			timeoutDuration = g.gameInfo.GameArgs.RoundTimeout + g.gameInfo.GameArgs.RoundTimeoutRedundancy
+			timeoutDuration = g.gameInfo.GameArgs.CardSubmissionTimeout + g.gameInfo.GameArgs.CardSubmissionTimeoutRedundancy
 		}
 	case proto.GameStatus_GAME_END:
 		return 0

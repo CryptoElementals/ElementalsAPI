@@ -208,10 +208,10 @@ func (s *Service) GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse,
 
 func (s *Service) GetTimeoutConfig() (*proto.TimeoutConfig, error) {
 	cfg := &proto.TimeoutConfig{
-		GameMatchTimeout:    config.GameParams.GameMatchTimeout,
-		RoundConfirmTimeout: config.GameParams.RoundConfirmTimeout,
-		RoundTimeout:        config.GameParams.RoundTimeout,
-		ContinueTimeout:     config.GameParams.ContinueTimeout,
+		ConfirmationTimeout:         config.GameParams.ConfirmationTimeout,
+		CommitmentSubmissionTimeout: config.GameParams.CommitmentSubmissionTimeout,
+		CardSubmissionTimeout:       config.GameParams.CardSubmissionTimeout,
+		GameContinueTimeout:         config.GameParams.GameContinueTimeout,
 	}
 	return cfg, nil
 }

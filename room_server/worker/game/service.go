@@ -43,15 +43,15 @@ func NewService(
 		MaxRounds: gameConfig.MaxRounds,
 		InitialHP: gameConfig.InitialHP,
 
-		GameMatchTimeout:    gameConfig.GameMatchTimeout,
-		RoundConfirmTimeout: gameConfig.RoundConfirmTimeout,
-		RoundTimeout:        gameConfig.RoundTimeout,
-		ContinueTimeout:     gameConfig.ContinueTimeout,
+		ConfirmationTimeout:         gameConfig.ConfirmationTimeout,
+		CommitmentSubmissionTimeout: gameConfig.CommitmentSubmissionTimeout,
+		CardSubmissionTimeout:       gameConfig.CardSubmissionTimeout,
+		GameContinueTimeout:         gameConfig.GameContinueTimeout,
 
-		GameMatchTimeoutRedundancy:    gameConfig.GameMatchTimeoutRedundancy,
-		RoundConfirmTimeoutRedundancy: gameConfig.RoundConfirmTimeoutRedundancy,
-		RoundTimeoutRedundancy:        gameConfig.RoundTimeoutRedundancy,
-		ContinueTimeoutRedundancy:     gameConfig.ContinueTimeoutRedundancy,
+		ConfirmationTimeoutRedundancy:         gameConfig.ConfirmationTimeoutRedundancy,
+		CommitmentSubmissionTimeoutRedundancy: gameConfig.CommitmentSubmissionTimeoutRedundancy,
+		CardSubmissionTimeoutRedundancy:       gameConfig.CardSubmissionTimeoutRedundancy,
+		GameContinueTimeoutRedundancy:         gameConfig.GameContinueTimeoutRedundancy,
 
 		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
@@ -96,10 +96,10 @@ func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.R
 		if round.RoundNumber == roundNum {
 			roundRes := conversion.DbRoundToRoundResult(round)
 			var gameRes *proto.GameResult
-			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.RoundConfirmTimeout)
+			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.ConfirmationTimeout)
 			if gameInfo.GameResult != nil {
 				gameRes = conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
-				gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.ContinueTimeout)
+				gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.GameContinueTimeout)
 			}
 			return roundRes, gameRes, nil
 		}

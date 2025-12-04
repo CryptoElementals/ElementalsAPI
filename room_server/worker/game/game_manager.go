@@ -90,9 +90,10 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 	// also notify players
 	for _, player := range evt.Players {
 		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:         gameID,
-			Players:        evt.Players,
-			IsContinueGame: true,
+			GameID:              gameID,
+			Players:             evt.Players,
+			IsContinueGame:      true,
+			ConfirmationTimeout: r.args.ConfirmationTimeout,
 		}))
 	}
 	log.Infow("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
@@ -142,8 +143,9 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 	// also notify players
 	for _, player := range evt.Players {
 		evt := types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:  gameID,
-			Players: evt.Players,
+			GameID:              gameID,
+			Players:             evt.Players,
+			ConfirmationTimeout: r.args.ConfirmationTimeout,
 		})
 		r.workerManager.SendEvent(player.String(), evt)
 	}

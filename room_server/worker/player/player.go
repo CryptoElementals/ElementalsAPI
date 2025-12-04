@@ -75,8 +75,9 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 				Type: proto.EventType_TYPE_MATCHED,
 				Event: &proto.Event_GameMatched{
 					GameMatched: &proto.GameMatched{
-						GameId:  uint32(evt.GameID),
-						Players: players,
+						GameId:              uint32(evt.GameID),
+						Players:             players,
+						ConfirmationTimeout: evt.ConfirmationTimeout,
 					},
 				},
 			},
@@ -127,9 +128,10 @@ func (p *Player) handleTurnReadyEvent(ctx context.Context, evt *types.TurnReadyE
 			Type: proto.EventType_TYPE_TURN_READY,
 			Event: &proto.Event_TurnReady{
 				TurnReady: &proto.TurnReady{
-					GameId:   uint32(evt.GameID),
-					RoundNum: evt.RoundNumber,
-					TurnNum:  evt.TurnNumber,
+					GameId:                      uint32(evt.GameID),
+					RoundNum:                    evt.RoundNumber,
+					TurnNum:                     evt.TurnNumber,
+					CommitmentSubmissionTimeout: evt.CommitmentSubmissionTimeout,
 				},
 			},
 		},
@@ -162,9 +164,10 @@ func (p *Player) handleCommitmentsOnChainEvent(ctx context.Context, evt *types.C
 			Type: proto.EventType_TYPE_COMMITMENTS_ON_CHAIN,
 			Event: &proto.Event_CommitmentsOnChain{
 				CommitmentsOnChain: &proto.CommitmentsOnChain{
-					GameId:   uint32(evt.GameID),
-					RoundNum: evt.RoundNumber,
-					TurnNum:  evt.TurnNumber, // CardNum in proto corresponds to TurnNumber
+					GameId:                uint32(evt.GameID),
+					RoundNum:              evt.RoundNumber,
+					TurnNum:               evt.TurnNumber, // CardNum in proto corresponds to TurnNumber
+					CardSubmissionTimeout: evt.CardSubmissionTimeout,
 				},
 			},
 		},
@@ -217,6 +220,12 @@ func (p *Player) handleTurnCompletedEvent(ctx context.Context, evt *types.TurnCo
 	}
 	if battleGameResult != nil {
 		turnCompleted.GameResult = battleGameResult
+	}
+	if evt.ConfirmationTimeout != nil {
+		turnCompleted.ConfirmationTimeout = evt.ConfirmationTimeout
+	}
+	if evt.GameContinueTimeout != nil {
+		turnCompleted.GameContinueTimeout = evt.GameContinueTimeout
 	}
 
 	p.publisher.Publish(ctx, &proto.PublishRequest{

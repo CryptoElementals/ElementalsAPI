@@ -130,7 +130,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	task.Response.PvPInfo.RoundNumber = gamePhase.RoundNumber
 	task.Response.PvPInfo.TurnNumber = gamePhase.TurnNumber
 	task.Response.PvPInfo.TurnStartAt = gamePhase.TurnStartAt
-	task.Response.PvPInfo.TimeoutDuration = uint64(config.GameParams.ContinueTimeout)
+	task.Response.PvPInfo.TimeoutDuration = uint64(config.GameParams.GameContinueTimeout)
 
 	// Determine player status from GamePhase structure
 	// If GameID == 0 and no players, check if in queue
