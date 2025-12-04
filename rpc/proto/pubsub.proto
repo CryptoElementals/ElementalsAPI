@@ -109,9 +109,8 @@ message GameMatched {
   uint32 MaxTurnNum = 3;
   uint32 InitialHP = 4;
   uint32 InitialMultiplier = 5;
-  uint32 ConfirmTimeout = 6;
+  int64 ConfirmationTimeout = 6;
   repeated rpc.PlayerAddress Players = 7; 
-
 }
 
 message GameReady {
@@ -127,12 +126,14 @@ message TurnReady {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
+	int64 CommitmentSubmissionTimeout = 4;
 }
 
 message CommitmentsOnChain {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
+  int64 CardSubmissionTimeout = 4;
 }
 
 message PlayerTurnInfo {
@@ -148,6 +149,8 @@ message TurnCompleted {
   bool IsGameComplete = 5;
   repeated PlayerTurnInfo PlayerTurnInfos = 6;
   optional battle.GameResult GameResult = 7;
+  optional int64 ConfirmationTimeout = 8;
+  optional int64 GameContinueTimeout = 9;
 }
 
 // Deprecated: RoundCompleted and GameCompleted are no longer used.

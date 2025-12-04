@@ -3,9 +3,10 @@ package types
 import dao "github.com/CryptoElementals/common/models"
 
 type GameCreatedEvent struct {
-	GameID         uint
-	Players        []PlayerAddress
-	IsContinueGame bool
+	GameID              uint
+	Players             []PlayerAddress
+	IsContinueGame      bool
+	ConfirmationTimeout int64 // Timeout for game match confirmation
 }
 
 type GameReadyEvent struct {
@@ -14,9 +15,10 @@ type GameReadyEvent struct {
 }
 
 type TurnReadyEvent struct {
-	GameID      uint
-	RoundNumber uint32
-	TurnNumber  uint32
+	GameID                      uint
+	RoundNumber                 uint32
+	TurnNumber                  uint32
+	CommitmentSubmissionTimeout int64
 }
 
 type PlayerTurnInfo struct {
@@ -25,13 +27,15 @@ type PlayerTurnInfo struct {
 }
 
 type TurnCompletedEvent struct {
-	GameID          uint
-	RoundNumber     uint32
-	TurnNumber      uint32
-	IsRoundComplete bool
-	IsGameComplete  bool
-	PlayerTurnInfo  []*PlayerTurnInfo
-	GameResult      *dao.GameResult // Only set when IsGameComplete is true
+	GameID              uint
+	RoundNumber         uint32
+	TurnNumber          uint32
+	IsRoundComplete     bool
+	IsGameComplete      bool
+	PlayerTurnInfo      []*PlayerTurnInfo
+	GameResult          *dao.GameResult // Only set when IsGameComplete is true
+	ConfirmationTimeout *int64          // Optional: timeout for round confirmation after turn completes
+	GameContinueTimeout *int64          // Optional: timeout for game continue (only when game is complete)
 }
 
 type RoundPartialReadyEvent struct {
@@ -44,13 +48,13 @@ type RoundReadyEvent struct {
 	GameID         uint
 	RoundNumber    uint32
 	RoundStartedAt int64
-	RoundTimeout   int64
 }
 
 type CommitmentsOnChainEvent struct {
-	GameID      uint
-	RoundNumber uint32
-	TurnNumber  uint32
+	GameID                uint
+	RoundNumber           uint32
+	TurnNumber            uint32
+	CardSubmissionTimeout int64
 }
 
 type RoundCompletedEvent struct {

@@ -3,7 +3,8 @@ package types
 import "github.com/CryptoElementals/common/rpc/proto"
 
 type GameMatchedEvent struct {
-	Players []PlayerAddress
+	Players             []PlayerAddress
+	ConfirmationTimeout int64 // Timeout for game match confirmation
 }
 
 type GameContinueEvent struct {
