@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/events"
+	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -40,6 +42,14 @@ type SubscribeGameInfoTask struct {
 	Response *SubscribeGameInfoResponse
 	mu       sync.Mutex
 	stopChan chan struct{}
+}
+
+// MatchedPlayerInfo 匹配成功事件中的玩家简要信息
+type MatchedPlayerInfo struct {
+	PlayerID  string `json:"PlayerID"`
+	Name      string `json:"Name"`
+	AvatarURL string `json:"AvatarURL"`
+	IsMyself  bool   `json:"IsMyself"`
 }
 
 // 解码请求
@@ -182,11 +192,13 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 	// 根据事件类型进行转换
 	switch msg.Event.Type {
 	case proto.EventType_TYPE_MATCHED:
+		gameMatched := msg.Event.GetGameMatched()
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "matched",
-				"Message":   msg.Event.GetGameMatched(),
+				"Message":   gameMatched,
+				"Players":   task.buildMatchedPlayersInfo(gameMatched),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
@@ -250,11 +262,13 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_GAME_PHASE_SYNC:
+		gamePhase := msg.Event.GetGamePhase()
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "gamePhaseSync",
-				"Message":   msg.Event.GetGamePhase(),
+				"Message":   gamePhase,
+				"Players":   task.buildGamePhasePlayersInfo(gamePhase),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
@@ -292,6 +306,131 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	}
+}
+
+// buildMatchedPlayersInfo 根据 GameMatched 中的玩家列表补充用户名和头像信息
+func (task *SubscribeGameInfoTask) buildMatchedPlayersInfo(gameMatched *proto.GameMatched) []MatchedPlayerInfo {
+	if gameMatched == nil {
+		return nil
+	}
+
+	players := gameMatched.GetPlayers()
+	if len(players) == 0 {
+		return nil
+	}
+
+	result := make([]MatchedPlayerInfo, 0, len(players))
+
+	// 当前订阅者的 PlayerID 字符串（用于判断 IsMyself）
+	currentPlayerID := ""
+	if task != nil && task.Request != nil {
+		currentPlayerID = strings.TrimSpace(task.Request.PlayerID)
+	}
+	for _, p := range players {
+		if p == nil {
+			continue
+		}
+
+		playerIDStr := strconv.FormatInt(p.GetId(), 10)
+		info := MatchedPlayerInfo{
+			PlayerID: playerIDStr,
+		}
+
+		userProfile, err := db.GetUserProfileByPlayerID(playerIDStr)
+		if err != nil {
+			log.Errorf("%s, failed to get user profile for matched player_id=%s: %v", requestUUIDFromTask(task), playerIDStr, err)
+			result = append(result, info)
+			continue
+		}
+
+		info.PlayerID = strconv.FormatInt(userProfile.PlayerID, 10)
+		info.Name = userProfile.Name
+
+		if userProfile.AvatarURL != "" {
+			if avatarURL, err := utils.GetPresignedImageURL(userProfile.AvatarURL); err == nil {
+				info.AvatarURL = avatarURL
+			} else {
+				log.Errorf("%s, failed to generate presigned avatar URL for matched player_id=%s: %v", requestUUIDFromTask(task), playerIDStr, err)
+			}
+		}
+
+		// 标记是否为当前用户
+		if currentPlayerID != "" && currentPlayerID == playerIDStr {
+			info.IsMyself = true
+		}
+
+		result = append(result, info)
+	}
+
+	return result
+}
+
+// buildGamePhasePlayersInfo 根据 GamePhase 中的玩家列表补充用户名和头像信息
+func (task *SubscribeGameInfoTask) buildGamePhasePlayersInfo(gamePhase *proto.GamePhase) []MatchedPlayerInfo {
+	if gamePhase == nil {
+		return nil
+	}
+
+	phasePlayers := gamePhase.GetPlayers()
+	if len(phasePlayers) == 0 {
+		return nil
+	}
+
+	result := make([]MatchedPlayerInfo, 0, len(phasePlayers))
+
+	// 当前订阅者的 PlayerID 字符串（用于判断 IsMyself）
+	currentPlayerID := ""
+	if task != nil && task.Request != nil {
+		currentPlayerID = strings.TrimSpace(task.Request.PlayerID)
+	}
+
+	for _, gp := range phasePlayers {
+		if gp == nil || gp.GetAddress() == nil {
+			continue
+		}
+
+		playerID := gp.GetAddress().GetId()
+		playerIDStr := strconv.FormatInt(playerID, 10)
+
+		info := MatchedPlayerInfo{
+			PlayerID: playerIDStr,
+		}
+
+		userProfile, err := db.GetUserProfileByPlayerID(playerIDStr)
+		if err != nil {
+			log.Errorf("%s, failed to get user profile for game phase player_id=%s: %v", requestUUIDFromTask(task), playerIDStr, err)
+			result = append(result, info)
+			continue
+		}
+
+		info.PlayerID = strconv.FormatInt(userProfile.PlayerID, 10)
+		info.Name = userProfile.Name
+
+		if userProfile.AvatarURL != "" {
+			if avatarURL, err := utils.GetPresignedImageURL(userProfile.AvatarURL); err == nil {
+				info.AvatarURL = avatarURL
+			} else {
+				log.Errorf("%s, failed to generate presigned avatar URL for game phase player_id=%s: %v", requestUUIDFromTask(task), playerIDStr, err)
+			}
+		}
+
+		// 标记是否为当前用户
+		if currentPlayerID != "" && currentPlayerID == playerIDStr {
+			info.IsMyself = true
+		}
+
+		result = append(result, info)
+	}
+
+	return result
+}
+
+// requestUUIDFromTask 辅助函数：从任务中安全获取 RequestUUID，仅用于日志
+func requestUUIDFromTask(task *SubscribeGameInfoTask) string {
+	if task == nil || task.Request == nil {
+		return ""
+	}
+	return task.Request.RequestUUID
 }
 
 // sendSSEEvent 发送 SSE 事件

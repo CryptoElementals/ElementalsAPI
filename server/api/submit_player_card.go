@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -79,11 +79,17 @@ func NewSubmitPlayerCardTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *SubmitPlayerCardTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by player id"
+		task.Response.BaseResponse.Message = "player id is empty"
+		return task.Response, nil
+	}
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
 		return task.Response, nil
 	}
 
@@ -125,7 +131,7 @@ func (task *SubmitPlayerCardTask) Run(c *gin.Context) (Response, error) {
 		Salt:        saltBytes,
 		Signature:   signatureBytes,
 		Address: &proto.PlayerAddress{
-			Id:               profile.PlayerID,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 	}

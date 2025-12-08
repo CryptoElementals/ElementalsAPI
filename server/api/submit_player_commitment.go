@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -84,16 +84,21 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 		task.Request.RequestUUID, task.Request.GameID, task.Request.RoundNumber, task.Request.TurnNumber,
 		task.Request.TempAddress, task.Request.PlayerID)
 
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
-		log.Errorf("%s, Failed to get player address by player id: %v", task.Request.RequestUUID, err)
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
+		log.Errorf("%s, player id is empty", task.Request.RequestUUID)
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by player id"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-
-	log.Infof("%s, Player profile found: PlayerID=%d, Address=%s", task.Request.RequestUUID, profile.PlayerID, profile.Address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		log.Errorf("%s, invalid player id: %v", task.Request.RequestUUID, err)
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 
 	// 统一将地址转为小写
 	tempAddress := strings.ToLower(task.Request.TempAddress)
@@ -141,7 +146,7 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 		Commitment:  commitmentBytes,
 		Signature:   signatureBytes,
 		Address: &proto.PlayerAddress{
-			Id:               profile.PlayerID,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 	}
