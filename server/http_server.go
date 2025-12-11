@@ -310,8 +310,6 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			return
 		}
 		playerIDStr := fmt.Sprintf("%d", userProfile.PlayerID)
-		session.Set(api.SESSION_USER_KEY, playerIDStr)
-		_ = session.Save()
 		// issue refresh token
 		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
 		if err != nil {

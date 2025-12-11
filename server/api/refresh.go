@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
@@ -77,7 +78,11 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	// 验证 nonce 是否存在于 Session 中
 	session := sessions.Default(c)
 	session.Options(sessions.Options{
-		MaxAge: globalSessionMaxAge,
+		MaxAge:   globalSessionMaxAge,
+		Path:     "/",
+		SameSite: http.SameSiteNoneMode, // 允许跨域请求携带 cookie
+		Secure:   true,                    // HTTPS 必需
+		HttpOnly: true,                    // 防止 XSS 攻击
 	})
 
 	refreshToken := task.Request.RefreshToken

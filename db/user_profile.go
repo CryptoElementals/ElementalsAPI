@@ -83,7 +83,9 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 			// 使用事务确保用户档案和 token 记录同时创建
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
-					Address: strings.ToLower(address),
+					Address:       strings.ToLower(address),
+					AvatarURL:     "avatar_1.png",
+					BackgroundURL: "bg_1.png",
 				}
 				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
 				if err = userProfile.BeforeCreate(tx); err != nil {
@@ -94,7 +96,7 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 				if err = tx.Create(&userProfile).Error; err != nil {
 					return err
 				}
-				
+
 				// 创建对应的 user_token 记录
 				userToken := dao.UserToken{
 					PlayerId:    userProfile.PlayerID,
@@ -131,7 +133,9 @@ func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile,
 			// 使用事务确保用户档案和 token 记录同时创建
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
-					Email: email,
+					Email:         email,
+					AvatarURL:     "avatar_1.png",
+					BackgroundURL: "bg_1.png",
 				}
 				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
 				if err = userProfile.BeforeCreate(tx); err != nil {
@@ -144,7 +148,7 @@ func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile,
 					log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
 					return err
 				}
-				
+
 				// 创建对应的 user_token 记录
 				userToken := dao.UserToken{
 					PlayerId:    userProfile.PlayerID,

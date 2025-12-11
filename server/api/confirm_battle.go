@@ -20,8 +20,8 @@ func init() {
 type ConfirmBattleRequest struct {
 	BaseRequest
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`
-	Round       uint   `mapstructure:"Round" validate:"required,min=1"`
-	Turn        uint   `mapstructure:"Turn" validate:"required,min=1"`
+	RoundNumber uint   `mapstructure:"RoundNumber" validate:"required,min=1"`
+	TurnNumber  uint   `mapstructure:"TurnNumber" validate:"required,min=1"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
@@ -102,8 +102,8 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 
 	req := &proto.ConfirmBattleRequest{
 		GameID:      uint32(task.Request.GameID),
-		RoundNumber: uint32(task.Request.Round),
-		TurnNumber:  uint32(task.Request.Turn),
+		RoundNumber: uint32(task.Request.RoundNumber),
+		TurnNumber:  uint32(task.Request.TurnNumber),
 		PlayerAddress: &proto.PlayerAddress{
 			Id:               playerID,
 			TemporaryAddress: tempAddress,
