@@ -32,10 +32,10 @@ service RpcService {
 }
 
 message TimeoutConfig {
-    int64 GameMatchTimeout = 1;
-	int64 RoundConfirmTimeout = 2;
-	int64 RoundTimeout = 3;
-	int64 ContinueTimeout = 4;
+    int64 ConfirmationTimeout = 1;
+	int64 CommitmentSubmissionTimeout = 2;
+	int64 CardSubmissionTimeout = 3;
+	int64 GameContinueTimeout = 4;
 }
 
 message UnregisterBotsRequest {

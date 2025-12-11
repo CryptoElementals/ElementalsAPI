@@ -16,15 +16,15 @@ type GameParamConfig struct {
 	InitialHP    int64 `mapstructure:"initial-hp"`
 	MaxHPOneLine int64 `mapstructure:"max-hp-one-line"`
 	// timeouts
-	GameMatchTimeout    int64 `mapstructure:"game-match-timeout"`
-	RoundConfirmTimeout int64 `mapstructure:"round-confirm-timeout"`
-	RoundTimeout        int64 `mapstructure:"round-timeout"`
-	ContinueTimeout     int64 `mapstructure:"continue-timeout"`
+	ConfirmationTimeout         int64 `mapstructure:"confirmation-timeout"`          // Timeout for game match and round confirmation
+	CommitmentSubmissionTimeout int64 `mapstructure:"commitment-submission-timeout"` // Timeout for commitment submission
+	CardSubmissionTimeout       int64 `mapstructure:"card-submission-timeout"`       // Timeout for card submission
+	GameContinueTimeout         int64 `mapstructure:"game-continue-timeout"`         // Timeout for game continue
 	// timeout redundancy
-	GameMatchTimeoutRedundancy    int64 `mapstructure:"game-match-timeout-redundancy"`
-	RoundConfirmTimeoutRedundancy int64 `mapstructure:"round-confirm-timeout-redundancy"`
-	RoundTimeoutRedundancy        int64 `mapstructure:"round-timeout-redundancy"`
-	ContinueTimeoutRedundancy     int64 `mapstructure:"continue-timeout-redundancy"`
+	ConfirmationTimeoutRedundancy         int64 `mapstructure:"confirmation-timeout-redundancy"`          // Redundancy for game match and round confirmation
+	CommitmentSubmissionTimeoutRedundancy int64 `mapstructure:"commitment-submission-timeout-redundancy"` // Redundancy for commitment submission
+	CardSubmissionTimeoutRedundancy       int64 `mapstructure:"card-submission-timeout-redundancy"`       // Redundancy for card submission
+	GameContinueTimeoutRedundancy         int64 `mapstructure:"game-continue-timeout-redundancy"`         // Redundancy for game continue
 	// pool processing interval in seconds
 	PoolProcessingInterval int64 `mapstructure:"pool-processing-interval"`
 }
@@ -75,18 +75,17 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	if gameParams.InitialHP == 0 {
 		gameParams.InitialHP = 3000
 	}
-	if gameParams.GameMatchTimeout == 0 {
-		gameParams.GameMatchTimeout = 20
+	if gameParams.ConfirmationTimeout == 0 {
+		gameParams.ConfirmationTimeout = 10
 	}
-	if gameParams.RoundConfirmTimeout == 0 {
-		gameParams.RoundConfirmTimeout = 10
+	if gameParams.CommitmentSubmissionTimeout == 0 {
+		gameParams.CommitmentSubmissionTimeout = 20
 	}
-	if gameParams.RoundTimeout == 0 {
-		gameParams.RoundTimeout = 20
+	if gameParams.CardSubmissionTimeout == 0 {
+		gameParams.CardSubmissionTimeout = 20
 	}
-
-	if gameParams.ContinueTimeout == 0 {
-		gameParams.ContinueTimeout = 10
+	if gameParams.GameContinueTimeout == 0 {
+		gameParams.GameContinueTimeout = 10
 	}
 
 	// 赋值给全局变量

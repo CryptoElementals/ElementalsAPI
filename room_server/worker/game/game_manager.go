@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -14,13 +13,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
-
-// eventKey uniquely identifies an event by address, round number, and index
-type eventKey struct {
-	address     string
-	roundNumber uint32
-	index       uint32
-}
 
 type GameManager struct {
 	ctx               context.Context
@@ -36,11 +28,7 @@ type GameManager struct {
 	wg                sync.WaitGroup
 
 	// Event pools for commitment and card submissions
-	commitmentPool     map[eventKey]*types.SubmitPlayerCommitment
-	cardPool           map[eventKey]*types.SubmitPlayerCard
-	commitmentInFlight map[eventKey]bool
-	cardInFlight       map[eventKey]bool
-	poolLock           sync.RWMutex
+	txPool *txPool
 }
 
 func NewGameManager(ctx context.Context,
@@ -50,22 +38,19 @@ func NewGameManager(ctx context.Context,
 	noRecover bool,
 ) *GameManager {
 	m := &GameManager{
-		ctx:                ctx,
-		gamesMap:           make(map[uint]*Game),
-		playerToGameMap:    make(map[types.PlayerAddress]*Game),
-		workerManager:      workerManagerService,
-		chainSvc:           chainSvc,
-		args:               gameArgs,
-		noRecover:          noRecover,
-		commitmentPool:     make(map[eventKey]*types.SubmitPlayerCommitment),
-		cardPool:           make(map[eventKey]*types.SubmitPlayerCard),
-		commitmentInFlight: make(map[eventKey]bool),
-		cardInFlight:       make(map[eventKey]bool),
+		ctx:             ctx,
+		gamesMap:        make(map[uint]*Game),
+		playerToGameMap: make(map[types.PlayerAddress]*Game),
+		workerManager:   workerManagerService,
+		chainSvc:        chainSvc,
+		args:            gameArgs,
+		noRecover:       noRecover,
 	}
 	// Set default pool processing interval if not set
 	if m.args.PoolProcessingInterval <= 0 {
 		m.args.PoolProcessingInterval = 5 // Default 5 seconds
 	}
+	m.txPool = newTxPool(chainSvc)
 	return m
 }
 
@@ -78,7 +63,7 @@ func (r *GameManager) Start() error {
 	}
 	// Start background goroutine for pool processing
 	r.wg.Add(1)
-	go r.processPools()
+	go r.txPool.processPools(r.ctx, &r.wg, r.args)
 	return nil
 }
 
@@ -105,9 +90,10 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 	// also notify players
 	for _, player := range evt.Players {
 		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:         gameID,
-			Players:        evt.Players,
-			IsContinueGame: true,
+			GameID:              gameID,
+			Players:             evt.Players,
+			IsContinueGame:      true,
+			ConfirmationTimeout: r.args.ConfirmationTimeout,
 		}))
 	}
 	log.Infow("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
@@ -121,6 +107,8 @@ func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) er
 			return err
 		}
 	}
+	// Clear transaction info for this game
+	r.txPool.clearGameInfo(evt.GameID)
 	// do this async for not getting deadlock
 	go func() {
 		r.lock.Lock()
@@ -155,8 +143,9 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 	// also notify players
 	for _, player := range evt.Players {
 		evt := types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:  gameID,
-			Players: evt.Players,
+			GameID:              gameID,
+			Players:             evt.Players,
+			ConfirmationTimeout: r.args.ConfirmationTimeout,
 		})
 		r.workerManager.SendEvent(player.String(), evt)
 	}
@@ -362,15 +351,6 @@ func (r *GameManager) recoverGames() error {
 	return nil
 }
 
-// makeEventKey creates an eventKey from address, round number, and index
-func makeEventKey(address types.PlayerAddress, roundNumber, index uint32) eventKey {
-	return eventKey{
-		address:     address.TemporaryAddress,
-		roundNumber: roundNumber,
-		index:       index,
-	}
-}
-
 // getGameForPlayer gets the game for a player address
 func (r *GameManager) getGameForPlayer(address types.PlayerAddress) (*Game, error) {
 	r.lock.RLock()
@@ -399,17 +379,6 @@ func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommit
 		return fmt.Errorf("GameID mismatch: event has %d but game has %d", evt.GameID, game.gameInfo.ID)
 	}
 
-	key := makeEventKey(evt.Address, evt.RoundNumber, evt.CommitmentIndex)
-	r.poolLock.Lock()
-	defer r.poolLock.Unlock()
-
-	if _, exists := r.commitmentPool[key]; exists {
-		return fmt.Errorf("commitment already in pool")
-	}
-	if r.commitmentInFlight[key] {
-		return fmt.Errorf("commitment already in flight")
-	}
-
 	// Send event to game worker to validate
 	validateEvt := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
 	r.workerManager.SendEvent(game.WorkerID(), validateEvt)
@@ -418,8 +387,8 @@ func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommit
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	r.commitmentPool[key] = evt
-	return nil
+	// Add to transaction pool (will check turn index)
+	return r.txPool.addCommitment(evt)
 }
 
 // HandleSubmitPlayerCard receives and validates a card submission event
@@ -439,17 +408,6 @@ func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error 
 		return fmt.Errorf("GameID mismatch: event has %d but game has %d", evt.GameID, game.gameInfo.ID)
 	}
 
-	key := makeEventKey(evt.Address, evt.RoundNumber, evt.CardIndex)
-	r.poolLock.Lock()
-	defer r.poolLock.Unlock()
-
-	if _, exists := r.cardPool[key]; exists {
-		return fmt.Errorf("card already in pool")
-	}
-	if r.cardInFlight[key] {
-		return fmt.Errorf("card already in flight")
-	}
-
 	// Send event to game worker to validate
 	validateEvt := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
 	r.workerManager.SendEvent(game.WorkerID(), validateEvt)
@@ -458,115 +416,6 @@ func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error 
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	r.cardPool[key] = evt
-	return nil
-}
-
-// processPools periodically processes events in the pools and sends them to chain manager
-func (r *GameManager) processPools() {
-	defer r.wg.Done()
-	ticker := time.NewTicker(time.Duration(r.args.PoolProcessingInterval) * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-r.ctx.Done():
-			return
-		case <-ticker.C:
-			r.processCommitmentPool()
-			r.processCardPool()
-		}
-	}
-}
-
-// processCommitmentPool processes commitment pool and sends non-inflight events to chain manager in batch
-func (r *GameManager) processCommitmentPool() {
-	// Collect events to process while holding lock
-	r.poolLock.Lock()
-	batchEvents := make([]*types.SubmitPlayerCommitment, 0, len(r.commitmentPool))
-	eventKeys := make([]eventKey, 0, len(r.commitmentPool))
-	for key, evt := range r.commitmentPool {
-		if !r.commitmentInFlight[key] && evt.GameID != 0 {
-			r.commitmentInFlight[key] = true
-			batchEvents = append(batchEvents, evt)
-			eventKeys = append(eventKeys, key)
-		} else if evt.GameID == 0 {
-			log.Errorw("commitment event missing GameID", "address", evt.Address.TemporaryAddress)
-		}
-	}
-	r.poolLock.Unlock()
-
-	if len(batchEvents) == 0 {
-		return
-	}
-
-	// Submit batch
-	if err := r.chainSvc.SubmitPlayerCommitmentsBatch(batchEvents); err != nil {
-		log.Errorw("failed to submit commitments batch to chain", "error", err, "count", len(batchEvents))
-		// Remove all from in flight on error so they can be retried
-		r.poolLock.Lock()
-		for _, key := range eventKeys {
-			delete(r.commitmentInFlight, key)
-		}
-		r.poolLock.Unlock()
-		return
-	}
-
-	log.Infow("submitted commitments batch to chain", "count", len(batchEvents))
-}
-
-// processCardPool processes card pool and sends non-inflight events to chain manager in batch
-func (r *GameManager) processCardPool() {
-	// Collect events to process while holding lock
-	r.poolLock.Lock()
-	batchEvents := make([]*types.SubmitPlayerCard, 0, len(r.cardPool))
-	eventKeys := make([]eventKey, 0, len(r.cardPool))
-	for key, evt := range r.cardPool {
-		if !r.cardInFlight[key] && evt.GameID != 0 {
-			r.cardInFlight[key] = true
-			batchEvents = append(batchEvents, evt)
-			eventKeys = append(eventKeys, key)
-		} else if evt.GameID == 0 {
-			log.Errorw("card event missing GameID", "address", evt.Address.TemporaryAddress)
-		}
-	}
-	r.poolLock.Unlock()
-
-	if len(batchEvents) == 0 {
-		return
-	}
-
-	// Submit batch
-	if err := r.chainSvc.SubmitPlayerCardsBatch(batchEvents); err != nil {
-		log.Errorw("failed to submit cards batch to chain", "error", err, "count", len(batchEvents))
-		// Remove all from in flight on error so they can be retried
-		r.poolLock.Lock()
-		for _, key := range eventKeys {
-			delete(r.cardInFlight, key)
-		}
-		r.poolLock.Unlock()
-		return
-	}
-
-	log.Infow("submitted cards batch to chain", "count", len(batchEvents))
-}
-
-// OnCommitmentSubmitted is called by chain manager when commitment is successfully submitted
-func (r *GameManager) OnCommitmentSubmitted(address types.PlayerAddress, roundNumber, commitmentIndex uint32) {
-	key := makeEventKey(address, roundNumber, commitmentIndex)
-	r.poolLock.Lock()
-	defer r.poolLock.Unlock()
-	delete(r.commitmentPool, key)
-	delete(r.commitmentInFlight, key)
-	log.Infow("commitment confirmed on chain", "address", address.TemporaryAddress, "round", roundNumber, "index", commitmentIndex)
-}
-
-// OnCardSubmitted is called by chain manager when card is successfully submitted
-func (r *GameManager) OnCardSubmitted(address types.PlayerAddress, roundNumber, cardIndex uint32) {
-	key := makeEventKey(address, roundNumber, cardIndex)
-	r.poolLock.Lock()
-	defer r.poolLock.Unlock()
-	delete(r.cardPool, key)
-	delete(r.cardInFlight, key)
-	log.Infow("card confirmed on chain", "address", address.TemporaryAddress, "round", roundNumber, "index", cardIndex)
+	// Add to transaction pool (will check turn index)
+	return r.txPool.addCard(evt)
 }

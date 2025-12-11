@@ -80,7 +80,7 @@ func New(ctx context.Context,
 	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.ShouldRecverGames)
 	s.gameSvc = gameSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
-		cfg.GameParams.ContinueTimeout, cfg.GameParams.ContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
+		cfg.GameParams.GameContinueTimeout, cfg.GameParams.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc

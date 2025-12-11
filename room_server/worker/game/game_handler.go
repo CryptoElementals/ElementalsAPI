@@ -171,16 +171,16 @@ func (g *Game) handleRoomCreated(event *types.Event) error {
 	})
 	// Send turn ready event for the first turn
 	turnReadyEvt := types.NewEvent(g.workerID(), &types.TurnReadyEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: uint32(g.currentRound.round.RoundNumber),
-		TurnNumber:  1,
+		GameID:                      g.gameInfo.ID,
+		RoundNumber:                 uint32(g.currentRound.round.RoundNumber),
+		TurnNumber:                  1,
+		CommitmentSubmissionTimeout: g.gameInfo.CommitmentSubmissionTimeout,
 	})
 	// Also send round ready event for the first turn
 	roundReadyEvt := types.NewEvent(g.workerID(), &types.RoundReadyEvent{
 		GameID:         g.gameInfo.ID,
 		RoundNumber:    uint32(g.currentRound.round.RoundNumber),
 		RoundStartedAt: evt.TimeStamp,
-		RoundTimeout:   g.gameInfo.RoundTimeout,
 	})
 	g.sendEventsToAllPlayers(gameReadyEvt, roundReadyEvt, turnReadyEvt)
 	return nil
@@ -214,9 +214,10 @@ func (g *Game) handleNewTurnSetupOnChain(event *types.Event) error {
 
 	// Send turn ready event
 	turnReadyEvt := types.NewEvent(g.workerID(), &types.TurnReadyEvent{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: evt.RoundNumber,
-		TurnNumber:  evt.TurnNumber,
+		GameID:                      g.gameInfo.ID,
+		RoundNumber:                 evt.RoundNumber,
+		TurnNumber:                  evt.TurnNumber,
+		CommitmentSubmissionTimeout: g.gameInfo.CommitmentSubmissionTimeout,
 	})
 	// For the first turn of a round, also send round ready event
 	if evt.TurnNumber == 1 {
@@ -224,7 +225,6 @@ func (g *Game) handleNewTurnSetupOnChain(event *types.Event) error {
 			GameID:         g.gameInfo.ID,
 			RoundNumber:    evt.RoundNumber,
 			RoundStartedAt: evt.TimeStamp,
-			RoundTimeout:   g.gameInfo.RoundTimeout,
 		})
 		g.sendEventsToAllPlayers(roundReadyEvt, turnReadyEvt)
 	} else {
@@ -260,9 +260,10 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		// commitmentIdx is 0-based, but TurnNumber is 1-based (1, 2, 3)
 		turnNumber := commitmentIdx + 1
 		commitmentsOnChainEvt := types.NewEvent(g.workerID(), &types.CommitmentsOnChainEvent{
-			GameID:      g.gameInfo.ID,
-			RoundNumber: evt.RoundNumber,
-			TurnNumber:  turnNumber,
+			GameID:                g.gameInfo.ID,
+			RoundNumber:           evt.RoundNumber,
+			TurnNumber:            turnNumber,
+			CardSubmissionTimeout: g.gameInfo.CardSubmissionTimeout,
 		})
 		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
 
@@ -396,14 +397,20 @@ func (g *Game) handleTurnEnd() error {
 	isGameComplete := isGameOver
 
 	// Send event to both players with TurnCompletedEvent (includes round/game completion info)
+	confirmationTimeout := g.gameInfo.ConfirmationTimeout
+	gameContinueTimeout := g.gameInfo.GameContinueTimeout
 	turnCompletedEvt := &types.TurnCompletedEvent{
-		GameID:          g.gameInfo.ID,
-		RoundNumber:     roundNumber,
-		TurnNumber:      turnNumber,
-		IsRoundComplete: isRoundComplete,
-		IsGameComplete:  isGameComplete,
-		PlayerTurnInfo:  playerTurnInfos,
-		GameResult:      gameResult, // will be nil if game is not complete
+		GameID:              g.gameInfo.ID,
+		RoundNumber:         roundNumber,
+		TurnNumber:          turnNumber,
+		IsRoundComplete:     isRoundComplete,
+		IsGameComplete:      isGameComplete,
+		PlayerTurnInfo:      playerTurnInfos,
+		GameResult:          gameResult, // will be nil if game is not complete
+		ConfirmationTimeout: &confirmationTimeout,
+	}
+	if isGameComplete {
+		turnCompletedEvt.GameContinueTimeout = &gameContinueTimeout
 	}
 	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
 
@@ -477,13 +484,13 @@ func (g *Game) handleGetBattleInfoRequest(event *types.Event, reqEvt *types.GetB
 	var gameRes *proto.GameResult
 	if g.gameInfo.GameResult != nil {
 		gameRes = conversion.DbGameResultToProtoGameResult(g.gameInfo.GameResult)
-		gameRes.GameContinueTimeout = uint64(g.gameInfo.GameArgs.ContinueTimeout)
+		gameRes.GameContinueTimeout = uint64(g.gameInfo.GameArgs.GameContinueTimeout)
 	}
 	var roundRes *proto.RoundResult
 	for _, round := range g.gameInfo.Rounds {
 		if round.RoundNumber == reqEvt.RoundNumber {
 			roundRes = conversion.DbRoundToRoundResult(round)
-			roundRes.RoundConfirmTimeout = uint64(g.gameInfo.GameArgs.RoundConfirmTimeout)
+			roundRes.RoundConfirmTimeout = uint64(g.gameInfo.GameArgs.ConfirmationTimeout)
 			break
 		}
 	}

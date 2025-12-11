@@ -7,16 +7,16 @@ type GameArgs struct {
 	InitialHP int64 `json:"initial_hp"`
 
 	// timeouts
-	GameMatchTimeout    int64
-	RoundConfirmTimeout int64
-	RoundTimeout        int64
-	ContinueTimeout     int64
+	ConfirmationTimeout         int64 `json:"confirmation_timeout"`          // Timeout for game match and round confirmation
+	CommitmentSubmissionTimeout int64 `json:"commitment_submission_timeout"` // Timeout for commitment submission
+	CardSubmissionTimeout       int64 `json:"card_submission_timeout"`       // Timeout for card submission
+	GameContinueTimeout         int64 `json:"game_continue_timeout"`         // Timeout for game continue
 
 	// timeout redundancy
-	GameMatchTimeoutRedundancy    int64
-	RoundConfirmTimeoutRedundancy int64
-	RoundTimeoutRedundancy        int64
-	ContinueTimeoutRedundancy     int64
+	ConfirmationTimeoutRedundancy         int64 `json:"confirmation_timeout_redundancy"`          // Redundancy for game match and round confirmation
+	CommitmentSubmissionTimeoutRedundancy int64 `json:"commitment_submission_timeout_redundancy"` // Redundancy for commitment submission
+	CardSubmissionTimeoutRedundancy       int64 `json:"card_submission_timeout_redundancy"`       // Redundancy for card submission
+	GameContinueTimeoutRedundancy         int64 `json:"game_continue_timeout_redundancy"`         // Redundancy for game continue
 
 	// pool processing interval in seconds
 	PoolProcessingInterval int64

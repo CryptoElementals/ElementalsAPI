@@ -6,6 +6,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // validateCommitmentSubmission validates the commitment submission including round number and returns the 0-based index
@@ -50,11 +51,6 @@ func (g *Game) validateRoundAndIndex(roundNumber, index uint32, playerAddr strin
 		return fmt.Errorf("round number mismatch: expected %d, got %d", g.currentRound.round.RoundNumber, roundNumber)
 	}
 
-	if index == 0 || index > 3 {
-		log.Errorw("invalid index", "type", indexType, "game id", g.gameInfo.ID, "round number", roundNumber, "player address", playerAddr, "index", index)
-		return fmt.Errorf("%s index must be between 1 and 3, got %d", indexType, index)
-	}
-
 	expectedIndex := g.currentRound.getCurrentTurnNumber()
 	if index != expectedIndex {
 		log.Errorw("index mismatch", "type", indexType, "game id", g.gameInfo.ID, "round number", roundNumber, "player address", playerAddr, "expected index", expectedIndex, "got index", index)
@@ -94,6 +90,12 @@ func (g *Game) validatePlayerCommitment(evt *types.SubmitPlayerCommitment) error
 		return err
 	}
 
+	// check if the turn is waiting for commitments
+	if g.currentRound.turnStatus != proto.TurnStatus_TURN_WAITTING_COMMITMENTS {
+		log.Errorw("turn is not waiting for commitments", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.turnStatus)
+		return fmt.Errorf("turn is not waiting for commitments")
+	}
+
 	if len(evt.Commitment) == 0 {
 		return fmt.Errorf("commitment cannot be empty")
 	}
@@ -107,23 +109,18 @@ func (g *Game) validatePlayerCard(evt *types.SubmitPlayerCard) error {
 		return err
 	}
 
+	// check if the turn is waiting for card
+	if g.currentRound.turnStatus != proto.TurnStatus_TURN_WAITTING_CARDS {
+		log.Errorw("turn is not waiting for cards", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.turnStatus)
+		return fmt.Errorf("turn is not waiting for cards")
+	}
+
 	if evt.Card == 0 {
 		return fmt.Errorf("card ID cannot be zero")
 	}
 
 	if len(evt.Salt) == 0 {
 		return fmt.Errorf("salt cannot be empty")
-	}
-
-	cardEntry, err := g.getAndValidateCardEntry(evt.Address.TemporaryAddress, evt.CardIndex)
-	if err != nil {
-		return err
-	}
-
-	if cardEntry.CardID != 0 {
-		cardIdx := evt.CardIndex - 1
-		log.Errorw("card already submitted", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "card index", cardIdx)
-		return fmt.Errorf("card already submitted for index %d", evt.CardIndex)
 	}
 
 	return nil
