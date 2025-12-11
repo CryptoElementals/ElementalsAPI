@@ -10,6 +10,7 @@ import (
 )
 
 func init() {
+	// 该 API 目前未被使用，超时时间在推送事件里返回
 	Register(GET_GAME_TIMEOUT_CONFIG_LABEL, NewGetGameTimeoutConfigTask, NOAUTH)
 }
 
@@ -21,10 +22,10 @@ type GetGameTimeoutConfigRequest struct {
 // GetGameTimeoutConfigResponse 响应结构体
 type GetGameTimeoutConfigResponse struct {
 	BaseResponse
-	GameMatchTimeout    int64 `json:"GameMatchTimeout"`    // 游戏匹配超时时间（秒）
-	RoundConfirmTimeout int64 `json:"RoundConfirmTimeout"` // 回合确认超时时间（秒）
-	RoundTimeout        int64 `json:"RoundTimeout"`        // 回合超时时间（秒）
-	ContinueTimeout     int64 `json:"ContinueTimeout"`     // 继续游戏超时时间（秒）
+	ConfirmationTimeout         int64 `json:"ConfirmationTimeout"`         // 确认超时时间（秒）
+	CommitmentSubmissionTimeout int64 `json:"CommitmentSubmissionTimeout"` // 承诺提交超时时间（秒）
+	CardSubmissionTimeout       int64 `json:"CardSubmissionTimeout"`       // 卡牌提交超时时间（秒）
+	GameContinueTimeout         int64 `json:"GameContinueTimeout"`         // 继续游戏超时时间（秒）
 }
 
 type GetGameTimeoutConfigTask struct {
@@ -80,10 +81,10 @@ func (task *GetGameTimeoutConfigTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	task.Response.GameMatchTimeout = timeoutConfig.GameMatchTimeout
-	task.Response.RoundConfirmTimeout = timeoutConfig.RoundConfirmTimeout
-	task.Response.RoundTimeout = timeoutConfig.RoundTimeout
-	task.Response.ContinueTimeout = timeoutConfig.ContinueTimeout
+	task.Response.ConfirmationTimeout = timeoutConfig.ConfirmationTimeout
+	task.Response.CommitmentSubmissionTimeout = timeoutConfig.CommitmentSubmissionTimeout
+	task.Response.CardSubmissionTimeout = timeoutConfig.CardSubmissionTimeout
+	task.Response.GameContinueTimeout = timeoutConfig.GameContinueTimeout
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully retrieved game timeout config"
 	return task.Response, nil
