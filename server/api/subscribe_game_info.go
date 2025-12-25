@@ -52,6 +52,16 @@ type MatchedPlayerInfo struct {
 	IsMyself  bool   `json:"IsMyself"`
 }
 
+// GameReadyPlayerInfo 游戏准备事件中的玩家简要信息
+type GameReadyPlayerInfo struct {
+	PlayerID          string `json:"PlayerID"`
+	Name              string `json:"Name"`
+	AvatarURL         string `json:"AvatarURL"`
+	IsMyself          bool   `json:"IsMyself"`
+	InitialHP         int32  `json:"InitialHP"`
+	InitialMultiplier int32  `json:"InitialMultiplier"`
+}
+
 // 解码请求
 func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameInfoRequest, error) {
 	req := &SubscribeGameInfoRequest{}
@@ -213,11 +223,13 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_GAME_CREATED:
+		gameReady := msg.Event.GetGameReady()
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "gameCreated",
-				"Message":   msg.Event.GetGameReady(),
+				"Message":   gameReady,
+				"Players":   task.buildGameReadyPlayersInfo(gameReady),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
@@ -452,6 +464,68 @@ func (task *SubscribeGameInfoTask) buildMatchedPlayersInfo(gameMatched *proto.Ga
 	}
 
 	return result
+}
+
+// buildGameReadyPlayersInfo 根据 GameReady 中的玩家列表补充用户名和头像信息
+func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.GameReady) []GameReadyPlayerInfo {
+	if gameReady == nil {
+		return nil
+	}
+
+	players := gameReady.GetPlayers()
+	initialHP := gameReady.GetInitialHP()
+	initialMultiplier := gameReady.GetInitialMultiplier()
+	if len(players) == 0 {
+		return nil
+	}
+
+	result := make([]GameReadyPlayerInfo, 0, len(players))
+
+	// 当前订阅者的 PlayerID 字符串（用于判断 IsMyself）
+	currentPlayerID := ""
+	if task != nil && task.Request != nil {
+		currentPlayerID = strings.TrimSpace(task.Request.PlayerID)
+	}
+	for _, p := range players {
+		if p == nil {
+			continue
+		}
+
+		playerIDStr := strconv.FormatInt(p.GetId(), 10)
+		info := GameReadyPlayerInfo{
+			PlayerID:          playerIDStr,
+			InitialHP:         int32(initialHP),
+			InitialMultiplier: int32(initialMultiplier),
+		}
+
+		userProfile, err := db.GetUserProfileByPlayerID(playerIDStr)
+		if err != nil {
+			log.Errorf("%s, failed to get user profile for matched player_id=%s: %v", requestUUIDFromTask(task), playerIDStr, err)
+			result = append(result, info)
+			continue
+		}
+
+		info.PlayerID = strconv.FormatInt(userProfile.PlayerID, 10)
+		info.Name = userProfile.Name
+
+		if userProfile.AvatarURL != "" {
+			if avatarURL, err := utils.GetPresignedImageURL(userProfile.AvatarURL); err == nil {
+				info.AvatarURL = avatarURL
+			} else {
+				log.Errorf("%s, failed to generate presigned avatar URL for matched player_id=%s: %v", requestUUIDFromTask(task), playerIDStr, err)
+			}
+		}
+
+		// 标记是否为当前用户
+		if currentPlayerID != "" && currentPlayerID == playerIDStr {
+			info.IsMyself = true
+		}
+
+		result = append(result, info)
+	}
+
+	return result
+
 }
 
 // buildGamePhasePlayersInfo 根据 GamePhase 中的玩家列表补充用户名和头像信息
