@@ -115,6 +115,7 @@ message GameReady {
   uint32 MaxTurnNum = 3;
   uint32 InitialHP = 4;
   uint32 InitialMultiplier = 5;
+  repeated rpc.PlayerAddress Players = 6; 
 }
 
 message RoundReady {
