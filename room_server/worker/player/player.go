@@ -88,6 +88,10 @@ func (p *Player) handleNewGameEvent(ctx context.Context, evt *types.GameCreatedE
 
 func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyEvent) error {
 	log.Debugw("publish event", "event type", proto.EventType_TYPE_GAME_CREATED, "receiver", p.address.String(), "game id", evt.GameID)
+	players := make([]*proto.PlayerAddress, 0, len(evt.Players))
+	for _, player := range evt.Players {
+		players = append(players, player.ToProto())
+	}
 	p.publisher.Publish(ctx, &proto.PublishRequest{
 		Topic: p.address.String(),
 		Event: &proto.Event{
@@ -99,6 +103,7 @@ func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyE
 					MaxTurnNum:        evt.MaxTurnNum,
 					InitialHP:         evt.InitialHP,
 					InitialMultiplier: evt.InitialMultiplier,
+					Players:           players,
 				},
 			},
 		},
