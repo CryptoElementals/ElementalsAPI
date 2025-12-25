@@ -759,12 +759,8 @@ func (x *GetSubscriberCountResponse) GetError() string {
 type GameMatched struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	GameId              uint32                 `protobuf:"varint,1,opt,name=GameId,proto3" json:"GameId,omitempty"`
-	MaxRoundNum         uint32                 `protobuf:"varint,2,opt,name=MaxRoundNum,proto3" json:"MaxRoundNum,omitempty"`
-	MaxTurnNum          uint32                 `protobuf:"varint,3,opt,name=MaxTurnNum,proto3" json:"MaxTurnNum,omitempty"`
-	InitialHP           uint32                 `protobuf:"varint,4,opt,name=InitialHP,proto3" json:"InitialHP,omitempty"`
-	InitialMultiplier   uint32                 `protobuf:"varint,5,opt,name=InitialMultiplier,proto3" json:"InitialMultiplier,omitempty"`
-	ConfirmationTimeout int64                  `protobuf:"varint,6,opt,name=ConfirmationTimeout,proto3" json:"ConfirmationTimeout,omitempty"`
-	Players             []*PlayerAddress       `protobuf:"bytes,7,rep,name=Players,proto3" json:"Players,omitempty"`
+	ConfirmationTimeout int64                  `protobuf:"varint,2,opt,name=ConfirmationTimeout,proto3" json:"ConfirmationTimeout,omitempty"`
+	Players             []*PlayerAddress       `protobuf:"bytes,3,rep,name=Players,proto3" json:"Players,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -806,34 +802,6 @@ func (x *GameMatched) GetGameId() uint32 {
 	return 0
 }
 
-func (x *GameMatched) GetMaxRoundNum() uint32 {
-	if x != nil {
-		return x.MaxRoundNum
-	}
-	return 0
-}
-
-func (x *GameMatched) GetMaxTurnNum() uint32 {
-	if x != nil {
-		return x.MaxTurnNum
-	}
-	return 0
-}
-
-func (x *GameMatched) GetInitialHP() uint32 {
-	if x != nil {
-		return x.InitialHP
-	}
-	return 0
-}
-
-func (x *GameMatched) GetInitialMultiplier() uint32 {
-	if x != nil {
-		return x.InitialMultiplier
-	}
-	return 0
-}
-
 func (x *GameMatched) GetConfirmationTimeout() int64 {
 	if x != nil {
 		return x.ConfirmationTimeout
@@ -849,10 +817,14 @@ func (x *GameMatched) GetPlayers() []*PlayerAddress {
 }
 
 type GameReady struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GameId        uint32                 `protobuf:"varint,1,opt,name=GameId,proto3" json:"GameId,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	GameId            uint32                 `protobuf:"varint,1,opt,name=GameId,proto3" json:"GameId,omitempty"`
+	MaxRoundNum       uint32                 `protobuf:"varint,2,opt,name=MaxRoundNum,proto3" json:"MaxRoundNum,omitempty"`
+	MaxTurnNum        uint32                 `protobuf:"varint,3,opt,name=MaxTurnNum,proto3" json:"MaxTurnNum,omitempty"`
+	InitialHP         uint32                 `protobuf:"varint,4,opt,name=InitialHP,proto3" json:"InitialHP,omitempty"`
+	InitialMultiplier uint32                 `protobuf:"varint,5,opt,name=InitialMultiplier,proto3" json:"InitialMultiplier,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GameReady) Reset() {
@@ -888,6 +860,34 @@ func (*GameReady) Descriptor() ([]byte, []int) {
 func (x *GameReady) GetGameId() uint32 {
 	if x != nil {
 		return x.GameId
+	}
+	return 0
+}
+
+func (x *GameReady) GetMaxRoundNum() uint32 {
+	if x != nil {
+		return x.MaxRoundNum
+	}
+	return 0
+}
+
+func (x *GameReady) GetMaxTurnNum() uint32 {
+	if x != nil {
+		return x.MaxTurnNum
+	}
+	return 0
+}
+
+func (x *GameReady) GetInitialHP() uint32 {
+	if x != nil {
+		return x.InitialHP
+	}
+	return 0
+}
+
+func (x *GameReady) GetInitialMultiplier() uint32 {
+	if x != nil {
+		return x.InitialMultiplier
 	}
 	return 0
 }
@@ -1661,19 +1661,19 @@ const file_rpc_proto_pubsub_proto_rawDesc = "" +
 	"\x05Topic\x18\x01 \x01(\tR\x05Topic\x12(\n" +
 	"\x0fSubscriberCount\x18\x02 \x01(\x05R\x0fSubscriberCount\x12\x18\n" +
 	"\aSuccess\x18\x03 \x01(\bR\aSuccess\x12\x14\n" +
-	"\x05Error\x18\x04 \x01(\tR\x05Error\"\x93\x02\n" +
+	"\x05Error\x18\x04 \x01(\tR\x05Error\"\x85\x01\n" +
 	"\vGameMatched\x12\x16\n" +
+	"\x06GameId\x18\x01 \x01(\rR\x06GameId\x120\n" +
+	"\x13ConfirmationTimeout\x18\x02 \x01(\x03R\x13ConfirmationTimeout\x12,\n" +
+	"\aPlayers\x18\x03 \x03(\v2\x12.rpc.PlayerAddressR\aPlayers\"\xb1\x01\n" +
+	"\tGameReady\x12\x16\n" +
 	"\x06GameId\x18\x01 \x01(\rR\x06GameId\x12 \n" +
 	"\vMaxRoundNum\x18\x02 \x01(\rR\vMaxRoundNum\x12\x1e\n" +
 	"\n" +
 	"MaxTurnNum\x18\x03 \x01(\rR\n" +
 	"MaxTurnNum\x12\x1c\n" +
 	"\tInitialHP\x18\x04 \x01(\rR\tInitialHP\x12,\n" +
-	"\x11InitialMultiplier\x18\x05 \x01(\rR\x11InitialMultiplier\x120\n" +
-	"\x13ConfirmationTimeout\x18\x06 \x01(\x03R\x13ConfirmationTimeout\x12,\n" +
-	"\aPlayers\x18\a \x03(\v2\x12.rpc.PlayerAddressR\aPlayers\"#\n" +
-	"\tGameReady\x12\x16\n" +
-	"\x06GameId\x18\x01 \x01(\rR\x06GameId\"@\n" +
+	"\x11InitialMultiplier\x18\x05 \x01(\rR\x11InitialMultiplier\"@\n" +
 	"\n" +
 	"RoundReady\x12\x16\n" +
 	"\x06GameId\x18\x01 \x01(\rR\x06GameId\x12\x1a\n" +

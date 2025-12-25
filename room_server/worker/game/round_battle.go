@@ -151,11 +151,39 @@ func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
 	playerCount := len(r.gamePlayers)
 	gameEndStates := make([]*gameEndState, 0, playerCount)
 	for _, player := range r.gamePlayers {
+		// Skip if player has already surrendered
+		if player.status == playerStatusSurrendered {
+			gameEndStates = append(gameEndStates, &gameEndState{
+				HP:               int(player.currentHP),
+				Multiplier:       player.multiplier,
+				PlayerId:         player.player.PlayerId,
+				TemporaryAddress: player.player.TemporaryAddress,
+				Status:           player.status,
+			})
+			continue
+		}
+
 		submittedCard := player.getLastSubmittedCard()
 		hasSubmittedCommitment := submittedCard != nil && len(submittedCard.CommitmentHash) > 0
-		if player.status != playerStatusSurrendered && !hasSubmittedCommitment {
-			player.status = playerStatusOffline
+		hasSubmittedCard := submittedCard != nil && submittedCard.CardID > 0
+
+		// Mark player as offline based on turn status and what they've submitted
+		// If turn is waiting for commitments and player has no commitment, mark as offline
+		// If turn is waiting for cards and player has no card, mark as offline
+		switch r.turnStatus {
+		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
+			// Turn is waiting for commitments - check if player has submitted commitment
+			if !hasSubmittedCommitment {
+				player.status = playerStatusOffline
+			}
+		case proto.TurnStatus_TURN_WAITTING_CARDS:
+			// Turn is waiting for cards - check if player has submitted card
+			// Note: A card submission implies a commitment was submitted, so we only check for card
+			if !hasSubmittedCard {
+				player.status = playerStatusOffline
+			}
 		}
+
 		gameEndStates = append(gameEndStates, &gameEndState{
 			HP:               int(player.currentHP),
 			Multiplier:       player.multiplier,

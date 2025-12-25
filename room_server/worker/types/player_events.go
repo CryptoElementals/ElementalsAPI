@@ -10,8 +10,11 @@ type GameCreatedEvent struct {
 }
 
 type GameReadyEvent struct {
-	GameID uint
-	// ContractAddress removed - always uses RoomV2 contract address
+	GameID            uint
+	MaxRoundNum       uint32
+	MaxTurnNum        uint32
+	InitialHP         uint32
+	InitialMultiplier uint32
 }
 
 type TurnReadyEvent struct {

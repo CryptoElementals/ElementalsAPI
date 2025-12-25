@@ -167,7 +167,11 @@ func (g *Game) handleRoomCreated(event *types.Event) error {
 
 	// Send game ready event (only once when contract is created)
 	gameReadyEvt := types.NewEvent(g.workerID(), &types.GameReadyEvent{
-		GameID: g.gameInfo.ID,
+		GameID:            g.gameInfo.ID,
+		MaxRoundNum:       uint32(g.gameInfo.MaxRounds),
+		MaxTurnNum:        3, // 3 turns per round
+		InitialHP:         uint32(g.gameInfo.InitialHP),
+		InitialMultiplier: uint32(g.gameInfo.InitialMultiplier),
 	})
 	// Send turn ready event for the first turn
 	turnReadyEvt := types.NewEvent(g.workerID(), &types.TurnReadyEvent{
@@ -591,6 +595,39 @@ func (g *Game) handleSubmitPlayerCard(reqEvt *types.SubmitPlayerCard) error {
 	if err := g.validatePlayerCard(reqEvt); err != nil {
 		return err
 	}
+	// Get commitment for this round and turn and verify the commitment
+	player, err := g.getGamePlayer(reqEvt.Address.TemporaryAddress)
+	if err != nil {
+		return fmt.Errorf("failed to get player: %w", err)
+	}
+
+	playerTurnInfo := player.getCurrentPlayerTurnInfo()
+	if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
+		return fmt.Errorf("player turn info or submitted card not found")
+	}
+
+	storedCommitment := playerTurnInfo.TurnSubmittedCard.CommitmentHash
+	if len(storedCommitment) == 0 {
+		return fmt.Errorf("commitment not found for this round and turn")
+	}
+
+	// Calculate commitment from submitted card and salt
+	calculatedCommitment, err := utils.SolidityPackedKeccak256(
+		[]any{
+			reqEvt.Card,
+			reqEvt.Salt,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to calculate commitment: %w", err)
+	}
+
+	// Verify that the calculated commitment matches the stored commitment
+	storedCommitmentHash := common.BytesToHash(storedCommitment)
+	if storedCommitmentHash != calculatedCommitment {
+		return fmt.Errorf("commitment verification failed: stored commitment does not match calculated commitment from card and salt")
+	}
+
 	// verify signature for: game id, round number, card index, card, salt
 	valid, err := utils.Verify(
 		[]any{g.gameInfo.ID, reqEvt.RoundNumber, reqEvt.CardIndex, reqEvt.Card, reqEvt.Salt},
