@@ -217,6 +217,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "gameCreated",
+				"Message":   msg.Event.GetGameReady(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
