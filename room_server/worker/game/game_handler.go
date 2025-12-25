@@ -166,12 +166,17 @@ func (g *Game) handleRoomCreated(event *types.Event) error {
 	}
 
 	// Send game ready event (only once when contract is created)
+	allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
+	for _, player := range g.currentRound.gamePlayers {
+		allPlayers = append(allPlayers, player.PlayerAddress())
+	}
 	gameReadyEvt := types.NewEvent(g.workerID(), &types.GameReadyEvent{
 		GameID:            g.gameInfo.ID,
 		MaxRoundNum:       uint32(g.gameInfo.MaxRounds),
 		MaxTurnNum:        3, // 3 turns per round
 		InitialHP:         uint32(g.gameInfo.InitialHP),
 		InitialMultiplier: uint32(g.gameInfo.InitialMultiplier),
+		Players:           allPlayers,
 	})
 	// Send turn ready event for the first turn
 	turnReadyEvt := types.NewEvent(g.workerID(), &types.TurnReadyEvent{

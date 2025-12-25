@@ -15,6 +15,7 @@ type GameReadyEvent struct {
 	MaxTurnNum        uint32
 	InitialHP         uint32
 	InitialMultiplier uint32
+	Players           []PlayerAddress
 }
 
 type TurnReadyEvent struct {
