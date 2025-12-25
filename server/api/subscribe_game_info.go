@@ -122,7 +122,7 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 		// 将RoomServer事件转换为SSE事件并发送
 		sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
 		if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
-			log.Errorf("发送SSE事件失败: %v", err)
+			log.Errorf("failed to send SSE event: %v", err)
 		}
 	}
 
@@ -131,10 +131,10 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 订阅游戏主题
 	if err := eventManager.SubscribeToTopic(clientID, game_topic); err != nil {
-		log.Errorf("订阅主题失败: %v", err)
+		log.Errorf("failed to subscribe to topic: %v", err)
 		errorEvent := events.Event{
 			Type:        events.EventTypeError,
-			Data:        map[string]interface{}{"error": fmt.Sprintf("订阅主题失败: %v", err)},
+			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to subscribe to topic: %v", err)},
 			Timestamp:   time.Now(),
 			RequestUUID: task.Request.RequestUUID,
 		}
@@ -181,7 +181,7 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 				RequestUUID: task.Request.RequestUUID,
 			}
 			if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), heartbeatEvent); err != nil {
-				log.Errorf("发送心跳失败: %v", err)
+				log.Errorf("failed to send heartbeat: %v", err)
 			}
 		}
 	}
@@ -252,11 +252,99 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_TURN_COMPLETE:
+		turnCompleted := msg.Event.GetTurnCompleted()
+
+		// 将 TurnCompleted 转换为 map，以便修改 PlayerTurnInfos
+		var messageData map[string]interface{}
+		if turnCompleted != nil {
+			// 先序列化为 JSON，再反序列化为 map，以保留所有字段
+			jsonData, err := json.Marshal(turnCompleted)
+			if err != nil {
+				log.Errorf("failed to marshal TurnCompleted: %v", err)
+				messageData = make(map[string]interface{})
+			} else {
+				if err := json.Unmarshal(jsonData, &messageData); err != nil {
+					log.Errorf("failed to unmarshal TurnCompleted: %v", err)
+					messageData = make(map[string]interface{})
+				}
+			}
+
+			// 为 PlayerTurnInfos 增加 IsMyself 标记
+			infos := turnCompleted.GetPlayerTurnInfos()
+			if len(infos) > 0 {
+				// 订阅者自身的 PlayerID 与 TempAddress
+				currentPlayerID := int64(0)
+				if task != nil && task.Request != nil {
+					if id, err := strconv.ParseInt(strings.TrimSpace(task.Request.PlayerID), 10, 64); err == nil {
+						currentPlayerID = id
+					}
+				}
+				currentTempAddr := ""
+				if task != nil && task.Request != nil {
+					currentTempAddr = strings.ToLower(task.Request.TempAddress)
+				}
+
+				// 处理每个 PlayerTurnInfo，添加 IsMyself 字段
+				playerTurnInfosWithFlag := make([]map[string]interface{}, 0, len(infos))
+				for i, info := range infos {
+					if info == nil {
+						continue
+					}
+
+					// 从 JSON 反序列化的 map 中获取对应的 PlayerTurnInfo
+					var infoMap map[string]interface{}
+					if infosRaw, ok := messageData["PlayerTurnInfos"].([]interface{}); ok && i < len(infosRaw) {
+						if m, ok := infosRaw[i].(map[string]interface{}); ok {
+							infoMap = m
+						}
+					}
+					if infoMap == nil {
+						// 如果无法从 JSON map 获取，则手动构建
+						infoMap = make(map[string]interface{})
+						if addr := info.GetPlayerAddress(); addr != nil {
+							infoMap["PlayerAddress"] = map[string]interface{}{
+								"id":                addr.GetId(),
+								"temporary_address": addr.GetTemporaryAddress(),
+							}
+						}
+						if card := info.GetSubmittedCard(); card != nil {
+							cardJson, _ := json.Marshal(card)
+							var cardMap map[string]interface{}
+							if err := json.Unmarshal(cardJson, &cardMap); err == nil {
+								infoMap["SubmittedCard"] = cardMap
+							}
+						}
+					}
+
+					// 判断是否为当前用户
+					isMyself := false
+					if addr := info.GetPlayerAddress(); addr != nil {
+						addrID := addr.GetId()
+						addrTemp := strings.ToLower(addr.GetTemporaryAddress())
+
+						if currentPlayerID != 0 && addrID == currentPlayerID &&
+							currentTempAddr != "" && addrTemp == currentTempAddr {
+							isMyself = true
+						}
+					}
+
+					// 添加 IsMyself 字段
+					infoMap["IsMyself"] = isMyself
+					playerTurnInfosWithFlag = append(playerTurnInfosWithFlag, infoMap)
+				}
+
+				// 替换原来的 PlayerTurnInfos
+				messageData["PlayerTurnInfos"] = playerTurnInfosWithFlag
+			}
+		} else {
+			messageData = make(map[string]interface{})
+		}
+
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "turnComplete",
-				"Message":   msg.Event.GetTurnCompleted(),
+				"Message":   messageData,
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
