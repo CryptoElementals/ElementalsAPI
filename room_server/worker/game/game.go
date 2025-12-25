@@ -40,7 +40,7 @@ func NewGame(
 		gamePlayers[player.TemporaryAddress] = &gamePlayer{
 			player:     daoPlayer,
 			currentHP:  gameArgs.InitialHP,
-			multiplier: 1,
+			multiplier: uint32(gameArgs.InitialMultiplier),
 		}
 	}
 	game := &Game{
@@ -253,6 +253,7 @@ func (g *Game) incrementTurnNumber() {
 }
 
 func (g *Game) stopGame() {
+	log.Infow("stop game", "game id", g.gameInfo.ID)
 	g.workerMangerService.CloseWorker(g.workerID())
 	g.wg.Done()
 }

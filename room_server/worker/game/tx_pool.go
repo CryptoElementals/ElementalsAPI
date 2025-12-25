@@ -39,10 +39,8 @@ type gameTxInfo struct {
 }
 
 type gameTxPlayerInfo struct {
-	// Map of roundNumber -> max received commitment turn index for that round
 	commitmentTurnIndices map[uint32]int32
-	// Map of roundNumber -> max received card turn index for that round
-	cardTurnIndices map[uint32]int32
+	cardTurnIndices       map[uint32]int32
 }
 
 // newTxPool creates a new transaction pool
@@ -170,12 +168,13 @@ func (p *txPool) processCommitmentPool() {
 	// Collect events to process while holding lock
 	p.poolLock.Lock()
 	batchEvents := make([]*types.SubmitPlayerCommitment, 0, len(p.commitmentPool))
-	for _, evt := range p.commitmentPool {
+	for key, evt := range p.commitmentPool {
 		if evt.GameID != 0 {
 			batchEvents = append(batchEvents, evt)
 		} else {
 			log.Errorw("commitment event missing GameID", "address", evt.Address.TemporaryAddress)
 		}
+		delete(p.commitmentPool, key)
 	}
 	p.poolLock.Unlock()
 
@@ -189,14 +188,6 @@ func (p *txPool) processCommitmentPool() {
 		return
 	}
 
-	// Remove successfully submitted events from pool to avoid duplicate submissions
-	p.poolLock.Lock()
-	for _, evt := range batchEvents {
-		key := makeEventKey(evt.GameID, evt.Address, evt.RoundNumber, evt.CommitmentIndex)
-		delete(p.commitmentPool, key)
-	}
-	p.poolLock.Unlock()
-
 	log.Infow("submitted commitments batch to chain", "count", len(batchEvents))
 }
 
@@ -205,12 +196,13 @@ func (p *txPool) processCardPool() {
 	// Collect events to process while holding lock
 	p.poolLock.Lock()
 	batchEvents := make([]*types.SubmitPlayerCard, 0, len(p.cardPool))
-	for _, evt := range p.cardPool {
+	for key, evt := range p.cardPool {
 		if evt.GameID != 0 {
 			batchEvents = append(batchEvents, evt)
 		} else {
 			log.Errorw("card event missing GameID", "address", evt.Address.TemporaryAddress)
 		}
+		delete(p.cardPool, key)
 	}
 	p.poolLock.Unlock()
 
@@ -223,14 +215,6 @@ func (p *txPool) processCardPool() {
 		log.Errorw("failed to submit cards batch to chain", "error", err, "count", len(batchEvents))
 		return
 	}
-
-	// Remove successfully submitted events from pool to avoid duplicate submissions
-	p.poolLock.Lock()
-	for _, evt := range batchEvents {
-		key := makeEventKey(evt.GameID, evt.Address, evt.RoundNumber, evt.CardIndex)
-		delete(p.cardPool, key)
-	}
-	p.poolLock.Unlock()
 
 	log.Infow("submitted cards batch to chain", "count", len(batchEvents))
 }

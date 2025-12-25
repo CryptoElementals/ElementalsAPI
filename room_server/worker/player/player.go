@@ -94,7 +94,11 @@ func (p *Player) handleGameReadyEvent(ctx context.Context, evt *types.GameReadyE
 			Type: proto.EventType_TYPE_GAME_CREATED,
 			Event: &proto.Event_GameReady{
 				GameReady: &proto.GameReady{
-					GameId: uint32(evt.GameID),
+					GameId:            uint32(evt.GameID),
+					MaxRoundNum:       evt.MaxRoundNum,
+					MaxTurnNum:        evt.MaxTurnNum,
+					InitialHP:         evt.InitialHP,
+					InitialMultiplier: evt.InitialMultiplier,
 				},
 			},
 		},

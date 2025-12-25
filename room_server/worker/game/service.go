@@ -40,8 +40,9 @@ func NewService(
 	chainSvc ContractClient,
 	shouldRecover bool) *Service {
 	gameArgs := dao.GameArgs{
-		MaxRounds: gameConfig.MaxRounds,
-		InitialHP: gameConfig.InitialHP,
+		MaxRounds:         gameConfig.MaxRounds,
+		InitialHP:         gameConfig.InitialHP,
+		InitialMultiplier: int64(gameConfig.InitialMultiplier),
 
 		ConfirmationTimeout:         gameConfig.ConfirmationTimeout,
 		CommitmentSubmissionTimeout: gameConfig.CommitmentSubmissionTimeout,
