@@ -105,16 +105,16 @@ message GetSubscriberCountResponse {
 
 message GameMatched {
   uint32 GameId = 1;
-  uint32 MaxRoundNum = 2;
-  uint32 MaxTurnNum = 3;
-  uint32 InitialHP = 4;
-  uint32 InitialMultiplier = 5;
-  int64 ConfirmationTimeout = 6;
-  repeated rpc.PlayerAddress Players = 7; 
+  int64 ConfirmationTimeout = 2;
+  repeated rpc.PlayerAddress Players = 3; 
 }
 
 message GameReady {
   uint32 GameId = 1;
+  uint32 MaxRoundNum = 2;
+  uint32 MaxTurnNum = 3;
+  uint32 InitialHP = 4;
+  uint32 InitialMultiplier = 5;
 }
 
 message RoundReady {

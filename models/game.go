@@ -3,9 +3,9 @@ package dao
 import "github.com/CryptoElementals/common/rpc/proto"
 
 type GameArgs struct {
-	MaxRounds int64
-	InitialHP int64 `json:"initial_hp"`
-
+	MaxRounds         int64
+	InitialHP         int64 `json:"initial_hp"`
+	InitialMultiplier int64
 	// timeouts
 	ConfirmationTimeout         int64 `json:"confirmation_timeout"`          // Timeout for game match and round confirmation
 	CommitmentSubmissionTimeout int64 `json:"commitment_submission_timeout"` // Timeout for commitment submission
