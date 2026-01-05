@@ -189,7 +189,7 @@ func (wallet *Wallet) GetPrivateKey() *ecdsa.PrivateKey {
 }
 
 func (wallet *Wallet) SignTx(tx *eth_type.Transaction, chainId *big.Int) (*eth_type.Transaction, error) {
-	return eth_type.SignTx(tx, eth_type.NewLondonSigner(chainId), wallet.privateKey)
+	return eth_type.SignTx(tx, eth_type.NewCancunSigner(chainId), wallet.privateKey)
 }
 
 func (w *Wallet) BuildTxSinger(chainId *big.Int) func(a common.Address, t *eth_type.Transaction) (*eth_type.Transaction, error) {
