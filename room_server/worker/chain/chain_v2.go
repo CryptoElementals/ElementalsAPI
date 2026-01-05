@@ -39,9 +39,10 @@ func newConcurrentRoomV2Client(
 	optsPool := make(chan *bind.TransactOpts, len(wallets))
 	for _, w := range wallets {
 		bindOpts := &bind.TransactOpts{
-			Context: ctx,
-			From:    w.GetAddr(),
-			Signer:  w.BuildTxSinger(big.NewInt(chainID)),
+			Context:  ctx,
+			From:     w.GetAddr(),
+			Signer:   w.BuildTxSinger(big.NewInt(chainID)),
+			GasLimit: 500_000,
 		}
 		if len(isDevelop) != 0 && isDevelop[0] {
 			bindOpts.NoSend = true
@@ -174,7 +175,7 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.Submit
 		cardIndexes[i] = big.NewInt(int64(evt.CommitmentIndex))
 		rounds[i] = big.NewInt(int64(evt.RoundNumber))
 		signatures[i] = evt.Signature
-		log.Infow("sendBatchSubmitCardsHash: batch submit cards hash",
+		log.Debugw("sendBatchSubmitCardsHash: batch submit cards hash",
 			"game id", evt.GameID,
 			"commitment index", evt.CommitmentIndex,
 			"round number", evt.RoundNumber,
@@ -221,6 +222,12 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 		cardIndexes[i] = big.NewInt(int64(evt.CardIndex))
 		rounds[i] = big.NewInt(int64(evt.RoundNumber))
 		signatures[i] = evt.Signature
+		log.Debugw("sendBatchSubmitCards: batch submit cards",
+			"game id", evt.GameID,
+			"card index", evt.CardIndex,
+			"round number", evt.RoundNumber,
+			"card", evt.Card,
+			"signature", hexutil.Encode(evt.Signature))
 	}
 
 	tx, err := c.roomV2Ctr.BatchSubmitCards(bindOpts, gameIDs, cards, salts, cardIndexes, rounds, signatures)
