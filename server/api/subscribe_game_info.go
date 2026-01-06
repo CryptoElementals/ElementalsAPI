@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,15 +24,13 @@ func init() {
 	Register(SUBSCRIBE_GAME_INFO_LABEL, NewSubscribeGameInfoTask, COOKIEAUTH)
 }
 
-// SubscribeGameInfoRequest 请求结构体
 type SubscribeGameInfoRequest struct {
 	BaseRequest
-	TempAddress string `mapstructure:"TempAddress" validate:"required"`     // 临时地址
-	Duration    int    `mapstructure:"Duration" validate:"min=1,max=86400"` // 连接持续时间（秒）
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`
+	Duration    int    `mapstructure:"Duration" validate:"min=1,max=86400"`
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
-// SubscribeGameInfoResponse 响应结构体
 type SubscribeGameInfoResponse struct {
 	BaseResponse
 	Message string `json:"message"`
@@ -44,7 +43,50 @@ type SubscribeGameInfoTask struct {
 	stopChan chan struct{}
 }
 
-// MatchedPlayerInfo 匹配成功事件中的玩家简要信息
+type TurnCompletedDTO struct {
+	ConfirmationTimeout int64                        `json:"ConfirmationTimeout"`
+	GameContinueTimeout int64                        `json:"GameContinueTimeout"`
+	GameId              uint32                       `json:"GameId"`
+	RoundNum            uint32                       `json:"RoundNum"`
+	TurnNum             uint32                       `json:"TurnNum"`
+	IsRoundComplete     bool                         `json:"IsRoundComplete"`
+	IsGameComplete      bool                         `json:"IsGameComplete"`
+	GameResult          *proto.GameResult            `json:"GameResult,omitempty"`
+	PlayerTurnInfos     []TurnCompletedPlayerInfoDTO `json:"PlayerTurnInfos"`
+}
+
+type TurnCompletedPlayerInfoDTO struct {
+	IsMyself      bool                   `json:"IsMyself"`
+	PlayerAddress PlayerAddressDTO       `json:"PlayerAddress"`
+	SubmittedCard *RoundSubmittedCardDTO `json:"SubmittedCard,omitempty"`
+}
+
+type PlayerAddressDTO struct {
+	ID               string `json:"id"`
+	TemporaryAddress string `json:"temporaryAddress"`
+}
+
+type BattleEffectDTO struct {
+	Description            string `json:"Description"`
+	TargetPlayerId         string `json:"TargetPlayerId"`
+	TargetTemporaryAddress string `json:"TargetTemporaryAddress"`
+	Type                   string `json:"Type"`
+	Value                  int32  `json:"Value"`
+}
+
+type RoundSubmittedCardDTO struct {
+	Description         string            `json:"Description"`
+	Effects             []BattleEffectDTO `json:"Effects"`
+	ElementRelation     int32             `json:"ElementRelation"`
+	MultiplierAfter     uint32            `json:"MultiplierAfter"`
+	MultiplierBefore    uint32            `json:"MultiplierBefore"`
+	PlayerHealthBefore  uint32            `json:"PlayerHealthBefore"`
+	PlayerHealthEnd     uint32            `json:"PlayerHealthEnd"`
+	Salt                string            `json:"Salt"`
+	SubmittedCardId     uint32            `json:"SubmittedCardId"`
+	SubmittedCommitment string            `json:"SubmittedCommitment"`
+}
+
 type MatchedPlayerInfo struct {
 	PlayerID  string `json:"PlayerID"`
 	Name      string `json:"Name"`
@@ -52,7 +94,6 @@ type MatchedPlayerInfo struct {
 	IsMyself  bool   `json:"IsMyself"`
 }
 
-// GameReadyPlayerInfo 游戏准备事件中的玩家简要信息
 type GameReadyPlayerInfo struct {
 	PlayerID          string `json:"PlayerID"`
 	Name              string `json:"Name"`
@@ -62,7 +103,6 @@ type GameReadyPlayerInfo struct {
 	InitialMultiplier int32  `json:"InitialMultiplier"`
 }
 
-// 解码请求
 func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameInfoRequest, error) {
 	req := &SubscribeGameInfoRequest{}
 	err := mapstructure.Decode(*data, &req)
@@ -70,7 +110,6 @@ func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameIn
 		return nil, err
 	}
 	req.BaseRequest.RequestUUID = (*data)["RequestUUID"].(string)
-	// 设置默认值为 86400秒（1天）
 	if req.Duration == 0 {
 		req.Duration = 86400
 	}
@@ -106,9 +145,7 @@ func NewSubscribeGameInfoTask(data *map[string]interface{}) (Task, error) {
 	return task, nil
 }
 
-// Run 实现事件驱动的 SSE 流式响应
 func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
-	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
 	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
 	if playerIDStr == "" {
 		return nil, fmt.Errorf("player id is empty")
@@ -120,16 +157,12 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 
 	temp_address := strings.ToLower(task.Request.TempAddress)
 
-	// 组装 game_topic: PlayerID_tempaddress 格式
 	game_topic := fmt.Sprintf("%d_%s", playerID, temp_address)
 
-	// 获取全局事件管理器
 	eventManager := events.GetGlobalEventManager()
 
-	// 注册SSE客户端
 	clientID := fmt.Sprintf("%s_%s", task.Request.RequestUUID, game_topic)
 	eventHandler := func(msg *proto.Message) {
-		// 将RoomServer事件转换为SSE事件并发送
 		sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
 		if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
 			log.Errorf("failed to send SSE event: %v", err)
@@ -153,7 +186,6 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	}
 	defer eventManager.UnsubscribeFromTopic(clientID, game_topic)
 
-	// 发送连接成功事件
 	connectedEvent := events.Event{
 		Type: events.EventTypeNotification,
 		Data: map[string]interface{}{
@@ -170,7 +202,6 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
-	// 等待连接结束
 	for {
 		select {
 		case <-c.Request.Context().Done():
@@ -183,7 +214,6 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 			log.Infof("SSE connection stopped manually - RequestUUID: %s", task.Request.RequestUUID)
 			return task.Response, nil
 		case <-ticker.C:
-			// 发送心跳
 			heartbeatEvent := events.Event{
 				Type:        events.EventTypeHeartbeat,
 				Data:        map[string]interface{}{},
@@ -197,9 +227,7 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	}
 }
 
-// convertRoomServerEventToSSE 将RoomServer事件转换为SSE事件
 func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
-	// 根据事件类型进行转换
 	switch msg.Event.Type {
 	case proto.EventType_TYPE_MATCHED:
 		gameMatched := msg.Event.GetGameMatched()
@@ -266,98 +294,12 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		}
 	case proto.EventType_TYPE_TURN_COMPLETE:
 		turnCompleted := msg.Event.GetTurnCompleted()
-
-		// 将 TurnCompleted 转换为 map，以便修改 PlayerTurnInfos
-		var messageData map[string]interface{}
-		if turnCompleted != nil {
-			// 先序列化为 JSON，再反序列化为 map，以保留所有字段
-			jsonData, err := json.Marshal(turnCompleted)
-			if err != nil {
-				log.Errorf("failed to marshal TurnCompleted: %v", err)
-				messageData = make(map[string]interface{})
-			} else {
-				if err := json.Unmarshal(jsonData, &messageData); err != nil {
-					log.Errorf("failed to unmarshal TurnCompleted: %v", err)
-					messageData = make(map[string]interface{})
-				}
-			}
-
-			// 为 PlayerTurnInfos 增加 IsMyself 标记
-			infos := turnCompleted.GetPlayerTurnInfos()
-			if len(infos) > 0 {
-				// 订阅者自身的 PlayerID 与 TempAddress
-				currentPlayerID := int64(0)
-				if task != nil && task.Request != nil {
-					if id, err := strconv.ParseInt(strings.TrimSpace(task.Request.PlayerID), 10, 64); err == nil {
-						currentPlayerID = id
-					}
-				}
-				currentTempAddr := ""
-				if task != nil && task.Request != nil {
-					currentTempAddr = strings.ToLower(task.Request.TempAddress)
-				}
-
-				// 处理每个 PlayerTurnInfo，添加 IsMyself 字段
-				playerTurnInfosWithFlag := make([]map[string]interface{}, 0, len(infos))
-				for i, info := range infos {
-					if info == nil {
-						continue
-					}
-
-					// 从 JSON 反序列化的 map 中获取对应的 PlayerTurnInfo
-					var infoMap map[string]interface{}
-					if infosRaw, ok := messageData["PlayerTurnInfos"].([]interface{}); ok && i < len(infosRaw) {
-						if m, ok := infosRaw[i].(map[string]interface{}); ok {
-							infoMap = m
-						}
-					}
-					if infoMap == nil {
-						// 如果无法从 JSON map 获取，则手动构建
-						infoMap = make(map[string]interface{})
-						if addr := info.GetPlayerAddress(); addr != nil {
-							infoMap["PlayerAddress"] = map[string]interface{}{
-								"id":                addr.GetId(),
-								"temporary_address": addr.GetTemporaryAddress(),
-							}
-						}
-						if card := info.GetSubmittedCard(); card != nil {
-							cardJson, _ := json.Marshal(card)
-							var cardMap map[string]interface{}
-							if err := json.Unmarshal(cardJson, &cardMap); err == nil {
-								infoMap["SubmittedCard"] = cardMap
-							}
-						}
-					}
-
-					// 判断是否为当前用户
-					isMyself := false
-					if addr := info.GetPlayerAddress(); addr != nil {
-						addrID := addr.GetId()
-						addrTemp := strings.ToLower(addr.GetTemporaryAddress())
-
-						if currentPlayerID != 0 && addrID == currentPlayerID &&
-							currentTempAddr != "" && addrTemp == currentTempAddr {
-							isMyself = true
-						}
-					}
-
-					// 添加 IsMyself 字段
-					infoMap["IsMyself"] = isMyself
-					playerTurnInfosWithFlag = append(playerTurnInfosWithFlag, infoMap)
-				}
-
-				// 替换原来的 PlayerTurnInfos
-				messageData["PlayerTurnInfos"] = playerTurnInfosWithFlag
-			}
-		} else {
-			messageData = make(map[string]interface{})
-		}
-
+		turnCompletedDTO := buildTurnCompletedDTO(task, turnCompleted)
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "turnComplete",
-				"Message":   messageData,
+				"Message":   turnCompletedDTO,
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
@@ -395,7 +337,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 	case proto.EventType_TYPE_KNOWN:
 		fallthrough
 	default:
-		// 对于未知事件类型，直接转发原始数据
 		jsonData, _ := json.Marshal(msg)
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
@@ -409,7 +350,6 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 	}
 }
 
-// buildMatchedPlayersInfo 根据 GameMatched 中的玩家列表补充用户名和头像信息
 func (task *SubscribeGameInfoTask) buildMatchedPlayersInfo(gameMatched *proto.GameMatched) []MatchedPlayerInfo {
 	if gameMatched == nil {
 		return nil
@@ -422,7 +362,6 @@ func (task *SubscribeGameInfoTask) buildMatchedPlayersInfo(gameMatched *proto.Ga
 
 	result := make([]MatchedPlayerInfo, 0, len(players))
 
-	// 当前订阅者的 PlayerID 字符串（用于判断 IsMyself）
 	currentPlayerID := ""
 	if task != nil && task.Request != nil {
 		currentPlayerID = strings.TrimSpace(task.Request.PlayerID)
@@ -455,7 +394,6 @@ func (task *SubscribeGameInfoTask) buildMatchedPlayersInfo(gameMatched *proto.Ga
 			}
 		}
 
-		// 标记是否为当前用户
 		if currentPlayerID != "" && currentPlayerID == playerIDStr {
 			info.IsMyself = true
 		}
@@ -466,7 +404,6 @@ func (task *SubscribeGameInfoTask) buildMatchedPlayersInfo(gameMatched *proto.Ga
 	return result
 }
 
-// buildGameReadyPlayersInfo 根据 GameReady 中的玩家列表补充用户名和头像信息
 func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.GameReady) []GameReadyPlayerInfo {
 	if gameReady == nil {
 		return nil
@@ -481,7 +418,6 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 
 	result := make([]GameReadyPlayerInfo, 0, len(players))
 
-	// 当前订阅者的 PlayerID 字符串（用于判断 IsMyself）
 	currentPlayerID := ""
 	if task != nil && task.Request != nil {
 		currentPlayerID = strings.TrimSpace(task.Request.PlayerID)
@@ -516,7 +452,6 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 			}
 		}
 
-		// 标记是否为当前用户
 		if currentPlayerID != "" && currentPlayerID == playerIDStr {
 			info.IsMyself = true
 		}
@@ -528,7 +463,6 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 
 }
 
-// buildGamePhasePlayersInfo 根据 GamePhase 中的玩家列表补充用户名和头像信息
 func (task *SubscribeGameInfoTask) buildGamePhasePlayersInfo(gamePhase *proto.GamePhase) []MatchedPlayerInfo {
 	if gamePhase == nil {
 		return nil
@@ -541,7 +475,6 @@ func (task *SubscribeGameInfoTask) buildGamePhasePlayersInfo(gamePhase *proto.Ga
 
 	result := make([]MatchedPlayerInfo, 0, len(phasePlayers))
 
-	// 当前订阅者的 PlayerID 字符串（用于判断 IsMyself）
 	currentPlayerID := ""
 	if task != nil && task.Request != nil {
 		currentPlayerID = strings.TrimSpace(task.Request.PlayerID)
@@ -577,7 +510,6 @@ func (task *SubscribeGameInfoTask) buildGamePhasePlayersInfo(gamePhase *proto.Ga
 			}
 		}
 
-		// 标记是否为当前用户
 		if currentPlayerID != "" && currentPlayerID == playerIDStr {
 			info.IsMyself = true
 		}
@@ -588,12 +520,116 @@ func (task *SubscribeGameInfoTask) buildGamePhasePlayersInfo(gamePhase *proto.Ga
 	return result
 }
 
-// requestUUIDFromTask 辅助函数：从任务中安全获取 RequestUUID，仅用于日志
 func requestUUIDFromTask(task *SubscribeGameInfoTask) string {
 	if task == nil || task.Request == nil {
 		return ""
 	}
 	return task.Request.RequestUUID
+}
+
+func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted) *TurnCompletedDTO {
+	if tc == nil {
+		return &TurnCompletedDTO{}
+	}
+
+	dto := &TurnCompletedDTO{
+		ConfirmationTimeout: tc.GetConfirmationTimeout(),
+		GameContinueTimeout: tc.GetGameContinueTimeout(),
+		GameId:              tc.GetGameId(),
+		RoundNum:            tc.GetRoundNum(),
+		TurnNum:             tc.GetTurnNum(),
+		IsRoundComplete:     tc.GetIsRoundComplete(),
+		IsGameComplete:      tc.GetIsGameComplete(),
+	}
+
+	// 只有在游戏结束时才挂上 GameResult，其它情况下完全不下发该字段
+	if dto.IsGameComplete && tc.GetGameResult() != nil {
+		dto.GameResult = tc.GetGameResult()
+	}
+
+	infos := tc.GetPlayerTurnInfos()
+	if len(infos) == 0 {
+		return dto
+	}
+
+	// 订阅者自身的 PlayerID 与 TempAddress，用于标记 IsMyself
+	currentPlayerID := int64(0)
+	if task != nil && task.Request != nil {
+		if id, err := strconv.ParseInt(strings.TrimSpace(task.Request.PlayerID), 10, 64); err == nil {
+			currentPlayerID = id
+		}
+	}
+	currentTempAddr := ""
+	if task != nil && task.Request != nil {
+		currentTempAddr = strings.ToLower(task.Request.TempAddress)
+	}
+
+	dto.PlayerTurnInfos = make([]TurnCompletedPlayerInfoDTO, 0, len(infos))
+
+	for _, info := range infos {
+		if info == nil {
+			continue
+		}
+
+		playerAddr := info.GetPlayerAddress()
+		addrDTO := PlayerAddressDTO{}
+		isMyself := false
+
+		if playerAddr != nil {
+			addrDTO.ID = strconv.FormatInt(playerAddr.GetId(), 10)
+			addrDTO.TemporaryAddress = playerAddr.GetTemporaryAddress()
+
+			addrID := playerAddr.GetId()
+			addrTemp := strings.ToLower(playerAddr.GetTemporaryAddress())
+			if currentPlayerID != 0 && addrID == currentPlayerID &&
+				currentTempAddr != "" && addrTemp == currentTempAddr {
+				isMyself = true
+			}
+		}
+
+		var submittedCardDTO *RoundSubmittedCardDTO
+		if card := info.GetSubmittedCard(); card != nil {
+			submittedCardDTO = &RoundSubmittedCardDTO{
+				Description: card.GetDescription(),
+				// 直接使用枚举的底层数值，前端拿到的是数字
+				ElementRelation:     int32(card.GetElementRelation()),
+				MultiplierAfter:     card.GetMultiplierAfter(),
+				MultiplierBefore:    card.GetMultiplierBefore(),
+				PlayerHealthBefore:  card.GetPlayerHealthBefore(),
+				PlayerHealthEnd:     card.GetPlayerHealthEnd(),
+				Salt:                base64.StdEncoding.EncodeToString(card.GetSalt()),
+				SubmittedCardId:     card.GetSubmittedCardId(),
+				SubmittedCommitment: base64.StdEncoding.EncodeToString(card.GetSubmittedCommitment()),
+			}
+
+			effects := card.GetEffects()
+			if len(effects) > 0 {
+				submittedCardDTO.Effects = make([]BattleEffectDTO, 0, len(effects))
+				for _, ef := range effects {
+					if ef == nil {
+						continue
+					}
+					submittedCardDTO.Effects = append(submittedCardDTO.Effects, BattleEffectDTO{
+						Description:            ef.GetDescription(),
+						TargetPlayerId:         strconv.FormatInt(ef.GetTargetPlayerId(), 10),
+						TargetTemporaryAddress: ef.GetTargetTemporaryAddress(),
+						Type:                   ef.GetType().String(),
+						Value:                  ef.GetValue(),
+					})
+				}
+			} else {
+				submittedCardDTO.Effects = []BattleEffectDTO{}
+			}
+		}
+
+		dto.PlayerTurnInfos = append(dto.PlayerTurnInfos, TurnCompletedPlayerInfoDTO{
+			IsMyself:      isMyself,
+			PlayerAddress: addrDTO,
+			SubmittedCard: submittedCardDTO,
+		})
+	}
+
+	return dto
 }
 
 // sendSSEEvent 发送 SSE 事件
