@@ -493,6 +493,29 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 	return true, gType, winnerPlayerId, winnerTemp, finalMultiplier
 }
 
+// calculateBattleRewardFromGamePlayers calculates battle rewards for all players based on game result type.
+//
+// Reward Calculation Logic:
+// 1. Tie Game (gameResultTie):
+//   - All players lose 0.8% of base stake in tokens (0.008 * baseStake)
+//   - All players gain 0.8% of base stake in points (0.008 * baseStake)
+//   - System fee = token deduction * number of players
+//   - All players marked with PLAYER_TIE status
+//
+// 2. Win/Loss Game (gameResultNormal or gameResultKO):
+//   - Total pool = baseStake * finalMultiplier
+//   - Winner receives: (totalPool * 0.984) tokens + points (0.012 * totalPool for normal, 0.016 * totalPool for KO)
+//   - Each loser loses: (totalPool / loserCount) tokens + points (0.004 * totalPool / loserCount for normal, 0 for KO)
+//   - System fee = totalPool * 0.016 (1.6%)
+//
+// Surrender and Offline Handling:
+// - For win/loss games: If a loser surrenders or goes offline, their points are transferred to the winner.
+//   - Surrendered/offline losers receive 0 points (instead of their normal loser points)
+//   - Winner receives bonus points equal to the sum of all surrendered/offline losers' points
+//
+// - For tie games: All players receive the same points regardless of status.
+// - The IsOffline and Surrendered flags are set in PlayerReward for record-keeping.
+// - Status is determined from playerStatuses map passed as parameter, which reflects the player's state at game end.
 func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
 	baseStake := config.GameParams.BaseStake
 	var playerRewards []*dao.PlayerReward
@@ -535,6 +558,18 @@ func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePla
 				loserPointPerPlayer = 0
 			}
 
+			// Calculate bonus points for winner from surrendered/offline losers
+			bonusPointsForWinner := 0
+			for _, player := range players {
+				if player.player.TemporaryAddress != temporaryAddress {
+					status := playerStatuses[player.player.TemporaryAddress]
+					if status == playerStatusSurrendered || status == playerStatusOffline {
+						// Transfer this loser's points to the winner
+						bonusPointsForWinner += loserPointPerPlayer
+					}
+				}
+			}
+
 			playerRewards = make([]*dao.PlayerReward, 0, len(players))
 			for _, player := range players {
 				status := playerStatuses[player.player.TemporaryAddress]
@@ -544,11 +579,16 @@ func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePla
 				var gameResultStatus proto.PlayerGameResultStatus
 				if isWinner {
 					tokenChange = winnerTokenPerPlayer
-					pointChange = winnerPointPerPlayer
+					pointChange = winnerPointPerPlayer + bonusPointsForWinner
 					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_WIN
 				} else {
 					tokenChange = -loserTokenPerPlayer
-					pointChange = loserPointPerPlayer
+					// Surrendered/offline losers get 0 points (their points go to winner)
+					if status == playerStatusSurrendered || status == playerStatusOffline {
+						pointChange = 0
+					} else {
+						pointChange = loserPointPerPlayer
+					}
 					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_LOSE
 				}
 

@@ -70,12 +70,8 @@ func (g *Game) handleSurrenderEvent(event *types.SurrenderEvent) error {
 	if err != nil {
 		return err
 	}
-	// Mark surrender in current turn's PlayerTurnInfo
-	playerTurnInfo := p.getCurrentPlayerTurnInfo()
-	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN // Use a status to indicate surrender
-	// Check if game is over
-	isGameComplete := g.gameInfo.GameResult != nil
-	return g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_PLAYER_SURRENDER, isGameComplete)
+	p.status = playerStatusSurrendered
+	return g.handleTurnEnd()
 }
 
 func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
