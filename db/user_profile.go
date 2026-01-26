@@ -202,6 +202,7 @@ func UpdateDailyRewardCollection(address string) error {
 // Removed: UpdateDailyRewardCollectionByEmail
 
 // HasCollectedDailyRewardByPlayerID 检查用户（按 player_id）是否已领取今日奖励
+// 使用UTC时间统一判断，确保全球用户使用相同的"今天"标准
 func HasCollectedDailyRewardByPlayerID(playerID string) (bool, error) {
 	profile, err := GetUserProfileByPlayerID(playerID)
 	if err != nil {
@@ -210,8 +211,9 @@ func HasCollectedDailyRewardByPlayerID(playerID string) (bool, error) {
 	if profile.CollectedRewardAt == nil {
 		return false, nil
 	}
-	now := time.Now()
-	collectedTime := *profile.CollectedRewardAt
+	// 使用UTC时间统一判断"今天"
+	now := time.Now().UTC()
+	collectedTime := profile.CollectedRewardAt.UTC()
 	return now.Year() == collectedTime.Year() &&
 		now.YearDay() == collectedTime.YearDay(), nil
 }

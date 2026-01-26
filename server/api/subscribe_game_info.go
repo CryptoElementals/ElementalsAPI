@@ -80,6 +80,8 @@ type RoundSubmittedCardDTO struct {
 	ElementRelation     int32             `json:"ElementRelation"`
 	MultiplierAfter     uint32            `json:"MultiplierAfter"`
 	MultiplierBefore    uint32            `json:"MultiplierBefore"`
+	MultiplierValue     uint32            `json:"MultiplierValue"`
+	MultiplierTag       string            `json:"MultiplierTag"`
 	PlayerHealthBefore  uint32            `json:"PlayerHealthBefore"`
 	PlayerHealthEnd     uint32            `json:"PlayerHealthEnd"`
 	Salt                string            `json:"Salt"`
@@ -565,8 +567,9 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 	}
 
 	dto.PlayerTurnInfos = make([]TurnCompletedPlayerInfoDTO, 0, len(infos))
+	submittedCards := make([]*RoundSubmittedCardDTO, len(infos))
 
-	for _, info := range infos {
+	for idx, info := range infos {
 		if info == nil {
 			continue
 		}
@@ -602,6 +605,9 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 				SubmittedCommitment: base64.StdEncoding.EncodeToString(card.GetSubmittedCommitment()),
 			}
 
+			// 先缓存，后面统一根据 ElementRelation 和双方 MultiplierAfter 计算 Multipliervalue / multiprefix
+			submittedCards[idx] = submittedCardDTO
+
 			effects := card.GetEffects()
 			if len(effects) > 0 {
 				submittedCardDTO.Effects = make([]BattleEffectDTO, 0, len(effects))
@@ -627,6 +633,36 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 			PlayerAddress: addrDTO,
 			SubmittedCard: submittedCardDTO,
 		})
+	}
+
+	// 第二轮遍历，根据 ElementRelation 计算 MultiplierValue 和 MultiplierTag
+	for i, sc := range submittedCards {
+		if sc == nil {
+			continue
+		}
+
+		switch sc.ElementRelation {
+		case 0, 4:
+			// bonus：取“对方”的 MultiplierAfter
+			var opponentMultiplier uint32
+			for j, other := range submittedCards {
+				if j == i || other == nil {
+					continue
+				}
+				opponentMultiplier = other.MultiplierAfter
+				break
+			}
+			if opponentMultiplier != 0 {
+				sc.MultiplierTag = "bonus"
+				sc.MultiplierValue = opponentMultiplier
+			}
+		case 1:
+			// multiple：取自己的 MultiplierAfter
+			sc.MultiplierTag = "multiple"
+			sc.MultiplierValue = sc.MultiplierAfter
+		default:
+			// 其它情况不赋值，保持默认零值/空字符串
+		}
 	}
 
 	return dto

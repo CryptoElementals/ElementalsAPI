@@ -9,8 +9,13 @@ type GameParamConfig struct {
 	TiePointRate      float64 `mapstructure:"tie-point-rate"`      // 平局积分倍率
 	TokenThreshold    int     `mapstructure:"token-threshold"`     // 加入匹配所需最低可用代币
 	BaseStake         int     `mapstructure:"base-stake"`          // 计算奖励时使用的基准赌注
-	DailyRewardTokens int     `mapstructure:"daily-reward-tokens"` // 每日奖励代币数量
+	DailyRewardTokens int     `mapstructure:"daily-reward-tokens"` // 每日奖励代币数量（已废弃，使用FirstTimeRewardTokens和DailyRewardTokensAfterFirst）
 	KeygenPolicy      uint    `mapstructure:"keygen-policy"`       // 1-后端生成(调试)，2-前端生成(生产)
+	// 每日奖励活动配置
+	DailyRewardStartDate        string `mapstructure:"daily-reward-start-date"`         // 活动开始日期，格式：YYYY-MM-DD
+	DailyRewardEndDate          string `mapstructure:"daily-reward-end-date"`           // 活动结束日期，格式：YYYY-MM-DD
+	FirstTimeRewardTokens       int    `mapstructure:"first-time-reward-tokens"`        // 活动期间内第一次领取奖励代币数量
+	DailyRewardTokensAfterFirst int    `mapstructure:"daily-reward-tokens-after-first"` // 活动后续每天奖励代币数量
 
 	MaxRounds    int64 `mapstructure:"max-rounds"`
 	InitialHP    int64 `mapstructure:"initial-hp"`
@@ -64,6 +69,12 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	}
 	if gameParams.DailyRewardTokens == 0 {
 		gameParams.DailyRewardTokens = 1000
+	}
+	if gameParams.FirstTimeRewardTokens == 0 {
+		gameParams.FirstTimeRewardTokens = 10000
+	}
+	if gameParams.DailyRewardTokensAfterFirst == 0 {
+		gameParams.DailyRewardTokensAfterFirst = 3000
 	}
 	if gameParams.KeygenPolicy == 0 {
 		gameParams.KeygenPolicy = 2

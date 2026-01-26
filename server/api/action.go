@@ -32,6 +32,7 @@ const (
 	GET_USER_PROFILE_LABEL           = "GetUserProfile"
 	HAS_COLLECTED_DAILY_REWARD_LABEL = "HasCollectedDailyReward"
 	COLLECT_DAILY_REWARD_LABEL       = "CollectDailyReward"
+	SET_USER_TOKEN_LABEL             = "SetUserToken"
 
 	// 匹配与对战
 	JOIN_QUEUE_LABEL               = "JoinQueue"
