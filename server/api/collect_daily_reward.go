@@ -2,6 +2,7 @@ package api
 
 import (
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
@@ -73,12 +74,36 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 统一流程：基于 PlayerID 校验是否已领取 -> 发放并保存代币 -> 更新领取时间
+	// 统一流程：检查活动期间 -> 校验是否已领取 -> 判断第一天还是后续天 -> 发放并保存代币 -> 更新领取时间
 	requestPlayerID := strings.TrimSpace(task.Request.PlayerID)
 	profile, err := db.GetUserProfileByPlayerID(requestPlayerID)
 	if err != nil {
 		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.GetUserProfileFailed(requestPlayerID)
+	}
+
+	// 检查活动是否在有效期内（使用UTC时间统一判断）
+	now := time.Now().UTC()
+	startDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardStartDate)
+	if err != nil {
+		log.Errorf("%s, invalid daily reward start date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardStartDate, err)
+		return nil, cmnErrors.ActionError("Daily reward activity not configured")
+	}
+	endDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardEndDate)
+	if err != nil {
+		log.Errorf("%s, invalid daily reward end date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardEndDate, err)
+		return nil, cmnErrors.ActionError("Daily reward activity not configured")
+	}
+
+	// 只比较日期部分，忽略时间，统一使用UTC时区
+	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	startDateOnly := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.UTC)
+	endDateOnly := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, time.UTC)
+
+	if nowDate.Before(startDateOnly) || nowDate.After(endDateOnly) {
+		log.Errorf("%s, daily reward activity is not active. Current date: %s, Activity period: %s to %s",
+			task.Request.RequestUUID, nowDate.Format("2006-01-02"), startDateOnly.Format("2006-01-02"), endDateOnly.Format("2006-01-02"))
+		return nil, cmnErrors.ActionError("Daily reward activity is not active")
 	}
 
 	// 校验当日是否已领取
@@ -92,8 +117,34 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		return nil, cmnErrors.ActionError("Daily reward already collected")
 	}
 
+	// 判断是否是活动期间内第一次领取
+	// 条件：用户从未在活动期间内领取过（从未领取过，或上次领取时间在活动开始日期之前）
+	// 统一使用UTC时区进行比较
+	isFirstTimeInActivity := false
+	if profile.CollectedRewardAt == nil {
+		// 从未领取过，这是活动期间内第一次
+		isFirstTimeInActivity = true
+	} else {
+		// 检查上次领取时间是否在活动开始日期之前（转换为UTC进行比较）
+		lastCollectedUTC := profile.CollectedRewardAt.UTC()
+		lastCollectedDate := time.Date(lastCollectedUTC.Year(), lastCollectedUTC.Month(), lastCollectedUTC.Day(), 0, 0, 0, 0, time.UTC)
+		if lastCollectedDate.Before(startDateOnly) {
+			// 上次领取时间在活动开始之前，这是活动期间内第一次
+			isFirstTimeInActivity = true
+		}
+	}
+
+	// 根据是否是活动期间内第一次领取决定发放的token数量
+	var dailyRewardTokens int32
+	if isFirstTimeInActivity {
+		dailyRewardTokens = int32(config.GameParams.FirstTimeRewardTokens)
+		log.Infof("%s, player_id=%s collecting first time reward in activity: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
+	} else {
+		dailyRewardTokens = int32(config.GameParams.DailyRewardTokensAfterFirst)
+		log.Infof("%s, player_id=%s collecting daily reward: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
+	}
+
 	// 发放 token
-	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
 	var userToken *dao.UserToken
 	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
 	if err != nil && err != gorm.ErrRecordNotFound {
@@ -119,6 +170,6 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		log.Errorf("%s, failed to update daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.SaveUserProfileFailed()
 	}
-	log.Infof("%s, daily reward collected successfully for player_id=%s, tokens: %d", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
+	log.Infof("%s, daily reward collected successfully for player_id=%s, tokens: %d (isFirstTimeInActivity: %v)", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens, isFirstTimeInActivity)
 	return task.Response, nil
 }

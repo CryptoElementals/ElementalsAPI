@@ -128,17 +128,19 @@ func NewGetBattleInfoTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
+	// 解析 PlayerID（由中间件从会话中注入）
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by player id"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-	address := profile.Address
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 
 	tempAddress := ""
 	if len(task.Request.TempAddress) > 0 {
@@ -181,7 +183,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 		}
 		playerStat := PlayerRoundStat{
 			PlayerAddress: playerAddr,
-			IsSelf:        player.PlayerId == profile.PlayerID,
+			IsSelf:        player.PlayerId == playerID,
 			CardStats:     make([]PlayerCardStat, 0, len(player.CardStats)),
 		}
 
@@ -242,7 +244,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 		if len(tempAddress) > 0 {
 			playerAddr := &proto.PlayerAddress{
-				Id:               profile.PlayerID,
+				Id:               playerID,
 				TemporaryAddress: tempAddress,
 			}
 

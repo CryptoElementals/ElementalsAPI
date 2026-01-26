@@ -91,17 +91,19 @@ func NewGetGamePhaseTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by player id"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-	address := profile.Address
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的GetPlayerInfo
@@ -113,7 +115,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		Id:               profile.PlayerID,
+		Id:               playerID,
 		TemporaryAddress: tempAddress,
 	}
 
@@ -196,7 +198,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 
 			players = append(players, MatchPlayer{
 				Address:           userProfile.Address,
-				IsMyself:          p.Address.TemporaryAddress == tempAddress && p.Address.Id == profile.PlayerID,
+				IsMyself:          p.Address.TemporaryAddress == tempAddress && p.Address.Id == playerID,
 				IsConfirmed:       isConfirmed,
 				Cards:             cards,
 				Name:              userProfile.Name,

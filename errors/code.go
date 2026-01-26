@@ -42,6 +42,7 @@ var (
 	c_UserNotFound        ErrorCode = 8372 // 用户不存在
 	c_UserNameTooLong     ErrorCode = 8373 // 用户名过长
 	c_InvalidAvatarURL    ErrorCode = 8374 // 头像URL无效
+	c_UserNameDuplicate   ErrorCode = 8375 // 用户名重复
 
 	// Server
 	s_ActionError                ErrorCode = 8433 // [行为]出错（目前被滥用，考虑将一部分拆到s_CallThirdApiError
@@ -137,6 +138,10 @@ func UserNotFound(a ...interface{}) Error {
 
 func UserNameTooLong(a ...interface{}) Error {
 	return Error{code: c_UserNameTooLong, items: a, message: "User name [%s] too long, max length is 15"}
+}
+
+func UserNameDuplicate(a ...interface{}) Error {
+	return Error{code: c_UserNameDuplicate, items: a, message: "User name [%s] already exists"}
 }
 
 func InvalidAvatarURL(a ...interface{}) Error {

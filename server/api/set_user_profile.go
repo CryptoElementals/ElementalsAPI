@@ -103,6 +103,12 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	err = db.UpdateUserProfile(userProfile)
 	if err != nil {
 		log.Errorf("%s, failed to update user profile: %v", task.Request.RequestUUID, err)
+		// 检查是否是用户名重复错误
+		if errObj, ok := err.(errors.Error); ok {
+			// 如果已经是自定义错误类型，直接返回
+			return nil, errObj
+		}
+		// 其他错误返回通用错误
 		return nil, errors.SaveUserProfileFailed()
 	}
 

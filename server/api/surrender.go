@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -80,15 +80,15 @@ func init() {
 
 // Run 执行任务
 func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
-		return nil, fmt.Errorf("failed to get player address by player id")
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
+		return nil, fmt.Errorf("player id is empty")
 	}
-	address := profile.Address
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid player id: %v", err)
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的Surrender
@@ -103,7 +103,7 @@ func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
 	req := &pb.SurrenderRequest{
 		GameID: task.Request.GameID,
 		Address: &pb.PlayerAddress{
-			Id:               profile.PlayerID,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 	}

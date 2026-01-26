@@ -2,9 +2,9 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -20,7 +20,8 @@ func init() {
 type ConfirmBattleRequest struct {
 	BaseRequest
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`
-	Round       uint   `mapstructure:"Round" validate:"required"`
+	RoundNumber uint   `mapstructure:"RoundNumber" validate:"required,min=1"`
+	TurnNumber  uint   `mapstructure:"TurnNumber" validate:"required,min=1"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
@@ -75,17 +76,20 @@ func NewConfirmBattleTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by player id"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-	address := profile.Address
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 
-	// 统一将地址转为小写
-	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
@@ -97,10 +101,11 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	req := &proto.ConfirmBattleRequest{
-		GameID:      task.Request.GameID,
-		RoundNumber: uint32(task.Request.Round),
+		GameID:      uint32(task.Request.GameID),
+		RoundNumber: uint32(task.Request.RoundNumber),
+		TurnNumber:  uint32(task.Request.TurnNumber),
 		PlayerAddress: &proto.PlayerAddress{
-			Id:               profile.PlayerID,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 	}

@@ -135,8 +135,8 @@ func newRouter(wg *sync.WaitGroup, cfg *config.ServerConfig, serviceName string,
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(cfg.ServerMode), handler.Handle)
 
 	// Google OAuth endpoints
-	r.GET("/auth/login", googleLoginHandler(cfg))
-	r.GET("/auth/callback", googleCallbackHandler(cfg))
+	r.GET("/auth/google/login", googleLoginHandler(cfg))
+	r.GET("/auth/google/callback", googleCallbackHandler(cfg))
 	return r
 }
 
@@ -214,8 +214,14 @@ func googleLoginHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 		// generate state and store in session
 		state, _ := randomString(24)
+		// optional environment hint, used in callback to decide frontend redirect target
+		env := c.Query("env")
+
 		session := sessions.Default(c)
 		session.Set("oauth_state", state)
+		if env != "" {
+			session.Set("oauth_env", env)
+		}
 		_ = session.Save()
 
 		q := url.Values{}
@@ -248,8 +254,12 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state"})
 			return
 		}
-		// clear state
+		// clear state and read env hint
 		session.Delete("oauth_state")
+		envVal := session.Get("oauth_env")
+		if envVal != nil {
+			session.Delete("oauth_env")
+		}
 		_ = session.Save()
 
 		// exchange code for token
@@ -303,33 +313,45 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: id_token: %s", tokenPayload.IdToken)
 		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
-		// 获取或创建用户档案（邮箱已存在则直接视为登录）
 		userProfile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
 			return
 		}
 		playerIDStr := fmt.Sprintf("%d", userProfile.PlayerID)
-		session.Set(api.SESSION_USER_KEY, playerIDStr)
-		_ = session.Save()
-		// issue refresh token
 		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
 			return
 		}
-		// 生成短期code（5分钟），映射到refresh_token；重定向时仅携带code
 		tempCode, err := api.SaveTempCodeForRefreshToken(token, 300)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue temp code failed"})
 			return
 		}
-		// 重定向，并在 URL 参数中附带 code
-		if cfg.GoogleFrontendURL == "" {
+
+		// decide frontend redirect target based on env hint
+		var env string
+		if envVal != nil {
+			if s, ok := envVal.(string); ok {
+				env = s
+			}
+		}
+
+		var frontendURL string
+		switch env {
+		case "local":
+			// local frontend for developer debugging
+			frontendURL = "http://localhost:5173/"
+		default:
+			frontendURL = cfg.GoogleFrontendURL
+		}
+
+		if frontendURL == "" {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "frontend redirect url not configured"})
 			return
 		}
-		u, err := url.Parse(cfg.GoogleFrontendURL)
+		u, err := url.Parse(frontendURL)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid frontend redirect url"})
 			return

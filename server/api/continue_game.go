@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
@@ -76,32 +77,26 @@ func NewContinueGameTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
-	// 通过 PlayerID 解析玩家地址
-	profile, err := db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
-	if err != nil || profile == nil || profile.Address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address by player id"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-	address := profile.Address
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
+	// 检查用户token数量是否足够（仅按总 TokenAmount 判断，不再扣除锁仓）
+	userToken, err := db.GetPlayerToken(c.Request.Context(), playerID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
 		task.Response.BaseResponse.Message = "Failed to get user token information"
-		return task.Response, nil
-	}
-
-	// 获取用户已锁定的代币总数
-	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(address)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get locked token information"
 		return task.Response, nil
 	}
 
@@ -110,8 +105,8 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 		currentTokens = userToken.TokenAmount
 	}
 
-	// 计算可用代币数量
-	availableTokens := int(currentTokens) - totalLockedTokens
+	// 计算可用代币数量：仅使用当前总 token 数量
+	availableTokens := int(currentTokens)
 
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
@@ -129,7 +124,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 
 	continueGameReq := &proto.ContinueGameRequest{
 		Player: &proto.PlayerAddress{
-			Id:               profile.PlayerID,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 		LastGameID: uint32(task.Request.GameID),
