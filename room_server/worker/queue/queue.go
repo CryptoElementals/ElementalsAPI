@@ -221,6 +221,59 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	if event.GameInfo.Status == pb.GameStatus_GAME_ABORTED {
 		return nil
 	}
+
+	// Check if players have enough tokens to join queue after settlement
+	// If not, send continue cancel event to both players
+	shouldSendContinueCancel := false
+	for _, p := range event.GameInfo.Players {
+		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+		// Skip bot accounts
+		if _, ok := bots[*addr]; ok {
+			continue
+		}
+
+		// Get user token to check available tokens
+		userToken, err := db.GetPlayerToken(context.Background(), p.PlayerId)
+		if err != nil {
+			log.Errorw("failed to get player token after settlement", "player_id", p.PlayerId, "err", err)
+			continue
+		}
+
+		// Calculate total locked tokens from userToken.LockedTokens
+		var totalLockedTokens int32 = 0
+		for _, locked := range userToken.LockedTokens {
+			totalLockedTokens += locked.TokenAmount
+		}
+		availableTokens := int(userToken.TokenAmount) - int(totalLockedTokens)
+
+		// Check if player has enough tokens to join queue
+		if availableTokens < int(q.minTokenToJoinQueue) {
+			log.Infow("player doesn't have enough tokens after settlement",
+				"player_id", p.PlayerId,
+				"available_tokens", availableTokens,
+				"required_tokens", q.minTokenToJoinQueue)
+			shouldSendContinueCancel = true
+			break
+		}
+	}
+
+	// If any player doesn't have enough tokens, send continue cancel event to both players
+	if shouldSendContinueCancel {
+		log.Infow("sending continue cancel events due to insufficient tokens",
+			"game_id", event.GameInfo.ID)
+		for _, p := range event.GameInfo.Players {
+			addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+			// Skip bot accounts
+			if _, ok := bots[*addr]; ok {
+				continue
+			}
+			q.workerManager.SendEvent(addr.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
+				GameID: event.GameInfo.ID,
+			}))
+		}
+	} else {
+		q.continueManager.addGame(event.GameInfo)
+	}
 	go func() {
 		palyerIds := make([]int64, 0, len(event.GameInfo.Players))
 		for _, p := range event.GameInfo.Players {
@@ -241,7 +294,6 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		}
 	}()
 
-	q.continueManager.addGame(event.GameInfo)
 	return nil
 }
 

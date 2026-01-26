@@ -68,7 +68,16 @@ func NewGameFromGameInfo(
 	gameContinuer GameHandler,
 	gameInfo *dao.Game,
 	chainSvc ContractClient) *Game {
+	// Initialize gamePlayers from gameInfo.Players
 	gamePlayers := make(map[string]*gamePlayer)
+	for _, playerInfo := range gameInfo.Players {
+		gamePlayers[playerInfo.TemporaryAddress] = &gamePlayer{
+			player:     playerInfo,
+			currentHP:  gameInfo.InitialHP,
+			multiplier: uint32(gameInfo.InitialMultiplier),
+		}
+	}
+
 	g := &Game{
 		ctx:                 ctx,
 		wg:                  wg,
@@ -77,6 +86,28 @@ func NewGameFromGameInfo(
 		workerMangerService: workerMangerService,
 		chainSvc:            chainSvc,
 		gameContextHandler:  gameContinuer,
+	}
+
+	// Setup current round to the last round of the gameInfo, if not exist, create one
+	if len(gameInfo.Rounds) > 0 {
+		// Find the round with the highest RoundNumber
+		var lastRound *dao.Round
+		maxRoundNum := uint32(0)
+		for _, r := range gameInfo.Rounds {
+			if r.RoundNumber > maxRoundNum {
+				maxRoundNum = r.RoundNumber
+				lastRound = r
+			}
+		}
+		if lastRound != nil {
+			g.currentRound.round = lastRound
+		} else {
+			// If no valid round found, create a new one
+			g.setupNewRound()
+		}
+	} else {
+		// If no rounds exist, create a new one
+		g.setupNewRound()
 	}
 	wg.Add(1)
 	var terminateGame = func() {

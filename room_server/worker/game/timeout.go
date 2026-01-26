@@ -108,14 +108,16 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	switch g.currentRound.turnStatus {
-	case proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN, proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
+	case proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
 		// For timeout during setup or battle confirmation, abort the game
 		err := g.handleGameAbortInternalError()
 		if err != nil {
 			log.Errorf("abort game failed, err: %s", err.Error())
 		}
 		return
-	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS, proto.TurnStatus_TURN_WAITTING_CARDS:
+	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS,
+		proto.TurnStatus_TURN_WAITTING_CARDS,
+		proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
 		err := g.handleTurnEnd()
 		if err != nil {
 			log.Errorf("handle turn end failed, err: %s", err.Error())

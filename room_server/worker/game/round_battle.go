@@ -45,7 +45,8 @@ func (r *round) executeCardIndex() (bool, *dao.GameResult, error) {
 	if r.isServerTimeout() {
 		return r.handleServerTimeout()
 	}
-	isGameOver, gameResult := r.checkGameOverFromGamePlayers()
+	// Check if game is over (before card execution - don't check round/turn limits yet)
+	isGameOver, gameResult := r.checkGameOverFromGamePlayersPreExecution()
 	if isGameOver {
 		return isGameOver, gameResult, nil
 	}
@@ -72,8 +73,8 @@ func (r *round) executeCardIndex() (bool, *dao.GameResult, error) {
 		r.processCardBattle(p1, p2, card1, card2)
 	}
 
-	// Check if game is over (gamePlayers are already updated in place during battle)
-	isGameOver, gameResult = r.checkGameOverFromGamePlayers()
+	// Check if game is over (after card execution - now we can check round/turn limits)
+	isGameOver, gameResult = r.checkGameOverFromGamePlayersPostExecution()
 	return isGameOver, gameResult, nil
 }
 
@@ -145,9 +146,8 @@ func (r *round) updatePlayerHPAndLostHP(player *gamePlayer, beforeHP int64, hpDe
 	player.multiplier = r.calculateMultiplierByLostHP(int(player.totalLostHP))
 }
 
-// checkGameOverFromGamePlayers checks if game is over using current game players
-func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
-	// Convert game players to game end states
+// buildGameEndStates converts game players to game end states
+func (r *round) buildGameEndStates() []*gameEndState {
 	playerCount := len(r.gamePlayers)
 	gameEndStates := make([]*gameEndState, 0, playerCount)
 	for _, player := range r.gamePlayers {
@@ -168,9 +168,15 @@ func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
 		hasSubmittedCard := submittedCard != nil && submittedCard.CardID > 0
 
 		// Mark player as offline based on turn status and what they've submitted
+		// If turn is waiting for battle confirmation and player is not ready, mark as offline
 		// If turn is waiting for commitments and player has no commitment, mark as offline
 		// If turn is waiting for cards and player has no card, mark as offline
 		switch r.turnStatus {
+		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
+			// Turn is waiting for battle confirmation - check if player is ready
+			if !player.isPlayerReady() {
+				player.status = playerStatusOffline
+			}
 		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
 			// Turn is waiting for commitments - check if player has submitted commitment
 			if !hasSubmittedCommitment {
@@ -192,30 +198,59 @@ func (r *round) checkGameOverFromGamePlayers() (bool, *dao.GameResult) {
 			Status:           player.status,
 		})
 	}
+	return gameEndStates
+}
 
-	// Check if game is over
-	isGameOver, grType, winnerPlayerId, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.round.RoundNumber)
+// buildGameResult builds a GameResult from the checkGameOver results
+func (r *round) buildGameResult(grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32) *dao.GameResult {
+	// Build player status map
+	playerStatuses := make(map[string]playerStatus)
+	for _, player := range r.gamePlayers {
+		playerStatuses[player.player.TemporaryAddress] = player.status
+	}
+
+	// Build battle reward using game players
+	battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winnerPlayerId, temporaryAddress, finalMul, playerStatuses)
+
+	return &dao.GameResult{
+		GameID:                 r.round.GameID,
+		Multiplier:             int32(finalMul),
+		WinnerPlayerId:         winnerPlayerId,
+		WinnerTemporaryAddress: temporaryAddress,
+		GameResultType:         proto.GameResultType(grType),
+		BattleReward:           battleReward,
+	}
+}
+
+// checkGameOverFromGamePlayersPreExecution checks if game is over before card execution
+// This should NOT check round/turn limits to allow the last turn to execute
+func (r *round) checkGameOverFromGamePlayersPreExecution() (bool, *dao.GameResult) {
+	gameEndStates := r.buildGameEndStates()
+
+	// Check if game is over (without checking round/turn limits)
+	isGameOver, grType, winnerPlayerId, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.round.RoundNumber, false)
 
 	// Build game result if game is over
 	var gameResult *dao.GameResult
 	if isGameOver {
-		// Build player status map
-		playerStatuses := make(map[string]playerStatus)
-		for _, player := range r.gamePlayers {
-			playerStatuses[player.player.TemporaryAddress] = player.status
-		}
+		gameResult = r.buildGameResult(grType, winnerPlayerId, temporaryAddress, finalMul)
+	}
 
-		// Build battle reward using game players
-		battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winnerPlayerId, temporaryAddress, finalMul, playerStatuses)
+	return isGameOver, gameResult
+}
 
-		gameResult = &dao.GameResult{
-			GameID:                 r.round.GameID,
-			Multiplier:             int32(finalMul),
-			WinnerPlayerId:         winnerPlayerId,
-			WinnerTemporaryAddress: temporaryAddress,
-			GameResultType:         proto.GameResultType(grType),
-			BattleReward:           battleReward,
-		}
+// checkGameOverFromGamePlayersPostExecution checks if game is over after card execution
+// This CAN check round/turn limits since cards have been executed
+func (r *round) checkGameOverFromGamePlayersPostExecution() (bool, *dao.GameResult) {
+	gameEndStates := r.buildGameEndStates()
+
+	// Check if game is over (with round/turn limit checking)
+	isGameOver, grType, winnerPlayerId, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.round.RoundNumber, true)
+
+	// Build game result if game is over
+	var gameResult *dao.GameResult
+	if isGameOver {
+		gameResult = r.buildGameResult(grType, winnerPlayerId, temporaryAddress, finalMul)
 	}
 
 	return isGameOver, gameResult
@@ -329,7 +364,7 @@ func (r *round) isGameEndsByRoundAndTurn() bool {
 	return r.round.RoundNumber == 3 && r.getCurrentTurnNumber() == 3
 }
 
-func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameResultType, int64, string, uint32) {
+func (r *round) checkGameOver(states []*gameEndState, round uint32, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
 	// Count surrendered players
 	surrenderedCount := 0
 	maxLoserMul := uint32(1)
@@ -380,10 +415,10 @@ func (r *round) checkGameOver(states []*gameEndState, round uint32) (bool, gameR
 	}
 
 	// Check by HP
-	return r.checkGameOverByHP(states, round, false)
+	return r.checkGameOverByHP(states, round, false, checkRoundTurnLimit)
 }
 
-func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool) (bool, gameResultType, int64, string, uint32) {
+func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
 	hps := make([]int, len(states))
 	multipliers := make([]uint32, len(states))
 
@@ -405,7 +440,7 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		if firstHP == 0 {
 			return true, gameResultTie, 0, "", 1
 		}
-		if hasOffline || r.isGameEndsByRoundAndTurn() {
+		if hasOffline || (checkRoundTurnLimit && r.isGameEndsByRoundAndTurn()) {
 			return true, gameResultTie, 0, "", 1
 		}
 		return false, gameResultNormal, 0, "", 1
@@ -426,7 +461,6 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 			if hps[i] > 0 {
 				winnerPlayerId = state.PlayerId
 				winnerTemp = state.TemporaryAddress
-				break
 			} else {
 				if multipliers[i] > maxLoserMul {
 					maxLoserMul = multipliers[i]
@@ -435,7 +469,7 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		}
 		finalMultiplier = maxLoserMul
 	} else {
-		if !hasOffline && !r.isGameEndsByRoundAndTurn() {
+		if !hasOffline && !(checkRoundTurnLimit && r.isGameEndsByRoundAndTurn()) {
 			return false, gameResultNormal, 0, "", 1
 		}
 
@@ -453,7 +487,6 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 			if hps[i] == maxHP {
 				winnerPlayerId = state.PlayerId
 				winnerTemp = state.TemporaryAddress
-				break
 			} else {
 				if multipliers[i] > maxLoserMul {
 					maxLoserMul = multipliers[i]
@@ -466,6 +499,29 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 	return true, gType, winnerPlayerId, winnerTemp, finalMultiplier
 }
 
+// calculateBattleRewardFromGamePlayers calculates battle rewards for all players based on game result type.
+//
+// Reward Calculation Logic:
+// 1. Tie Game (gameResultTie):
+//   - All players lose 0.8% of base stake in tokens (0.008 * baseStake)
+//   - All players gain 0.8% of base stake in points (0.008 * baseStake)
+//   - System fee = token deduction * number of players
+//   - All players marked with PLAYER_TIE status
+//
+// 2. Win/Loss Game (gameResultNormal or gameResultKO):
+//   - Total pool = baseStake * finalMultiplier
+//   - Winner receives: (totalPool * 0.984) tokens + points (0.012 * totalPool for normal, 0.016 * totalPool for KO)
+//   - Each loser loses: (totalPool / loserCount) tokens + points (0.004 * totalPool / loserCount for normal, 0 for KO)
+//   - System fee = totalPool * 0.016 (1.6%)
+//
+// Surrender and Offline Handling:
+// - For win/loss games: If a loser surrenders or goes offline, their points are transferred to the winner.
+//   - Surrendered/offline losers receive 0 points (instead of their normal loser points)
+//   - Winner receives bonus points equal to the sum of all surrendered/offline losers' points
+//
+// - For tie games: All players receive the same points regardless of status.
+// - The IsOffline and Surrendered flags are set in PlayerReward for record-keeping.
+// - Status is determined from playerStatuses map passed as parameter, which reflects the player's state at game end.
 func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
 	baseStake := config.GameParams.BaseStake
 	var playerRewards []*dao.PlayerReward
@@ -508,6 +564,18 @@ func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePla
 				loserPointPerPlayer = 0
 			}
 
+			// Calculate bonus points for winner from surrendered/offline losers
+			bonusPointsForWinner := 0
+			for _, player := range players {
+				if player.player.TemporaryAddress != temporaryAddress {
+					status := playerStatuses[player.player.TemporaryAddress]
+					if status == playerStatusSurrendered || status == playerStatusOffline {
+						// Transfer this loser's points to the winner
+						bonusPointsForWinner += loserPointPerPlayer
+					}
+				}
+			}
+
 			playerRewards = make([]*dao.PlayerReward, 0, len(players))
 			for _, player := range players {
 				status := playerStatuses[player.player.TemporaryAddress]
@@ -517,11 +585,16 @@ func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePla
 				var gameResultStatus proto.PlayerGameResultStatus
 				if isWinner {
 					tokenChange = winnerTokenPerPlayer
-					pointChange = winnerPointPerPlayer
+					pointChange = winnerPointPerPlayer + bonusPointsForWinner
 					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_WIN
 				} else {
 					tokenChange = -loserTokenPerPlayer
-					pointChange = loserPointPerPlayer
+					// Surrendered/offline losers get 0 points (their points go to winner)
+					if status == playerStatusSurrendered || status == playerStatusOffline {
+						pointChange = 0
+					} else {
+						pointChange = loserPointPerPlayer
+					}
 					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_LOSE
 				}
 

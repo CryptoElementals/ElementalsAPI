@@ -17,6 +17,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
+const SingleTxGasLimit = 500_000
+
 type concurrentRoomV2Client struct {
 	client    bind.ContractBackend
 	roomV2Ctr *contract.RoomV2Contract
@@ -182,7 +184,8 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.Submit
 			"commitment", hexutil.Encode(evt.Commitment),
 			"signature", hexutil.Encode(evt.Signature))
 	}
-
+	// increase gas limit by event number
+	bindOpts.GasLimit = uint64(len(events) * SingleTxGasLimit)
 	tx, err := c.roomV2Ctr.BatchSubmitCardHashes(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
 	if err != nil {
 		log.Errorf("sendBatchSubmitCardsHash: batch submit cards hash failed: %s", err.Error())
@@ -229,7 +232,8 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 			"card", evt.Card,
 			"signature", hexutil.Encode(evt.Signature))
 	}
-
+	// increase gas limit by event number
+	bindOpts.GasLimit = uint64(len(events) * SingleTxGasLimit)
 	tx, err := c.roomV2Ctr.BatchSubmitCards(bindOpts, gameIDs, cards, salts, cardIndexes, rounds, signatures)
 	if err != nil {
 		log.Errorf("sendBatchSubmitCards: batch submit cards failed: %s", err.Error())

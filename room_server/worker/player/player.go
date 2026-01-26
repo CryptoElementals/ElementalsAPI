@@ -52,7 +52,6 @@ func (p *Player) Handle(ctx context.Context, event *types.Event) error {
 		p.handleCommitmentsOnChainEvent(p.ctx, evt)
 	case *types.TurnCompletedEvent:
 		p.handleTurnCompletedEvent(p.ctx, evt)
-	// RoundCompletedEvent and GameCompletedEvent are now handled via TurnCompletedEvent with flags
 	case *types.ContinueCanceledEvent:
 		p.handleContinueCanceledEvent(ctx, evt)
 	case *types.GamePhaseSyncEvent:
