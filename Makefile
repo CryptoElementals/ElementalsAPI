@@ -33,13 +33,16 @@ STAT_MAIN = ./cmd/ele-stat
 TOOLS_BIN = ele-tools
 TOOLS_MAIN = ./cmd/ele-tools
 
+STRESS_BIN = ele-stress
+STRESS_MAIN = ./cmd/ele-stress
+
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner roomserver botserver stat tools clean deps lint help
+.PHONY: all build apiserver scanner roomserver botserver stat tools stress clean deps lint help
 
 all: build
 
-build: apiserver scanner roomserver botserver stat tools
+build: apiserver scanner roomserver botserver stat tools stress
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -71,12 +74,17 @@ tools: $(BIN_DIR)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(TOOLS_BIN) $(TOOLS_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(TOOLS_BIN)"
 
+stress: $(BIN_DIR)
+	@echo "Building $(STRESS_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(STRESS_BIN) $(STRESS_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(STRESS_BIN)"
+
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN)
+	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(STRESS_BIN)
 	@echo "Clean completed"
 
 deps:
@@ -103,6 +111,7 @@ help:
 	@echo "  botserver     - Build ele-botserver only"
 	@echo "  stat          - Build ele-stat only"
 	@echo "  tools         - Build ele-tools only"
+	@echo "  stress        - Build ele-stress only"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean         - Clean build files"
