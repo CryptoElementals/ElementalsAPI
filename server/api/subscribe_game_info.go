@@ -43,6 +43,49 @@ type SubscribeGameInfoTask struct {
 	stopChan chan struct{}
 }
 
+// 全局管理当前活跃的 SubscribeGameInfo SSE 任务：clientID -> *SubscribeGameInfoTask
+var sseTasks sync.Map
+
+func registerSSETask(clientID string, task *SubscribeGameInfoTask) {
+	sseTasks.Store(clientID, task)
+}
+
+func unregisterSSETask(clientID string) {
+	sseTasks.Delete(clientID)
+}
+
+// stopSSEByClientID 尝试根据 clientID 主动关闭某个 SSE 连接。
+// 只有当该连接的 PlayerID 与 ownerPlayerID 一致时才会真正关闭，返回 true。
+func stopSSEByClientID(clientID string, ownerPlayerID string) bool {
+	v, ok := sseTasks.Load(clientID)
+	if !ok {
+		return false
+	}
+	task, ok := v.(*SubscribeGameInfoTask)
+	if !ok || task == nil || task.Request == nil {
+		return false
+	}
+
+	if strings.TrimSpace(task.Request.PlayerID) != strings.TrimSpace(ownerPlayerID) {
+		return false
+	}
+
+	task.Stop()
+	return true
+}
+
+// Stop 主动停止当前 SSE 任务（通过 stopChan 通知 Run 中的 select）
+func (task *SubscribeGameInfoTask) Stop() {
+	task.mu.Lock()
+	defer task.mu.Unlock()
+
+	select {
+	case task.stopChan <- struct{}{}:
+	default:
+		// 已发送过停止信号或通道已满，避免阻塞/重复发送
+	}
+}
+
 type TurnCompletedDTO struct {
 	ConfirmationTimeout int64                        `json:"ConfirmationTimeout"`
 	GameContinueTimeout int64                        `json:"GameContinueTimeout"`
@@ -164,6 +207,11 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	eventManager := events.GetGlobalEventManager()
 
 	clientID := fmt.Sprintf("%s_%s", task.Request.RequestUUID, game_topic)
+
+	// 将当前 SSE 任务注册到全局表，便于后续通过 clientID 主动关闭
+	registerSSETask(clientID, task)
+	defer unregisterSSETask(clientID)
+
 	eventHandler := func(msg *proto.Message) {
 		sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
 		if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {

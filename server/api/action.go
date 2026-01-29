@@ -39,6 +39,7 @@ const (
 	EXIT_QUEUE_LABEL               = "ExitQueue"
 	CONFIRM_BATTLE_LABEL           = "ConfirmBattle"
 	GET_GAME_PHASE_LABEL           = "GetGamePhase"
+	CLOSE_SSE_LABEL                = "CloseSSE"
 	REFUSE_CONTINUE_GAME_LABEL     = "RefuseContinueGame"
 	CONTINUE_GAME_LABEL            = "ContinueGame"
 	IS_PLAYER_IN_QUEUE_LABEL       = "IsPlayerInQueue"

@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -63,7 +64,23 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 				c.JSON(http.StatusUnauthorized, res)
 				return
 			}
-			// 注入身份字段以兼容现有 API
+
+			// 防御性校验：如果请求体中已经带了 PlayerID，则要求与会话中的一致
+			if rawReqPlayerID, exists := (*params)["PlayerID"]; exists && rawReqPlayerID != nil {
+				reqPlayerID := fmt.Sprintf("%v", rawReqPlayerID)
+				if reqPlayerID != playerID {
+					res := api.MakeErrorResponse(errors.LoginCookieInvalid("unexpected player id"))
+					res.SetSession(requestUUID)
+					res.SetAction(action + "Response")
+					resJson, _ := json.Marshal(res)
+					log.Infof("%s Send response---> client %s, %s", requestUUID, c.ClientIP(), string(resJson))
+					c.Abort()
+					c.JSON(http.StatusUnauthorized, res)
+					return
+				}
+			}
+
+			// 注入身份字段以兼容现有 API（覆盖请求体中的 PlayerID）
 			(*params)["Address"] = profile.Address
 			(*params)["Email"] = profile.Email
 			(*params)["PlayerID"] = strconv.FormatInt(profile.PlayerID, 10)
