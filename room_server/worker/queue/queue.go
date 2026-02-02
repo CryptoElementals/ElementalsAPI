@@ -125,11 +125,9 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.continueManager.removeGameByAddress(event.PlayerAddress, 0)
 	matched := false
 	for player := range q.queue {
-		// don't match players with same player id
-		// if player.Id == event.PlayerAddress.Id {
-		// 	continue
-		// }
-		if player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
+		// don't match players with same player id or temporary address
+		if player.Id == event.PlayerAddress.Id ||
+			player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
 			continue
 		}
 
