@@ -112,7 +112,7 @@ func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.Surrender(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer Surrender failed: " + err.Error()
+		task.Response.BaseResponse.Message = "Surrender failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

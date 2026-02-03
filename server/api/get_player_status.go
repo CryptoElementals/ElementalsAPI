@@ -106,7 +106,7 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 	resp, err := rpcClient.GetPlayerStatus(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer GetPlayerStatus failed: " + err.Error()
+		task.Response.BaseResponse.Message = "GetPlayerStatus failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 
@@ -134,4 +134,3 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "UNKNOWN"
 	}
 }
-

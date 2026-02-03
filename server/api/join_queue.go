@@ -111,7 +111,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	userToken, err := db.GetPlayerToken(c.Request.Context(), playerID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user token information"
+		task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: failed to get user token information"
 		return task.Response, nil
 	}
 
@@ -146,7 +146,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer JoinQueue failed: " + err.Error()
+		task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

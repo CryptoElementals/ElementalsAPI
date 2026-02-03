@@ -122,7 +122,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer GetPlayerInfo failed: " + err.Error()
+		task.Response.BaseResponse.Message = "GetGamePhase failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

@@ -87,12 +87,12 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	startDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardStartDate)
 	if err != nil {
 		log.Errorf("%s, invalid daily reward start date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardStartDate, err)
-		return nil, cmnErrors.ActionError("Daily reward activity not configured")
+		return nil, cmnErrors.DailyRewardNotActive()
 	}
 	endDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardEndDate)
 	if err != nil {
 		log.Errorf("%s, invalid daily reward end date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardEndDate, err)
-		return nil, cmnErrors.ActionError("Daily reward activity not configured")
+		return nil, cmnErrors.DailyRewardNotActive()
 	}
 
 	// 只比较日期部分，忽略时间，统一使用UTC时区
@@ -103,7 +103,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	if nowDate.Before(startDateOnly) || nowDate.After(endDateOnly) {
 		log.Errorf("%s, daily reward activity is not active. Current date: %s, Activity period: %s to %s",
 			task.Request.RequestUUID, nowDate.Format("2006-01-02"), startDateOnly.Format("2006-01-02"), endDateOnly.Format("2006-01-02"))
-		return nil, cmnErrors.ActionError("Daily reward activity is not active")
+		return nil, cmnErrors.DailyRewardNotActive()
 	}
 
 	// 校验当日是否已领取
@@ -114,7 +114,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	}
 	if collected {
 		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestPlayerID)
-		return nil, cmnErrors.ActionError("Daily reward already collected")
+		return nil, cmnErrors.DailyRewardAlreadyCollected()
 	}
 
 	// 判断是否是活动期间内第一次领取

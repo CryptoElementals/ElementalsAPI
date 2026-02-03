@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/CryptoElementals/common/errors"
 	"github.com/google/uuid"
@@ -78,6 +79,29 @@ func MakeErrorResponse(error errors.Error) *BaseResponse {
 		RetCode: int(error.Code()),
 		Message: string(error.String()),
 	}
+}
+
+// ShortGRPCError extracts the concise reason from a gRPC-style error string.
+// Example:
+//   "rpc error: code = Unknown desc = player not in game"
+//   -> "player not in game"
+//   "rpc error: code = Unknown desc = validation failed: invalid signature"
+//   -> "validation failed: invalid signature"
+// If the pattern is not found, it returns the original error string.
+func ShortGRPCError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	// gRPC status errors usually contain "desc = <detail>"
+	const marker = "desc ="
+	if idx := strings.Index(msg, marker); idx >= 0 {
+		reason := strings.TrimSpace(msg[idx+len(marker):])
+		if reason != "" {
+			return reason
+		}
+	}
+	return msg
 }
 
 func (br *BaseResponse) SetSession(session string) {

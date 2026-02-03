@@ -120,7 +120,7 @@ func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.ExitQueue(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ExitQueue failed: " + err.Error()
+		task.Response.BaseResponse.Message = "ExitQueue failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

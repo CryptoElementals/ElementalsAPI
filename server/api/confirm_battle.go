@@ -113,7 +113,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.ConfirmBattle(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ConfirmBattle failed: " + err.Error()
+		task.Response.BaseResponse.Message = "ConfirmBattle failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

@@ -96,7 +96,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 	userToken, err := db.GetPlayerToken(c.Request.Context(), playerID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user token information"
+		task.Response.BaseResponse.Message = "ContinueGame failed. Internal error: failed to get user token information"
 		return task.Response, nil
 	}
 
@@ -133,7 +133,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.ContinueGame(context.Background(), continueGameReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ContinueGame failed: " + err.Error()
+		task.Response.BaseResponse.Message = "ContinueGame failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

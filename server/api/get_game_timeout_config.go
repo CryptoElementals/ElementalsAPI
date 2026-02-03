@@ -77,7 +77,7 @@ func (task *GetGameTimeoutConfigTask) Run(c *gin.Context) (Response, error) {
 	timeoutConfig, err := rpcClient.GetGameTimeoutConfig(context.Background(), &emptypb.Empty{})
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer GetGameTimeoutConfig failed: " + err.Error()
+		task.Response.BaseResponse.Message = "GetGameTimeoutConfig failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

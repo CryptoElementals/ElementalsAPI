@@ -109,7 +109,7 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 	if err != nil {
 		log.Errorf("%s, Invalid commitment hex format: %v, commitment=%s", task.Request.RequestUUID, err, task.Request.Commitment)
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Invalid commitment hex format: " + err.Error()
+		task.Response.BaseResponse.Message = "SubmitPlayerCommitment failed. Invalid commitment hex format"
 		return task.Response, nil
 	}
 
@@ -120,7 +120,7 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 	if err != nil {
 		log.Errorf("%s, Invalid signature hex format: %v, signature=%s", task.Request.RequestUUID, err, task.Request.Signature)
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Invalid signature hex format: " + err.Error()
+		task.Response.BaseResponse.Message = "SubmitPlayerCommitment failed. Invalid signature hex format"
 		return task.Response, nil
 	}
 
@@ -158,7 +158,7 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 	if err != nil {
 		log.Errorf("%s, RoomServer SubmitPlayerCommitment failed: %v", task.Request.RequestUUID, err)
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer SubmitPlayerCommitment failed: " + err.Error()
+		task.Response.BaseResponse.Message = "SubmitPlayerCommitment failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

@@ -111,7 +111,7 @@ func (task *SubmitPlayerCardTask) Run(c *gin.Context) (Response, error) {
 	signatureBytes, err := hex.DecodeString(signatureHex)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Invalid signature hex format: " + err.Error()
+		task.Response.BaseResponse.Message = "SubmitPlayerCard failed. Invalid signature hex format"
 		return task.Response, nil
 	}
 
@@ -139,7 +139,7 @@ func (task *SubmitPlayerCardTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.SubmitPlayerCard(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer SubmitPlayerCard failed: " + err.Error()
+		task.Response.BaseResponse.Message = "SubmitPlayerCard failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

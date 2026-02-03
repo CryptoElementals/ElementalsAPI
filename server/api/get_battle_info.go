@@ -163,7 +163,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 	battleInfo, err := rpcClient.GetBattleInfo(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer GetBattleInfo failed: " + err.Error()
+		task.Response.BaseResponse.Message = "GetBattleInfo failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 
@@ -251,7 +251,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 			gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
 			if err != nil {
 				task.Response.BaseResponse.RetCode = 1003
-				task.Response.BaseResponse.Message = "RoomServer GetGamePhase in GetBattleInfo failed: " + err.Error()
+				task.Response.BaseResponse.Message = "GetBattleInfo failed. Internal error: " + ShortGRPCError(err)
 				return task.Response, nil
 			}
 			log.Debugf("RequestUUID: %s, gamePhase: %+v", task.Request.BaseRequest.RequestUUID, gamePhase)

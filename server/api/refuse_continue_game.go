@@ -110,7 +110,7 @@ func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.RefuseContinueGame(context.Background(), refuseContinueGameReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer RefuseContinueGame failed: " + err.Error()
+		task.Response.BaseResponse.Message = "RefuseContinueGame failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 
