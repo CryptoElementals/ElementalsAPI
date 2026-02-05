@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -100,6 +99,29 @@ func GetCardStatsInfo(cardStats []dao.CardStat) []CardStatInfo {
 	return result
 }
 
+// queryNewPlayerTurnInfos 查询玩家的新 turn 记录，直接使用 model 表结构，表变更只需改 models
+func queryNewPlayerTurnInfos(tx *gorm.DB, playerID int64, maxRoundID uint) ([]dao.PlayerTurnInfo, error) {
+	q := tx.Model(&dao.PlayerTurnInfo{}).Where("player_id = ?", playerID)
+	if maxRoundID > 0 {
+		subQuery := tx.Model(&dao.PlayerTurnInfo{}).Select("player_turn_infos.turn_id").
+			Joins("JOIN turns ON turns.id = player_turn_infos.turn_id").
+			Where("player_turn_infos.player_id = ? AND turns.round_id > ?", playerID, maxRoundID)
+		q = q.Where("turn_id IN (?)", subQuery)
+	}
+	var infos []dao.PlayerTurnInfo
+	if err := q.Order("id ASC").Find(&infos).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	// 只保留有出牌记录的 turn
+	out := make([]dao.PlayerTurnInfo, 0, len(infos))
+	for _, info := range infos {
+		if info.TurnSubmittedCard != nil && info.TurnSubmittedCard.CardID != 0 {
+			out = append(out, info)
+		}
+	}
+	return out, nil
+}
+
 // UpdateCardStatByPlayerIDs 根据玩家ID列表增量更新卡牌统计数据
 //
 // 实现流程：
@@ -173,55 +195,10 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 			}
 
 			// 步骤2：查询新的 PlayerTurnInfo 记录
-			// 使用原始 SQL 查询，手动解析 JSON 字段，避免 GORM 解析嵌套结构
-			type playerTurnInfoRow struct {
-				ID                    uint   `gorm:"column:id"`
-				TurnID                uint   `gorm:"column:turn_id"`
-				PlayerID              int64  `gorm:"column:player_id"`
-				PlayerStatus          int32  `gorm:"column:player_status"` // 使用 int32 因为 proto 枚举底层是 int32
-				TemporaryAddress      string `gorm:"column:temporary_address"`
-				TurnSubmittedCardJSON string `gorm:"column:turn_submitted_card"`
-			}
-
-			var rows []playerTurnInfoRow
-			baseQuery := "SELECT id, turn_id, player_id, player_status, temporary_address, turn_submitted_card FROM player_turn_infos WHERE player_id = ?"
-			var args []interface{}
-			args = append(args, playerID)
-
-			// 如果已有记录，只查询新的 Turn（通过 TurnID 关联到 Round，再通过 RoundID 过滤）
-			if maxRoundID > 0 {
-				// 只保留该玩家在新的 round 中的 turn
-				baseQuery += " AND turn_id IN (SELECT pti.turn_id FROM player_turn_infos AS pti JOIN turns t ON pti.turn_id = t.id WHERE pti.player_id = ? AND t.round_id > ?)"
-				args = append(args, playerID, maxRoundID)
-			}
-
-			baseQuery += " ORDER BY id ASC"
-
-			if err := tx.Raw(baseQuery, args...).Scan(&rows).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			// 兼容两种表结构：① GORM 展平列 turn_submitted_card_* ② 单列 turn_submitted_card (JSON，测试/旧库)
+			newPlayerTurnInfos, err := queryNewPlayerTurnInfos(tx, playerID, maxRoundID)
+			if err != nil {
 				return fmt.Errorf("failed to query new player turn infos for player ID %d: %v", playerID, err)
-			}
-
-			// 手动解析 JSON 字段并构建 PlayerTurnInfo 列表
-			newPlayerTurnInfos := make([]dao.PlayerTurnInfo, 0, len(rows))
-			for _, row := range rows {
-				turnInfo := dao.PlayerTurnInfo{
-					BaseModel: dao.BaseModel{
-						ID: row.ID,
-					},
-					TurnID:           row.TurnID,
-					PlayerID:         row.PlayerID,
-					PlayerStatus:     proto.PlayerTurnStatus(row.PlayerStatus),
-					TemporaryAddress: row.TemporaryAddress,
-				}
-
-				// 解析 TurnSubmittedCard JSON
-				if row.TurnSubmittedCardJSON != "" && row.TurnSubmittedCardJSON != "null" {
-					var card dao.TurnSubmittedCard
-					if err := json.Unmarshal([]byte(row.TurnSubmittedCardJSON), &card); err == nil {
-						turnInfo.TurnSubmittedCard = &card
-						newPlayerTurnInfos = append(newPlayerTurnInfos, turnInfo)
-					}
-				}
 			}
 
 			// 如果没有新的记录，直接返回现有记录

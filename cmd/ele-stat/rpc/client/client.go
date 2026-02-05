@@ -130,6 +130,14 @@ func (c *StatClient) GetConnectionState() string {
 	return c.conn.GetState().String()
 }
 
+// UpdatePlayerStats 请求统计服务增量更新玩家统计（user_stat + card_stat）
+func (c *StatClient) UpdatePlayerStats(ctx context.Context, playerIDs []int64) (*proto.UpdatePlayerStatsResponse, error) {
+	if c.grpcClient == nil {
+		return nil, fmt.Errorf("client not initialized")
+	}
+	return c.grpcClient.UpdatePlayerStats(ctx, &proto.UpdatePlayerStatsRequest{PlayerIds: playerIDs})
+}
+
 // HealthCheck perform health check directly
 func (c *StatClient) HealthCheck(clientID string) (*HealthCheckResponse, error) {
 	// Check if client is connected
