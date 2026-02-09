@@ -41,6 +41,41 @@ var createDbCmd = &cobra.Command{
 	},
 }
 
+// dropFksCmd represents the drop-fks command (MySQL only)
+var dropFksCmd = &cobra.Command{
+	Use:   "drop-fks",
+	Short: "Drop all foreign key constraints in the current database (MySQL only)",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := loadDbConfig()
+		if err != nil {
+			fmt.Printf("Failed to load config: %v\n", err)
+			os.Exit(1)
+		}
+
+		if cfg.Development {
+			fmt.Println("Development mode uses in-memory SQLite; no foreign keys to drop")
+			return
+		}
+
+		logCfg := &log.Config{Level: "info", Development: false}
+		if err := log.InitGlobalLogger(logCfg); err != nil {
+			fmt.Printf("Failed to initialize logger: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := db.Init(cfg); err != nil {
+			fmt.Printf("Failed to initialize database: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := db.DropAllForeignKeyConstraints(); err != nil {
+			fmt.Printf("Failed to drop foreign keys: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("All foreign key constraints dropped successfully")
+	},
+}
+
 // migrateDbCmd represents the migrate-db command
 var migrateDbCmd = &cobra.Command{
 	Use:   "migrate-db",
@@ -88,12 +123,16 @@ var migrateDbCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(createDbCmd)
 	rootCmd.AddCommand(migrateDbCmd)
+	rootCmd.AddCommand(dropFksCmd)
 
 	createDbCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	createDbCmd.MarkFlagRequired("config")
 
 	migrateDbCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	migrateDbCmd.MarkFlagRequired("config")
+
+	dropFksCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
+	dropFksCmd.MarkFlagRequired("config")
 }
 
 // loadDbConfig loads database configuration from YAML file

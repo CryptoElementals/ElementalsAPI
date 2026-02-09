@@ -269,14 +269,12 @@ func (c *Chain) submitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitm
 	if len(events) == 0 {
 		return nil
 	}
-
-	return c.retryBatchSubmission(
-		func() (string, error) {
-			return c.roomV2Client.sendBatchSubmitCardsHash(events)
-		},
-		"submit player commitments batch",
-		len(events),
-	)
+	txHash, err := c.roomV2Client.sendBatchSubmitCardsHash(events)
+	if err != nil {
+		return err
+	}
+	log.Infow("submit player commitments batch: success", "tx hash", txHash, "count", len(events))
+	return nil
 }
 
 // submitPlayerCardsBatch submits multiple player cards in a batch
@@ -288,14 +286,12 @@ func (c *Chain) submitPlayerCardsBatch(events []*types.SubmitPlayerCard) error {
 	if len(events) == 0 {
 		return nil
 	}
-
-	return c.retryBatchSubmission(
-		func() (string, error) {
-			return c.roomV2Client.sendBatchSubmitCards(events)
-		},
-		"submit player cards batch",
-		len(events),
-	)
+	txHash, err := c.roomV2Client.sendBatchSubmitCards(events)
+	if err != nil {
+		return err
+	}
+	log.Infow("submit player cards batch: success", "tx hash", txHash, "count", len(events))
+	return nil
 }
 
 // sendStartANewCard sends StartANewCard transaction to RoomV2 contract (this is actually startANewTurn)
@@ -323,40 +319,10 @@ func (c *Chain) startANewTurn(gameID uint) error {
 	if c.roomV2Client == nil {
 		return errors.New("room v2 client not initialized")
 	}
-
-	return c.retryBatchSubmission(
-		func() (string, error) {
-			return c.roomV2Client.sendStartANewCard(gameID)
-		},
-		"start a new turn",
-		1,
-	)
-}
-
-// retryBatchSubmission is a helper function that retries a batch submission operation
-func (c *Chain) retryBatchSubmission(submitFn func() (string, error), operationName string, count int) error {
-	retryCnt := 3
-	for {
-		select {
-		case <-c.ctx.Done():
-			return fmt.Errorf("%s failed, context canceled", operationName)
-		default:
-			if retryCnt == 0 {
-				return fmt.Errorf("%s failed after retries", operationName)
-			}
-			retryCnt--
-			txHash, err := submitFn()
-			if err != nil {
-				log.Errorw(fmt.Sprintf("send %s tx failed", operationName), "err", err, "count", count)
-				// not retriable error
-				if strings.Contains(strings.ToLower(err.Error()), "revert") {
-					return err
-				}
-				time.Sleep(time.Second)
-				continue
-			}
-			log.Infow(fmt.Sprintf("%s: success", operationName), "tx hash", txHash, "count", count)
-			return nil
-		}
+	txHash, err := c.roomV2Client.sendStartANewCard(gameID)
+	if err != nil {
+		return err
 	}
+	log.Infow("start a new turn: success", "tx hash", txHash, "game id", gameID)
+	return nil
 }

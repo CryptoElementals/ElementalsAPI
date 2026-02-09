@@ -210,37 +210,60 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 	if reward == nil {
 		return errors.New("game result battle reward is nil")
 	}
-	return Get().Transaction(func(tx *gorm.DB) error {
-		for _, pr := range reward.PlayerRewards {
-			// skip bot accounts
-			if _, ok := bots[types.PlayerAddress{
-				Id:               pr.PlayerId,
-				TemporaryAddress: pr.TemporaryAddress,
-			}]; ok {
-				continue
-			}
-			userToken := &dao.UserToken{}
-			err := tx.Where("player_id = ?", pr.PlayerId).Preload("LockedTokens").First(userToken).Error
-			if err != nil {
-				return fmt.Errorf("find user token record from db failed, game id: %d, player id: %d, err: %w", game.ID, pr.PlayerId, err)
-			}
-			userToken.TokenAmount += pr.TokenChange
-			userToken.Points += pr.PointChange
-			for _, locked := range userToken.LockedTokens {
-				if locked.TemporaryAddress == pr.TemporaryAddress {
-					err = tx.Delete(locked).Error
-					if err != nil {
-						return err
-					}
-				}
-			}
-			err = tx.Save(userToken).Error
-			if err != nil {
+	// Build list of non-bot player rewards to process
+	type playerReward struct {
+		playerId    int64
+		tempAddr    string
+		tokenChange int32
+		pointChange int32
+	}
+	var toProcess []playerReward
+	for _, pr := range reward.PlayerRewards {
+		if _, ok := bots[types.PlayerAddress{
+			Id:               pr.PlayerId,
+			TemporaryAddress: pr.TemporaryAddress,
+		}]; ok {
+			continue
+		}
+		toProcess = append(toProcess, playerReward{
+			playerId:    pr.PlayerId,
+			tempAddr:    pr.TemporaryAddress,
+			tokenChange: pr.TokenChange,
+			pointChange: pr.PointChange,
+		})
+	}
+
+	// First transaction: delete locked tokens for each player
+	if err := Get().Transaction(func(tx *gorm.DB) error {
+		for _, pr := range toProcess {
+			if err := tx.Where("temporary_address = ?", pr.tempAddr).
+				Delete(&dao.LockedUserToken{}).Error; err != nil {
 				return err
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("battle result settlement: delete locked tokens failed, game id: %d: %w", game.ID, err)
+	}
+
+	// Second transaction: update token_amount and points using += / -= in SQL
+	if err := Get().Transaction(func(tx *gorm.DB) error {
+		for _, pr := range toProcess {
+			err := tx.Model(&dao.UserToken{}).Where("player_id = ?", pr.playerId).
+				Updates(map[string]any{
+					"token_amount": gorm.Expr("token_amount + ?", pr.tokenChange),
+					"points":       gorm.Expr("points + ?", pr.pointChange),
+				}).Error
+			if err != nil {
+				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", game.ID, pr.playerId, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("battle result settlement: update token amount and points failed, game id: %d: %w", game.ID, err)
+	}
+
+	return nil
 }
 
 func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error) {
