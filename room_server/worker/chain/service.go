@@ -8,7 +8,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type Service struct {
@@ -19,7 +19,7 @@ type Service struct {
 func NewService(ctx context.Context,
 	workerManager *worker.WorkerManager,
 	chainID int64,
-	client bind.ContractBackend,
+	client *ethclient.Client,
 	roomV2ContractAddress string,
 	wallets []*wallet.Wallet,
 	isDevelop ...bool) (*Service, error) {

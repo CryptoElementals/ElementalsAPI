@@ -135,6 +135,10 @@ func (c *GameContextHTTP) Run() error {
 			return errors.New("context done")
 		case err := <-c.errChan:
 			log.Errorw("subscribe error", "player_id", c.playerID, "error", err)
+			err = c.Subscribe()
+			if err != nil {
+				return err
+			}
 		case evt, ok := <-c.eventChan:
 			if !ok {
 				return errors.New("event channel closed")

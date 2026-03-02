@@ -39,7 +39,8 @@ func initMysql(cfg *Config) error {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s)/%s?multiStatements=true&charset=utf8mb4&parseTime=true", cfg.User,
 		cfg.Password, cfg.Endpoint, cfg.DbName)
 	ldb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: gorm_logger.Default.LogMode(gorm_logger.Error),
+		Logger:                                   gorm_logger.Default.LogMode(gorm_logger.Error),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		return err

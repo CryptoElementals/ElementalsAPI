@@ -36,6 +36,7 @@ func NewGameManager(ctx context.Context,
 	gameArgs dao.GameArgs,
 	chainSvc ContractClient,
 	noRecover bool,
+	poolBatchSize int,
 ) *GameManager {
 	m := &GameManager{
 		ctx:             ctx,
@@ -50,7 +51,7 @@ func NewGameManager(ctx context.Context,
 	if m.args.PoolProcessingInterval <= 0 {
 		m.args.PoolProcessingInterval = 5 // Default 5 seconds
 	}
-	m.txPool = newTxPool(chainSvc)
+	m.txPool = newTxPool(chainSvc, poolBatchSize)
 	return m
 }
 

@@ -42,7 +42,7 @@ func (w *WorkerManager) SendEvent(to string, event *types.Event) {
 	if event.AckChan != nil {
 		close(event.AckChan)
 	}
-	log.Errorw("worker not found", "worker id", to, "eventType", reflect.TypeOf(event.Data))
+	log.Debugw("worker not found", "worker id", to, "eventType", reflect.TypeOf(event.Data))
 }
 
 func (w *WorkerManager) CloseWorker(id string) {

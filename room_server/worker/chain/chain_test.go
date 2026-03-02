@@ -13,7 +13,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -22,7 +21,7 @@ import (
 )
 
 var testWorkerManager *worker.WorkerManager
-var client bind.ContractBackend
+var client *ethclient.Client
 var w *wallet.Wallet
 
 var chainID uint64
@@ -63,9 +62,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestFilterEvent(t *testing.T) {
-	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0x3a9738a38f35ce59fea8d56ef6ca74d81e46e57b99bdf5a8575f92975ce25e98"))
+		receipt, err := client.TransactionReceipt(context.Background(), common.HexToHash("0x3a9738a38f35ce59fea8d56ef6ca74d81e46e57b99bdf5a8575f92975ce25e98"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue

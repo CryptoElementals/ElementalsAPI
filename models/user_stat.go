@@ -7,7 +7,7 @@ type UserStat struct {
 	WinCount           uint  `gorm:"default:0" json:"win_count"`
 	LoseCount          uint  `gorm:"default:0" json:"lose_count"`
 	TieCount           uint  `gorm:"default:0" json:"tie_count"`
-	LastPlayerRewardID uint  `gorm:"default:0" json:"last_player_reward_id"`
+	LastPlayerRewardID uint  `gorm:"default:0;index" json:"last_player_reward_id"`
 }
 
 // TableName 指定表名

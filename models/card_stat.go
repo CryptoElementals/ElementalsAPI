@@ -14,7 +14,7 @@ type CardStat struct {
 	WinCount              uint  `gorm:"not null;default:0" json:"win_count"`
 	LoseCount             uint  `gorm:"not null;default:0" json:"lose_count"`
 	TieCount              uint  `gorm:"not null;default:0" json:"tie_count"`
-	LastPlayerRoundInfoID uint  `gorm:"not null;default:0" json:"last_player_round_info_id"`
+	LastPlayerRoundInfoID uint  `gorm:"not null;default:0;index" json:"last_player_round_info_id"`
 }
 
 // TableName 指定表名

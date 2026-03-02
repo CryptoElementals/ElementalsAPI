@@ -5,14 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type batchTxEvent struct {
@@ -26,13 +28,17 @@ type Chain struct {
 	workerManager         *worker.WorkerManager
 	roomV2Client          *concurrentRoomV2Client
 	roomV2ContractAddress string
+
+	// track chain tx handling time from submission to on-chain completion
+	txTimes     map[string]time.Time
+	txTimesLock sync.Mutex
 }
 
 func NewChain(
 	ctx context.Context,
 	workerManager *worker.WorkerManager,
 	chainID int64,
-	client bind.ContractBackend,
+	client *ethclient.Client,
 	roomV2ContractAddressHex string,
 	wallets []*wallet.Wallet,
 	isDevelop ...bool,
@@ -50,7 +56,31 @@ func NewChain(
 		workerManager:         workerManager,
 		roomV2Client:          roomV2Cli,
 		roomV2ContractAddress: strings.ToLower(roomV2ContractAddressHex),
+		txTimes:               make(map[string]time.Time),
 	}, nil
+}
+
+func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
+	if txHash == "" {
+		return
+	}
+	now := time.Now()
+	c.txTimesLock.Lock()
+	c.txTimes[txHash] = now
+	c.txTimesLock.Unlock()
+	if gameID != 0 {
+		log.Debugw("chain tx sent",
+			"event", eventName,
+			"tx_hash", txHash,
+			"game_id", gameID,
+		)
+	} else {
+		log.Debugw("chain tx sent",
+			"event", eventName,
+			"tx_hash", txHash,
+		)
+	}
+
 }
 
 func (c *Chain) Start() error {
@@ -76,24 +106,47 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 		gid := uint(protoTx.GameId)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
-			log.Infof("gameCreated: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
 			c.gameCreated(batchTx, blockTime, uint(gid), hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_GameTurnSetupReady:
-			log.Infof("gameTurnSetupReady: gameID %d, blockHash %s, blockNumber %d, tx %s", gid, blockHash, blockNumber, hash)
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
 			c.gameTurnSetupReady(batchTx, blockTime, uint(gid), hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_CommitmentOnChain:
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CommitmentOnChain.Address)
-			log.Infof("commitmentOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, address %s", gid, blockHash, blockNumber, hash, address.String())
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
 			c.commitmentOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
 		case *proto.Transaction_CardOnChain:
 			address := types.PlayerAddress{}
 			address.FromProto(tx.CardOnChain.Address)
-			log.Infof("cardOnChain: gameID %d, blockHash %s, blockNumber %d, tx %s, player address %s", gid, blockHash, blockNumber, hash, address.String())
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
 			c.cardOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
 		}
 	}
 	batchTx.Wait()
+}
+
+func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string, blockNumber uint64, eventName string) {
+	// If we have a recorded submission time for this tx, log the end-to-end latency
+	c.txTimesLock.Lock()
+	start, ok := c.txTimes[hash]
+	if ok {
+		delete(c.txTimes, hash)
+	}
+	c.txTimesLock.Unlock()
+	if !ok {
+		return
+	}
+
+	elapsed := time.Since(start)
+	log.Debugw("chain tx completed",
+		"tx_hash", hash,
+		"game_id", gid,
+		"block_hash", blockHash,
+		"block_number", blockNumber,
+		"event", eventName,
+		"duration_ms", elapsed.Milliseconds(),
+	)
 }
 
 func (c *Chain) gameCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameCreated) error {

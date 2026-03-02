@@ -15,12 +15,13 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 const SingleTxGasLimit = 500_000
 
 type concurrentRoomV2Client struct {
-	client    bind.ContractBackend
+	client    *ethclient.Client
 	roomV2Ctr *contract.RoomV2Contract
 	optsPool  chan *bind.TransactOpts
 	wallets   []*wallet.Wallet
@@ -28,7 +29,7 @@ type concurrentRoomV2Client struct {
 
 func newConcurrentRoomV2Client(
 	ctx context.Context,
-	client bind.ContractBackend,
+	client *ethclient.Client,
 	roomV2Address string,
 	wallets []*wallet.Wallet,
 	chainID int64,
@@ -40,11 +41,16 @@ func newConcurrentRoomV2Client(
 	}
 	optsPool := make(chan *bind.TransactOpts, len(wallets))
 	for _, w := range wallets {
+		nonce, err := client.PendingNonceAt(ctx, w.GetAddr())
+		if err != nil {
+			return nil, fmt.Errorf("pending nonce for wallet %s: %w", w.GetAddr().Hex(), err)
+		}
 		bindOpts := &bind.TransactOpts{
 			Context:  ctx,
 			From:     w.GetAddr(),
 			Signer:   w.BuildTxSinger(big.NewInt(chainID)),
 			GasLimit: 500_000,
+			Nonce:    new(big.Int).SetUint64(nonce),
 		}
 		if len(isDevelop) != 0 && isDevelop[0] {
 			bindOpts.NoSend = true
@@ -66,11 +72,15 @@ func (c *concurrentRoomV2Client) sendCreateRoomTx(
 	roundTimeout, totalRound, totalCardIndex, initialHP, gameID *big.Int,
 ) (string, error) {
 	bindOpts := <-c.optsPool
+	var sendErr error
 	defer func() {
+		if sendErr == nil && !bindOpts.NoSend && bindOpts.Nonce != nil {
+			bindOpts.Nonce = new(big.Int).Add(bindOpts.Nonce, big.NewInt(1))
+		}
 		c.optsPool <- bindOpts
 	}()
 
-	tx, err := c.roomV2Ctr.CreateRoom(
+	tx, sendErr := c.roomV2Ctr.CreateRoom(
 		bindOpts,
 		player1ID,
 		player2ID,
@@ -82,9 +92,9 @@ func (c *concurrentRoomV2Client) sendCreateRoomTx(
 		initialHP,
 		gameID,
 	)
-	if err != nil {
-		log.Errorf("sendCreateRoomTx: create room failed: %s", err.Error())
-		return "", fmt.Errorf("create room failed: %s", err.Error())
+	if sendErr != nil {
+		log.Errorf("sendCreateRoomTx: create room failed: %s", sendErr.Error())
+		return "", fmt.Errorf("create room failed: %s", sendErr.Error())
 	}
 	return strings.ToLower(tx.Hash().String()), nil
 }
@@ -139,7 +149,7 @@ func (c *Chain) createNewRoom(evt *types.RequireGameCreationEvent) error {
 				time.Sleep(time.Second)
 				continue
 			}
-			log.Infow("createNewRoom: create new room success", "tx hash", txHash, "game id", evt.GameID)
+			c.recordTxStart(txHash, "createNewRoom", evt.GameID)
 			// Transaction tables removed - no longer saving to database
 			return nil
 		}
@@ -153,7 +163,11 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.Submit
 	}
 
 	bindOpts := <-c.optsPool
+	var sendErr error
 	defer func() {
+		if sendErr == nil && !bindOpts.NoSend && bindOpts.Nonce != nil {
+			bindOpts.Nonce = new(big.Int).Add(bindOpts.Nonce, big.NewInt(1))
+		}
 		c.optsPool <- bindOpts
 	}()
 
@@ -186,10 +200,10 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCardsHash(events []*types.Submit
 	}
 	// increase gas limit by event number
 	bindOpts.GasLimit = uint64(len(events) * SingleTxGasLimit)
-	tx, err := c.roomV2Ctr.BatchSubmitCardHashes(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
-	if err != nil {
-		log.Errorf("sendBatchSubmitCardsHash: batch submit cards hash failed: %s", err.Error())
-		return "", fmt.Errorf("batch submit cards hash failed: %s", err.Error())
+	tx, sendErr := c.roomV2Ctr.BatchSubmitCardHashes(bindOpts, gameIDs, commitments, cardIndexes, rounds, signatures)
+	if sendErr != nil {
+		log.Errorf("sendBatchSubmitCardsHash: batch submit cards hash failed: %s", sendErr.Error())
+		return "", fmt.Errorf("batch submit cards hash failed: %s", sendErr.Error())
 	}
 	return strings.ToLower(tx.Hash().String()), nil
 }
@@ -201,7 +215,11 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 	}
 
 	bindOpts := <-c.optsPool
+	var sendErr error
 	defer func() {
+		if sendErr == nil && !bindOpts.NoSend && bindOpts.Nonce != nil {
+			bindOpts.Nonce = new(big.Int).Add(bindOpts.Nonce, big.NewInt(1))
+		}
 		c.optsPool <- bindOpts
 	}()
 
@@ -234,10 +252,10 @@ func (c *concurrentRoomV2Client) sendBatchSubmitCards(events []*types.SubmitPlay
 	}
 	// increase gas limit by event number
 	bindOpts.GasLimit = uint64(len(events) * SingleTxGasLimit)
-	tx, err := c.roomV2Ctr.BatchSubmitCards(bindOpts, gameIDs, cards, salts, cardIndexes, rounds, signatures)
-	if err != nil {
-		log.Errorf("sendBatchSubmitCards: batch submit cards failed: %s", err.Error())
-		return "", fmt.Errorf("batch submit cards failed: %s", err.Error())
+	tx, sendErr := c.roomV2Ctr.BatchSubmitCards(bindOpts, gameIDs, cards, salts, cardIndexes, rounds, signatures)
+	if sendErr != nil {
+		log.Errorf("sendBatchSubmitCards: batch submit cards failed: %s", sendErr.Error())
+		return "", fmt.Errorf("batch submit cards failed: %s", sendErr.Error())
 	}
 	return strings.ToLower(tx.Hash().String()), nil
 }
@@ -251,14 +269,12 @@ func (c *Chain) submitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitm
 	if len(events) == 0 {
 		return nil
 	}
-
-	return c.retryBatchSubmission(
-		func() (string, error) {
-			return c.roomV2Client.sendBatchSubmitCardsHash(events)
-		},
-		"submit player commitments batch",
-		len(events),
-	)
+	txHash, err := c.roomV2Client.sendBatchSubmitCardsHash(events)
+	if err != nil {
+		return err
+	}
+	c.recordTxStart(txHash, "submitPlayerCommitmentsBatch", 0)
+	return nil
 }
 
 // submitPlayerCardsBatch submits multiple player cards in a batch
@@ -270,28 +286,30 @@ func (c *Chain) submitPlayerCardsBatch(events []*types.SubmitPlayerCard) error {
 	if len(events) == 0 {
 		return nil
 	}
-
-	return c.retryBatchSubmission(
-		func() (string, error) {
-			return c.roomV2Client.sendBatchSubmitCards(events)
-		},
-		"submit player cards batch",
-		len(events),
-	)
+	txHash, err := c.roomV2Client.sendBatchSubmitCards(events)
+	if err != nil {
+		return err
+	}
+	c.recordTxStart(txHash, "submitPlayerCardsBatch", 0)
+	return nil
 }
 
 // sendStartANewCard sends StartANewCard transaction to RoomV2 contract (this is actually startANewTurn)
 func (c *concurrentRoomV2Client) sendStartANewCard(gameID uint) (string, error) {
 	bindOpts := <-c.optsPool
+	var sendErr error
 	defer func() {
+		if sendErr == nil && !bindOpts.NoSend && bindOpts.Nonce != nil {
+			bindOpts.Nonce = new(big.Int).Add(bindOpts.Nonce, big.NewInt(1))
+		}
 		c.optsPool <- bindOpts
 	}()
 
 	gameIDBigInt := big.NewInt(int64(gameID))
-	tx, err := c.roomV2Ctr.StartANewTurn(bindOpts, gameIDBigInt)
-	if err != nil {
-		log.Errorf("sendStartANewCard: start a new card failed: %s", err.Error())
-		return "", fmt.Errorf("start a new card failed: %s", err.Error())
+	tx, sendErr := c.roomV2Ctr.StartANewTurn(bindOpts, gameIDBigInt)
+	if sendErr != nil {
+		log.Errorf("sendStartANewCard: start a new card failed: %s", sendErr.Error())
+		return "", fmt.Errorf("start a new card failed: %s", sendErr.Error())
 	}
 	return strings.ToLower(tx.Hash().String()), nil
 }
@@ -301,40 +319,10 @@ func (c *Chain) startANewTurn(gameID uint) error {
 	if c.roomV2Client == nil {
 		return errors.New("room v2 client not initialized")
 	}
-
-	return c.retryBatchSubmission(
-		func() (string, error) {
-			return c.roomV2Client.sendStartANewCard(gameID)
-		},
-		"start a new turn",
-		1,
-	)
-}
-
-// retryBatchSubmission is a helper function that retries a batch submission operation
-func (c *Chain) retryBatchSubmission(submitFn func() (string, error), operationName string, count int) error {
-	retryCnt := 3
-	for {
-		select {
-		case <-c.ctx.Done():
-			return fmt.Errorf("%s failed, context canceled", operationName)
-		default:
-			if retryCnt == 0 {
-				return fmt.Errorf("%s failed after retries", operationName)
-			}
-			retryCnt--
-			txHash, err := submitFn()
-			if err != nil {
-				log.Errorw(fmt.Sprintf("send %s tx failed", operationName), "err", err, "count", count)
-				// not retriable error
-				if strings.Contains(strings.ToLower(err.Error()), "revert") {
-					return err
-				}
-				time.Sleep(time.Second)
-				continue
-			}
-			log.Infow(fmt.Sprintf("%s: success", operationName), "tx hash", txHash, "count", count)
-			return nil
-		}
+	txHash, err := c.roomV2Client.sendStartANewCard(gameID)
+	if err != nil {
+		return err
 	}
+	c.recordTxStart(txHash, "startANewTurn", gameID)
+	return nil
 }
