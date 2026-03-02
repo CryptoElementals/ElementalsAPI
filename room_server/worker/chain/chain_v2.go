@@ -149,7 +149,7 @@ func (c *Chain) createNewRoom(evt *types.RequireGameCreationEvent) error {
 				time.Sleep(time.Second)
 				continue
 			}
-			log.Infow("createNewRoom: create new room success", "tx hash", txHash, "game id", evt.GameID)
+			c.recordTxStart(txHash, "createNewRoom", evt.GameID)
 			// Transaction tables removed - no longer saving to database
 			return nil
 		}
@@ -273,7 +273,7 @@ func (c *Chain) submitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitm
 	if err != nil {
 		return err
 	}
-	log.Infow("submit player commitments batch: success", "tx hash", txHash, "count", len(events))
+	c.recordTxStart(txHash, "submitPlayerCommitmentsBatch", 0)
 	return nil
 }
 
@@ -290,7 +290,7 @@ func (c *Chain) submitPlayerCardsBatch(events []*types.SubmitPlayerCard) error {
 	if err != nil {
 		return err
 	}
-	log.Infow("submit player cards batch: success", "tx hash", txHash, "count", len(events))
+	c.recordTxStart(txHash, "submitPlayerCardsBatch", 0)
 	return nil
 }
 
@@ -323,6 +323,6 @@ func (c *Chain) startANewTurn(gameID uint) error {
 	if err != nil {
 		return err
 	}
-	log.Infow("start a new turn: success", "tx hash", txHash, "game id", gameID)
+	c.recordTxStart(txHash, "startANewTurn", gameID)
 	return nil
 }

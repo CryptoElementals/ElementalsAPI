@@ -11,6 +11,8 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
+const defaultPoolBatchSize = 10
+
 // eventKey uniquely identifies an event by game ID, address, round number, and index
 type eventKey struct {
 	gameID      uint
@@ -31,7 +33,8 @@ type txPool struct {
 	txInfoLock  sync.RWMutex
 
 	// Dependencies
-	chainSvc ContractClient
+	chainSvc  ContractClient
+	batchSize int
 }
 
 type gameTxInfo struct {
@@ -44,12 +47,16 @@ type gameTxPlayerInfo struct {
 }
 
 // newTxPool creates a new transaction pool
-func newTxPool(chainSvc ContractClient) *txPool {
+func newTxPool(chainSvc ContractClient, batchSize int) *txPool {
+	if batchSize <= 0 {
+		batchSize = defaultPoolBatchSize
+	}
 	return &txPool{
 		commitmentPool: make(map[eventKey]*types.SubmitPlayerCommitment),
 		cardPool:       make(map[eventKey]*types.SubmitPlayerCard),
 		gameTxInfos:    make(map[uint]*gameTxInfo),
 		chainSvc:       chainSvc,
+		batchSize:      batchSize,
 	}
 }
 
@@ -182,13 +189,22 @@ func (p *txPool) processCommitmentPool() {
 		return
 	}
 
-	// Submit batch
-	if err := p.chainSvc.SubmitPlayerCommitmentsBatch(batchEvents); err != nil {
-		log.Errorw("failed to submit commitments batch to chain", "error", err, "count", len(batchEvents))
-		return
-	}
+	// Submit in batches
+	for start := 0; start < len(batchEvents); start += p.batchSize {
+		end := start + p.batchSize
+		if end > len(batchEvents) {
+			end = len(batchEvents)
+		}
 
-	log.Infow("submitted commitments batch to chain", "count", len(batchEvents))
+		batch := batchEvents[start:end]
+
+		if err := p.chainSvc.SubmitPlayerCommitmentsBatch(batch); err != nil {
+			log.Errorw("failed to submit commitments batch to chain", "error", err, "count", len(batch))
+			return
+		}
+
+		log.Infow("submitted commitments batch to chain", "count", len(batch))
+	}
 }
 
 // processCardPool processes card pool and sends events to chain manager in batch
@@ -210,13 +226,22 @@ func (p *txPool) processCardPool() {
 		return
 	}
 
-	// Submit batch
-	if err := p.chainSvc.SubmitPlayerCardsBatch(batchEvents); err != nil {
-		log.Errorw("failed to submit cards batch to chain", "error", err, "count", len(batchEvents))
-		return
-	}
+	// Submit in batches
+	for start := 0; start < len(batchEvents); start += p.batchSize {
+		end := start + p.batchSize
+		if end > len(batchEvents) {
+			end = len(batchEvents)
+		}
 
-	log.Infow("submitted cards batch to chain", "count", len(batchEvents))
+		batch := batchEvents[start:end]
+
+		if err := p.chainSvc.SubmitPlayerCardsBatch(batch); err != nil {
+			log.Errorw("failed to submit cards batch to chain", "error", err, "count", len(batch))
+			return
+		}
+
+		log.Infow("submitted cards batch to chain", "count", len(batch))
+	}
 }
 
 // clearGameInfo clears transaction info for a completed game

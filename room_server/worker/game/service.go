@@ -38,6 +38,7 @@ func NewService(
 	workerManager *worker.WorkerManager,
 	gameConfig *config.GameParamConfig,
 	chainSvc ContractClient,
+	poolBatchSize int,
 	shouldRecover bool) *Service {
 	gameArgs := dao.GameArgs{
 		MaxRounds:         gameConfig.MaxRounds,
@@ -57,7 +58,7 @@ func NewService(
 		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
 	return &Service{
-		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover),
+		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover, poolBatchSize),
 	}
 }
 

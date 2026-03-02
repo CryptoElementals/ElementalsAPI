@@ -78,7 +78,7 @@ func (m *Manager) Start() error {
 			select {
 			case <-m.ctx.Done():
 				return nil
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(5 * time.Millisecond):
 			}
 		}
 	}
