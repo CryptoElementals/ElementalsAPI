@@ -91,7 +91,7 @@ var runCmd = &cobra.Command{
 		gethHttpRpc := config.ScannerGConf.ChainCfg.HttpRpc
 		roomServerHttpRpc := config.ScannerGConf.RoomServerHttpRpc
 		//roomManagerAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress
-		roomV2Address := config.ScannerGConf.ChainCfg.ContractConfig.RoomV2ContractAddress
+		roomV2Address := config.ScannerGConf.ChainCfg.ContractConfig.RoomV3ContractAddress
 		//scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomV2Address, roomManagerAbi, roomAbi)
 		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomV2Address, roomV2Abi)
 		scanner.Run()

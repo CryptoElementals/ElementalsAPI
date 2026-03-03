@@ -41,7 +41,7 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 				HttpRpc: chainRPC,
 			},
 			ContractConfig: config.ContractConfig{
-				RoomV2ContractAddress: roomV2ContractAddress,
+				RoomV3ContractAddress: roomV2ContractAddress,
 			},
 		},
 		WalletPaths: []string{tempFile},

@@ -14,10 +14,9 @@ import (
 )
 
 type ContractClient interface {
-	CreateRoomContract(evt *types.RequireGameCreationEvent) error
-	SetTurnReady(evt *types.RequireSetupNewTurnEvent) error
-	SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error
-	SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error
+	// SubmitTasks submits a pre-encoded batch of contract tasks to the chain.
+	// Each task is an ABI-encoded payload compatible with RoomV3.batchSubmitTasks.
+	SubmitTasks(tasks [][]byte) error
 }
 
 // TxPoolEnqueuer is the interface Game uses to enqueue chain-related events (create room, set turn ready, commitments, cards).

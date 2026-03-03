@@ -3,12 +3,15 @@ package game
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const defaultPoolBatchSize = 10
@@ -211,16 +214,50 @@ func (p *txPool) processPools(ctx context.Context, wg *sync.WaitGroup, args dao.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			p.processCreateRoomPool()
-			p.processSetTurnReadyPool()
-			p.processCommitmentPool()
-			p.processCardPool()
+			// Collect tasks from all pools and submit them in batches.
+			allTasks := make([][][]byte, 0, 4)
+			if tasks := p.processCreateRoomPool(); len(tasks) > 0 {
+				allTasks = append(allTasks, tasks)
+			}
+			if tasks := p.processSetTurnReadyPool(); len(tasks) > 0 {
+				allTasks = append(allTasks, tasks)
+			}
+			if tasks := p.processCommitmentPool(); len(tasks) > 0 {
+				allTasks = append(allTasks, tasks)
+			}
+			if tasks := p.processCardPool(); len(tasks) > 0 {
+				allTasks = append(allTasks, tasks)
+			}
+
+			// Flatten tasks.
+			var flatTasks [][]byte
+			for _, ts := range allTasks {
+				flatTasks = append(flatTasks, ts...)
+			}
+
+			if len(flatTasks) == 0 {
+				continue
+			}
+
+			// Respect pool batch size when sending tasks to chain.
+			for start := 0; start < len(flatTasks); start += p.batchSize {
+				end := start + p.batchSize
+				if end > len(flatTasks) {
+					end = len(flatTasks)
+				}
+				batch := flatTasks[start:end]
+				if err := p.chainSvc.SubmitTasks(batch); err != nil {
+					log.Errorw("failed to submit tasks batch to chain", "error", err, "count", len(batch))
+					break
+				}
+				log.Infow("submitted tasks batch to chain", "count", len(batch))
+			}
 		}
 	}
 }
 
-// processCreateRoomPool drains create-room pool and calls chain CreateRoomContract for each.
-func (p *txPool) processCreateRoomPool() {
+// processCreateRoomPool drains create-room pool and returns encoded tasks.
+func (p *txPool) processCreateRoomPool() [][]byte {
 	p.poolLock.Lock()
 	events := make([]*types.RequireGameCreationEvent, 0, len(p.createRoomPool))
 	for _, evt := range p.createRoomPool {
@@ -230,16 +267,15 @@ func (p *txPool) processCreateRoomPool() {
 		delete(p.createRoomPool, k)
 	}
 	p.poolLock.Unlock()
-	for _, evt := range events {
-		if err := p.chainSvc.CreateRoomContract(evt); err != nil {
-			log.Errorw("failed to create room contract", "error", err, "game_id", evt.GameID)
-			return
-		}
+	if len(events) == 0 {
+		return nil
 	}
+
+	return encodeCreateRoomEventsToTasks(events)
 }
 
-// processSetTurnReadyPool drains set-turn-ready pool and calls chain SetTurnReady for each.
-func (p *txPool) processSetTurnReadyPool() {
+// processSetTurnReadyPool drains set-turn-ready pool and returns encoded tasks.
+func (p *txPool) processSetTurnReadyPool() [][]byte {
 	p.poolLock.Lock()
 	events := make([]*types.RequireSetupNewTurnEvent, 0, len(p.setTurnReadyPool))
 	for _, evt := range p.setTurnReadyPool {
@@ -249,16 +285,15 @@ func (p *txPool) processSetTurnReadyPool() {
 		delete(p.setTurnReadyPool, k)
 	}
 	p.poolLock.Unlock()
-	for _, evt := range events {
-		if err := p.chainSvc.SetTurnReady(evt); err != nil {
-			log.Errorw("failed to set turn ready", "error", err, "game_id", evt.GameID)
-			return
-		}
+	if len(events) == 0 {
+		return nil
 	}
+
+	return encodeSetTurnReadyEventsToTasks(events)
 }
 
-// processCommitmentPool processes commitment pool and sends events to chain manager in batch
-func (p *txPool) processCommitmentPool() {
+// processCommitmentPool drains commitment pool and returns encoded tasks.
+func (p *txPool) processCommitmentPool() [][]byte {
 	// Collect events to process while holding lock
 	p.poolLock.Lock()
 	batchEvents := make([]*types.SubmitPlayerCommitment, 0, len(p.commitmentPool))
@@ -273,29 +308,14 @@ func (p *txPool) processCommitmentPool() {
 	p.poolLock.Unlock()
 
 	if len(batchEvents) == 0 {
-		return
+		return nil
 	}
 
-	// Submit in batches
-	for start := 0; start < len(batchEvents); start += p.batchSize {
-		end := start + p.batchSize
-		if end > len(batchEvents) {
-			end = len(batchEvents)
-		}
-
-		batch := batchEvents[start:end]
-
-		if err := p.chainSvc.SubmitPlayerCommitmentsBatch(batch); err != nil {
-			log.Errorw("failed to submit commitments batch to chain", "error", err, "count", len(batch))
-			return
-		}
-
-		log.Infow("submitted commitments batch to chain", "count", len(batch))
-	}
+	return encodeCommitmentEventsToTasks(batchEvents)
 }
 
-// processCardPool processes card pool and sends events to chain manager in batch
-func (p *txPool) processCardPool() {
+// processCardPool drains card pool and returns encoded tasks.
+func (p *txPool) processCardPool() [][]byte {
 	// Collect events to process while holding lock
 	p.poolLock.Lock()
 	batchEvents := make([]*types.SubmitPlayerCard, 0, len(p.cardPool))
@@ -310,25 +330,10 @@ func (p *txPool) processCardPool() {
 	p.poolLock.Unlock()
 
 	if len(batchEvents) == 0 {
-		return
+		return nil
 	}
 
-	// Submit in batches
-	for start := 0; start < len(batchEvents); start += p.batchSize {
-		end := start + p.batchSize
-		if end > len(batchEvents) {
-			end = len(batchEvents)
-		}
-
-		batch := batchEvents[start:end]
-
-		if err := p.chainSvc.SubmitPlayerCardsBatch(batch); err != nil {
-			log.Errorw("failed to submit cards batch to chain", "error", err, "count", len(batch))
-			return
-		}
-
-		log.Infow("submitted cards batch to chain", "count", len(batch))
-	}
+	return encodeCardEventsToTasks(batchEvents)
 }
 
 // clearGameInfo clears transaction info for a completed game
@@ -342,4 +347,117 @@ func (p *txPool) clearGameInfo(gameID uint) {
 // ClearGameInfo implements TxPoolEnqueuer.
 func (p *txPool) ClearGameInfo(gameID uint) {
 	p.clearGameInfo(gameID)
+}
+
+// encodeCreateRoomEventsToTasks converts create-room events into encoded RoomV3 tasks.
+func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) [][]byte {
+	tasks := make([][]byte, 0, len(events))
+	for _, evt := range events {
+		if len(evt.Players) < 2 {
+			log.Errorw("failed to encode create room task: need 2 players", "game_id", evt.GameID)
+			continue
+		}
+		player1 := evt.Players[0]
+		player2 := evt.Players[1]
+
+		player1ID := big.NewInt(player1.Id)
+		player2ID := big.NewInt(player2.Id)
+		player1Addr := common.HexToAddress(player1.TemporaryAddress)
+		player2Addr := common.HexToAddress(player2.TemporaryAddress)
+		roundTimeout := big.NewInt(evt.RoundTimeout)
+		totalRound := big.NewInt(evt.MaxRoundNumber)
+		totalCardIndex := big.NewInt(3) // 3 cards per round
+		initialHP := big.NewInt(evt.InitialHP)
+		gameID := big.NewInt(int64(evt.GameID))
+
+		task, err := chain.EncodeCreateRoomTask(
+			player1ID,
+			player2ID,
+			player1Addr,
+			player2Addr,
+			roundTimeout,
+			totalRound,
+			totalCardIndex,
+			initialHP,
+			gameID,
+		)
+		if err != nil {
+			log.Errorw("failed to encode create room task", "error", err, "game_id", evt.GameID)
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks
+}
+
+// encodeSetTurnReadyEventsToTasks converts set-turn-ready events into encoded RoomV3 tasks.
+func encodeSetTurnReadyEventsToTasks(events []*types.RequireSetupNewTurnEvent) [][]byte {
+	tasks := make([][]byte, 0, len(events))
+	for _, evt := range events {
+		gameID := big.NewInt(int64(evt.GameID))
+		task, err := chain.EncodeStartNewTurnTask(gameID)
+		if err != nil {
+			log.Errorw("failed to encode set turn ready task", "error", err, "game_id", evt.GameID)
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks
+}
+
+// encodeCommitmentEventsToTasks converts a batch of commitment events into encoded RoomV3 tasks.
+func encodeCommitmentEventsToTasks(events []*types.SubmitPlayerCommitment) [][]byte {
+	tasks := make([][]byte, 0, len(events))
+	for _, evt := range events {
+		if len(evt.Commitment) != 32 {
+			log.Errorw("commitment must be 32 bytes", "len", len(evt.Commitment), "game_id", evt.GameID)
+			continue
+		}
+		var commitmentHash [32]byte
+		copy(commitmentHash[:], evt.Commitment)
+
+		gameID := big.NewInt(int64(evt.GameID))
+		cardIndex := big.NewInt(int64(evt.CommitmentIndex))
+		round := big.NewInt(int64(evt.RoundNumber))
+
+		task, err := chain.EncodeSubmitCardHashTask(
+			gameID,
+			commitmentHash,
+			cardIndex,
+			round,
+			evt.Signature,
+		)
+		if err != nil {
+			log.Errorw("failed to encode commitment task", "error", err, "game_id", evt.GameID)
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks
+}
+
+// encodeCardEventsToTasks converts a batch of card events into encoded RoomV3 tasks.
+func encodeCardEventsToTasks(events []*types.SubmitPlayerCard) [][]byte {
+	tasks := make([][]byte, 0, len(events))
+	for _, evt := range events {
+		gameID := big.NewInt(int64(evt.GameID))
+		card := big.NewInt(int64(evt.Card))
+		cardIndex := big.NewInt(int64(evt.CardIndex))
+		round := big.NewInt(int64(evt.RoundNumber))
+
+		task, err := chain.EncodeSubmitCardTask(
+			gameID,
+			card,
+			evt.Salt,
+			cardIndex,
+			round,
+			evt.Signature,
+		)
+		if err != nil {
+			log.Errorw("failed to encode card task", "error", err, "game_id", evt.GameID)
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks
 }

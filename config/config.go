@@ -15,7 +15,7 @@ type NodeConfig struct {
 }
 
 type ContractConfig struct {
-	RoomV2ContractAddress string `mapstructure:"room-v2-contract-address"`
+	RoomV3ContractAddress string `mapstructure:"room-v3-contract-address"`
 	PlayerStateAddress    string `mapstructure:"player-state-address"`
 }
 
