@@ -20,6 +20,14 @@ type ContractClient interface {
 	SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error
 }
 
+// TxPoolEnqueuer is the interface Game uses to enqueue chain-related events (create room, set turn ready, commitments, cards).
+type TxPoolEnqueuer interface {
+	AddCreateRoom(evt *types.RequireGameCreationEvent)
+	AddSetTurnReady(evt *types.RequireSetupNewTurnEvent)
+	AddCommitment(evt *types.SubmitPlayerCommitment) error
+	AddCard(evt *types.SubmitPlayerCard) error
+}
+
 type GameHandler interface {
 	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 	HandleGameCompletedEvent(evt *types.GameCompletedEvent) error

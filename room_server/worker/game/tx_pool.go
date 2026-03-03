@@ -21,11 +21,21 @@ type eventKey struct {
 	index       uint32
 }
 
+// setTurnKey uniquely identifies a set-turn-ready event
+type setTurnKey struct {
+	gameID      uint
+	roundNumber uint32
+	turnNumber  uint32
+}
+
 type txPool struct {
 	// Event pools for commitment and card submissions
 	commitmentPool map[eventKey]*types.SubmitPlayerCommitment
 	cardPool       map[eventKey]*types.SubmitPlayerCard
-	poolLock       sync.RWMutex
+	// Pools for create room and set turn ready (same ticker as above)
+	createRoomPool   map[uint]*types.RequireGameCreationEvent
+	setTurnReadyPool map[setTurnKey]*types.RequireSetupNewTurnEvent
+	poolLock         sync.RWMutex
 
 	// Track max received turn indices per round per player per game
 	// Structure: gameID -> playerAddress -> roundNumber -> maxTurnIndex
@@ -52,11 +62,13 @@ func newTxPool(chainSvc ContractClient, batchSize int) *txPool {
 		batchSize = defaultPoolBatchSize
 	}
 	return &txPool{
-		commitmentPool: make(map[eventKey]*types.SubmitPlayerCommitment),
-		cardPool:       make(map[eventKey]*types.SubmitPlayerCard),
-		gameTxInfos:    make(map[uint]*gameTxInfo),
-		chainSvc:       chainSvc,
-		batchSize:      batchSize,
+		commitmentPool:   make(map[eventKey]*types.SubmitPlayerCommitment),
+		cardPool:         make(map[eventKey]*types.SubmitPlayerCard),
+		createRoomPool:   make(map[uint]*types.RequireGameCreationEvent),
+		setTurnReadyPool: make(map[setTurnKey]*types.RequireSetupNewTurnEvent),
+		gameTxInfos:      make(map[uint]*gameTxInfo),
+		chainSvc:         chainSvc,
+		batchSize:        batchSize,
 	}
 }
 
@@ -153,6 +165,41 @@ func (p *txPool) addCard(evt *types.SubmitPlayerCard) error {
 	return nil
 }
 
+// addCreateRoom enqueues a create-room event (one per game; overwrites if same game).
+func (p *txPool) addCreateRoom(evt *types.RequireGameCreationEvent) {
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+	p.createRoomPool[evt.GameID] = evt
+}
+
+// addSetTurnReady enqueues a set-turn-ready event (one per game/round/turn).
+func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
+	key := setTurnKey{gameID: evt.GameID, roundNumber: evt.RoundNumber, turnNumber: evt.TurnNumber}
+	p.poolLock.Lock()
+	defer p.poolLock.Unlock()
+	p.setTurnReadyPool[key] = evt
+}
+
+// AddCommitment implements TxPoolEnqueuer; enqueues after validation (e.g. by Game).
+func (p *txPool) AddCommitment(evt *types.SubmitPlayerCommitment) error {
+	return p.addCommitment(evt)
+}
+
+// AddCard implements TxPoolEnqueuer; enqueues after validation (e.g. by Game).
+func (p *txPool) AddCard(evt *types.SubmitPlayerCard) error {
+	return p.addCard(evt)
+}
+
+// AddCreateRoom implements TxPoolEnqueuer (alias for addCreateRoom for interface).
+func (p *txPool) AddCreateRoom(evt *types.RequireGameCreationEvent) {
+	p.addCreateRoom(evt)
+}
+
+// AddSetTurnReady implements TxPoolEnqueuer (alias for addSetTurnReady for interface).
+func (p *txPool) AddSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
+	p.addSetTurnReady(evt)
+}
+
 // processPools periodically processes events in the pools and sends them to chain manager
 func (p *txPool) processPools(ctx context.Context, wg *sync.WaitGroup, args dao.GameArgs) {
 	defer wg.Done()
@@ -164,8 +211,48 @@ func (p *txPool) processPools(ctx context.Context, wg *sync.WaitGroup, args dao.
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			p.processCreateRoomPool()
+			p.processSetTurnReadyPool()
 			p.processCommitmentPool()
 			p.processCardPool()
+		}
+	}
+}
+
+// processCreateRoomPool drains create-room pool and calls chain CreateRoomContract for each.
+func (p *txPool) processCreateRoomPool() {
+	p.poolLock.Lock()
+	events := make([]*types.RequireGameCreationEvent, 0, len(p.createRoomPool))
+	for _, evt := range p.createRoomPool {
+		events = append(events, evt)
+	}
+	for k := range p.createRoomPool {
+		delete(p.createRoomPool, k)
+	}
+	p.poolLock.Unlock()
+	for _, evt := range events {
+		if err := p.chainSvc.CreateRoomContract(evt); err != nil {
+			log.Errorw("failed to create room contract", "error", err, "game_id", evt.GameID)
+			return
+		}
+	}
+}
+
+// processSetTurnReadyPool drains set-turn-ready pool and calls chain SetTurnReady for each.
+func (p *txPool) processSetTurnReadyPool() {
+	p.poolLock.Lock()
+	events := make([]*types.RequireSetupNewTurnEvent, 0, len(p.setTurnReadyPool))
+	for _, evt := range p.setTurnReadyPool {
+		events = append(events, evt)
+	}
+	for k := range p.setTurnReadyPool {
+		delete(p.setTurnReadyPool, k)
+	}
+	p.poolLock.Unlock()
+	for _, evt := range events {
+		if err := p.chainSvc.SetTurnReady(evt); err != nil {
+			log.Errorw("failed to set turn ready", "error", err, "game_id", evt.GameID)
+			return
 		}
 	}
 }

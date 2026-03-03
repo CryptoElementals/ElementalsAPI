@@ -302,7 +302,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
+	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.txPool, r, &r.args)
 	if err := game.saveGame(); err != nil {
 		return 0, err
 	}
@@ -317,7 +317,7 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.chainSvc, r, &r.args)
+	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.txPool, r, &r.args)
 	if err := game.saveGame(); err != nil {
 		return 0, err
 	}
@@ -334,7 +334,7 @@ func (r *GameManager) recoverGames() error {
 		return err
 	}
 	for _, info := range gameInfos {
-		game := NewGameFromGameInfo(r.ctx, &r.wg, r.workerManager, r, info, r.chainSvc)
+		game := NewGameFromGameInfo(r.ctx, &r.wg, r.workerManager, r, info, r.txPool)
 		if game == nil {
 			continue
 		}
@@ -363,7 +363,7 @@ func (r *GameManager) getGameForPlayer(address types.PlayerAddress) (*Game, erro
 	return game, nil
 }
 
-// HandleSubmitPlayerCommitment receives and validates a commitment submission event
+// HandleSubmitPlayerCommitment forwards a commitment submission to the game worker for validation and tx pool enqueue
 func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
 	// Validate GameID is set
 	if evt.GameID == 0 {
@@ -380,21 +380,15 @@ func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommit
 		return fmt.Errorf("GameID mismatch: event has %d but game has %d", evt.GameID, game.gameInfo.ID)
 	}
 
-	// Send event to game worker to validate
-	validateEvt := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
-	r.workerManager.SendEvent(game.WorkerID(), validateEvt)
-	_, err = validateEvt.Await()
-	if err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
-	// Add to transaction pool (will check turn index)
-	return r.txPool.addCommitment(evt)
+	// Forward to game worker: it validates and enqueues to tx pool
+	ev := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
+	r.workerManager.SendEvent(game.WorkerID(), ev)
+	_, err = ev.Await()
+	return err
 }
 
-// HandleSubmitPlayerCard receives and validates a card submission event
+// HandleSubmitPlayerCard receives a card submission and forwards it to the game worker for validation and tx pool enqueue
 func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
-	// Validate GameID is set
 	if evt.GameID == 0 {
 		return fmt.Errorf("GameID is required in SubmitPlayerCard")
 	}
@@ -404,19 +398,12 @@ func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error 
 		return err
 	}
 
-	// Validate GameID matches the game
 	if game.gameInfo.ID != evt.GameID {
 		return fmt.Errorf("GameID mismatch: event has %d but game has %d", evt.GameID, game.gameInfo.ID)
 	}
 
-	// Send event to game worker to validate
-	validateEvt := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
-	r.workerManager.SendEvent(game.WorkerID(), validateEvt)
-	_, err = validateEvt.Await()
-	if err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
-	// Add to transaction pool (will check turn index)
-	return r.txPool.addCard(evt)
+	ev := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
+	r.workerManager.SendEvent(game.WorkerID(), ev)
+	_, err = ev.Await()
+	return err
 }
