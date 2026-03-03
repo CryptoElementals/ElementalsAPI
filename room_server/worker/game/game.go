@@ -20,6 +20,7 @@ type Game struct {
 	currentRound        *round
 	workerMangerService *worker.WorkerManager
 	txPoolEnqueuer      TxPoolEnqueuer
+	gameResultSettler   GameResultSettler
 	gameContextHandler  GameHandler
 	wg                  *sync.WaitGroup
 }
@@ -30,6 +31,7 @@ func NewGame(
 	players []types.PlayerAddress,
 	workerMangerService *worker.WorkerManager,
 	txPoolEnqueuer TxPoolEnqueuer,
+	gameResultSettler GameResultSettler,
 	gameContinuer GameHandler,
 	gameArgs *dao.GameArgs) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
@@ -54,6 +56,7 @@ func NewGame(
 		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
 		txPoolEnqueuer:      txPoolEnqueuer,
+		gameResultSettler:   gameResultSettler,
 		gameContextHandler:  gameContinuer,
 	}
 	game.setupNewRound()
@@ -67,7 +70,8 @@ func NewGameFromGameInfo(
 	workerMangerService *worker.WorkerManager,
 	gameContinuer GameHandler,
 	gameInfo *dao.Game,
-	txPoolEnqueuer TxPoolEnqueuer) *Game {
+	txPoolEnqueuer TxPoolEnqueuer,
+	gameResultSettler GameResultSettler) *Game {
 	// Initialize gamePlayers from gameInfo.Players
 	gamePlayers := make(map[string]*gamePlayer)
 	for _, playerInfo := range gameInfo.Players {
@@ -85,6 +89,7 @@ func NewGameFromGameInfo(
 		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
 		txPoolEnqueuer:      txPoolEnqueuer,
+		gameResultSettler:   gameResultSettler,
 		gameContextHandler:  gameContinuer,
 	}
 
@@ -355,4 +360,15 @@ func (g *Game) sendTurnReady() error {
 	}
 	g.txPoolEnqueuer.AddSetTurnReady(evt)
 	return nil
+}
+
+// completeGameAndNotify runs settlement, clears tx pool info for this game, then notifies the manager to remove the game from maps.
+func (g *Game) completeGameAndNotify(evt *types.GameCompletedEvent) error {
+	if g.gameResultSettler != nil {
+		if err := g.gameResultSettler.GameResultSettlement(evt); err != nil {
+			return err
+		}
+	}
+	g.txPoolEnqueuer.ClearGameInfo(evt.GameID)
+	return g.gameContextHandler.HandleGameCompletedEvent(evt)
 }

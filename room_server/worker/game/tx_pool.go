@@ -338,3 +338,8 @@ func (p *txPool) clearGameInfo(gameID uint) {
 	delete(p.gameTxInfos, gameID)
 	log.Infow("cleared transaction info for game", "gameID", gameID)
 }
+
+// ClearGameInfo implements TxPoolEnqueuer.
+func (p *txPool) ClearGameInfo(gameID uint) {
+	p.clearGameInfo(gameID)
+}

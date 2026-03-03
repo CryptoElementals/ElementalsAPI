@@ -26,6 +26,7 @@ type TxPoolEnqueuer interface {
 	AddSetTurnReady(evt *types.RequireSetupNewTurnEvent)
 	AddCommitment(evt *types.SubmitPlayerCommitment) error
 	AddCard(evt *types.SubmitPlayerCard) error
+	ClearGameInfo(gameID uint)
 }
 
 type GameHandler interface {

@@ -450,12 +450,11 @@ func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, is
 		if err != nil {
 			return err
 		}
-		// Call HandleGameCompletedEvent for game result settlement
 		completeEvt := &types.GameCompletedEvent{
 			GameID:   g.gameInfo.ID,
 			GameInfo: g.gameInfo,
 		}
-		if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+		if err := g.completeGameAndNotify(completeEvt); err != nil {
 			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 		}
 		g.stopGame()
