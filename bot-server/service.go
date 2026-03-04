@@ -46,7 +46,6 @@ func NewService(
 	if err != nil {
 		return nil, err
 	}
-	ctx, ccl := context.WithCancel(ctx)
 	chainID, err := chainClient.ChainID(ctx)
 	if err != nil {
 		return nil, err
@@ -66,6 +65,7 @@ func NewService(
 		bots = append(bots, b)
 		addresses = append(addresses, p.address())
 	}
+	ctx, ccl := context.WithCancel(ctx)
 	return &Service{
 		ctx:          ctx,
 		ccl:          ccl,
