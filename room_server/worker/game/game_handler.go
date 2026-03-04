@@ -450,12 +450,11 @@ func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, is
 		if err != nil {
 			return err
 		}
-		// Call HandleGameCompletedEvent for game result settlement
 		completeEvt := &types.GameCompletedEvent{
 			GameID:   g.gameInfo.ID,
 			GameInfo: g.gameInfo,
 		}
-		if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+		if err := g.completeGameAndNotify(completeEvt); err != nil {
 			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 		}
 		g.stopGame()
@@ -568,14 +567,11 @@ func (g *Game) handleGetGameResultRequest(event *types.Event) error {
 	return nil
 }
 
-// handleSubmitPlayerCommitment handles the SubmitPlayerCommitment event
+// handleSubmitPlayerCommitment handles the SubmitPlayerCommitment event: validate then enqueue to tx pool
 func (g *Game) handleSubmitPlayerCommitment(reqEvt *types.SubmitPlayerCommitment) error {
-	// Validate the event - return error if validation fails, nil if valid
-	// The worker will automatically send the error to AckChan if present
 	if err := g.validatePlayerCommitment(reqEvt); err != nil {
 		return err
 	}
-	// verify signature for: game id, round number, commitment index, commitment
 	valid, err := utils.Verify(
 		[]any{g.gameInfo.ID, reqEvt.RoundNumber, reqEvt.CommitmentIndex, reqEvt.Commitment},
 		reqEvt.Signature,
@@ -586,7 +582,7 @@ func (g *Game) handleSubmitPlayerCommitment(reqEvt *types.SubmitPlayerCommitment
 	if !valid {
 		return fmt.Errorf("invalid signature")
 	}
-	return nil
+	return g.txPoolEnqueuer.AddCommitment(reqEvt)
 }
 
 // handleSubmitPlayerCard handles the SubmitPlayerCard event
@@ -640,5 +636,5 @@ func (g *Game) handleSubmitPlayerCard(reqEvt *types.SubmitPlayerCard) error {
 	if !valid {
 		return fmt.Errorf("invalid signature")
 	}
-	return nil
+	return g.txPoolEnqueuer.AddCard(reqEvt)
 }
