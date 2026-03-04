@@ -26,7 +26,7 @@ type batchTxEvent struct {
 type Chain struct {
 	ctx                   context.Context
 	workerManager         *worker.WorkerManager
-	roomV2Client          *concurrentRoomV2Client
+	roomV3Client          *concurrentRoomV3Client
 	roomV2ContractAddress string
 
 	// track chain tx handling time from submission to on-chain completion
@@ -39,25 +39,50 @@ func NewChain(
 	workerManager *worker.WorkerManager,
 	chainID int64,
 	client *ethclient.Client,
-	roomV2ContractAddressHex string,
+	roomV3ContractAddressHex string,
 	wallets []*wallet.Wallet,
 	isDevelop ...bool,
 ) (*Chain, error) {
-	if roomV2ContractAddressHex == "" {
-		return nil, errors.New("room v2 contract address is required")
+	if roomV3ContractAddressHex == "" {
+		return nil, errors.New("room contract address is required")
 	}
-	roomV2Cli, err := newConcurrentRoomV2Client(ctx, client, roomV2ContractAddressHex, wallets, chainID, isDevelop...)
+	roomV3Cli, err := newConcurrentRoomV3Client(ctx, client, roomV3ContractAddressHex, wallets, chainID, isDevelop...)
 	if err != nil {
-		log.Errorf("newConcurrentRoomV2Client: create room v2 client failed: %s", err.Error())
+		log.Errorf("newConcurrentRoomV3Client: create room v3 client failed: %s", err.Error())
 		return nil, err
 	}
 	return &Chain{
 		ctx:                   ctx,
 		workerManager:         workerManager,
-		roomV2Client:          roomV2Cli,
-		roomV2ContractAddress: strings.ToLower(roomV2ContractAddressHex),
+		roomV3Client:          roomV3Cli,
+		roomV2ContractAddress: strings.ToLower(roomV3ContractAddressHex),
 		txTimes:               make(map[string]time.Time),
 	}, nil
+}
+
+// SubmitTasks submits a batch of pre-encoded RoomV3 tasks to the chain.
+// Tasks are ABI-encoded payloads compatible with RoomV3.batchSubmitTasks.
+func (c *Chain) SubmitTasks(tasks []RoomContractTask) error {
+	if c.roomV3Client == nil {
+		return errors.New("room v3 client not initialized")
+	}
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	indexes := make([]uint8, 0, len(tasks))
+	payloads := make([][]byte, 0, len(tasks))
+	for _, t := range tasks {
+		indexes = append(indexes, t.Index)
+		payloads = append(payloads, t.Task)
+	}
+
+	txHash, err := c.roomV3Client.submitTasks(indexes, payloads)
+	if err != nil {
+		return err
+	}
+	c.recordTxStart(txHash, "submitTasks", 0)
+	return nil
 }
 
 func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
@@ -86,10 +111,6 @@ func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
 func (c *Chain) Start() error {
 	// No longer needed - transaction tables removed
 	return nil
-}
-
-func (c *Chain) CreateRoomContract(evt *types.RequireGameCreationEvent) error {
-	return c.createNewRoom(evt)
 }
 
 func (c *Chain) batchSendTxs(evt *batchTxEvent) {

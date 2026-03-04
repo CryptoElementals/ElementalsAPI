@@ -5,7 +5,6 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
-	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -20,10 +19,10 @@ func NewService(ctx context.Context,
 	workerManager *worker.WorkerManager,
 	chainID int64,
 	client *ethclient.Client,
-	roomV2ContractAddress string,
+	roomV3ContractAddress string,
 	wallets []*wallet.Wallet,
 	isDevelop ...bool) (*Service, error) {
-	chain, err := NewChain(ctx, workerManager, chainID, client, roomV2ContractAddress, wallets, isDevelop...)
+	chain, err := NewChain(ctx, workerManager, chainID, client, roomV3ContractAddress, wallets, isDevelop...)
 	if err != nil {
 		return nil, err
 	}
@@ -42,22 +41,9 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 	return nil
 }
 
-func (s *Service) CreateRoomContract(evt *types.RequireGameCreationEvent) error {
-	return s.chain.CreateRoomContract(evt)
-}
-
-func (s *Service) SetTurnReady(evt *types.RequireSetupNewTurnEvent) error {
-	return s.chain.SetTurnReady(evt)
-}
-
-// SubmitPlayerCommitmentsBatch submits multiple player commitments in a batch
-func (s *Service) SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error {
-	return s.chain.submitPlayerCommitmentsBatch(events)
-}
-
-// SubmitPlayerCardsBatch submits multiple player cards in a batch
-func (s *Service) SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error {
-	return s.chain.submitPlayerCardsBatch(events)
+// SubmitTasks submits a batch of pre-encoded contract tasks to the underlying chain.
+func (s *Service) SubmitTasks(tasks []RoomContractTask) error {
+	return s.chain.SubmitTasks(tasks)
 }
 
 func (s *Service) Start() error {

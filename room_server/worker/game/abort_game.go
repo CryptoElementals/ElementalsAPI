@@ -34,8 +34,7 @@ func (g *Game) sendGameCompletedEventAndStop() {
 		GameID:   g.gameInfo.ID,
 		GameInfo: g.gameInfo,
 	}
-	// Still need to call HandleGameCompletedEvent for game result settlement
-	if err := g.gameContextHandler.HandleGameCompletedEvent(completeEvt); err != nil {
+	if err := g.completeGameAndNotify(completeEvt); err != nil {
 		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 	}
 	g.stopGame()
