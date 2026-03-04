@@ -62,14 +62,22 @@ func NewChain(
 
 // SubmitTasks submits a batch of pre-encoded RoomV3 tasks to the chain.
 // Tasks are ABI-encoded payloads compatible with RoomV3.batchSubmitTasks.
-func (c *Chain) SubmitTasks(tasks [][]byte) error {
+func (c *Chain) SubmitTasks(tasks []RoomContractTask) error {
 	if c.roomV3Client == nil {
 		return errors.New("room v3 client not initialized")
 	}
 	if len(tasks) == 0 {
 		return nil
 	}
-	txHash, err := c.roomV3Client.submitTasks(tasks)
+
+	indexes := make([]uint8, 0, len(tasks))
+	payloads := make([][]byte, 0, len(tasks))
+	for _, t := range tasks {
+		indexes = append(indexes, t.Index)
+		payloads = append(payloads, t.Task)
+	}
+
+	txHash, err := c.roomV3Client.submitTasks(indexes, payloads)
 	if err != nil {
 		return err
 	}

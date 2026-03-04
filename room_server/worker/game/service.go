@@ -9,6 +9,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -16,7 +17,7 @@ import (
 type ContractClient interface {
 	// SubmitTasks submits a pre-encoded batch of contract tasks to the chain.
 	// Each task is an ABI-encoded payload compatible with RoomV3.batchSubmitTasks.
-	SubmitTasks(tasks [][]byte) error
+	SubmitTasks(tasks []chain.RoomContractTask) error
 }
 
 // TxPoolEnqueuer is the interface Game uses to enqueue chain-related events (create room, set turn ready, commitments, cards).

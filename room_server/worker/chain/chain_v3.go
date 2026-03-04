@@ -18,6 +18,11 @@ import (
 
 const roomV3SingleTxGasLimit = 500_000
 
+type RoomContractTask struct {
+	Index uint8
+	Task  []byte
+}
+
 // concurrentRoomV3Client is a helper around the RoomV3 contract that mirrors the
 // behaviour of the JavaScript example in js_example.js by packing individual
 // actions into encoded "tasks" and submitting them via batchSubmitTasks.
@@ -71,9 +76,9 @@ func newConcurrentRoomV3Client(
 }
 
 // submitTasks sends the given tasks slice using RoomV3.batchSubmitTasks,
-// handling nonce management and gas limit scaling similarly to the v2 client.
-// All task encoding is expected to be done by the caller.
-func (c *concurrentRoomV3Client) submitTasks(tasks [][]byte) (string, error) {
+// handling nonce management and gas limit scaling. All task encoding is expected
+// to be done by the caller.
+func (c *concurrentRoomV3Client) submitTasks(indexes []uint8, tasks [][]byte) (string, error) {
 	if len(tasks) == 0 {
 		return "", fmt.Errorf("no tasks to submit")
 	}
@@ -91,7 +96,7 @@ func (c *concurrentRoomV3Client) submitTasks(tasks [][]byte) (string, error) {
 	bindOpts.GasLimit = uint64(len(tasks) * roomV3SingleTxGasLimit)
 
 	start := time.Now()
-	tx, err := c.roomV3Ctr.BatchSubmitTasks(bindOpts, tasks)
+	tx, err := c.roomV3Ctr.BatchSubmitTasks(bindOpts, indexes, tasks)
 	sendErr = err
 	if err != nil {
 		log.Errorf("sendBatchTasks: batchSubmitTasks failed: %s", err.Error())

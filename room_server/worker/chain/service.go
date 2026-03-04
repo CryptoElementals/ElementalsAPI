@@ -42,7 +42,7 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 }
 
 // SubmitTasks submits a batch of pre-encoded contract tasks to the underlying chain.
-func (s *Service) SubmitTasks(tasks [][]byte) error {
+func (s *Service) SubmitTasks(tasks []RoomContractTask) error {
 	return s.chain.SubmitTasks(tasks)
 }
 

@@ -192,6 +192,11 @@
     {
       "inputs": [
         {
+          "internalType": "uint8[]",
+          "name": "taskIndexes",
+          "type": "uint8[]"
+        },
+        {
           "internalType": "bytes[]",
           "name": "tasks",
           "type": "bytes[]"
