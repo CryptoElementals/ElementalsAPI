@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"time"
 
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/log"
@@ -95,7 +94,6 @@ func (c *concurrentRoomV3Client) submitTasks(indexes []uint8, tasks [][]byte) (s
 	// Scale gas limit with number of tasks.
 	bindOpts.GasLimit = uint64(len(tasks) * roomV3SingleTxGasLimit)
 
-	start := time.Now()
 	tx, err := c.roomV3Ctr.BatchSubmitTasks(bindOpts, indexes, tasks)
 	sendErr = err
 	if err != nil {
@@ -106,8 +104,7 @@ func (c *concurrentRoomV3Client) submitTasks(indexes []uint8, tasks [][]byte) (s
 	txHash := strings.ToLower(tx.Hash().String())
 	log.Debugw("sendBatchTasks: batch submitted",
 		"task_count", len(tasks),
-		"tx_hash", txHash,
-		"duration_ms", time.Since(start).Milliseconds())
+		"tx_hash", txHash)
 	return txHash, nil
 }
 

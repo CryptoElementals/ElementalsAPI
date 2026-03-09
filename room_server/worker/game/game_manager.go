@@ -56,8 +56,6 @@ func NewGameManager(ctx context.Context,
 }
 
 func (r *GameManager) Start() error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
 	err := r.recoverGames()
 	if err != nil {
 		return err
@@ -326,6 +324,7 @@ func (r *GameManager) recoverGames() error {
 			continue
 		}
 
+		r.lock.Lock()
 		for _, player := range game.currentRound.gamePlayers {
 			addr := player.PlayerAddress()
 			if _, ok := r.playerToGameMap[addr]; ok {
@@ -334,6 +333,8 @@ func (r *GameManager) recoverGames() error {
 			r.playerToGameMap[addr] = game
 		}
 		r.gamesMap[game.gameInfo.ID] = game
+		r.lock.Unlock()
+
 		game.createSelf()
 	}
 	return nil

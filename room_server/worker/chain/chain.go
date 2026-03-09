@@ -81,11 +81,11 @@ func (c *Chain) SubmitTasks(tasks []RoomContractTask) error {
 	if err != nil {
 		return err
 	}
-	c.recordTxStart(txHash, "submitTasks", 0)
+	c.recordTxStart(txHash, "submitTasks", len(tasks))
 	return nil
 }
 
-func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
+func (c *Chain) recordTxStart(txHash string, eventName string, taskCount int) {
 	if txHash == "" {
 		return
 	}
@@ -93,19 +93,11 @@ func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
 	c.txTimesLock.Lock()
 	c.txTimes[txHash] = now
 	c.txTimesLock.Unlock()
-	if gameID != 0 {
-		log.Debugw("chain tx sent",
-			"event", eventName,
-			"tx_hash", txHash,
-			"game_id", gameID,
-		)
-	} else {
-		log.Debugw("chain tx sent",
-			"event", eventName,
-			"tx_hash", txHash,
-		)
-	}
-
+	log.Debugw("chain tx sent",
+		"event", eventName,
+		"tx_hash", txHash,
+		"task_count", taskCount,
+	)
 }
 
 func (c *Chain) Start() error {

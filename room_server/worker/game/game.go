@@ -129,7 +129,7 @@ func NewGameFromGameInfo(
 			}
 		}
 	}
-	terminateGame()
+	go terminateGame()
 	return nil
 	// if time.Since(gameInfo.CreatedAt) > time.Duration(gameInfo.GameArgs.RoundTimeout)*time.Second*time.Duration(gameInfo.GameArgs.MaxRounds) {
 
