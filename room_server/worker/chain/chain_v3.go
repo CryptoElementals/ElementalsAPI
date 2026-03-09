@@ -17,11 +17,6 @@ import (
 
 const roomV3SingleTxGasLimit = 500_000
 
-type RoomContractTask struct {
-	Index uint8
-	Task  []byte
-}
-
 // concurrentRoomV3Client is a helper around the RoomV3 contract that mirrors the
 // behaviour of the JavaScript example in js_example.js by packing individual
 // actions into encoded "tasks" and submitting them via batchSubmitTasks.

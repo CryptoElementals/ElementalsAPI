@@ -20,3 +20,8 @@ type RequireSetupNewTurnEvent struct {
 	TurnNumber  uint32
 	// ContractAddress removed - always uses RoomV2 contract address
 }
+
+type RoomContractTask struct {
+	Index uint8
+	Task  []byte
+}
