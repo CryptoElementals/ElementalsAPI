@@ -79,7 +79,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	profile, err := db.GetUserProfileByPlayerID(requestPlayerID)
 	if err != nil {
 		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.GetUserProfileFailed(requestPlayerID)
+		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
 	}
 
 	// 检查活动是否在有效期内（使用UTC时间统一判断）
@@ -110,7 +110,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	collected, err := db.HasCollectedDailyRewardByPlayerID(requestPlayerID)
 	if err != nil {
 		log.Errorf("%s, failed to check daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.GetUserProfileFailed(requestPlayerID)
+		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
 	}
 	if collected {
 		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestPlayerID)
@@ -168,7 +168,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	// 更新领取时间
 	if err = db.UpdateDailyRewardCollectionByPlayerID(requestPlayerID); err != nil {
 		log.Errorf("%s, failed to update daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.SaveUserProfileFailed()
+		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
 	}
 	log.Infof("%s, daily reward collected successfully for player_id=%s, tokens: %d (isFirstTimeInActivity: %v)", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens, isFirstTimeInActivity)
 	return task.Response, nil

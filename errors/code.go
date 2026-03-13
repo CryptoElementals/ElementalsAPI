@@ -58,6 +58,7 @@ var (
 	s_SaveUserProfileFailed       ErrorCode = 8453 // [行为]保存用户档案失败
 	s_DailyRewardNotActive        ErrorCode = 8455 // 每日奖励活动未开启或不在有效期内
 	s_DailyRewardAlreadyCollected ErrorCode = 8456 // 当日已领取每日奖励
+	s_DailyRewardInternalError    ErrorCode = 8457 // 每日奖励内部错误（如依赖的用户档案读写失败）
 
 	// Third Party
 	t_GetBuyPriceFailed ErrorCode = 8090 // 获取购买价格失败
@@ -212,4 +213,8 @@ func DailyRewardNotActive(a ...interface{}) Error {
 
 func DailyRewardAlreadyCollected(a ...interface{}) Error {
 	return Error{code: s_DailyRewardAlreadyCollected, items: a, message: "Daily reward already collected"}
+}
+
+func DailyRewardInternalError(a ...interface{}) Error {
+	return Error{code: s_DailyRewardInternalError, items: a, message: "Daily reward internal error"}
 }
