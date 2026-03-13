@@ -11,9 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"gorm.io/gorm"
-
-	dao "github.com/CryptoElementals/common/models"
 )
 
 func init() {
@@ -144,30 +141,9 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		log.Infof("%s, player_id=%s collecting daily reward: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	}
 
-	// 发放 token
-	var userToken *dao.UserToken
-	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.OperateDbFailed()
-	}
-	if userToken == nil {
-		userToken = &dao.UserToken{
-			PlayerId:    profile.PlayerID,
-			Points:      0,
-			TokenAmount: dailyRewardTokens,
-		}
-	} else {
-		userToken.TokenAmount += dailyRewardTokens
-	}
-	if err = db.SaveUserToken(*userToken); err != nil {
-		log.Errorf("%s, failed to save user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.OperateDbFailed()
-	}
-
-	// 更新领取时间
-	if err = db.UpdateDailyRewardCollectionByPlayerID(requestPlayerID); err != nil {
-		log.Errorf("%s, failed to update daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+	// 在单个事务中发放 token 并更新领取时间，确保要么都成功要么都失败
+	if err = db.CollectDailyRewardByPlayerID(requestPlayerID, dailyRewardTokens); err != nil {
+		log.Errorf("%s, failed to collect daily reward in transaction for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
 	}
 	log.Infof("%s, daily reward collected successfully for player_id=%s, tokens: %d (isFirstTimeInActivity: %v)", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens, isFirstTimeInActivity)

@@ -243,6 +243,49 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 	})
 }
 
+// CollectDailyRewardByPlayerID 在单个事务中为用户发放每日奖励 Token 并更新领取时间
+func CollectDailyRewardByPlayerID(playerID string, dailyRewardTokens int32) error {
+	id, err := strconv.ParseInt(playerID, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	return Get().Transaction(func(tx *gorm.DB) error {
+		// 查询或创建用户的 Token 记录
+		var userToken dao.UserToken
+		if err := tx.Where("player_id = ?", id).First(&userToken).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				userToken = dao.UserToken{
+					PlayerId:    id,
+					Points:      0,
+					TokenAmount: dailyRewardTokens,
+				}
+				if err := tx.Create(&userToken).Error; err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			userToken.TokenAmount += dailyRewardTokens
+			if err := tx.Save(&userToken).Error; err != nil {
+				return err
+			}
+		}
+
+		// 同一事务内更新用户每日奖励领取时间
+		if err := tx.Model(&dao.UserProfile{}).
+			Where("player_id = ?", id).
+			Update("collected_reward_at", now).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error) {
 	var userToken dao.UserToken
 	err := Get().Where("player_id = ?", playerId).Preload("LockedTokens").First(&userToken).Error
