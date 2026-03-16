@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -126,7 +125,8 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	// 要求用户至少有10000个可用代币才能加入匹配队列
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+		// task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+		task.Response.BaseResponse.Message = "Insufficient available tokens"
 		return task.Response, nil
 	}
 
@@ -145,8 +145,20 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 
 	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
-		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: " + ShortGRPCError(err)
+		shortErr := ShortGRPCError(err)
+		// 检查apiserver的TokenThreshold配置是否与roomserver一致
+		if strings.Contains(shortErr, "user token is not enough") {
+			task.Response.BaseResponse.RetCode = 1004
+			//task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+			task.Response.BaseResponse.Message = "Insufficient available tokens"
+		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_IN_GAME") {
+			// 玩家已经在对局中，不能再次加入匹配队列，返回业务错误码 1006
+			task.Response.BaseResponse.RetCode = 1006
+			task.Response.BaseResponse.Message = "Player is already in game and cannot join match queue"
+		} else {
+			task.Response.BaseResponse.RetCode = 1002
+			task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: " + shortErr
+		}
 		return task.Response, nil
 	}
 
