@@ -35,7 +35,7 @@ func (m *MockContractClient) EXPECT() *MockContractClientMockRecorder {
 }
 
 // SubmitTasks mocks base method.
-func (m *MockContractClient) SubmitTasks(arg0 [][]byte) error {
+func (m *MockContractClient) SubmitTasks(arg0 []types.RoomContractTask) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubmitTasks", arg0)
 	ret0, _ := ret[0].(error)

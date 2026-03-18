@@ -137,6 +137,7 @@ enum TurnStatus {
     TURN_WAITTING_COMMITMENTS = 2;
     TURN_WAITTING_CARDS = 3;
     TURN_ROUND_COMPLETED = 4;  // Special state: round is completed
+    TURN_COMPLETED = 5;
 }
 
 

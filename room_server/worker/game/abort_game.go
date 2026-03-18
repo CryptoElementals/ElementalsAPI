@@ -107,7 +107,7 @@ func (g *Game) handleGameAbortInternalError() error {
 	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
 	if g.currentRound.round != nil {
 		g.currentRound.round.IsLastRound = true
-		g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
+		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
 	}
 
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED

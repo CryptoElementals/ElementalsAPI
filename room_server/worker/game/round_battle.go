@@ -171,7 +171,7 @@ func (r *round) buildGameEndStates() []*gameEndState {
 		// If turn is waiting for battle confirmation and player is not ready, mark as offline
 		// If turn is waiting for commitments and player has no commitment, mark as offline
 		// If turn is waiting for cards and player has no card, mark as offline
-		switch r.turnStatus {
+		switch r.getTurnStatus() {
 		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
 			// Turn is waiting for battle confirmation - check if player is ready
 			if !player.isPlayerReady() {

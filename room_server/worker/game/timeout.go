@@ -9,6 +9,7 @@ import (
 )
 
 type timerEvent struct {
+	GameID            uint
 	currentGameStatus proto.GameStatus
 	currentRound      uint32
 	currentTurnNumber uint32
@@ -26,7 +27,7 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 		// game waitting confirmed for the first round
 		timeoutDuration = g.gameInfo.GameArgs.ConfirmationTimeout + g.gameInfo.GameArgs.ConfirmationTimeoutRedundancy
 	case proto.GameStatus_GAME_RUNNING:
-		switch g.currentRound.turnStatus {
+		switch g.currentRound.getTurnStatus() {
 		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION,
 			proto.TurnStatus_TURN_ROUND_COMPLETED,
 			proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
@@ -58,10 +59,11 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		return
 	}
 	timerEvent := &timerEvent{
+		GameID:            g.gameInfo.ID,
 		currentGameStatus: g.gameInfo.Status,
 		currentRound:      g.currentRound.round.RoundNumber,
 		currentTurnNumber: g.currentRound.getCurrentTurnNumber(),
-		currentTurnStatus: g.currentRound.turnStatus,
+		currentTurnStatus: g.currentRound.getTurnStatus(),
 	}
 	log.Debugw("send timer event",
 		"game id", g.gameInfo.ID,
@@ -71,7 +73,8 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		"timeout", timeout.Seconds(),
 	)
 	time.AfterFunc(timeout, func() {
-		g.workerMangerService.SendEvent(g.workerID(), types.NewEvent(g.workerID(), timerEvent))
+		// Per-game workers are removed; timers must be routed through the game manager worker.
+		g.workerMangerService.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(types.GAME_MANAGER_ID, timerEvent))
 	})
 }
 
@@ -85,7 +88,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	// status changed go ahead
-	if g.currentRound.turnStatus != event.currentTurnStatus {
+	if g.currentRound.getTurnStatus() != event.currentTurnStatus {
 		return
 	}
 	// turn number changed go ahead
@@ -96,7 +99,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		"game id", g.gameInfo.ID,
 		"round", g.currentRound.round.RoundNumber,
 		"turn", g.currentRound.getCurrentTurnNumber(),
-		"turn status", g.currentRound.turnStatus,
+		"turn status", g.currentRound.getTurnStatus(),
 		"turn number", g.currentRound.getCurrentTurnNumber(),
 		"game status", g.gameInfo.Status)
 	// game init only exists at the very beginning, once both players confirms, it turns to game running
@@ -107,7 +110,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		}
 		return
 	}
-	switch g.currentRound.turnStatus {
+	switch g.currentRound.getTurnStatus() {
 	case proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
 		// For timeout during setup or battle confirmation, abort the game
 		err := g.handleGameAbortInternalError()

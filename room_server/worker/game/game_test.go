@@ -279,7 +279,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false, 0)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, 0)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		Id:               1,
@@ -298,8 +298,6 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 		close(waitChan)
 		return nil
 	})
-	// no games now
-	require.Len(t, gameManager.gamesMap, 0)
 	testWorkerManager.SendEvent(types.GAME_MANAGER_ID, &types.Event{
 		Sender: types.QUEUE_MANAGER_ID,
 		Data: &types.GameMatchedEvent{
@@ -308,28 +306,19 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 	})
 
 	<-waitChan
-	// one game now
-	require.Len(t, gameManager.gamesMap, 1)
-	// tow players
-	require.Len(t, gameManager.playerToGameMap, 2)
-	var createdGame *Game
-	// close game worker and clear game map
-	for _, g := range gameManager.gamesMap {
-		createdGame = g
-		testWorkerManager.CloseWorker(g.workerID())
-	}
-	clear(gameManager.gamesMap)
-	clear(gameManager.playerToGameMap)
+	// Stateless manager: DB is the source of truth. Ensure the game was created and runtime state can be rebuilt.
+	gameInfo, err := db.GetActiveGameByPlayer(playerAddress1.Id, playerAddress1.TemporaryAddress)
+	require.NoError(t, err)
+	require.NotNil(t, gameInfo)
 
-	// recover
-	gameManager.recoverGames()
-	require.Len(t, gameManager.gamesMap, 1)
-	var recoveredGame *Game
-	for _, g := range gameManager.gamesMap {
-		recoveredGame = g
-	}
-	require.EqualValues(t, createdGame, recoveredGame)
+	currentRound := buildRuntimeState(gameInfo)
+	require.NotNil(t, currentRound)
+	require.NotNil(t, currentRound.round)
+	require.GreaterOrEqual(t, currentRound.turnNumber, uint32(1))
+	require.LessOrEqual(t, currentRound.turnNumber, uint32(3))
+	require.NotZero(t, currentRound.turnStatus)
 }
+
 
 func TestGameStateMachine(t *testing.T) {
 	setupMemDb(t)
@@ -342,8 +331,6 @@ func TestGameStateMachine(t *testing.T) {
 		if isLast {
 			require.NotNil(t, gameResult)
 		}
-
-		clear(svc.gameManager.gamesMap)
 		roundResultDb, gameResultDb, err := svc.GetBattleInfo(context.Background(), 1, uint32(roundNumber))
 		require.NoError(t, err)
 

@@ -38,8 +38,8 @@ type Game struct {
 // Round 回合记录
 type Round struct {
 	BaseModel
-	GameID         uint                      `gorm:"index" json:"game_id"`      // 匹配唯一ID
-	RoundNumber    uint32                    `json:"round_number"`               // 回合数
+	GameID         uint                      `gorm:"index" json:"game_id"` // 匹配唯一ID
+	RoundNumber    uint32                    `json:"round_number"`         // 回合数
 	Turns          []*Turn                   `json:"turns"`
 	IsLastRound    bool                      `json:"is_last_round"`
 	CompleteReason proto.RoundCompleteReason `json:"complete_reason"`
@@ -48,6 +48,7 @@ type Round struct {
 type Turn struct {
 	BaseModel
 	RoundID         uint              `gorm:"index" json:"round_id"`
+	TurnStatus      uint32            `gorm:"status"`
 	TurnNumber      uint32            `json:"turn_number"`
 	TurnStartAt     int64             `json:"turn_start_at"`
 	PlayerTurnInfos []*PlayerTurnInfo `json:"player_turn_infos"`
@@ -108,14 +109,14 @@ type PlayerReward struct {
 
 type BattleReward struct {
 	BaseModel
-	GameResultID  uint  `gorm:"index"`
+	GameResultID  uint `gorm:"index"`
 	SystemFee     int32
 	PlayerRewards []*PlayerReward
 }
 
 type GameResult struct {
 	BaseModel
-	GameID                 uint  `gorm:"index"`
+	GameID                 uint `gorm:"index"`
 	Multiplier             int32
 	WinnerPlayerId         int64
 	WinnerTemporaryAddress string

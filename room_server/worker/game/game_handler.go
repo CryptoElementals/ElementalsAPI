@@ -52,7 +52,7 @@ func (g *Game) handleTurn(event *types.Event) error {
 		return g.handleSurrenderEvent(surrenderEvt)
 	}
 
-	switch g.currentRound.turnStatus {
+	switch g.currentRound.getTurnStatus() {
 	case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
 		return g.handleWaittingPlayersConfirmed(event)
 	case proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
@@ -101,6 +101,10 @@ func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
 		ReadyAddress: player.PlayerAddress(),
 	}))
 	if !g.areAllPlayersReady() {
+		err = g.saveGame()
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -117,7 +121,7 @@ func (g *Game) handleWaittingPlayersConfirmed(event *types.Event) error {
 			g.handleGameAbortInternalError()
 			return err
 		}
-		g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN
+		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
 	} else {
 		// For all other turns, setup new turn on chain
 		err := g.setupNewTurn()
@@ -155,7 +159,7 @@ func (g *Game) handleRoomCreated(event *types.Event) error {
 	currentTurn.TurnStartAt = evt.TimeStamp
 	// For the first turn of the first round, the contract creation already handles the turn setup
 	// so we transition directly to waiting for commitments
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_COMMITMENTS)
 	err = g.saveRound(g.currentRound.round)
 	if err != nil {
 		return err
@@ -211,7 +215,7 @@ func (g *Game) handleNewTurnSetupOnChain(event *types.Event) error {
 	currentTurn := g.currentRound.getCurrentTurn()
 	currentTurn.TurnStartAt = evt.TimeStamp
 
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_COMMITMENTS)
 	err = g.saveRound(g.currentRound.round)
 	if err != nil {
 		return err
@@ -273,7 +277,7 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
 
 		// Change status to allow card submission for this turn
-		g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_CARDS
+		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
 
 	}
 	err = g.saveRound(g.currentRound.round)
@@ -401,6 +405,10 @@ func (g *Game) handleTurnEnd() error {
 	isRoundComplete := turnNumber >= 3 || isGameOver
 	isGameComplete := isGameOver
 
+	// Mark this turn as completed (persisted on the Turn record).
+	// If the round/game also completes, completeRoundAndCheckGameEnd may transition it further.
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_COMPLETED)
+
 	// Send event to both players with TurnCompletedEvent (includes round/game completion info)
 	confirmationTimeout := g.gameInfo.ConfirmationTimeout
 	gameContinueTimeout := g.gameInfo.GameContinueTimeout
@@ -440,7 +448,7 @@ func (g *Game) handleTurnEnd() error {
 func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, isGameComplete bool) error {
 	// Mark round as completed
 	g.currentRound.round.CompleteReason = reason
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
 
 	// If game is complete, handle game end
 	if isGameComplete {

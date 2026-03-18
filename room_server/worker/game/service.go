@@ -28,10 +28,9 @@ type TxPoolEnqueuer interface {
 	ClearGameInfo(gameID uint)
 }
 
-type GameHandler interface {
-	HandleGameContinueEvent(evt *types.GameContinueEvent) error
-	HandleGameCompletedEvent(evt *types.GameCompletedEvent) error
-}
+// GameHandler was previously used by long-lived per-game workers to notify GameManager on completion.
+// With per-game workers removed and all events routed through the game manager worker, this indirection
+// is no longer needed.
 
 type GameResultSettler interface {
 	GameResultSettlement(event *types.GameCompletedEvent) error
@@ -65,8 +64,11 @@ func NewService(
 
 		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
+	mgr := NewGameManager(ctx, workerManager, gameArgs, chainSvc, poolBatchSize)
+	// Register GameManager as a worker so it can receive game-related events (e.g. from chain service).
+	workerManager.SpwanWorker(ctx, types.GAME_MANAGER_ID, types.WORKER_TYPE_GAME_MANAGER, mgr)
 	return &Service{
-		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover, poolBatchSize),
+		gameManager: mgr,
 	}
 }
 
@@ -88,12 +90,7 @@ func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.Ga
 }
 
 func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
-	// Try to get battle info from active game first
-	roundRes, gameRes, err := s.gameManager.GetBattleInfo(uint(gameID), roundNum)
-	if err == nil {
-		return roundRes, gameRes, nil
-	}
-	// If game is not active (cold game), load from DB
+	// Always load battle info from DB; do not rely on per-game workers.
 	return s.LoadBattleInfoFromDB(gameID, roundNum)
 }
 

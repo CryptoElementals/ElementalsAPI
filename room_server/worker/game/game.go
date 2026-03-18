@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -14,6 +14,25 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+// NewEphemeralGameForEvent creates a transient Game instance backed by the latest DB state.
+// It is intended for synchronous event handling (e.g. from GameManager) rather than long-lived workers.
+func NewEphemeralGameForEvent(
+	ctx context.Context,
+	workerMangerService *worker.WorkerManager,
+	txPoolEnqueuer TxPoolEnqueuer,
+	gameResultSettler GameResultSettler,
+	gameInfo *dao.Game,
+) *Game {
+	return &Game{
+		ctx:                 ctx,
+		gameInfo:            gameInfo,
+		currentRound:        buildRuntimeState(gameInfo),
+		workerMangerService: workerMangerService,
+		txPoolEnqueuer:      txPoolEnqueuer,
+		gameResultSettler:   gameResultSettler,
+	}
+}
+
 type Game struct {
 	ctx                 context.Context
 	gameInfo            *dao.Game
@@ -21,18 +40,14 @@ type Game struct {
 	workerMangerService *worker.WorkerManager
 	txPoolEnqueuer      TxPoolEnqueuer
 	gameResultSettler   GameResultSettler
-	gameContextHandler  GameHandler
-	wg                  *sync.WaitGroup
 }
 
 func NewGame(
 	ctx context.Context,
-	wg *sync.WaitGroup,
 	players []types.PlayerAddress,
 	workerMangerService *worker.WorkerManager,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
-	gameContinuer GameHandler,
 	gameArgs *dao.GameArgs) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
@@ -47,7 +62,6 @@ func NewGame(
 	}
 	game := &Game{
 		ctx: ctx,
-		wg:  wg,
 		gameInfo: &dao.Game{
 			Players:  daoPlayers,
 			Type:     types.GameTypePVP,
@@ -57,180 +71,135 @@ func NewGame(
 		workerMangerService: workerMangerService,
 		txPoolEnqueuer:      txPoolEnqueuer,
 		gameResultSettler:   gameResultSettler,
-		gameContextHandler:  gameContinuer,
 	}
 	game.setupNewRound()
-	wg.Add(1)
 	return game
 }
 
 func NewGameFromGameInfo(
 	ctx context.Context,
-	wg *sync.WaitGroup,
 	workerMangerService *worker.WorkerManager,
-	gameContinuer GameHandler,
 	gameInfo *dao.Game,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler) *Game {
-	// Initialize gamePlayers from gameInfo.Players
-	gamePlayers := make(map[string]*gamePlayer)
-	for _, playerInfo := range gameInfo.Players {
-		gamePlayers[playerInfo.TemporaryAddress] = &gamePlayer{
-			player:     playerInfo,
-			currentHP:  gameInfo.InitialHP,
-			multiplier: uint32(gameInfo.InitialMultiplier),
-		}
-	}
+	// Build runtime round and gamePlayers from fully loaded gameInfo
+	currentRound := buildRuntimeState(gameInfo)
 
 	g := &Game{
 		ctx:                 ctx,
-		wg:                  wg,
 		gameInfo:            gameInfo,
-		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
+		currentRound:        currentRound,
 		workerMangerService: workerMangerService,
 		txPoolEnqueuer:      txPoolEnqueuer,
 		gameResultSettler:   gameResultSettler,
-		gameContextHandler:  gameContinuer,
 	}
 
-	// Setup current round to the last round of the gameInfo, if not exist, create one
-	if len(gameInfo.Rounds) > 0 {
-		// Find the round with the highest RoundNumber
-		var lastRound *dao.Round
-		maxRoundNum := uint32(0)
-		for _, r := range gameInfo.Rounds {
-			if r.RoundNumber > maxRoundNum {
-				maxRoundNum = r.RoundNumber
-				lastRound = r
+	// Optional: expiry on recovery – skip and abort games that have clearly timed out
+	if !gameInfo.CreatedAt.IsZero() {
+		perRoundSeconds := gameInfo.ConfirmationTimeout +
+			gameInfo.CommitmentSubmissionTimeout +
+			gameInfo.CardSubmissionTimeout
+		if perRoundSeconds > 0 && gameInfo.MaxRounds > 0 {
+			expiryDuration := time.Duration(perRoundSeconds*gameInfo.MaxRounds) * time.Second
+			if time.Since(gameInfo.CreatedAt) > expiryDuration {
+				log.Infow("skipping expired game on recovery",
+					"game id", gameInfo.ID,
+					"status", gameInfo.Status,
+					"created_at", gameInfo.CreatedAt,
+					"expiry_duration", expiryDuration.Seconds())
+				if gameInfo.Status == proto.GameStatus_GAME_INIT {
+					if err := g.handleGameAbortInit(); err != nil {
+						log.Errorf("expired game abort init failed, game: %d, err %s", gameInfo.ID, err)
+					}
+				} else {
+					if err := g.handleGameAbortInternalError(); err != nil {
+						log.Errorf("expired game abort internal failed, game: %d, err %s", gameInfo.ID, err)
+					}
+				}
+				return nil
 			}
 		}
-		if lastRound != nil {
-			g.currentRound.round = lastRound
+	}
+
+	// Restore runtime state for current round and turn from DB
+	if g.currentRound.round != nil {
+		var currentTurn *dao.Turn
+		if len(g.currentRound.round.Turns) > 0 {
+			var maxTurnNum uint32
+			for _, t := range g.currentRound.round.Turns {
+				if t != nil && t.TurnNumber > maxTurnNum {
+					maxTurnNum = t.TurnNumber
+					currentTurn = t
+				}
+			}
+			if currentTurn != nil && maxTurnNum > 0 {
+				g.currentRound.turnNumber = maxTurnNum
+			} else {
+				g.currentRound.turnNumber = 1
+			}
 		} else {
-			// If no valid round found, create a new one
-			g.setupNewRound()
+			g.currentRound.turnNumber = 1
 		}
-	} else {
-		// If no rounds exist, create a new one
-		g.setupNewRound()
-	}
-	wg.Add(1)
-	var terminateGame = func() {
-		log.Errorw("game expired, terminate", "game id", gameInfo.ID, "status", gameInfo.Status)
-		if gameInfo.Status == proto.GameStatus_GAME_INIT {
-			err := g.handleGameAbortInit()
-			if err != nil {
-				log.Errorf("expired game abort failed, game: %d, err %s", gameInfo.ID, err)
-			}
-		} else {
-			err := g.handleGameAbortInternalError()
-			if err != nil {
-				log.Errorf("expired game abort failed, game: %d, err %s", gameInfo.ID, err)
+
+		// Use persisted TurnStatus from DB when available; otherwise fall back to a safe default.
+		r := g.currentRound.round
+		switch {
+		case r.IsLastRound || r.CompleteReason != proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL:
+			g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
+		case currentTurn != nil && currentTurn.TurnStatus != 0:
+			g.currentRound.setTurnStatus(proto.TurnStatus(currentTurn.TurnStatus))
+		default:
+			g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION)
+		}
+
+		// Restore each player's currentTurnInfo from the current turn
+		if currentTurn != nil {
+			for _, pti := range currentTurn.PlayerTurnInfos {
+				if pti == nil {
+					continue
+				}
+				key := strings.ToLower(pti.TemporaryAddress)
+				player, ok := g.currentRound.gamePlayers[key]
+				if !ok {
+					// fallback without lowercasing in case data was stored differently
+					player, ok = g.currentRound.gamePlayers[pti.TemporaryAddress]
+				}
+				if !ok || player == nil {
+					log.Errorf("recovery: player %s not found in gamePlayers for game %d", pti.TemporaryAddress, gameInfo.ID)
+					continue
+				}
+				player.currentTurnInfo = pti
+				// Optionally restore HP and multiplier from latest submitted card if available
+				if pti.TurnSubmittedCard != nil && pti.TurnSubmittedCard.HealthAfter > 0 {
+					player.currentHP = int64(pti.TurnSubmittedCard.HealthAfter)
+					if pti.TurnSubmittedCard.MultiplierAfter > 0 {
+						player.multiplier = pti.TurnSubmittedCard.MultiplierAfter
+					}
+				}
 			}
 		}
 	}
-	go terminateGame()
-	return nil
-	// if time.Since(gameInfo.CreatedAt) > time.Duration(gameInfo.GameArgs.RoundTimeout)*time.Second*time.Duration(gameInfo.GameArgs.MaxRounds) {
 
-	// }
+	// For recovered games, potentially re-enqueue on-chain operations that were in-flight
+	switch gameInfo.Status {
+	case proto.GameStatus_GAME_INIT:
+		// Game was matched but contract not yet created; re-push state to contract creation flow
+		if err := g.pushStateToContractCreating(); err != nil {
+			log.Errorf("recovered GAME_INIT pushStateToContractCreating failed, game: %d, err %s", gameInfo.ID, err)
+		}
+	case proto.GameStatus_GAME_RUNNING:
+		if g.currentRound.getTurnStatus() == proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN {
+			// Game was waiting for turn setup on-chain; re-send turn-ready
+			if err := g.sendTurnReady(); err != nil {
+				log.Errorf("recovered GAME_RUNNING sendTurnReady failed, game: %d, err %s", gameInfo.ID, err)
+			}
+		}
+	}
 
-	// for _, playerInfo := range g.gameInfo.Players {
-	// 	g.setGamePlayer(playerInfo.TemporaryAddress, &gamePlayer{
-	// 		player:    playerInfo,
-	// 		currentHP: g.gameInfo.InitialHP,
-	// 	})
-	// }
-	// if len(g.gameInfo.Rounds) != 0 {
-	// 	roundNum := uint32(0)
-	// 	sort.Slice(g.gameInfo.Rounds, func(i, j int) bool {
-	// 		return g.gameInfo.Rounds[i].RoundNumber < g.gameInfo.Rounds[j].RoundNumber
-	// 	})
-	// 	for _, r := range g.gameInfo.Rounds {
-	// 		if r.RoundNumber > roundNum {
-	// 			roundNum = r.RoundNumber
-	// 			g.currentRound.round = r
-	// 		}
-	// 	}
-	// 	// Initialize game state from Turns
-	// 	// Find the latest turn to determine current turn number
-	// 	// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
-	// 	// we can find the latest turn by checking the highest index with a non-nil entry
-	// 	latestTurnNumber := uint32(0)
-	// 	for i := len(g.currentRound.round.Turns) - 1; i >= 0; i-- {
-	// 		if g.currentRound.round.Turns[i] != nil {
-	// 			latestTurnNumber = g.currentRound.round.Turns[i].TurnNumber
-	// 			break
-	// 		}
-	// 	}
-	// 	if latestTurnNumber > 0 {
-	// 		g.currentRound.turnNumber = latestTurnNumber + 1
-	// 		if g.currentRound.turnNumber > 3 {
-	// 			g.currentRound.turnNumber = 1 // Round completed, will setup new round
-	// 		}
-	// 	} else {
-	// 		g.currentRound.turnNumber = 1
-	// 	}
+	// Schedule timeout based on recovered (and possibly re-enqueued) state
+	g.sendTimerEventByCurrentRound()
 
-	// 	// Reconstruct playerTurnInfos from Turns for runtime use
-	// 	// Group PlayerTurnInfos by player, maintaining sorted order by turn number
-	// 	// Since Turns are stored by index (turn 1 at index 0, turn 2 at index 1, turn 3 at index 2),
-	// 	// we use turn.TurnNumber - 1 as the index to maintain sorted order in playerTurnInfos
-	// 	playerTurnInfoMap := make(map[string][]*dao.PlayerTurnInfo)
-	// 	for _, turn := range g.currentRound.round.Turns {
-	// 		if turn == nil {
-	// 			continue
-	// 		}
-	// 		idx := int(turn.TurnNumber) - 1
-	// 		for _, playerTurnInfo := range turn.PlayerTurnInfos {
-	// 			key := playerTurnInfo.TemporaryAddress
-	// 			// Initialize slice if needed
-	// 			if playerTurnInfoMap[key] == nil {
-	// 				playerTurnInfoMap[key] = make([]*dao.PlayerTurnInfo, 0, 3)
-	// 			}
-	// 			// Ensure slice is large enough and store at correct index to maintain sorted order
-	// 			for len(playerTurnInfoMap[key]) <= idx {
-	// 				playerTurnInfoMap[key] = append(playerTurnInfoMap[key], nil)
-	// 			}
-	// 			playerTurnInfoMap[key][idx] = playerTurnInfo
-	// 		}
-	// 	}
-
-	// 	// Assign reconstructed playerTurnInfos to gamePlayers
-	// 	for key, turnInfos := range playerTurnInfoMap {
-	// 		player, err := g.getGamePlayer(key)
-	// 		if err != nil {
-	// 			// should never happen
-	// 			log.Fatalf("getGamePlayer failed, err: %v", err)
-	// 		}
-	// 		player.playerTurnInfos = turnInfos
-	// 		// Calculate current HP and lost HP from submitted cards
-	// 		submittedCards := player.getSubmittedCards()
-	// 		if len(submittedCards) != 0 {
-	// 			player.currentHP = currentHpFromCards(submittedCards)
-	// 		}
-	// 		player.totalLostHP = int64(player.getLostHP())
-	// 	}
-
-	// 	// Check if round is completed (CompleteReason is set or IsLastRound is true)
-	// 	if g.currentRound.round.IsLastRound || g.currentRound.round.CompleteReason != proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL {
-	// 		g.currentRound.turnStatus = proto.TurnStatus_TURN_ROUND_COMPLETED
-	// 		g.setupNewRound()
-	// 	} else {
-	// 		// Determine status from turns
-	// 		if len(g.currentRound.round.Turns) == 0 {
-	// 			g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
-	// 		} else {
-	// 			// Default to waiting commitments if turns exist
-	// 			g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_COMMITMENTS
-	// 		}
-	// 		g.sendTimerEventByCurrentRound()
-	// 	}
-	// } else {
-	// 	g.setupNewRound()
-	// }
-
-	// return g
+	return g
 }
 
 func (g *Game) saveGame() error {
@@ -243,6 +212,12 @@ func (g *Game) saveGame() error {
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
+	// Persist the runtime turnStatus onto the current Turn record before saving.
+	if g.currentRound != nil && g.currentRound.round == round {
+		if currentTurn := g.currentRound.getCurrentTurn(); currentTurn != nil {
+			currentTurn.TurnStatus = uint32(g.currentRound.getTurnStatus())
+		}
+	}
 	err := db.SaveRound(round)
 	if err != nil {
 		log.Errorw("saveRound failed", "err", err, "game id", g.gameInfo.ID, "round num", round.RoundNumber)
@@ -265,7 +240,7 @@ func (g *Game) pushStateToContractCreating() error {
 		g.handleGameAbortInternalError()
 		return err
 	}
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
 	return nil
 }
 
@@ -279,7 +254,7 @@ func (g *Game) setupNewTurn() error {
 	if err != nil {
 		return err
 	}
-	g.currentRound.turnStatus = proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
 	return nil
 }
 
@@ -291,7 +266,6 @@ func (g *Game) incrementTurnNumber() {
 func (g *Game) stopGame() {
 	log.Infow("stop game", "game id", g.gameInfo.ID)
 	g.workerMangerService.CloseWorker(g.workerID())
-	g.wg.Done()
 }
 
 func (g *Game) createSelf() {
@@ -370,5 +344,5 @@ func (g *Game) completeGameAndNotify(evt *types.GameCompletedEvent) error {
 		}
 	}
 	g.txPoolEnqueuer.ClearGameInfo(evt.GameID)
-	return g.gameContextHandler.HandleGameCompletedEvent(evt)
+	return nil
 }

@@ -204,8 +204,7 @@ func (p *txPool) AddSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 }
 
 // processPools periodically processes events in the pools and sends them to chain manager
-func (p *txPool) processPools(ctx context.Context, wg *sync.WaitGroup, args dao.GameArgs) {
-	defer wg.Done()
+func (p *txPool) processPools(ctx context.Context, args dao.GameArgs) {
 	ticker := time.NewTicker(time.Duration(args.PoolProcessingInterval) * time.Second)
 	defer ticker.Stop()
 

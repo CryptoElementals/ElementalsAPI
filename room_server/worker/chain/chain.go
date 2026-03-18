@@ -3,7 +3,6 @@ package chain
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -169,7 +168,8 @@ func (c *Chain) gameCreated(batchTx *types.EventBatch, blockTime int64, gameID u
 		TimeStamp: blockTime,
 	}, true)
 	batchTx.Add(contractCreatedEvt)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
+	// Route on-chain game lifecycle events through the game manager worker
+	c.workerManager.SendEvent(types.GAME_MANAGER_ID, contractCreatedEvt)
 	// Transaction tables removed - no longer saving to database
 	return nil
 }
@@ -182,7 +182,7 @@ func (c *Chain) gameTurnSetupReady(batchTx *types.EventBatch, blockTime int64, g
 		TimeStamp:   blockTime,
 	}, true)
 	batchTx.Add(turnSetupReadyEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), turnSetupReadyEvent)
+	c.workerManager.SendEvent(types.GAME_MANAGER_ID, turnSetupReadyEvent)
 	return nil
 }
 
@@ -205,7 +205,7 @@ func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, blockTime int64, ga
 		TimeStamp:       blockTime,
 	}, true)
 	batchTx.Add(commitmentOnChainEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
+	c.workerManager.SendEvent(types.GAME_MANAGER_ID, commitmentOnChainEvent)
 	// Transaction tables removed - no longer saving to database
 	return nil
 }
@@ -231,7 +231,7 @@ func (c *Chain) cardOnChain(batchTx *types.EventBatch, blockTime int64, gameID u
 		TimeStamp:   blockTime,
 	}, true)
 	batchTx.Add(cardOnChainEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), cardOnChainEvent)
+	c.workerManager.SendEvent(types.GAME_MANAGER_ID, cardOnChainEvent)
 	// Transaction tables removed - no longer saving to database
 	return nil
 }

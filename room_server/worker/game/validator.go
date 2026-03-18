@@ -91,8 +91,8 @@ func (g *Game) validatePlayerCommitment(evt *types.SubmitPlayerCommitment) error
 	}
 
 	// check if the turn is waiting for commitments
-	if g.currentRound.turnStatus != proto.TurnStatus_TURN_WAITTING_COMMITMENTS {
-		log.Errorw("turn is not waiting for commitments", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.turnStatus)
+	if g.currentRound.getTurnStatus() != proto.TurnStatus_TURN_WAITTING_COMMITMENTS {
+		log.Errorw("turn is not waiting for commitments", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.getTurnStatus())
 		return fmt.Errorf("turn is not waiting for commitments")
 	}
 
@@ -110,8 +110,8 @@ func (g *Game) validatePlayerCard(evt *types.SubmitPlayerCard) error {
 	}
 
 	// check if the turn is waiting for card
-	if g.currentRound.turnStatus != proto.TurnStatus_TURN_WAITTING_CARDS {
-		log.Errorw("turn is not waiting for cards", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.turnStatus)
+	if g.currentRound.getTurnStatus() != proto.TurnStatus_TURN_WAITTING_CARDS {
+		log.Errorw("turn is not waiting for cards", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.getTurnStatus())
 		return fmt.Errorf("turn is not waiting for cards")
 	}
 

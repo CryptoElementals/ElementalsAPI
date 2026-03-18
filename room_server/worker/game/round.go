@@ -70,7 +70,6 @@ type round struct {
 	round       *dao.Round
 	gamePlayers map[string]*gamePlayer // Also used for battle state during battle execution
 	turnNumber  uint32                 // Current turn number within this round (1-3), runtime state only
-	turnStatus  proto.TurnStatus       // Runtime turn status (not persisted in Round model)
 }
 
 // getCurrentTurnNumber returns the current turn number (1-3) for this round
@@ -85,24 +84,53 @@ func (r *round) getCurrentTurn() *dao.Turn {
 	return r.round.Turns[idx]
 }
 
+// getTurnStatus returns the current turn's status from the underlying Turn record.
+func (r *round) getTurnStatus() proto.TurnStatus {
+	if r == nil || r.round == nil {
+		return 0
+	}
+	currentTurn := r.getCurrentTurn()
+	if currentTurn == nil {
+		return 0
+	}
+	return proto.TurnStatus(currentTurn.TurnStatus)
+}
+
+// setTurnStatus updates the current turn's status on the underlying Turn record.
+func (r *round) setTurnStatus(status proto.TurnStatus) {
+	if r == nil || r.round == nil {
+		return
+	}
+	currentTurn := r.getCurrentTurn()
+	if currentTurn == nil {
+		return
+	}
+	currentTurn.TurnStatus = uint32(status)
+}
+
 // createNewTurn creates a new Turn record for the current turn number
 // Uses index-based access: turnNumber 1 -> index 0, turnNumber 2 -> index 1, turnNumber 3 -> index 2
 // Also initializes playerTurnInfos for all players to ensure the slice is large enough for the new turn
 func (r *round) createNewTurn() *dao.Turn {
 	turnNumber := r.getCurrentTurnNumber()
-	r.turnStatus = proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION
 	// Create new turn
 	newTurn := &dao.Turn{
-		TurnNumber:      turnNumber,
+		TurnNumber: turnNumber,
+		// Default runtime status for a freshly created turn.
+		TurnStatus:      uint32(proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION),
 		PlayerTurnInfos: make([]*dao.PlayerTurnInfo, 0),
 	}
 
 	for _, player := range r.gamePlayers {
 		newTurnInfo := &dao.PlayerTurnInfo{
-			PlayerID:          player.player.PlayerId,
-			TemporaryAddress:  player.player.TemporaryAddress,
-			PlayerStatus:      proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
-			TurnSubmittedCard: &dao.TurnSubmittedCard{},
+			PlayerID:         player.player.PlayerId,
+			TemporaryAddress: player.player.TemporaryAddress,
+			PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
+			TurnSubmittedCard: &dao.TurnSubmittedCard{
+				// Snapshot the player's current runtime stats at the start of this turn.
+				HealthBefore:     uint32(player.currentHP),
+				MultiplierBefore: player.multiplier,
+			},
 		}
 		player.currentTurnInfo = newTurnInfo
 		newTurn.PlayerTurnInfos = append(newTurn.PlayerTurnInfos, newTurnInfo)

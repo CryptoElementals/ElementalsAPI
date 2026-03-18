@@ -124,7 +124,8 @@ func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundN
 		TurnNumber:    turnNum,
 		PlayerAddress: address,
 	}, true)
-	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
+	// Route via game manager worker; it will rebuild runtime state and handle the event.
+	s.workerManager.SendEvent(types.GAME_MANAGER_ID, evt)
 	_, err := evt.Await()
 	return err
 }
@@ -145,7 +146,7 @@ func (s *Service) Surrender(address types.PlayerAddress, gameID uint) error {
 		GameID:  gameID,
 		Address: address,
 	}, true)
-	s.workerManager.SendEvent(fmt.Sprint(gameID), evt)
+	s.workerManager.SendEvent(types.GAME_MANAGER_ID, evt)
 	_, err := evt.Await()
 	return err
 }
