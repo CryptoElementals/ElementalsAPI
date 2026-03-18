@@ -40,6 +40,12 @@ type Service struct {
 	gameManager *GameManager
 }
 
+// SubmitTransactions implements rpc/server.ChainRequestHandler by delegating
+// transaction batch handling to the stateless GameManager.
+func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
+	return s.gameManager.SubmitTransactions(txs)
+}
+
 func NewService(
 	ctx context.Context,
 	workerManager *worker.WorkerManager,

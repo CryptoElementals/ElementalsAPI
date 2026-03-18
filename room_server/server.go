@@ -88,7 +88,7 @@ func New(ctx context.Context,
 	s.pubsub.SetPlayerManager(playerSvc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	rpcServer := rpc.NewRpc(
-		chainSvc,
+		gameSvc,
 		playerSvc,
 	)
 	s.rpcServer = rpcServer

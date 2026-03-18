@@ -42,6 +42,14 @@ func gameIDFromEventData(data any) (uint, bool) {
 	switch evt := data.(type) {
 	case *timerEvent:
 		return evt.GameID, true
+	case *types.ChainGameCreatedTx:
+		return evt.GameID, true
+	case *types.ChainGameTurnSetupReadyTx:
+		return evt.GameID, true
+	case *types.ChainCommitmentOnChainTx:
+		return evt.GameID, true
+	case *types.ChainCardOnChainTx:
+		return evt.GameID, true
 	case *types.RoomCreated:
 		return evt.GameID, true
 	case *types.NewTurnSetupComplete:
@@ -213,6 +221,78 @@ func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
 		GamePhase: gamePhase,
 	})
 	r.workerManager.SendEvent(address.String(), syncEvt)
+	return nil
+}
+
+func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
+	if txs == nil {
+		return nil
+	}
+	log.Info("receive tx batch, block number: ", txs.BlockNumber)
+	blockTime := int64(txs.Timestamp)
+	for _, protoTx := range txs.Transactions {
+		gameID := uint(protoTx.GameId)
+		switch tx := protoTx.Tx.(type) {
+		case *proto.Transaction_GameCreated:
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
+				GameID:    gameID,
+				TimeStamp: blockTime,
+			}, false)
+			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+				return err
+			}
+		case *proto.Transaction_GameTurnSetupReady:
+			if tx == nil || tx.GameTurnSetupReady == nil {
+				continue
+			}
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewTurnSetupComplete{
+				GameID:      gameID,
+				RoundNumber: tx.GameTurnSetupReady.RoundNumber,
+				TurnNumber:  tx.GameTurnSetupReady.TurnNumber,
+				TimeStamp:   blockTime,
+			}, false)
+			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+				return err
+			}
+		case *proto.Transaction_CommitmentOnChain:
+			if tx == nil || tx.CommitmentOnChain == nil {
+				continue
+			}
+			player := types.PlayerAddress{}
+			player.FromProto(tx.CommitmentOnChain.Address)
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
+				GameID:          gameID,
+				Address:         player,
+				RoundNumber:     tx.CommitmentOnChain.RoundNumber,
+				Commitment:      tx.CommitmentOnChain.Commitment,
+				CommitmentIndex: tx.CommitmentOnChain.TurnNumber, // 1-based (1,2,3)
+				TimeStamp:       blockTime,
+			}, false)
+			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+				return err
+			}
+		case *proto.Transaction_CardOnChain:
+			if tx == nil || tx.CardOnChain == nil {
+				continue
+			}
+			player := types.PlayerAddress{}
+			player.FromProto(tx.CardOnChain.Address)
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+				GameID:      gameID,
+				Address:     player,
+				RoundNumber: tx.CardOnChain.RoundNumber,
+				Salt:        tx.CardOnChain.Salt,
+				Card:        uint(tx.CardOnChain.CardId),
+				CardIndex:   tx.CardOnChain.TurnNumber, // 1-based (1,2,3)
+				TimeStamp:   blockTime,
+			}, false)
+			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+				return err
+			}
+		}
+	}
+
+	log.Info("SubmitTransactions done")
 	return nil
 }
 

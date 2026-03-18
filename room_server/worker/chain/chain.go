@@ -119,20 +119,40 @@ func (c *Chain) handleChainEvents(evt *batchTxEvent) {
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
 			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
-			c.gameCreated(batchTx, blockTime, uint(gid), hash, blockHash, blockNumber, tx)
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainGameCreatedTx{
+				GameID:    gid,
+				BlockTime: blockTime,
+				Tx:        tx,
+			}, true)
+			batchTx.Add(ev)
+			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
 		case *proto.Transaction_GameTurnSetupReady:
 			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
-			c.gameTurnSetupReady(batchTx, blockTime, uint(gid), hash, blockHash, blockNumber, tx)
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainGameTurnSetupReadyTx{
+				GameID:    gid,
+				BlockTime: blockTime,
+				Tx:        tx,
+			}, true)
+			batchTx.Add(ev)
+			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
 		case *proto.Transaction_CommitmentOnChain:
-			address := types.PlayerAddress{}
-			address.FromProto(tx.CommitmentOnChain.Address)
 			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
-			c.commitmentOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainCommitmentOnChainTx{
+				GameID:    gid,
+				BlockTime: blockTime,
+				Tx:        tx,
+			}, true)
+			batchTx.Add(ev)
+			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
 		case *proto.Transaction_CardOnChain:
-			address := types.PlayerAddress{}
-			address.FromProto(tx.CardOnChain.Address)
 			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
-			c.cardOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
+			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainCardOnChainTx{
+				GameID:    gid,
+				BlockTime: blockTime,
+				Tx:        tx,
+			}, true)
+			batchTx.Add(ev)
+			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
 		}
 	}
 	batchTx.Wait()
@@ -159,79 +179,4 @@ func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string
 		"event", eventName,
 		"duration_ms", elapsed.Milliseconds(),
 	)
-}
-
-func (c *Chain) gameCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameCreated) error {
-	// For RoomV2, there's only one contract address, so RoomContractAddress is not needed
-	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
-		GameID:    gameID,
-		TimeStamp: blockTime,
-	}, true)
-	batchTx.Add(contractCreatedEvt)
-	// Route on-chain game lifecycle events through the game manager worker
-	c.workerManager.SendEvent(types.GAME_MANAGER_ID, contractCreatedEvt)
-	// Transaction tables removed - no longer saving to database
-	return nil
-}
-
-func (c *Chain) gameTurnSetupReady(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameTurnSetupReady) error {
-	turnSetupReadyEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewTurnSetupComplete{
-		GameID:      gameID,
-		RoundNumber: tx.GameTurnSetupReady.RoundNumber,
-		TurnNumber:  tx.GameTurnSetupReady.TurnNumber,
-		TimeStamp:   blockTime,
-	}, true)
-	batchTx.Add(turnSetupReadyEvent)
-	c.workerManager.SendEvent(types.GAME_MANAGER_ID, turnSetupReadyEvent)
-	return nil
-}
-
-func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentOnChain) error {
-	player := types.PlayerAddress{}
-	player.FromProto(tx.CommitmentOnChain.Address)
-	roundNumber := tx.CommitmentOnChain.RoundNumber
-	turnNumber := tx.CommitmentOnChain.TurnNumber
-	commitment := tx.CommitmentOnChain.Commitment
-
-	// Use turn_number as commitment index (turn_number is 1-based: 1, 2, 3)
-	commitmentIndex := turnNumber
-
-	commitmentOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
-		GameID:          gameID,
-		Address:         player,
-		RoundNumber:     roundNumber,
-		Commitment:      commitment,
-		CommitmentIndex: commitmentIndex, // 1-based (1, 2, 3)
-		TimeStamp:       blockTime,
-	}, true)
-	batchTx.Add(commitmentOnChainEvent)
-	c.workerManager.SendEvent(types.GAME_MANAGER_ID, commitmentOnChainEvent)
-	// Transaction tables removed - no longer saving to database
-	return nil
-}
-
-func (c *Chain) cardOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardOnChain) error {
-	player := types.PlayerAddress{}
-	player.FromProto(tx.CardOnChain.Address)
-	roundNumber := tx.CardOnChain.RoundNumber
-	turnNumber := tx.CardOnChain.TurnNumber
-	salt := tx.CardOnChain.Salt
-	cardID := uint(tx.CardOnChain.CardId)
-
-	// Use turn_number as card index (turn_number is 1-based: 1, 2, 3)
-	cardIndex := turnNumber
-
-	cardOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-		GameID:      gameID,
-		Address:     player,
-		RoundNumber: roundNumber,
-		Salt:        salt,
-		Card:        cardID,
-		CardIndex:   cardIndex, // 1-based (1, 2, 3) - matches CommitmentIndex
-		TimeStamp:   blockTime,
-	}, true)
-	batchTx.Add(cardOnChainEvent)
-	c.workerManager.SendEvent(types.GAME_MANAGER_ID, cardOnChainEvent)
-	// Transaction tables removed - no longer saving to database
-	return nil
 }
