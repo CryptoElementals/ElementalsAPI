@@ -21,14 +21,6 @@ func (g *Game) Handle(ctx context.Context, event *types.Event) error {
 	case *timerEvent:
 		g.handleTimerEvent(evt)
 		return nil
-	case *types.ChainGameCreatedTx:
-		return g.handleGameCreatedOnChain(evt.BlockTime, evt.GameID, evt.Tx)
-	case *types.ChainGameTurnSetupReadyTx:
-		return g.handleTurnSetupReadyOnChain(evt.BlockTime, evt.GameID, evt.Tx)
-	case *types.ChainCommitmentOnChainTx:
-		return g.handleCommitmentOnChain(evt.BlockTime, evt.GameID, evt.Tx)
-	case *types.ChainCardOnChainTx:
-		return g.handleCardOnChain(evt.BlockTime, evt.GameID, evt.Tx)
 	case *types.GetGameInfoRequest:
 		return g.handleGetGameInfoRequest(event)
 	case *types.GetBattleInfoRequest:
@@ -181,12 +173,16 @@ func (g *Game) handleCommitmentOnChain(blockTime int64, gameID uint, tx *proto.T
 			TurnNumber:            turnNumber,
 			CardSubmissionTimeout: g.gameInfo.CardSubmissionTimeout,
 		})
-		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
 		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
-	}
-
-	if err := g.saveRound(g.currentRound.round); err != nil {
-		return err
+		if err := g.saveRound(g.currentRound.round); err != nil {
+			return err
+		}
+		log.Debugw("turn status updated to TurnStatus_TURN_WAITTING_CARDS")
+		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
+	} else {
+		if err := g.saveRound(g.currentRound.round); err != nil {
+			return err
+		}
 	}
 	g.sendTimerEventByCurrentRound()
 	return nil
@@ -419,15 +415,18 @@ func (g *Game) handleGameStateWaittingCommitments(event *types.Event) error {
 			TurnNumber:            turnNumber,
 			CardSubmissionTimeout: g.gameInfo.CardSubmissionTimeout,
 		})
-		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
-
 		// Change status to allow card submission for this turn
 		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
-
-	}
-	err = g.saveRound(g.currentRound.round)
-	if err != nil {
-		return err
+		err = g.saveRound(g.currentRound.round)
+		if err != nil {
+			return err
+		}
+		g.sendEventsToAllPlayers(commitmentsOnChainEvt)
+	} else {
+		err = g.saveRound(g.currentRound.round)
+		if err != nil {
+			return err
+		}
 	}
 	g.sendTimerEventByCurrentRound()
 	return nil
@@ -492,7 +491,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 		return err
 	}
 
-	cardIdx, cardEntry, cardID, err := g.validateCardSubmission(evt)
+	_, cardEntry, cardID, err := g.validateCardSubmission(evt)
 	if err != nil {
 		return err
 	}
@@ -513,10 +512,7 @@ func (g *Game) handleGameStateCardSubmitted(event *types.Event) error {
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
 
 	// If all players have submitted this card index, handle turn end
-	if func() bool {
-		var _ uint32 = cardIdx
-		return g.haveAllPlayersSubmittedCard()
-	}() {
+	if g.haveAllPlayersSubmittedCard() {
 		return g.handleTurnEnd()
 	}
 	return g.saveRound(g.currentRound.round)
@@ -599,10 +595,9 @@ func (g *Game) handleTurnEnd() error {
 	isGameComplete := isGameOver
 
 	// Mark this turn as completed (persisted on the Turn record).
-	// If the round/game also completes, completeRoundAndCheckGameEnd may transition it further.
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_COMPLETED)
 
-	// Send event to both players with TurnCompletedEvent (includes round/game completion info)
+	// Build event payload now, but send only after successful save.
 	confirmationTimeout := g.gameInfo.ConfirmationTimeout
 	gameContinueTimeout := g.gameInfo.GameContinueTimeout
 	turnCompletedEvt := &types.TurnCompletedEvent{
@@ -618,11 +613,38 @@ func (g *Game) handleTurnEnd() error {
 	if isGameComplete {
 		turnCompletedEvt.GameContinueTimeout = &gameContinueTimeout
 	}
-	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
 
-	// If round or game is complete, handle it
+	// If round is complete, mark round completion and persist first.
 	if isRoundComplete {
-		return g.completeRoundAndCheckGameEnd(proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL, isGameComplete)
+		g.currentRound.round.CompleteReason = proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL
+		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
+
+		if isGameComplete {
+			g.currentRound.round.IsLastRound = true
+			g.gameInfo.Status = proto.GameStatus_GAME_END
+			if err := g.saveGame(); err != nil {
+				return err
+			}
+			// Send turn-completed only after game/round state is saved.
+			g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
+			completeEvt := &types.GameCompletedEvent{
+				GameID:   g.gameInfo.ID,
+				GameInfo: g.gameInfo,
+			}
+			if err := g.completeGameAndNotify(completeEvt); err != nil {
+				log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+			}
+			g.stopGame()
+			return nil
+		}
+
+		// Game continues: create new round and persist, then notify.
+		g.setupNewRound()
+		if err := g.saveGame(); err != nil {
+			return err
+		}
+		g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
+		return nil
 	}
 
 	// Otherwise, prepare for the next turn
@@ -632,42 +654,8 @@ func (g *Game) handleTurnEnd() error {
 	if err = g.saveRound(g.currentRound.round); err != nil {
 		return err
 	}
+	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
 	g.sendTimerEventByCurrentRound()
-	return nil
-}
-
-// completeRoundAndCheckGameEnd handles round completion and checks if game should end
-// This function consolidates the logic from handleRoundEnd and handleGameEnd
-func (g *Game) completeRoundAndCheckGameEnd(reason proto.RoundCompleteReason, isGameComplete bool) error {
-	// Mark round as completed
-	g.currentRound.round.CompleteReason = reason
-	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
-
-	// If game is complete, handle game end
-	if isGameComplete {
-		g.currentRound.round.IsLastRound = true
-		g.gameInfo.Status = proto.GameStatus_GAME_END
-		err := g.saveGame()
-		if err != nil {
-			return err
-		}
-		completeEvt := &types.GameCompletedEvent{
-			GameID:   g.gameInfo.ID,
-			GameInfo: g.gameInfo,
-		}
-		if err := g.completeGameAndNotify(completeEvt); err != nil {
-			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-		}
-		g.stopGame()
-		return nil
-	}
-
-	// Game continues, setup new round
-	g.setupNewRound()
-	err := g.saveGame()
-	if err != nil {
-		return err
-	}
 	return nil
 }
 

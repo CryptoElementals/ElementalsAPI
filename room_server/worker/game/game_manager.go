@@ -31,61 +31,55 @@ type GameManager struct {
 // Handle implements worker.EventHandler so GameManager can run as a worker.
 // It receives chain-related game events and processes them by rebuilding runtime game state.
 func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
-	gameID, ok := gameIDFromEventData(event.Data)
-	if !ok {
+	// Single type switch: extract gameID and dispatch to concrete Game handler.
+	var (
+		gameID   uint
+		dispatch func(g *Game) error
+	)
+
+	switch evt := event.Data.(type) {
+	case *timerEvent:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { g.handleTimerEvent(evt); return nil }
+	case *types.RoomCreated:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleGameStateWaittingSetupOnChain(event) }
+	case *types.NewTurnSetupComplete:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleGameStateWaittingSetupOnChain(event) }
+	case *types.PlayerCommitmentOnChain:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleGameStateWaittingCommitments(event) }
+	case *types.PlayerCardOnChain:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleGameStateCardSubmitted(event) }
+	case *types.PlayerReadyEvent:
+		gameID = evt.GameId
+		dispatch = func(g *Game) error { return g.handleTurn(event) }
+	case *types.SurrenderEvent:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleTurn(event) }
+	case *types.SubmitPlayerCommitment:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleSubmitPlayerCommitment(evt) }
+	case *types.SubmitPlayerCard:
+		gameID = evt.GameID
+		dispatch = func(g *Game) error { return g.handleSubmitPlayerCard(evt) }
+	default:
 		return nil
 	}
-	return r.handleGameEvent(ctx, gameID, event)
-}
 
-func gameIDFromEventData(data any) (uint, bool) {
-	switch evt := data.(type) {
-	case *timerEvent:
-		return evt.GameID, true
-	case *types.ChainGameCreatedTx:
-		return evt.GameID, true
-	case *types.ChainGameTurnSetupReadyTx:
-		return evt.GameID, true
-	case *types.ChainCommitmentOnChainTx:
-		return evt.GameID, true
-	case *types.ChainCardOnChainTx:
-		return evt.GameID, true
-	case *types.RoomCreated:
-		return evt.GameID, true
-	case *types.NewTurnSetupComplete:
-		return evt.GameID, true
-	case *types.PlayerCommitmentOnChain:
-		return evt.GameID, true
-	case *types.PlayerCardOnChain:
-		return evt.GameID, true
-	case *types.PlayerReadyEvent:
-		return evt.GameId, true
-	case *types.SurrenderEvent:
-		return evt.GameID, true
-	case *types.SubmitPlayerCommitment:
-		return evt.GameID, true
-	case *types.SubmitPlayerCard:
-		return evt.GameID, true
-	default:
-		return 0, false
-	}
-}
-
-// handleGameEvent loads latest game state from DB and delegates to an ephemeral Game instance.
-func (r *GameManager) handleGameEvent(ctx context.Context, gameID uint, event *types.Event) error {
 	if gameID == 0 {
-		return fmt.Errorf("handleGameEvent: missing game id")
+		return fmt.Errorf("Handle: missing game id")
 	}
 
 	gameInfo, err := db.LoadGameByGameID(gameID)
 	if err != nil {
-		log.Errorw("handleGameEvent: failed to load game from db", "game id", gameID, "err", err)
+		log.Errorw("Handle: failed to load game from db", "game id", gameID, "err", err)
 		return err
 	}
-
-	// Build ephemeral runtime Game and let it handle the event synchronously.
 	g := NewEphemeralGameForEvent(ctx, r.workerManager, r.txPool, r.gameResultSettler, gameInfo)
-	return g.Handle(ctx, event)
+	return dispatch(g)
 }
 
 func NewGameManager(ctx context.Context,
@@ -111,6 +105,22 @@ func NewGameManager(ctx context.Context,
 func (r *GameManager) Start() error {
 	// Start background goroutine for pool processing
 	go r.txPool.processPools(r.ctx, r.args)
+
+	// On startup, abort any games that were left active (non-ended/non-aborted).
+	// This matches the "stateless" model: we do not attempt to recover/resume games after restart.
+	games, err := db.GetAllActiveGames()
+	if err != nil {
+		return err
+	}
+	for _, gameInfo := range games {
+		if gameInfo == nil {
+			continue
+		}
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.txPool, r.gameResultSettler, gameInfo)
+		if err := g.handleGameAbortInternalError(); err != nil {
+			log.Errorw("startup abort active game failed", "game id", gameInfo.ID, "err", err)
+		}
+	}
 	return nil
 }
 
@@ -229,6 +239,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 		return nil
 	}
 	log.Info("receive tx batch, block number: ", txs.BlockNumber)
+	defer r.chainSvc.NotifyTxsCompleted(txs)
 	blockTime := int64(txs.Timestamp)
 	for _, protoTx := range txs.Transactions {
 		gameID := uint(protoTx.GameId)
@@ -238,7 +249,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				GameID:    gameID,
 				TimeStamp: blockTime,
 			}, false)
-			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+			if err := r.Handle(r.ctx, ev); err != nil {
 				return err
 			}
 		case *proto.Transaction_GameTurnSetupReady:
@@ -251,7 +262,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				TurnNumber:  tx.GameTurnSetupReady.TurnNumber,
 				TimeStamp:   blockTime,
 			}, false)
-			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+			if err := r.Handle(r.ctx, ev); err != nil {
 				return err
 			}
 		case *proto.Transaction_CommitmentOnChain:
@@ -268,7 +279,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				CommitmentIndex: tx.CommitmentOnChain.TurnNumber, // 1-based (1,2,3)
 				TimeStamp:       blockTime,
 			}, false)
-			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+			if err := r.Handle(r.ctx, ev); err != nil {
 				return err
 			}
 		case *proto.Transaction_CardOnChain:
@@ -286,7 +297,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				CardIndex:   tx.CardOnChain.TurnNumber, // 1-based (1,2,3)
 				TimeStamp:   blockTime,
 			}, false)
-			if err := r.handleGameEvent(r.ctx, gameID, ev); err != nil {
+			if err := r.Handle(r.ctx, ev); err != nil {
 				return err
 			}
 		}

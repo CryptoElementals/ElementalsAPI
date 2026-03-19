@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -104,60 +104,6 @@ func (c *Chain) Start() error {
 	return nil
 }
 
-func (c *Chain) batchSendTxs(evt *batchTxEvent) {
-	c.handleChainEvents(evt)
-}
-
-func (c *Chain) handleChainEvents(evt *batchTxEvent) {
-	batchTx := &types.EventBatch{}
-	blockHash := strings.ToLower(hexutil.Encode(evt.blockHash))
-	blockNumber := evt.blockNum
-	blockTime := int64(evt.txs.Timestamp)
-	for _, protoTx := range evt.txs.Transactions {
-		hash := strings.ToLower(hexutil.Encode(protoTx.TxHash))
-		gid := uint(protoTx.GameId)
-		switch tx := protoTx.Tx.(type) {
-		case *proto.Transaction_GameCreated:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainGameCreatedTx{
-				GameID:    gid,
-				BlockTime: blockTime,
-				Tx:        tx,
-			}, true)
-			batchTx.Add(ev)
-			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
-		case *proto.Transaction_GameTurnSetupReady:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainGameTurnSetupReadyTx{
-				GameID:    gid,
-				BlockTime: blockTime,
-				Tx:        tx,
-			}, true)
-			batchTx.Add(ev)
-			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
-		case *proto.Transaction_CommitmentOnChain:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainCommitmentOnChainTx{
-				GameID:    gid,
-				BlockTime: blockTime,
-				Tx:        tx,
-			}, true)
-			batchTx.Add(ev)
-			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
-		case *proto.Transaction_CardOnChain:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.ChainCardOnChainTx{
-				GameID:    gid,
-				BlockTime: blockTime,
-				Tx:        tx,
-			}, true)
-			batchTx.Add(ev)
-			c.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
-		}
-	}
-	batchTx.Wait()
-}
-
 func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string, blockNumber uint64, eventName string) {
 	// If we have a recorded submission time for this tx, log the end-to-end latency
 	c.txTimesLock.Lock()
@@ -179,4 +125,28 @@ func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string
 		"event", eventName,
 		"duration_ms", elapsed.Milliseconds(),
 	)
+}
+
+// NotifyTxsCompleted logs completion latency for tx hashes that were previously tracked by SubmitTasks.
+// This is used when tx handling ingress is outside chain service (e.g. game manager).
+func (c *Chain) NotifyTxsCompleted(txs *proto.TransactionBatch) {
+	if txs == nil {
+		return
+	}
+	blockHash := strings.ToLower("0x" + hex.EncodeToString(txs.BlockHash))
+	blockNumber := txs.BlockNumber
+	for _, protoTx := range txs.Transactions {
+		hash := strings.ToLower("0x" + hex.EncodeToString(protoTx.TxHash))
+		gid := uint(protoTx.GameId)
+		switch protoTx.Tx.(type) {
+		case *proto.Transaction_GameCreated:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
+		case *proto.Transaction_GameTurnSetupReady:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
+		case *proto.Transaction_CommitmentOnChain:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
+		case *proto.Transaction_CardOnChain:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
+		}
+	}
 }

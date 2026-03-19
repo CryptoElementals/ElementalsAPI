@@ -212,12 +212,6 @@ func (g *Game) saveGame() error {
 }
 
 func (g *Game) saveRound(round *dao.Round) error {
-	// Persist the runtime turnStatus onto the current Turn record before saving.
-	if g.currentRound != nil && g.currentRound.round == round {
-		if currentTurn := g.currentRound.getCurrentTurn(); currentTurn != nil {
-			currentTurn.TurnStatus = uint32(g.currentRound.getTurnStatus())
-		}
-	}
 	err := db.SaveRound(round)
 	if err != nil {
 		log.Errorw("saveRound failed", "err", err, "game id", g.gameInfo.ID, "round num", round.RoundNumber)

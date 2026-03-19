@@ -20,8 +20,6 @@ import (
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Service struct {
@@ -31,7 +29,7 @@ type Service struct {
 	server    *grpc.Server
 	pubsub    *rpc.PubSub
 	rpcServer *rpc.Rpc
-	chainSvc  *chain.Service
+	chainSvc  *chain.Chain
 	gameSvc   *game.Service
 	playerSvc *player.Service
 	queueSvc  *queue.Service
@@ -72,7 +70,7 @@ func New(ctx context.Context,
 		}
 	}
 
-	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV3ContractAddress, wallets)
+	chainSvc, err := chain.NewChain(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV3ContractAddress, wallets)
 	if err != nil {
 		return nil, err
 	}
@@ -165,15 +163,11 @@ func UnaryServerInterceptor(ctx context.Context, req interface{}, info *grpc.Una
 	resp, err := handler(ctx, req)
 
 	duration := time.Since(start)
-	statusCode := codes.OK
 	if err != nil {
-		if s, ok := status.FromError(err); ok {
-			statusCode = s.Code()
-		} else {
-			statusCode = codes.Unknown
-		}
+		log.Errorw("rpc called", "method", info.FullMethod, "req", types.ToJsonLoggable(req), "err", err, "duration", duration.Seconds())
+	} else {
+		log.Debugw("rpc called", "method", info.FullMethod, "req", types.ToJsonLoggable(req), "resp", types.ToJsonLoggable(resp), "duration", duration.Seconds())
 	}
-	log.Infow("rpc called", "method", info.FullMethod, "req", types.ToJsonLoggable(req), "status code", statusCode.String(), "duration", duration.Seconds())
 
 	return resp, err
 }
