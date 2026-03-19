@@ -75,7 +75,7 @@ func New(ctx context.Context,
 		return nil, err
 	}
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.PoolBatchSize, cfg.ShouldRecoverGames)
+	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc = gameSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
 		cfg.GameParams.GameContinueTimeout, cfg.GameParams.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)

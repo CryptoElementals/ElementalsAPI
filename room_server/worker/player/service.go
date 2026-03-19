@@ -15,12 +15,14 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-type GameInfoGetter interface {
+type GameHandler interface {
 	GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo
 	GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus
 	GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error)
 	SyncGamePhase(address types.PlayerAddress) error
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
+	HandlePlayerReadyEvent(ctx context.Context, evt *types.PlayerReadyEvent) error
+	HandleSurrenderEvent(ctx context.Context, evt *types.SurrenderEvent) error
 	HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error
 	HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error
 }
@@ -41,27 +43,27 @@ type Publisher interface {
 }
 
 type Service struct {
-	ctx            context.Context
-	lock           sync.RWMutex
-	players        map[types.PlayerAddress]*Player
-	pub            Publisher
-	workerManager  *worker.WorkerManager
-	gameInfoGetter GameInfoGetter
-	queue          Queuer
+	ctx           context.Context
+	lock          sync.RWMutex
+	players       map[types.PlayerAddress]*Player
+	pub           Publisher
+	workerManager *worker.WorkerManager
+	gameHandler   GameHandler
+	queue         Queuer
 }
 
 func NewService(ctx context.Context,
 	pub Publisher,
 	workerManager *worker.WorkerManager,
-	gameInfoGetter GameInfoGetter,
+	gameInfoGetter GameHandler,
 	queue Queuer) *Service {
 	return &Service{
-		ctx:            ctx,
-		players:        make(map[types.PlayerAddress]*Player),
-		pub:            pub,
-		workerManager:  workerManager,
-		gameInfoGetter: gameInfoGetter,
-		queue:          queue,
+		ctx:           ctx,
+		players:       make(map[types.PlayerAddress]*Player),
+		pub:           pub,
+		workerManager: workerManager,
+		gameHandler:   gameInfoGetter,
+		queue:         queue,
 	}
 }
 
@@ -118,16 +120,12 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 }
 
 func (s *Service) ConfirmBattle(address types.PlayerAddress, gameID uint, roundNum uint32, turnNum uint32) error {
-	evt := types.NewEvent(address.String(), &types.PlayerReadyEvent{
+	return s.gameHandler.HandlePlayerReadyEvent(s.ctx, &types.PlayerReadyEvent{
 		GameId:        gameID,
 		RoundNumber:   roundNum,
 		TurnNumber:    turnNum,
 		PlayerAddress: address,
-	}, true)
-	// Route via game manager worker; it will rebuild runtime state and handle the event.
-	s.workerManager.SendEvent(types.GAME_MANAGER_ID, evt)
-	_, err := evt.Await()
-	return err
+	})
 }
 
 func (s *Service) ContinueGame(address types.PlayerAddress, gameID uint) error {
@@ -142,20 +140,17 @@ func (s *Service) RefuseContinueGame(address types.PlayerAddress, gameID uint) e
 }
 
 func (s *Service) Surrender(address types.PlayerAddress, gameID uint) error {
-	evt := types.NewEvent(address.String(), &types.SurrenderEvent{
+	return s.gameHandler.HandleSurrenderEvent(s.ctx, &types.SurrenderEvent{
 		GameID:  gameID,
 		Address: address,
-	}, true)
-	s.workerManager.SendEvent(types.GAME_MANAGER_ID, evt)
-	_, err := evt.Await()
-	return err
+	})
 }
 
 func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	status := s.getPlayerStatus(address)
 	switch status {
 	case proto.PlayerStatus_PLAYER_IN_GAME, proto.PlayerStatus_PLAYER_MATCHED:
-		return s.gameInfoGetter.GetGamePhase(address)
+		return s.gameHandler.GetGamePhase(address)
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		return &proto.GamePhase{
 			GameType: proto.GameType_PVP,
@@ -195,7 +190,7 @@ func (s *Service) GetPlayerStatus(address types.PlayerAddress) (proto.PlayerStat
 }
 
 func (s *Service) GetBattleInfo(ctx context.Context, gameid uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
-	return s.gameInfoGetter.GetBattleInfo(ctx, gameid, roundNum)
+	return s.gameHandler.GetBattleInfo(ctx, gameid, roundNum)
 }
 
 func (s *Service) GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error) {
@@ -219,7 +214,7 @@ func (s *Service) GetTimeoutConfig() (*proto.TimeoutConfig, error) {
 
 // SubmitPlayerCommitment submits a player commitment
 func (s *Service) SubmitPlayerCommitment(address types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error {
-	return s.gameInfoGetter.HandleSubmitPlayerCommitment(&types.SubmitPlayerCommitment{
+	return s.gameHandler.HandleSubmitPlayerCommitment(&types.SubmitPlayerCommitment{
 		GameID:          gameID,
 		Address:         address,
 		RoundNumber:     roundNumber,
@@ -231,7 +226,7 @@ func (s *Service) SubmitPlayerCommitment(address types.PlayerAddress, roundNumbe
 
 // SubmitPlayerCard submits a player card
 func (s *Service) SubmitPlayerCard(address types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error {
-	return s.gameInfoGetter.HandleSubmitPlayerCard(&types.SubmitPlayerCard{
+	return s.gameHandler.HandleSubmitPlayerCard(&types.SubmitPlayerCard{
 		GameID:      gameID,
 		Address:     address,
 		RoundNumber: roundNumber,
@@ -251,7 +246,7 @@ func (s *Service) addPlayer(address types.PlayerAddress) error {
 	s.players[address] = player
 	player.createSelf()
 	// Sync game phase when player worker is created
-	s.gameInfoGetter.SyncGamePhase(address)
+	s.gameHandler.SyncGamePhase(address)
 	return nil
 }
 
@@ -268,6 +263,6 @@ func (s *Service) getPlayerStatus(address types.PlayerAddress) proto.PlayerStatu
 	if s.queue.IsPlayerInQueue(address) {
 		return proto.PlayerStatus_PLAYER_IN_QUEUE
 	} else {
-		return s.gameInfoGetter.GetPlayerGameInfo(address)
+		return s.gameHandler.GetPlayerGameInfo(address)
 	}
 }

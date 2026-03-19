@@ -1,11 +1,13 @@
 package game
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
 )
 
 type timerEvent struct {
@@ -14,6 +16,54 @@ type timerEvent struct {
 	currentRound      uint32
 	currentTurnNumber uint32
 	currentTurnStatus proto.TurnStatus
+}
+
+// timerEvent implements timer.TimerEvent so it can be scheduled via timer.ProcessIn.
+
+func (e *timerEvent) EventType() string { return "game_timer" }
+
+func (e *timerEvent) Marshal() []byte {
+	data, _ := json.Marshal(struct {
+		GameID            uint             `json:"game_id"`
+		CurrentGameStatus proto.GameStatus `json:"current_game_status"`
+		CurrentRound      uint32           `json:"current_round"`
+		CurrentTurnNumber uint32           `json:"current_turn_number"`
+		CurrentTurnStatus proto.TurnStatus `json:"current_turn_status"`
+	}{e.GameID, e.currentGameStatus, e.currentRound, e.currentTurnNumber, e.currentTurnStatus})
+	return data
+}
+
+func (e *timerEvent) Unmarshal(data []byte) error {
+	aux := struct {
+		GameID            uint             `json:"game_id"`
+		CurrentGameStatus proto.GameStatus `json:"current_game_status"`
+		CurrentRound      uint32           `json:"current_round"`
+		CurrentTurnNumber uint32           `json:"current_turn_number"`
+		CurrentTurnStatus proto.TurnStatus `json:"current_turn_status"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	e.GameID = aux.GameID
+	e.currentGameStatus = aux.CurrentGameStatus
+	e.currentRound = aux.CurrentRound
+	e.currentTurnNumber = aux.CurrentTurnNumber
+	e.currentTurnStatus = aux.CurrentTurnStatus
+	return nil
+}
+
+func (e *timerEvent) String() string {
+	return fmt.Sprintf("game_timer{game=%d, round=%d, turn=%d, status=%s}",
+		e.GameID, e.currentRound, e.currentTurnNumber, e.currentTurnStatus)
+}
+
+// registerTimerFunction registers the game timer handler with the global timer package.
+// The handler routes the fired event directly into GameManager handling path.
+func (m *GameManager) registerTimerFunction() {
+	timer.RegisterHandler(&timerEvent{}, func(evt timer.TimerEvent) error {
+		te := evt.(*timerEvent)
+		return m.HandleTimerEvent(m.ctx, te)
+	})
 }
 
 // timeoutFromCurentRound calculates the timeout duration for the current round state
@@ -72,10 +122,9 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		"turn status", timerEvent.currentTurnStatus,
 		"timeout", timeout.Seconds(),
 	)
-	time.AfterFunc(timeout, func() {
-		// Per-game workers are removed; timers must be routed through the game manager worker.
-		g.workerMangerService.SendEvent(types.GAME_MANAGER_ID, types.NewEvent(types.GAME_MANAGER_ID, timerEvent))
-	})
+	if err := timer.ProcessIn(timeout, timerEvent); err != nil {
+		log.Errorw("schedule game timer failed", "game id", g.gameInfo.ID, "err", err)
+	}
 }
 
 // handleTimerEvent handles timeout events for the game

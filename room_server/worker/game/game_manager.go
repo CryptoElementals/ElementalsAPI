@@ -18,6 +18,8 @@ import (
 type GameManager struct {
 	ctx               context.Context
 	lock              sync.RWMutex
+	gameLocksGuard    sync.Mutex
+	gameLocks         map[uint]*sync.Mutex
 	workerManager     *worker.WorkerManager
 	chainSvc          ContractClient
 	gameResultSettler GameResultSettler
@@ -28,58 +30,57 @@ type GameManager struct {
 	txPool *txPool
 }
 
-// Handle implements worker.EventHandler so GameManager can run as a worker.
-// It receives chain-related game events and processes them by rebuilding runtime game state.
-func (r *GameManager) Handle(ctx context.Context, event *types.Event) error {
-	// Single type switch: extract gameID and dispatch to concrete Game handler.
-	var (
-		gameID   uint
-		dispatch func(g *Game) error
-	)
-
-	switch evt := event.Data.(type) {
-	case *timerEvent:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { g.handleTimerEvent(evt); return nil }
-	case *types.RoomCreated:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleGameStateWaittingSetupOnChain(event) }
-	case *types.NewTurnSetupComplete:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleGameStateWaittingSetupOnChain(event) }
-	case *types.PlayerCommitmentOnChain:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleGameStateWaittingCommitments(event) }
-	case *types.PlayerCardOnChain:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleGameStateCardSubmitted(event) }
-	case *types.PlayerReadyEvent:
-		gameID = evt.GameId
-		dispatch = func(g *Game) error { return g.handleTurn(event) }
-	case *types.SurrenderEvent:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleTurn(event) }
-	case *types.SubmitPlayerCommitment:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleSubmitPlayerCommitment(evt) }
-	case *types.SubmitPlayerCard:
-		gameID = evt.GameID
-		dispatch = func(g *Game) error { return g.handleSubmitPlayerCard(evt) }
-	default:
-		return nil
+func (r *GameManager) getGameLock(gameID uint) *sync.Mutex {
+	r.gameLocksGuard.Lock()
+	defer r.gameLocksGuard.Unlock()
+	lock, ok := r.gameLocks[gameID]
+	if !ok {
+		lock = &sync.Mutex{}
+		r.gameLocks[gameID] = lock
 	}
+	return lock
+}
 
+func (r *GameManager) withGameLock(gameID uint, fn func() error) error {
+	lock := r.getGameLock(gameID)
+	lock.Lock()
+	defer lock.Unlock()
+	return fn()
+}
+
+func (r *GameManager) executeOnGame(gameID uint, handler func(g *Game) error) error {
 	if gameID == 0 {
-		return fmt.Errorf("Handle: missing game id")
+		return fmt.Errorf("executeOnGame: missing game id")
 	}
+	return r.withGameLock(gameID, func() error {
+		gameInfo, err := db.LoadGameByGameID(gameID)
+		if err != nil {
+			log.Errorw("executeOnGame: failed to load game from db", "game id", gameID, "err", err)
+			return err
+		}
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.txPool, r.gameResultSettler, gameInfo)
+		return handler(g)
+	})
+}
 
-	gameInfo, err := db.LoadGameByGameID(gameID)
-	if err != nil {
-		log.Errorw("Handle: failed to load game from db", "game id", gameID, "err", err)
-		return err
-	}
-	g := NewEphemeralGameForEvent(ctx, r.workerManager, r.txPool, r.gameResultSettler, gameInfo)
-	return dispatch(g)
+func (r *GameManager) HandlePlayerReadyEvent(ctx context.Context, evt *types.PlayerReadyEvent) error {
+	return r.executeOnGame(evt.GameId, func(g *Game) error { return g.handleWaittingPlayersConfirmed(evt) })
+}
+
+func (r *GameManager) HandleSurrenderEvent(ctx context.Context, evt *types.SurrenderEvent) error {
+	return r.executeOnGame(evt.GameID, func(g *Game) error { return g.handleSurrenderEvent(evt) })
+}
+
+func (r *GameManager) HandleTimerEvent(ctx context.Context, evt *timerEvent) error {
+	return r.executeOnGame(evt.GameID, func(g *Game) error { g.handleTimerEvent(evt); return nil })
+}
+
+func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
+	return r.executeOnGame(evt.GameID, func(g *Game) error { return g.handleSubmitPlayerCommitment(evt) })
+}
+
+func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
+	return r.executeOnGame(evt.GameID, func(g *Game) error { return g.handleSubmitPlayerCard(evt) })
 }
 
 func NewGameManager(ctx context.Context,
@@ -89,10 +90,11 @@ func NewGameManager(ctx context.Context,
 	poolBatchSize int,
 ) *GameManager {
 	m := &GameManager{
-		ctx:           ctx,
-		workerManager: workerManagerService,
-		chainSvc:      chainSvc,
-		args:          gameArgs,
+		ctx:            ctx,
+		gameLocks:      make(map[uint]*sync.Mutex),
+		workerManager:  workerManagerService,
+		chainSvc:       chainSvc,
+		args:           gameArgs,
 	}
 	// Set default pool processing interval if not set
 	if m.args.PoolProcessingInterval <= 0 {
@@ -103,6 +105,8 @@ func NewGameManager(ctx context.Context,
 }
 
 func (r *GameManager) Start() error {
+	r.registerTimerFunction()
+
 	// Start background goroutine for pool processing
 	go r.txPool.processPools(r.ctx, r.args)
 
@@ -245,24 +249,21 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 		gameID := uint(protoTx.GameId)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
-				GameID:    gameID,
-				TimeStamp: blockTime,
-			}, false)
-			if err := r.Handle(r.ctx, ev); err != nil {
+			evt := &types.RoomCreated{GameID: gameID, TimeStamp: blockTime}
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(evt) }); err != nil {
 				return err
 			}
 		case *proto.Transaction_GameTurnSetupReady:
 			if tx == nil || tx.GameTurnSetupReady == nil {
 				continue
 			}
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewTurnSetupComplete{
+			evt := &types.NewTurnSetupComplete{
 				GameID:      gameID,
 				RoundNumber: tx.GameTurnSetupReady.RoundNumber,
 				TurnNumber:  tx.GameTurnSetupReady.TurnNumber,
 				TimeStamp:   blockTime,
-			}, false)
-			if err := r.Handle(r.ctx, ev); err != nil {
+			}
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleNewTurnSetupOnChain(evt) }); err != nil {
 				return err
 			}
 		case *proto.Transaction_CommitmentOnChain:
@@ -271,15 +272,15 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 			}
 			player := types.PlayerAddress{}
 			player.FromProto(tx.CommitmentOnChain.Address)
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
+			evt := &types.PlayerCommitmentOnChain{
 				GameID:          gameID,
 				Address:         player,
 				RoundNumber:     tx.CommitmentOnChain.RoundNumber,
 				Commitment:      tx.CommitmentOnChain.Commitment,
 				CommitmentIndex: tx.CommitmentOnChain.TurnNumber, // 1-based (1,2,3)
 				TimeStamp:       blockTime,
-			}, false)
-			if err := r.Handle(r.ctx, ev); err != nil {
+			}
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleGameStateWaittingCommitments(evt) }); err != nil {
 				return err
 			}
 		case *proto.Transaction_CardOnChain:
@@ -288,7 +289,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 			}
 			player := types.PlayerAddress{}
 			player.FromProto(tx.CardOnChain.Address)
-			ev := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+			evt := &types.PlayerCardOnChain{
 				GameID:      gameID,
 				Address:     player,
 				RoundNumber: tx.CardOnChain.RoundNumber,
@@ -296,8 +297,8 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				Card:        uint(tx.CardOnChain.CardId),
 				CardIndex:   tx.CardOnChain.TurnNumber, // 1-based (1,2,3)
 				TimeStamp:   blockTime,
-			}, false)
-			if err := r.Handle(r.ctx, ev); err != nil {
+			}
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleGameStateCardSubmitted(evt) }); err != nil {
 				return err
 			}
 		}
@@ -337,22 +338,4 @@ func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 		return 0, err
 	}
 	return game.gameInfo.ID, nil
-}
-
-// HandleSubmitPlayerCommitment forwards a commitment submission to the game worker for validation and tx pool enqueue
-func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
-	return r.forwardToSelfAndAwait(evt)
-}
-
-// HandleSubmitPlayerCard receives a card submission and forwards it to the game worker for validation and tx pool enqueue
-func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
-	return r.forwardToSelfAndAwait(evt)
-}
-
-func (r *GameManager) forwardToSelfAndAwait(data any) error {
-	ev := types.NewEvent(types.GAME_MANAGER_ID, data, true)
-	// Route to game manager worker; it will load from DB and delegate to ephemeral Game.
-	r.workerManager.SendEvent(types.GAME_MANAGER_ID, ev)
-	_, err := ev.Await()
-	return err
 }

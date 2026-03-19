@@ -262,10 +262,6 @@ func (g *Game) stopGame() {
 	g.workerMangerService.CloseWorker(g.workerID())
 }
 
-func (g *Game) createSelf() {
-	g.workerMangerService.SpwanWorker(g.ctx, g.workerID(), types.WORKER_TYPE_GAME, g)
-}
-
 func (g *Game) workerID() string {
 	return fmt.Sprint(g.gameInfo.ID)
 }

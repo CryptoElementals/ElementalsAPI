@@ -1,7 +1,9 @@
 package queue
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/timer"
 )
 
 type gameContinueInfo struct {
@@ -26,13 +29,46 @@ type continueManager struct {
 }
 
 func newContinueManager(workerManager *worker.WorkerManager, continueTimeout, continueTimeoutRedundancy int64) *continueManager {
-	return &continueManager{
+	m := &continueManager{
 		continueQueue:             make(map[uint]map[types.PlayerAddress]bool),
 		playerToContinueQueue:     make(map[types.PlayerAddress]*gameContinueInfo),
 		workerManager:             workerManager,
 		continueTimeout:           continueTimeout,
 		continueTimeoutRedundancy: continueTimeoutRedundancy,
 	}
+	m.registerTimerHandler()
+	return m
+}
+
+// continueTimeoutEvent implements timer.TimerEvent for the continue-game timeout.
+type continueTimeoutEvent struct {
+	GameID uint `json:"game_id"`
+}
+
+func (e *continueTimeoutEvent) EventType() string { return "continue_timeout" }
+
+func (e *continueTimeoutEvent) Marshal() []byte {
+	data, _ := json.Marshal(e)
+	return data
+}
+
+func (e *continueTimeoutEvent) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, e)
+}
+
+func (e *continueTimeoutEvent) String() string {
+	return fmt.Sprintf("continue_timeout{game=%d}", e.GameID)
+}
+
+// registerTimerHandler registers the continue-timeout handler with the global timer package.
+func (m *continueManager) registerTimerHandler() {
+	timer.RegisterHandler(&continueTimeoutEvent{}, func(evt timer.TimerEvent) error {
+		te := evt.(*continueTimeoutEvent)
+		if m.removeGameByID(te.GameID) {
+			log.Infow("continue timeout, game id found", "game id", te.GameID)
+		}
+		return nil
+	})
 }
 
 func (m *continueManager) addGame(game *dao.Game) {
@@ -50,11 +86,10 @@ func (m *continueManager) addGame(game *dao.Game) {
 	}
 	m.continueQueue[game.ID] = continuePlayers
 	if m.continueTimeout != 0 {
-		time.AfterFunc(time.Duration(m.continueTimeout+m.continueTimeoutRedundancy)*time.Second, func() {
-			if m.removeGameByID(game.ID) {
-				log.Infow("continue timeout, game id found", "game id", game.ID)
-			}
-		})
+		timeout := time.Duration(m.continueTimeout+m.continueTimeoutRedundancy) * time.Second
+		if err := timer.ProcessIn(timeout, &continueTimeoutEvent{GameID: game.ID}); err != nil {
+			log.Errorw("schedule continue timeout failed", "game id", game.ID, "err", err)
+		}
 	}
 }
 

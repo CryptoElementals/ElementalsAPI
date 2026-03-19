@@ -30,10 +30,6 @@ type TxPoolEnqueuer interface {
 	ClearGameInfo(gameID uint)
 }
 
-// GameHandler was previously used by long-lived per-game workers to notify GameManager on completion.
-// With per-game workers removed and all events routed through the game manager worker, this indirection
-// is no longer needed.
-
 type GameResultSettler interface {
 	GameResultSettlement(event *types.GameCompletedEvent) error
 }
@@ -53,8 +49,7 @@ func NewService(
 	workerManager *worker.WorkerManager,
 	gameConfig *config.GameParamConfig,
 	chainSvc ContractClient,
-	poolBatchSize int,
-	shouldRecover bool) *Service {
+	poolBatchSize int) *Service {
 	gameArgs := dao.GameArgs{
 		MaxRounds:         gameConfig.MaxRounds,
 		InitialHP:         gameConfig.InitialHP,
@@ -73,8 +68,6 @@ func NewService(
 		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
 	mgr := NewGameManager(ctx, workerManager, gameArgs, chainSvc, poolBatchSize)
-	// Register GameManager as a worker so it can receive game-related events (e.g. from chain service).
-	workerManager.SpwanWorker(ctx, types.GAME_MANAGER_ID, types.WORKER_TYPE_GAME_MANAGER, mgr)
 	return &Service{
 		gameManager: mgr,
 	}
@@ -152,6 +145,16 @@ func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, e
 // SyncGamePhase sends the current game phase directly to the player worker
 func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
 	return s.gameManager.SyncGamePhase(address)
+}
+
+// HandlePlayerReadyEvent handles a player ready event directly.
+func (s *Service) HandlePlayerReadyEvent(ctx context.Context, evt *types.PlayerReadyEvent) error {
+	return s.gameManager.HandlePlayerReadyEvent(ctx, evt)
+}
+
+// HandleSurrenderEvent handles a surrender event directly.
+func (s *Service) HandleSurrenderEvent(ctx context.Context, evt *types.SurrenderEvent) error {
+	return s.gameManager.HandleSurrenderEvent(ctx, evt)
 }
 
 // HandleSubmitPlayerCommitment handles a player commitment submission
