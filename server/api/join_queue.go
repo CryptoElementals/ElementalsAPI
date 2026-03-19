@@ -155,6 +155,10 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 			// 玩家已经在对局中，不能再次加入匹配队列，返回业务错误码 1006
 			task.Response.BaseResponse.RetCode = 1006
 			task.Response.BaseResponse.Message = "Player is already in game and cannot join match queue"
+		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_MATCHED") {
+			// 玩家已经匹配上在等待确认，不能再次加入匹配队列，返回业务错误码 1007
+			task.Response.BaseResponse.RetCode = 1007
+			task.Response.BaseResponse.Message = "Player is already matched and cannot join match queue"
 		} else {
 			task.Response.BaseResponse.RetCode = 1002
 			task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: " + shortErr
