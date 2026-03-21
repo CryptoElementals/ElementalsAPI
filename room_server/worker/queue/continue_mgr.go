@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +12,30 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/timer"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+// EventPublisher publishes outbound player notifications (same contract as game.Publisher).
+type EventPublisher interface {
+	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
+}
+
+func notifyContinueCanceled(ctx context.Context, pub EventPublisher, player types.PlayerAddress) {
+	_, err := pub.Publish(ctx, &proto.PublishRequest{
+		Topic: (&player).String(),
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_CONTINUE_CANCELED,
+			Event: &proto.Event_X{
+				X: &emptypb.Empty{},
+			},
+		},
+	})
+	if err != nil {
+		log.Errorw("notifyContinueCanceled publish failed", "player", (&player).String(), "err", err)
+	}
+}
 
 type gameContinueInfo struct {
 	gameID  uint
@@ -23,16 +46,20 @@ type continueManager struct {
 	continueQueue             map[uint]map[types.PlayerAddress]bool
 	playerToContinueQueue     map[types.PlayerAddress]*gameContinueInfo
 	workerManager             *worker.WorkerManager
+	publisher                 EventPublisher
+	ctx                       context.Context
 	continueTimeout           int64
 	continueTimeoutRedundancy int64
 	sync.RWMutex
 }
 
-func newContinueManager(workerManager *worker.WorkerManager, continueTimeout, continueTimeoutRedundancy int64) *continueManager {
+func newContinueManager(ctx context.Context, workerManager *worker.WorkerManager, pub EventPublisher, continueTimeout, continueTimeoutRedundancy int64) *continueManager {
 	m := &continueManager{
 		continueQueue:             make(map[uint]map[types.PlayerAddress]bool),
 		playerToContinueQueue:     make(map[types.PlayerAddress]*gameContinueInfo),
 		workerManager:             workerManager,
+		publisher:                 pub,
+		ctx:                       ctx,
 		continueTimeout:           continueTimeout,
 		continueTimeoutRedundancy: continueTimeoutRedundancy,
 	}
@@ -106,9 +133,7 @@ func (m *continueManager) removeGameByAddress(addr types.PlayerAddress, gameID u
 	continueMap := m.continueQueue[gameInfo.gameID]
 	for player := range continueMap {
 		delete(m.playerToContinueQueue, player)
-		m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-			GameID: gameInfo.gameID,
-		}))
+		notifyContinueCanceled(m.ctx, m.publisher, player)
 	}
 	delete(m.continueQueue, gameInfo.gameID)
 }
@@ -122,9 +147,7 @@ func (m *continueManager) removeGameByID(gameID uint) bool {
 	}
 	for player := range continueMap {
 		delete(m.playerToContinueQueue, player)
-		m.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-			GameID: gameID,
-		}))
+		notifyContinueCanceled(m.ctx, m.publisher, player)
 	}
 	delete(m.continueQueue, gameID)
 	return true
@@ -185,20 +208,24 @@ func (m *continueManager) getPlayerContinueInfo(address types.PlayerAddress) *ty
 	}
 }
 
-func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error {
+func (q *Queue) HandleContinueGameEvent(req *proto.ContinueGameRequest) error {
+	var address types.PlayerAddress
+	address.FromProto(req.Player)
+	gameID := uint(req.LastGameID)
+
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	if q.closing {
-		log.Debugw("cannot continue game, server is closing", "addr", event.PlayerAddress.String())
+		log.Debugw("cannot continue game, server is closing", "addr", address.String())
 		return errors.New("queue is closing")
 	}
 
-	_, ok := q.queue[event.PlayerAddress]
+	_, ok := q.queue[address]
 	if ok {
 		return errors.New("player is in queue")
 	}
 
-	allPlayers, ok, err := q.continueManager.handlePlayerGameContinue(event.PlayerAddress, event.GameId)
+	allPlayers, ok, err := q.continueManager.handlePlayerGameContinue(address, gameID)
 	if err != nil {
 		return err
 	}
@@ -210,15 +237,13 @@ func (q *Queue) HandleContinueGameEvent(event *types.PlayerContinueEvent) error 
 		err := q.lockToken(&player)
 		if err != nil {
 			for _, player := range allPlayers {
-				q.workerManager.SendEvent(player.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-					GameID: event.GameId,
-				}))
+				notifyContinueCanceled(q.ctx, q.publisher, player)
 				err = q.unlockToken(&player)
 				if err != nil {
-					log.Infow("unlock token for continue failed", "err", err, "game", event.GameId, "player", player.String())
+					log.Infow("unlock token for continue failed", "err", err, "game", gameID, "player", player.String())
 				}
 			}
-			log.Infow("lock token for continue failed", "err", err, "game", event.GameId, "player", player.String())
+			log.Infow("lock token for continue failed", "err", err, "game", gameID, "player", player.String())
 			return err
 		}
 	}

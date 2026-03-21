@@ -11,6 +11,7 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -33,8 +34,8 @@ type setTurnKey struct {
 
 type txPool struct {
 	// Event pools for commitment and card submissions
-	commitmentPool map[eventKey]*types.SubmitPlayerCommitment
-	cardPool       map[eventKey]*types.SubmitPlayerCard
+	commitmentPool map[eventKey]*proto.SubmitPlayerCommitmentRequest
+	cardPool       map[eventKey]*proto.SubmitPlayerCardRequest
 	// Pools for create room and set turn ready (same ticker as above)
 	createRoomPool   map[uint]*types.RequireGameCreationEvent
 	setTurnReadyPool map[setTurnKey]*types.RequireSetupNewTurnEvent
@@ -65,8 +66,8 @@ func newTxPool(chainSvc ContractClient, batchSize int) *txPool {
 		batchSize = defaultPoolBatchSize
 	}
 	return &txPool{
-		commitmentPool:   make(map[eventKey]*types.SubmitPlayerCommitment),
-		cardPool:         make(map[eventKey]*types.SubmitPlayerCard),
+		commitmentPool:   make(map[eventKey]*proto.SubmitPlayerCommitmentRequest),
+		cardPool:         make(map[eventKey]*proto.SubmitPlayerCardRequest),
 		createRoomPool:   make(map[uint]*types.RequireGameCreationEvent),
 		setTurnReadyPool: make(map[setTurnKey]*types.RequireSetupNewTurnEvent),
 		gameTxInfos:      make(map[uint]*gameTxInfo),
@@ -107,25 +108,32 @@ func (p *txPool) getOrCreatePlayerInfo(gameID uint, address types.PlayerAddress)
 }
 
 // addCommitment adds a commitment to the pool after validating turn index
-func (p *txPool) addCommitment(evt *types.SubmitPlayerCommitment) error {
+func (p *txPool) addCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
+	if evt == nil || evt.Address == nil {
+		return fmt.Errorf("invalid commitment request")
+	}
+	var addr types.PlayerAddress
+	addr.FromProto(evt.Address)
+	gameID := uint(evt.GetGameID())
+
 	p.txInfoLock.Lock()
-	playerInfo := p.getOrCreatePlayerInfo(evt.GameID, evt.Address)
+	playerInfo := p.getOrCreatePlayerInfo(gameID, addr)
 
 	// Get max received turn index for this round
 	maxTurnIndex := playerInfo.commitmentTurnIndices[evt.RoundNumber]
 
 	// Reject if turn index is <= max received for this round
-	if int32(evt.CommitmentIndex) <= maxTurnIndex {
+	if int32(evt.TurnNumber) <= maxTurnIndex {
 		p.txInfoLock.Unlock()
-		return fmt.Errorf("commitment with round %d, turn index %d rejected: already received index %d or higher for this round", evt.RoundNumber, evt.CommitmentIndex, maxTurnIndex)
+		return fmt.Errorf("commitment with round %d, turn index %d rejected: already received index %d or higher for this round", evt.RoundNumber, evt.TurnNumber, maxTurnIndex)
 	}
 
 	// Update max received index for this round
-	playerInfo.commitmentTurnIndices[evt.RoundNumber] = int32(evt.CommitmentIndex)
+	playerInfo.commitmentTurnIndices[evt.RoundNumber] = int32(evt.TurnNumber)
 	p.txInfoLock.Unlock()
 
 	// Add to pool
-	key := makeEventKey(evt.GameID, evt.Address, evt.RoundNumber, evt.CommitmentIndex)
+	key := makeEventKey(gameID, addr, evt.RoundNumber, evt.TurnNumber)
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
 
@@ -138,25 +146,32 @@ func (p *txPool) addCommitment(evt *types.SubmitPlayerCommitment) error {
 }
 
 // addCard adds a card to the pool after validating turn index
-func (p *txPool) addCard(evt *types.SubmitPlayerCard) error {
+func (p *txPool) addCard(evt *proto.SubmitPlayerCardRequest) error {
+	if evt == nil || evt.Address == nil {
+		return fmt.Errorf("invalid card request")
+	}
+	var addr types.PlayerAddress
+	addr.FromProto(evt.Address)
+	gameID := uint(evt.GetGameID())
+
 	p.txInfoLock.Lock()
-	playerInfo := p.getOrCreatePlayerInfo(evt.GameID, evt.Address)
+	playerInfo := p.getOrCreatePlayerInfo(gameID, addr)
 
 	// Get max received turn index for this round
 	maxTurnIndex := playerInfo.cardTurnIndices[evt.RoundNumber]
 
 	// Reject if turn index is <= max received for this round
-	if int32(evt.CardIndex) <= maxTurnIndex {
+	if int32(evt.TurnNumber) <= maxTurnIndex {
 		p.txInfoLock.Unlock()
-		return fmt.Errorf("card with round %d, turn index %d rejected: already received index %d or higher for this round", evt.RoundNumber, evt.CardIndex, maxTurnIndex)
+		return fmt.Errorf("card with round %d, turn index %d rejected: already received index %d or higher for this round", evt.RoundNumber, evt.TurnNumber, maxTurnIndex)
 	}
 
 	// Update max received index for this round
-	playerInfo.cardTurnIndices[evt.RoundNumber] = int32(evt.CardIndex)
+	playerInfo.cardTurnIndices[evt.RoundNumber] = int32(evt.TurnNumber)
 	p.txInfoLock.Unlock()
 
 	// Add to pool
-	key := makeEventKey(evt.GameID, evt.Address, evt.RoundNumber, evt.CardIndex)
+	key := makeEventKey(gameID, addr, evt.RoundNumber, evt.TurnNumber)
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
 
@@ -184,12 +199,12 @@ func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 }
 
 // AddCommitment implements TxPoolEnqueuer; enqueues after validation (e.g. by Game).
-func (p *txPool) AddCommitment(evt *types.SubmitPlayerCommitment) error {
+func (p *txPool) AddCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
 	return p.addCommitment(evt)
 }
 
 // AddCard implements TxPoolEnqueuer; enqueues after validation (e.g. by Game).
-func (p *txPool) AddCard(evt *types.SubmitPlayerCard) error {
+func (p *txPool) AddCard(evt *proto.SubmitPlayerCardRequest) error {
 	return p.addCard(evt)
 }
 
@@ -289,12 +304,16 @@ func (p *txPool) processSetTurnReadyPool() []types.RoomContractTask {
 func (p *txPool) processCommitmentPool() []types.RoomContractTask {
 	// Collect events to process while holding lock
 	p.poolLock.Lock()
-	batchEvents := make([]*types.SubmitPlayerCommitment, 0, len(p.commitmentPool))
+	batchEvents := make([]*proto.SubmitPlayerCommitmentRequest, 0, len(p.commitmentPool))
 	for key, evt := range p.commitmentPool {
-		if evt.GameID != 0 {
+		if evt.GetGameID() != 0 {
 			batchEvents = append(batchEvents, evt)
 		} else {
-			log.Errorw("commitment event missing GameID", "address", evt.Address.TemporaryAddress)
+			addr := ""
+			if evt.Address != nil {
+				addr = evt.Address.TemporaryAddress
+			}
+			log.Errorw("commitment event missing GameID", "address", addr)
 		}
 		delete(p.commitmentPool, key)
 	}
@@ -311,12 +330,16 @@ func (p *txPool) processCommitmentPool() []types.RoomContractTask {
 func (p *txPool) processCardPool() []types.RoomContractTask {
 	// Collect events to process while holding lock
 	p.poolLock.Lock()
-	batchEvents := make([]*types.SubmitPlayerCard, 0, len(p.cardPool))
+	batchEvents := make([]*proto.SubmitPlayerCardRequest, 0, len(p.cardPool))
 	for key, evt := range p.cardPool {
-		if evt.GameID != 0 {
+		if evt.GetGameID() != 0 {
 			batchEvents = append(batchEvents, evt)
 		} else {
-			log.Errorw("card event missing GameID", "address", evt.Address.TemporaryAddress)
+			addr := ""
+			if evt.Address != nil {
+				addr = evt.Address.TemporaryAddress
+			}
+			log.Errorw("card event missing GameID", "address", addr)
 		}
 		delete(p.cardPool, key)
 	}
@@ -399,18 +422,18 @@ func encodeSetTurnReadyEventsToTasks(events []*types.RequireSetupNewTurnEvent) [
 }
 
 // encodeCommitmentEventsToTasks converts a batch of commitment events into encoded RoomV3 tasks.
-func encodeCommitmentEventsToTasks(events []*types.SubmitPlayerCommitment) []types.RoomContractTask {
+func encodeCommitmentEventsToTasks(events []*proto.SubmitPlayerCommitmentRequest) []types.RoomContractTask {
 	tasks := make([]types.RoomContractTask, 0, len(events))
 	for _, evt := range events {
 		if len(evt.Commitment) != 32 {
-			log.Errorw("commitment must be 32 bytes", "len", len(evt.Commitment), "game_id", evt.GameID)
+			log.Errorw("commitment must be 32 bytes", "len", len(evt.Commitment), "game_id", evt.GetGameID())
 			continue
 		}
 		var commitmentHash [32]byte
 		copy(commitmentHash[:], evt.Commitment)
 
-		gameID := big.NewInt(int64(evt.GameID))
-		cardIndex := big.NewInt(int64(evt.CommitmentIndex))
+		gameID := big.NewInt(int64(evt.GetGameID()))
+		cardIndex := big.NewInt(int64(evt.TurnNumber))
 		round := big.NewInt(int64(evt.RoundNumber))
 
 		payload, err := chain.EncodeSubmitCardHashTask(
@@ -421,7 +444,7 @@ func encodeCommitmentEventsToTasks(events []*types.SubmitPlayerCommitment) []typ
 			evt.Signature,
 		)
 		if err != nil {
-			log.Errorw("failed to encode commitment task", "error", err, "game_id", evt.GameID)
+			log.Errorw("failed to encode commitment task", "error", err, "game_id", evt.GetGameID())
 			continue
 		}
 		tasks = append(tasks, types.RoomContractTask{Index: 3, Task: payload})
@@ -430,12 +453,12 @@ func encodeCommitmentEventsToTasks(events []*types.SubmitPlayerCommitment) []typ
 }
 
 // encodeCardEventsToTasks converts a batch of card events into encoded RoomV3 tasks.
-func encodeCardEventsToTasks(events []*types.SubmitPlayerCard) []types.RoomContractTask {
+func encodeCardEventsToTasks(events []*proto.SubmitPlayerCardRequest) []types.RoomContractTask {
 	tasks := make([]types.RoomContractTask, 0, len(events))
 	for _, evt := range events {
-		gameID := big.NewInt(int64(evt.GameID))
+		gameID := big.NewInt(int64(evt.GetGameID()))
 		card := big.NewInt(int64(evt.Card))
-		cardIndex := big.NewInt(int64(evt.CardIndex))
+		cardIndex := big.NewInt(int64(evt.TurnNumber))
 		round := big.NewInt(int64(evt.RoundNumber))
 
 		payload, err := chain.EncodeSubmitCardTask(
@@ -447,7 +470,7 @@ func encodeCardEventsToTasks(events []*types.SubmitPlayerCard) []types.RoomContr
 			evt.Signature,
 		)
 		if err != nil {
-			log.Errorw("failed to encode card task", "error", err, "game_id", evt.GameID)
+			log.Errorw("failed to encode card task", "error", err, "game_id", evt.GetGameID())
 			continue
 		}
 		tasks = append(tasks, types.RoomContractTask{Index: 4, Task: payload})

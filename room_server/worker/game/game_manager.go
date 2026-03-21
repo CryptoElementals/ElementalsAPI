@@ -21,6 +21,7 @@ type GameManager struct {
 	gameLocksGuard    sync.Mutex
 	gameLocks         map[uint]*sync.Mutex
 	workerManager     *worker.WorkerManager
+	publisher         Publisher
 	chainSvc          ContractClient
 	gameResultSettler GameResultSettler
 	args              dao.GameArgs
@@ -58,33 +59,40 @@ func (r *GameManager) executeOnGame(gameID uint, handler func(g *Game) error) er
 			log.Errorw("executeOnGame: failed to load game from db", "game id", gameID, "err", err)
 			return err
 		}
-		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.txPool, r.gameResultSettler, gameInfo)
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
 		return handler(g)
 	})
 }
 
-func (r *GameManager) HandlePlayerReadyEvent(ctx context.Context, evt *types.PlayerReadyEvent) error {
-	return r.executeOnGame(evt.GameId, func(g *Game) error { return g.handleWaittingPlayersConfirmed(evt) })
+func (r *GameManager) HandleConfirmBattle(req *proto.ConfirmBattleRequest) error {
+	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleConfirmBattle(req) })
 }
 
-func (r *GameManager) HandleSurrenderEvent(ctx context.Context, evt *types.SurrenderEvent) error {
-	return r.executeOnGame(evt.GameID, func(g *Game) error { return g.handleSurrenderEvent(evt) })
+func (r *GameManager) HandleSurrender(req *proto.SurrenderRequest) error {
+	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleSurrender(req) })
 }
 
 func (r *GameManager) HandleTimerEvent(ctx context.Context, evt *timerEvent) error {
 	return r.executeOnGame(evt.GameID, func(g *Game) error { g.handleTimerEvent(evt); return nil })
 }
 
-func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
-	return r.executeOnGame(evt.GameID, func(g *Game) error { return g.handleSubmitPlayerCommitment(evt) })
+func (r *GameManager) HandleSubmitPlayerCommitment(req *proto.SubmitPlayerCommitmentRequest) error {
+	if err := validateSubmitPlayerCommitmentRequest(req); err != nil {
+		return err
+	}
+	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleSubmitPlayerCommitment(req) })
 }
 
-func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
-	return r.executeOnGame(evt.GameID, func(g *Game) error { return g.handleSubmitPlayerCard(evt) })
+func (r *GameManager) HandleSubmitPlayerCard(req *proto.SubmitPlayerCardRequest) error {
+	if err := validateSubmitPlayerCardRequest(req); err != nil {
+		return err
+	}
+	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleSubmitPlayerCard(req) })
 }
 
 func NewGameManager(ctx context.Context,
 	workerManagerService *worker.WorkerManager,
+	pub Publisher,
 	gameArgs dao.GameArgs,
 	chainSvc ContractClient,
 	poolBatchSize int,
@@ -93,6 +101,7 @@ func NewGameManager(ctx context.Context,
 		ctx:            ctx,
 		gameLocks:      make(map[uint]*sync.Mutex),
 		workerManager:  workerManagerService,
+		publisher:      pub,
 		chainSvc:       chainSvc,
 		args:           gameArgs,
 	}
@@ -120,7 +129,7 @@ func (r *GameManager) Start() error {
 		if gameInfo == nil {
 			continue
 		}
-		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.txPool, r.gameResultSettler, gameInfo)
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
 		if err := g.handleGameAbortInternalError(); err != nil {
 			log.Errorw("startup abort active game failed", "game id", gameInfo.ID, "err", err)
 		}
@@ -144,13 +153,14 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 		return err
 	}
 	// also notify players
+	created := &types.GameCreatedEvent{
+		GameID:              gameID,
+		Players:             evt.Players,
+		IsContinueGame:      true,
+		ConfirmationTimeout: r.args.ConfirmationTimeout,
+	}
 	for _, player := range evt.Players {
-		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:              gameID,
-			Players:             evt.Players,
-			IsContinueGame:      true,
-			ConfirmationTimeout: r.args.ConfirmationTimeout,
-		}))
+		r.notifyPlayerGameCreated(player, created)
 	}
 	log.Infow("gameContinue", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
 	return nil
@@ -167,13 +177,13 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 		return 0, err
 	}
 	// also notify players
+	created := &types.GameCreatedEvent{
+		GameID:              gameID,
+		Players:             evt.Players,
+		ConfirmationTimeout: r.args.ConfirmationTimeout,
+	}
 	for _, player := range evt.Players {
-		evt := types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:              gameID,
-			Players:             evt.Players,
-			ConfirmationTimeout: r.args.ConfirmationTimeout,
-		})
-		r.workerManager.SendEvent(player.String(), evt)
+		r.notifyPlayerGameCreated(player, created)
 	}
 	log.Infow("gameMatched", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
 	return gameID, nil
@@ -222,7 +232,7 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 	return gamePhase, nil
 }
 
-// SyncGamePhase sends the current game phase directly to the player worker via workerManager
+// SyncGamePhase publishes the current game phase to the player's PubSub topic.
 func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
 	gamePhase, err := r.GetGamePhase(address)
 	if err != nil {
@@ -231,11 +241,7 @@ func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
 			GameType: proto.GameType_PVP,
 		}
 	}
-	syncEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GamePhaseSyncEvent{
-		GamePhase: gamePhase,
-	})
-	r.workerManager.SendEvent(address.String(), syncEvt)
-	return nil
+	return r.syncGamePhasePublish(address, gamePhase)
 }
 
 func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
@@ -249,56 +255,34 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 		gameID := uint(protoTx.GameId)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
-			evt := &types.RoomCreated{GameID: gameID, TimeStamp: blockTime}
-			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(evt) }); err != nil {
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(gameID, blockTime) }); err != nil {
 				return err
 			}
 		case *proto.Transaction_GameTurnSetupReady:
 			if tx == nil || tx.GameTurnSetupReady == nil {
 				continue
 			}
-			evt := &types.NewTurnSetupComplete{
-				GameID:      gameID,
-				RoundNumber: tx.GameTurnSetupReady.RoundNumber,
-				TurnNumber:  tx.GameTurnSetupReady.TurnNumber,
-				TimeStamp:   blockTime,
-			}
-			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleNewTurnSetupOnChain(evt) }); err != nil {
+			if err := r.executeOnGame(gameID, func(g *Game) error {
+				return g.handleNewTurnSetupOnChain(gameID, blockTime, tx.GameTurnSetupReady)
+			}); err != nil {
 				return err
 			}
 		case *proto.Transaction_CommitmentOnChain:
 			if tx == nil || tx.CommitmentOnChain == nil {
 				continue
 			}
-			player := types.PlayerAddress{}
-			player.FromProto(tx.CommitmentOnChain.Address)
-			evt := &types.PlayerCommitmentOnChain{
-				GameID:          gameID,
-				Address:         player,
-				RoundNumber:     tx.CommitmentOnChain.RoundNumber,
-				Commitment:      tx.CommitmentOnChain.Commitment,
-				CommitmentIndex: tx.CommitmentOnChain.TurnNumber, // 1-based (1,2,3)
-				TimeStamp:       blockTime,
-			}
-			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleGameStateWaittingCommitments(evt) }); err != nil {
+			if err := r.executeOnGame(gameID, func(g *Game) error {
+				return g.handleGameStateWaittingCommitments(gameID, blockTime, tx.CommitmentOnChain)
+			}); err != nil {
 				return err
 			}
 		case *proto.Transaction_CardOnChain:
 			if tx == nil || tx.CardOnChain == nil {
 				continue
 			}
-			player := types.PlayerAddress{}
-			player.FromProto(tx.CardOnChain.Address)
-			evt := &types.PlayerCardOnChain{
-				GameID:      gameID,
-				Address:     player,
-				RoundNumber: tx.CardOnChain.RoundNumber,
-				Salt:        tx.CardOnChain.Salt,
-				Card:        uint(tx.CardOnChain.CardId),
-				CardIndex:   tx.CardOnChain.TurnNumber, // 1-based (1,2,3)
-				TimeStamp:   blockTime,
-			}
-			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleGameStateCardSubmitted(evt) }); err != nil {
+			if err := r.executeOnGame(gameID, func(g *Game) error {
+				return g.handleGameStateCardSubmitted(gameID, blockTime, tx.CardOnChain)
+			}); err != nil {
 				return err
 			}
 		}
@@ -322,7 +306,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.txPool, r.gameResultSettler, &r.args)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, &r.args)
 	if err := game.pushStateToContractCreating(); err != nil {
 		return 0, err
 	}
@@ -333,7 +317,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 }
 
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
-	game := NewGame(r.ctx, players, r.workerManager, r.txPool, r.gameResultSettler, &r.args)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, &r.args)
 	if err := game.saveGame(); err != nil {
 		return 0, err
 	}

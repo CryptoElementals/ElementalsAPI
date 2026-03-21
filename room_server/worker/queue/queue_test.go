@@ -3,12 +3,12 @@ package queue
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +28,13 @@ func (h *testEventHandler) Handle(ctx context.Context, event *types.Event) error
 
 var globalTestQueueService *Service
 
+// noopEventPublisher satisfies EventPublisher for tests (non-nil publisher required).
+type noopEventPublisher struct{}
+
+func (noopEventPublisher) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
+	return &proto.PublishResponse{Success: true}, nil
+}
+
 func TestMain(m *testing.M) {
 	globalTestWorkerManager = worker.NewWorkerManager(context.Background())
 
@@ -36,32 +43,26 @@ func TestMain(m *testing.M) {
 
 func TestJoinExitQueue(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
 		Id:               1,
 		TemporaryAddress: "temporary1",
 	}
-	evt := types.NewEvent(player1.String(), &types.JoinQueueEvent{
-		PlayerAddress: player1,
-	})
-	globalTestWorkerManager.SendEvent(types.QUEUE_MANAGER_ID, evt)
-	time.Sleep(1 * time.Millisecond)
+	err := globalTestQueueService.HandleJoinQueueEvent(player1.ToProto())
+	require.NoError(t, err)
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1))
 
 	// send exit queue event
-	evt = types.NewEvent(player1.String(), &types.ExitQueueEvent{
-		PlayerAddress: player1,
-	})
-	globalTestWorkerManager.SendEvent(types.QUEUE_MANAGER_ID, evt)
-	time.Sleep(1 * time.Millisecond)
+	err = globalTestQueueService.HandleExitQueueEvent(player1.ToProto())
+	require.NoError(t, err)
 	require.False(t, globalTestQueueService.IsPlayerInQueue(player1))
 }
 
 func TestGameMatched(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -77,25 +78,16 @@ func TestGameMatched(t *testing.T) {
 		TemporaryAddress: "temporary2",
 	}
 
-	evt := types.NewEvent(player1.String(), &types.JoinQueueEvent{
-		PlayerAddress: player1,
-	})
-	globalTestWorkerManager.SendEvent(types.QUEUE_MANAGER_ID, evt)
-	time.Sleep(1 * time.Millisecond)
+	err := globalTestQueueService.HandleJoinQueueEvent(player1.ToProto())
+	require.NoError(t, err)
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1))
 
-	evt = types.NewEvent(player1DuplicatedWallet.String(), &types.JoinQueueEvent{
-		PlayerAddress: player1DuplicatedWallet,
-	})
-	globalTestWorkerManager.SendEvent(types.QUEUE_MANAGER_ID, evt)
-	time.Sleep(1 * time.Millisecond)
+	err = globalTestQueueService.HandleJoinQueueEvent(player1DuplicatedWallet.ToProto())
+	require.NoError(t, err)
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1))
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1DuplicatedWallet))
 
 	// send join queue event
-	evt = types.NewEvent(player2.String(), &types.JoinQueueEvent{
-		PlayerAddress: player2,
-	})
-	globalTestWorkerManager.SendEvent(types.QUEUE_MANAGER_ID, evt)
-	time.Sleep(1 * time.Millisecond)
+	err = globalTestQueueService.HandleJoinQueueEvent(player2.ToProto())
+	require.NoError(t, err)
 }

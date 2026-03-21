@@ -26,6 +26,7 @@ type Queue struct {
 	queue               map[types.PlayerAddress]time.Time
 	continueManager     *continueManager
 	workerManager       *worker.WorkerManager
+	publisher           EventPublisher
 	queueCache          cache.Cache
 	lockedTokenCache    cache.Cache
 	closing             bool
@@ -47,6 +48,7 @@ type GameCreator interface {
 func NewQueue(
 	ctx context.Context,
 	workerManager *worker.WorkerManager,
+	pub EventPublisher,
 	c cache.Cache,
 	gameCreator GameCreator,
 	continueTimeout int64,
@@ -61,10 +63,11 @@ func NewQueue(
 		ctx:                 ctx,
 		queue:               make(map[types.PlayerAddress]time.Time),
 		workerManager:       workerManager,
+		publisher:           pub,
 		lockedTokenCache:    tokenCache,
 		queueCache:          queueCache,
 		gameCreator:         gameCreator,
-		continueManager:     newContinueManager(workerManager, continueTimeout, continueTimeoutRedundancy),
+		continueManager:     newContinueManager(ctx, workerManager, pub, continueTimeout, continueTimeoutRedundancy),
 		botMgr:              newBotManager(),
 		botWaitTime:         time.Duration(botWaitTime) * time.Second,
 		minTokenToJoinQueue: minTokenToJoinQueue,
@@ -105,41 +108,41 @@ func (q *Queue) close() {
 	}
 }
 
-func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
+func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
+	var address types.PlayerAddress
+	address.FromProto(req)
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	if q.closing {
-		log.Debugw("cannot join queue, server is closing", "addr", event.PlayerAddress.String())
+		log.Debugw("cannot join queue, server is closing", "addr", address.String())
 		return errors.New("server is closing")
 	}
-	if _, ok := q.queue[event.PlayerAddress]; ok {
+	if _, ok := q.queue[address]; ok {
 		return errors.New("player already in queue")
 	}
-	log.Infow("join queue", "player id", event.PlayerAddress.Id, "temporary address", event.PlayerAddress.TemporaryAddress)
-	err := q.lockToken(&event.PlayerAddress)
+	log.Infow("join queue", "player id", address.Id, "temporary address", address.TemporaryAddress)
+	err := q.lockToken(&address)
 	if err != nil {
 		log.Errorf("cannot join queue, err: %s", err.Error())
 		return err
 	}
-	// delete player from continue queue anyway
-	q.continueManager.removeGameByAddress(event.PlayerAddress, 0)
+	q.continueManager.removeGameByAddress(address, 0)
 	matched := false
 	for player := range q.queue {
-		// don't match players with same player id or temporary address
-		if player.Id == event.PlayerAddress.Id ||
-			player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
+		if player.Id == address.Id ||
+			player.TemporaryAddress == address.TemporaryAddress {
 			continue
 		}
 
-		err := q.matchPlayers([]types.PlayerAddress{event.PlayerAddress, player})
+		err := q.matchPlayers([]types.PlayerAddress{address, player})
 		if err != nil {
 			return err
 		}
 		matched = true
 	}
 	if !matched {
-		q.queue[event.PlayerAddress] = time.Now()
-		err := q.queueCache.Set(event.PlayerAddress.String(), queueInfoVal, 0)
+		q.queue[address] = time.Now()
+		err := q.queueCache.Set(address.String(), queueInfoVal, 0)
 		if err != nil {
 			log.Errorf("set player to queue cache failed: %s", err.Error())
 		}
@@ -179,15 +182,17 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 	return nil
 }
 
-func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
+func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
+	var address types.PlayerAddress
+	address.FromProto(req)
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	_, ok := q.queue[event.PlayerAddress]
+	_, ok := q.queue[address]
 	if !ok {
-		log.Debugw("player not in queue", "player", event.PlayerAddress.String())
+		log.Debugw("player not in queue", "player", address.String())
 		return nil
 	}
-	return q.removePlayerFromQueue(event.PlayerAddress)
+	return q.removePlayerFromQueue(address)
 }
 
 func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
@@ -265,9 +270,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 			if _, ok := bots[*addr]; ok {
 				continue
 			}
-			q.workerManager.SendEvent(addr.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
-				GameID: event.GameInfo.ID,
-			}))
+			notifyContinueCanceled(q.ctx, q.publisher, *addr)
 		}
 	} else {
 		q.continueManager.addGame(event.GameInfo)

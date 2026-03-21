@@ -134,24 +134,6 @@ func AssertInterface[T any](evt *Event) (T, error) {
 	return data, nil
 }
 
-type BatchDone struct {
-	ID string
-}
-
-type EventBatch struct {
-	evt []*Event
-}
-
-func (b *EventBatch) Add(evt *Event) {
-	b.evt = append(b.evt, evt)
-}
-
-func (b *EventBatch) Wait() {
-	for _, e := range b.evt {
-		_, _ = e.Await() // Ignore response and error for batch operations
-	}
-}
-
 func ToJsonLoggable(obj any) string {
 	res, _ := json.Marshal(obj)
 	return string(res)

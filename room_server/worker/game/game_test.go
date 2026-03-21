@@ -24,6 +24,13 @@ var testGameArgs = dao.GameArgs{
 
 var testWorkerManager *worker.WorkerManager
 
+// NopPublisher implements Publisher with a no-op Publish. Use in tests when a non-nil Publisher is required.
+type NopPublisher struct{}
+
+func (NopPublisher) Publish(_ context.Context, _ *proto.PublishRequest) (*proto.PublishResponse, error) {
+	return &proto.PublishResponse{Success: true}, nil
+}
+
 func TestMain(m *testing.M) {
 	time.Local = time.UTC
 	testWorkerManager = worker.NewWorkerManager(context.Background())
@@ -60,12 +67,6 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		Id:               2,
 		TemporaryAddress: "2",
 	}
-	roundCompleteEventNumber := expectedRoundNumber - 1
-	roundReadyEventNumber := expectedRoundNumber
-	roundPartialReadyEventNumber := expectedRoundNumber * 2
-	commitmentsOnChainEventNumber := expectedRoundNumber
-	RequireSetupNewRoundEventNumber := expectedRoundNumber - 1
-
 	mockPlayer1 := tt.NewMockEventHandler(gomock.NewController(t))
 	mockPlayer2 := tt.NewMockEventHandler(gomock.NewController(t))
 	mockChain := tt.NewMockEventHandler(gomock.NewController(t))
@@ -77,33 +78,21 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		evt := event.Data.(*types.RequireGameCreationEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
-			GameID: gid,
-		})
+		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &proto.TxGameCreated{})
 		testWorkerManager.SendEvent(wid, contractEvt)
-		return nil
-	})
-	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireSetupNewRoundEvent{})).Times(RequireSetupNewRoundEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RequireSetupNewRoundEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		newRoundEvt := event.Data.(*types.RequireSetupNewRoundEvent)
-		setupEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewRoundSetupComplete{
-			GameID:      gid,
-			RoundNumber: newRoundEvt.RoundNumber,
-		})
-		testWorkerManager.SendEvent(wid, setupEvt)
+		_ = gid
+		_ = wid
 		return nil
 	})
 	mockPlayer1.EXPECT().Handle(gomock.Any(), gameCreatedEvtMatcher).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
 		evt := event.Data.(*types.GameCreatedEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
-			GameId:        gid,
+		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &proto.ConfirmBattleRequest{
+			GameID:        uint32(gid),
 			RoundNumber:   1,
 			TurnNumber:    1,
-			PlayerAddress: playerAddress1,
+			PlayerAddress: playerAddress1.ToProto(),
 		}))
 		return nil
 	})
@@ -111,135 +100,11 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		evt := event.Data.(*types.GameCreatedEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
-			GameId:        gid,
+		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &proto.ConfirmBattleRequest{
+			GameID:        uint32(gid),
 			RoundNumber:   1,
 			TurnNumber:    1,
-			PlayerAddress: playerAddress2,
-		}))
-		return nil
-	})
-
-	roundCompleteEvtMatcher := tt.NewEventTypeMatcher(&types.RoundCompletedEvent{})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), roundCompleteEvtMatcher).Times(roundCompleteEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RoundCompletedEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
-			GameId:        gid,
-			RoundNumber:   evt.RoundNumber + 1,
-			TurnNumber:    1, // New round starts with turn 1
-			PlayerAddress: playerAddress1,
-		}))
-		return nil
-	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), roundCompleteEvtMatcher).Times(roundCompleteEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RoundCompletedEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
-			GameId:        gid,
-			RoundNumber:   evt.RoundNumber + 1,
-			TurnNumber:    1, // New round starts with turn 1
-			PlayerAddress: playerAddress2,
-		}))
-		return nil
-	})
-
-	gameReadyEvtMatcher := tt.NewEventTypeMatcher(&types.GameReadyEvent{})
-	roundReadyEvtMatcher := tt.NewEventTypeMatcher(&types.RoundReadyEvent{})
-	roundPartialReadyEvent := tt.NewEventTypeMatcher(&types.RoundPartialReadyEvent{})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), gameReadyEvtMatcher).Times(1).Return(nil)
-	mockPlayer2.EXPECT().Handle(gomock.Any(), gameReadyEvtMatcher).Times(1).Return(nil)
-	mockPlayer1.EXPECT().Handle(gomock.Any(), roundReadyEvtMatcher).Times(roundReadyEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RoundReadyEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress1,
-			RoundNumber: evt.RoundNumber,
-			Commitment:  []byte("commitment1"),
-		}))
-		return nil
-	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), roundReadyEvtMatcher).Times(roundReadyEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RoundReadyEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress2,
-			RoundNumber: evt.RoundNumber,
-			Commitment:  []byte("commitment2"),
-		}))
-		return nil
-	})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), roundPartialReadyEvent).Times(roundPartialReadyEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		return nil
-	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), roundPartialReadyEvent).Times(roundPartialReadyEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		return nil
-	})
-	mockPlayer1.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.CommitmentsOnChainEvent{})).Times(commitmentsOnChainEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.CommitmentsOnChainEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		// Send one card per turn
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress1,
-			RoundNumber: evt.RoundNumber,
-			Card:        4,
-			CardIndex:   1,
-			Salt:        []byte("salt1"),
-		}))
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress1,
-			RoundNumber: evt.RoundNumber,
-			Card:        5,
-			CardIndex:   2,
-			Salt:        []byte("salt1"),
-		}))
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress1,
-			RoundNumber: evt.RoundNumber,
-			Card:        3,
-			CardIndex:   3,
-			Salt:        []byte("salt1"),
-		}))
-		return nil
-	})
-	mockPlayer2.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.CommitmentsOnChainEvent{})).Times(commitmentsOnChainEventNumber).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.CommitmentsOnChainEvent)
-		gid := evt.GameID
-		wid := fmt.Sprint(gid)
-		// Send one card per turn
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress2,
-			RoundNumber: evt.RoundNumber,
-			Card:        1,
-			CardIndex:   1,
-			Salt:        []byte("salt2"),
-		}))
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress2,
-			RoundNumber: evt.RoundNumber,
-			Card:        2,
-			CardIndex:   2,
-			Salt:        []byte("salt2"),
-		}))
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-			GameID:      evt.GameID,
-			Address:     playerAddress2,
-			RoundNumber: evt.RoundNumber,
-			Card:        4,
-			CardIndex:   3,
-			Salt:        []byte("salt2"),
+			PlayerAddress: playerAddress2.ToProto(),
 		}))
 		return nil
 	})
@@ -279,7 +144,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, 0)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, testGameArgs, contractClient, 0)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		Id:               1,
@@ -319,29 +184,28 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 	require.NotZero(t, currentRound.turnStatus)
 }
 
-
 func TestGameStateMachine(t *testing.T) {
 	setupMemDb(t)
 	prepareCards(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
 	compareRound := func(svc *Service, roundNumber int, isLast bool) {
-		roundResult, gameResult, err := svc.GetBattleInfo(context.Background(), 1, uint32(roundNumber))
+		resp, err := svc.GetBattleInfo(context.Background(), &proto.GetBattleInfoRequest{GameID: 1, RoundNumber: uint32(roundNumber)})
 		require.NoError(t, err)
-		require.Equal(t, isLast, roundResult.IsGameOver)
+		require.Equal(t, isLast, resp.RoundResult.IsGameOver)
 		if isLast {
-			require.NotNil(t, gameResult)
+			require.NotNil(t, resp.GameResult)
 		}
-		roundResultDb, gameResultDb, err := svc.GetBattleInfo(context.Background(), 1, uint32(roundNumber))
+		respDb, err := svc.GetBattleInfo(context.Background(), &proto.GetBattleInfoRequest{GameID: 1, RoundNumber: uint32(roundNumber)})
 		require.NoError(t, err)
 
-		require.EqualExportedValues(t, roundResult, roundResultDb)
-		require.EqualExportedValues(t, gameResult, gameResultDb)
+		require.EqualExportedValues(t, resp.RoundResult, respDb.RoundResult)
+		require.EqualExportedValues(t, resp.GameResult, respDb.GameResult)
 	}
 	t.Run("1 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 1000,
-		}, contractClient, 0, false)
+		}, contractClient, 0)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -350,10 +214,10 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 1, true)
 	})
 	t.Run("2 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 3000,
-		}, contractClient, 0, false)
+		}, contractClient, 0)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -363,10 +227,10 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 2, true)
 	})
 	t.Run("3 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 10000,
-		}, contractClient, 0, false)
+		}, contractClient, 0)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

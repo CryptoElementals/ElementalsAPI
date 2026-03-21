@@ -19,6 +19,7 @@ import (
 func NewEphemeralGameForEvent(
 	ctx context.Context,
 	workerMangerService *worker.WorkerManager,
+	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
 	gameInfo *dao.Game,
@@ -28,6 +29,7 @@ func NewEphemeralGameForEvent(
 		gameInfo:            gameInfo,
 		currentRound:        buildRuntimeState(gameInfo),
 		workerMangerService: workerMangerService,
+		publisher:           pub,
 		txPoolEnqueuer:      txPoolEnqueuer,
 		gameResultSettler:   gameResultSettler,
 	}
@@ -38,6 +40,7 @@ type Game struct {
 	gameInfo            *dao.Game
 	currentRound        *round
 	workerMangerService *worker.WorkerManager
+	publisher           Publisher
 	txPoolEnqueuer      TxPoolEnqueuer
 	gameResultSettler   GameResultSettler
 }
@@ -46,6 +49,7 @@ func NewGame(
 	ctx context.Context,
 	players []types.PlayerAddress,
 	workerMangerService *worker.WorkerManager,
+	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
 	gameArgs *dao.GameArgs) *Game {
@@ -69,6 +73,7 @@ func NewGame(
 		},
 		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
+		publisher:           pub,
 		txPoolEnqueuer:      txPoolEnqueuer,
 		gameResultSettler:   gameResultSettler,
 	}
@@ -79,6 +84,7 @@ func NewGame(
 func NewGameFromGameInfo(
 	ctx context.Context,
 	workerMangerService *worker.WorkerManager,
+	pub Publisher,
 	gameInfo *dao.Game,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler) *Game {
@@ -90,6 +96,7 @@ func NewGameFromGameInfo(
 		gameInfo:            gameInfo,
 		currentRound:        currentRound,
 		workerMangerService: workerMangerService,
+		publisher:           pub,
 		txPoolEnqueuer:      txPoolEnqueuer,
 		gameResultSettler:   gameResultSettler,
 	}
@@ -288,13 +295,6 @@ func (g *Game) setupNewRound() {
 	g.sendTimerEventByCurrentRound()
 }
 
-func (g *Game) sendEventsToAllPlayers(events ...*types.Event) {
-	for _, player := range g.currentRound.gamePlayers {
-		for _, event := range events {
-			g.workerMangerService.SendEvent(player.String(), event)
-		}
-	}
-}
 
 func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
 	player, ok := g.currentRound.gamePlayers[strings.ToLower(tempAddr)]

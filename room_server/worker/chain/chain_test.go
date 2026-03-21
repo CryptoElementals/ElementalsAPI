@@ -117,20 +117,12 @@ func TestChainContractInteraction(t *testing.T) {
 		InitialHP:      1000,
 	}, true))
 	<-ackReceived
-	// Transaction tables removed - no longer checking database
-	ackReceived = make(chan struct{})
-	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireSetupNewRoundEvent{
-		GameID:      uint(gameID),
-		RoundNumber: 2,
-		// ContractAddress removed - always uses RoomV2 contract address
-	}, true))
-	<-ackReceived
 
 	evtMatcher := tt.NewEventTypeMatcher(
-		&types.RoomCreated{},
-		&types.NewTurnSetupComplete{},
-		&types.PlayerCommitmentOnChain{},
-		&types.PlayerCardOnChain{},
+		&proto.TxGameCreated{},
+		&proto.TxGameTurnSetupReady{},
+		&proto.TxCommitmentOnChain{},
+		&proto.TxCardOnChain{},
 	)
 	// Use a test tx hash since we're no longer getting it from database
 	txHash := []byte("test_tx_hash")

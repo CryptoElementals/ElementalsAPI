@@ -12,7 +12,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
-	"github.com/CryptoElementals/common/room_server/worker/player"
 	"github.com/CryptoElementals/common/room_server/worker/queue"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -30,9 +29,8 @@ type Service struct {
 	pubsub    *rpc.PubSub
 	rpcServer *rpc.Rpc
 	chainSvc  *chain.Chain
-	gameSvc   *game.Service
-	playerSvc *player.Service
-	queueSvc  *queue.Service
+	gameSvc  *game.Service
+	queueSvc *queue.Service
 }
 
 func New(ctx context.Context,
@@ -75,19 +73,18 @@ func New(ctx context.Context,
 		return nil, err
 	}
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.PoolBatchSize)
+	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, &cfg.GameParams, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc = gameSvc
-	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
+	queueSvc := queue.NewService(ctx, s.mgr, s.pubsub, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
 		cfg.GameParams.GameContinueTimeout, cfg.GameParams.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
-	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
-	s.playerSvc = playerSvc
+	gameSvc.SetPlayerQueue(queueSvc)
 	gameSvc.SetGameResultSettler(queueSvc)
-	s.pubsub.SetPlayerManager(playerSvc)
+	s.pubsub.SetPlayerManager(gameSvc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	rpcServer := rpc.NewRpc(
 		gameSvc,
-		playerSvc,
+		gameSvc,
 	)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)

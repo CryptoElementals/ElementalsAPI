@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -42,43 +43,51 @@ func (g *Game) sendGameCompletedEventAndStop() {
 
 // sendTurnCompletedEventForAbort sends a turn completed event to all players when the game is aborted
 func (g *Game) sendTurnCompletedEventForAbort() {
-	// Get round and turn numbers - use defaults if currentRound doesn't exist
 	var roundNumber uint32 = 1
 	var turnNumber uint32 = 1
 
-	playerTurnInfos := make([]*types.PlayerTurnInfo, 0)
+	playerTurnInfos := make([]*proto.PlayerTurnInfo, 0)
 	if g.currentRound != nil {
 		if g.currentRound.round != nil {
 			roundNumber = uint32(g.currentRound.round.RoundNumber)
 			turnNumber = g.currentRound.getCurrentTurnNumber()
 		}
-		// Build PlayerTurnInfo for all players
 		if len(g.currentRound.gamePlayers) > 0 {
 			for _, p := range g.currentRound.gamePlayers {
-				// Get PlayerTurnInfo for current turn if available
 				var submittedCard *dao.TurnSubmittedCard
 				if turnInfo := p.getCurrentPlayerTurnInfo(); turnInfo != nil && turnInfo.TurnSubmittedCard != nil {
 					submittedCard = turnInfo.TurnSubmittedCard
 				}
-				playerTurnInfos = append(playerTurnInfos, &types.PlayerTurnInfo{
-					PlayerAddress: p.PlayerAddress(),
-					SubmittedCard: submittedCard,
-				})
+				addr := p.PlayerAddress()
+				pti := &proto.PlayerTurnInfo{
+					PlayerAddress: addr.ToProto(),
+				}
+				if submittedCard != nil {
+					pti.SubmittedCard = conversion.TurnSubmittedCardToProtoRoundSubmittedCard(submittedCard, turnNumber)
+				}
+				playerTurnInfos = append(playerTurnInfos, pti)
 			}
 		}
 	}
 
-	// Create and send turn completed event
-	turnCompletedEvt := &types.TurnCompletedEvent{
-		GameID:          g.gameInfo.ID,
-		RoundNumber:     roundNumber,
-		TurnNumber:      turnNumber,
-		IsRoundComplete: true, // Game is ending, so round is complete
-		IsGameComplete:  true, // Game is being aborted, so game is complete
-		PlayerTurnInfo:  playerTurnInfos,
-		GameResult:      g.gameInfo.GameResult, // Include the aborted game result
+	turnCompleted := &proto.TurnCompleted{
+		GameId:          uint32(g.gameInfo.ID),
+		RoundNum:        roundNumber,
+		TurnNum:         turnNumber,
+		IsRoundComplete: true,
+		IsGameComplete:  true,
+		PlayerTurnInfos: playerTurnInfos,
 	}
-	g.sendEventsToAllPlayers(types.NewEvent(g.workerID(), turnCompletedEvt))
+	if g.gameInfo.GameResult != nil {
+		turnCompleted.GameResult = conversion.DbGameResultToProtoGameResult(g.gameInfo.GameResult)
+	}
+
+	g.publishProtoToAllPlayers(&proto.Event{
+		Type: proto.EventType_TYPE_TURN_COMPLETE,
+		Event: &proto.Event_TurnCompleted{
+			TurnCompleted: turnCompleted,
+		},
+	})
 }
 
 // handleGameAbortInit handles game abortion during initialization
