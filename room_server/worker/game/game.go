@@ -19,7 +19,8 @@ type Game struct {
 	gameInfo            *dao.Game
 	currentRound        *round
 	workerMangerService *worker.WorkerManager
-	chainSvc            ContractClient
+	txPoolEnqueuer      TxPoolEnqueuer
+	gameResultSettler   GameResultSettler
 	gameContextHandler  GameHandler
 	wg                  *sync.WaitGroup
 }
@@ -29,7 +30,8 @@ func NewGame(
 	wg *sync.WaitGroup,
 	players []types.PlayerAddress,
 	workerMangerService *worker.WorkerManager,
-	chainSvc ContractClient,
+	txPoolEnqueuer TxPoolEnqueuer,
+	gameResultSettler GameResultSettler,
 	gameContinuer GameHandler,
 	gameArgs *dao.GameArgs) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
@@ -53,7 +55,8 @@ func NewGame(
 		},
 		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
-		chainSvc:            chainSvc,
+		txPoolEnqueuer:      txPoolEnqueuer,
+		gameResultSettler:   gameResultSettler,
 		gameContextHandler:  gameContinuer,
 	}
 	game.setupNewRound()
@@ -67,16 +70,49 @@ func NewGameFromGameInfo(
 	workerMangerService *worker.WorkerManager,
 	gameContinuer GameHandler,
 	gameInfo *dao.Game,
-	chainSvc ContractClient) *Game {
+	txPoolEnqueuer TxPoolEnqueuer,
+	gameResultSettler GameResultSettler) *Game {
+	// Initialize gamePlayers from gameInfo.Players
 	gamePlayers := make(map[string]*gamePlayer)
+	for _, playerInfo := range gameInfo.Players {
+		gamePlayers[playerInfo.TemporaryAddress] = &gamePlayer{
+			player:     playerInfo,
+			currentHP:  gameInfo.InitialHP,
+			multiplier: uint32(gameInfo.InitialMultiplier),
+		}
+	}
+
 	g := &Game{
 		ctx:                 ctx,
 		wg:                  wg,
 		gameInfo:            gameInfo,
 		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
 		workerMangerService: workerMangerService,
-		chainSvc:            chainSvc,
+		txPoolEnqueuer:      txPoolEnqueuer,
+		gameResultSettler:   gameResultSettler,
 		gameContextHandler:  gameContinuer,
+	}
+
+	// Setup current round to the last round of the gameInfo, if not exist, create one
+	if len(gameInfo.Rounds) > 0 {
+		// Find the round with the highest RoundNumber
+		var lastRound *dao.Round
+		maxRoundNum := uint32(0)
+		for _, r := range gameInfo.Rounds {
+			if r.RoundNumber > maxRoundNum {
+				maxRoundNum = r.RoundNumber
+				lastRound = r
+			}
+		}
+		if lastRound != nil {
+			g.currentRound.round = lastRound
+		} else {
+			// If no valid round found, create a new one
+			g.setupNewRound()
+		}
+	} else {
+		// If no rounds exist, create a new one
+		g.setupNewRound()
 	}
 	wg.Add(1)
 	var terminateGame = func() {
@@ -305,19 +341,34 @@ func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
 }
 
 func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
-	return g.chainSvc.CreateRoomContract(&types.RequireGameCreationEvent{
+	evt := &types.RequireGameCreationEvent{
 		GameID:         g.gameInfo.ID,
 		Players:        allPlayers,
 		InitialHP:      g.gameInfo.InitialHP,
-		RoundTimeout:   g.gameInfo.CommitmentSubmissionTimeout, // RoundTimeout in RequireGameCreationEvent is for chain contract, not RoundReadyEvent
+		RoundTimeout:   g.gameInfo.CommitmentSubmissionTimeout,
 		MaxRoundNumber: g.gameInfo.MaxRounds,
-	})
+	}
+	g.txPoolEnqueuer.AddCreateRoom(evt)
+	return nil
 }
 
 func (g *Game) sendTurnReady() error {
-	return g.chainSvc.SetTurnReady(&types.RequireSetupNewTurnEvent{
+	evt := &types.RequireSetupNewTurnEvent{
 		GameID:      g.gameInfo.ID,
 		RoundNumber: uint32(g.currentRound.round.RoundNumber),
 		TurnNumber:  g.currentRound.getCurrentTurnNumber(),
-	})
+	}
+	g.txPoolEnqueuer.AddSetTurnReady(evt)
+	return nil
+}
+
+// completeGameAndNotify runs settlement, clears tx pool info for this game, then notifies the manager to remove the game from maps.
+func (g *Game) completeGameAndNotify(evt *types.GameCompletedEvent) error {
+	if g.gameResultSettler != nil {
+		if err := g.gameResultSettler.GameResultSettlement(evt); err != nil {
+			return err
+		}
+	}
+	g.txPoolEnqueuer.ClearGameInfo(evt.GameID)
+	return g.gameContextHandler.HandleGameCompletedEvent(evt)
 }

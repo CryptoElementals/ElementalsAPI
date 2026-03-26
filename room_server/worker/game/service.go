@@ -9,15 +9,24 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type ContractClient interface {
-	CreateRoomContract(evt *types.RequireGameCreationEvent) error
-	SetTurnReady(evt *types.RequireSetupNewTurnEvent) error
-	SubmitPlayerCommitmentsBatch(events []*types.SubmitPlayerCommitment) error
-	SubmitPlayerCardsBatch(events []*types.SubmitPlayerCard) error
+	// SubmitTasks submits a pre-encoded batch of contract tasks to the chain.
+	// Each task is an ABI-encoded payload compatible with RoomV3.batchSubmitTasks.
+	SubmitTasks(tasks []chain.RoomContractTask) error
+}
+
+// TxPoolEnqueuer is the interface Game uses to enqueue chain-related events (create room, set turn ready, commitments, cards).
+type TxPoolEnqueuer interface {
+	AddCreateRoom(evt *types.RequireGameCreationEvent)
+	AddSetTurnReady(evt *types.RequireSetupNewTurnEvent)
+	AddCommitment(evt *types.SubmitPlayerCommitment) error
+	AddCard(evt *types.SubmitPlayerCard) error
+	ClearGameInfo(gameID uint)
 }
 
 type GameHandler interface {
@@ -38,6 +47,7 @@ func NewService(
 	workerManager *worker.WorkerManager,
 	gameConfig *config.GameParamConfig,
 	chainSvc ContractClient,
+	poolBatchSize int,
 	shouldRecover bool) *Service {
 	gameArgs := dao.GameArgs{
 		MaxRounds:         gameConfig.MaxRounds,
@@ -57,7 +67,7 @@ func NewService(
 		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
 	return &Service{
-		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover),
+		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover, poolBatchSize),
 	}
 }
 

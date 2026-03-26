@@ -38,8 +38,8 @@ type Game struct {
 // Round 回合记录
 type Round struct {
 	BaseModel
-	GameID         uint                      `json:"game_id"`      // 匹配唯一ID
-	RoundNumber    uint32                    `json:"round_number"` // 回合数
+	GameID         uint                      `gorm:"index" json:"game_id"`      // 匹配唯一ID
+	RoundNumber    uint32                    `json:"round_number"`               // 回合数
 	Turns          []*Turn                   `json:"turns"`
 	IsLastRound    bool                      `json:"is_last_round"`
 	CompleteReason proto.RoundCompleteReason `json:"complete_reason"`
@@ -47,7 +47,7 @@ type Round struct {
 
 type Turn struct {
 	BaseModel
-	RoundID         uint              `json:"round_id"`
+	RoundID         uint              `gorm:"index" json:"round_id"`
 	TurnNumber      uint32            `json:"turn_number"`
 	TurnStartAt     int64             `json:"turn_start_at"`
 	PlayerTurnInfos []*PlayerTurnInfo `json:"player_turn_infos"`
@@ -55,7 +55,7 @@ type Turn struct {
 
 type PlayerTurnInfo struct {
 	BaseModel
-	TurnID            uint                   `json:"turn_id"`
+	TurnID            uint                   `gorm:"index" json:"turn_id"`
 	PlayerID          int64                  `json:"player_id"`
 	PlayerStatus      proto.PlayerTurnStatus `json:"player_status"`
 	TemporaryAddress  string                 `json:"temporary_address"`
@@ -79,7 +79,7 @@ type TurnSubmittedCard struct {
 
 type CardEffect struct {
 	BaseModel
-	PlayerTurnInfoID       uint
+	PlayerTurnInfoID       uint `gorm:"index"`
 	Type                   proto.BattleEffectType
 	Value                  int32
 	Description            string
@@ -89,14 +89,14 @@ type CardEffect struct {
 
 type GamePlayerInfo struct {
 	BaseModel
-	GameID           uint   `json:"game_id"`
+	GameID           uint   `gorm:"index" json:"game_id"`
 	PlayerId         int64  `gorm:"not null;index:address" json:"player_id"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
 
 type PlayerReward struct {
 	BaseModel
-	BattleRewardID         uint
+	BattleRewardID         uint  `gorm:"index"`
 	PlayerId               int64 `gorm:"not null;index:wallet_address" json:"player_id"`
 	TemporaryAddress       string
 	TokenChange            int32
@@ -108,14 +108,14 @@ type PlayerReward struct {
 
 type BattleReward struct {
 	BaseModel
-	GameResultID  uint
+	GameResultID  uint  `gorm:"index"`
 	SystemFee     int32
 	PlayerRewards []*PlayerReward
 }
 
 type GameResult struct {
 	BaseModel
-	GameID                 uint
+	GameID                 uint  `gorm:"index"`
 	Multiplier             int32
 	WinnerPlayerId         int64
 	WinnerTemporaryAddress string

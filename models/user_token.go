@@ -10,8 +10,8 @@ type UserToken struct {
 
 type LockedUserToken struct {
 	BaseModel
-	UserTokenID      uint   `gorm:"not null"`
-	TemporaryAddress string `gorm:"index;not null"`
-	GameID           uint   `gorm:"not null"`
-	TokenAmount      int32  `gorm:"default:0"`
+	UserTokenID      uint   `gorm:"index:id_addr;not null"`
+	TemporaryAddress string `gorm:"index:id_addr;not null"`
+	GameID           uint
+	TokenAmount      int32 `gorm:"default:0"`
 }

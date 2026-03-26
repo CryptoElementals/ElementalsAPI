@@ -279,7 +279,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false, 0)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
 		Id:               1,
@@ -354,7 +354,7 @@ func TestGameStateMachine(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 1000,
-		}, contractClient, false)
+		}, contractClient, 0, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -366,7 +366,7 @@ func TestGameStateMachine(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 3000,
-		}, contractClient, false)
+		}, contractClient, 0, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -379,7 +379,7 @@ func TestGameStateMachine(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 10000,
-		}, contractClient, false)
+		}, contractClient, 0, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
