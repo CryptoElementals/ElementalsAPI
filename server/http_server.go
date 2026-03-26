@@ -157,6 +157,8 @@ func corsMiddleware() gin.HandlerFunc {
 			"http://d.elementra.xyz",
 			"https://elementra.xyz",
 			"http://elementra.xyz",
+			"https://a.elementra.xyz",
+			"http://a.elementra.xyz",
 		}
 
 		// 检查来源是否被允许
