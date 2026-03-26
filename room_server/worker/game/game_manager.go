@@ -98,16 +98,15 @@ func NewGameManager(ctx context.Context,
 	poolBatchSize int,
 ) *GameManager {
 	m := &GameManager{
-		ctx:            ctx,
-		gameLocks:      make(map[uint]*sync.Mutex),
-		workerManager:  workerManagerService,
-		publisher:      pub,
-		chainSvc:       chainSvc,
-		args:           gameArgs,
+		ctx:           ctx,
+		gameLocks:     make(map[uint]*sync.Mutex),
+		workerManager: workerManagerService,
+		publisher:     pub,
+		chainSvc:      chainSvc,
+		args:          gameArgs,
 	}
-	// Set default pool processing interval if not set
-	if m.args.PoolProcessingInterval <= 0 {
-		m.args.PoolProcessingInterval = 5 // Default 5 seconds
+	if m.args.MaxTurnsPerRound <= 0 {
+		m.args.MaxTurnsPerRound = 3
 	}
 	m.txPool = newTxPool(chainSvc, poolBatchSize)
 	return m
@@ -117,7 +116,7 @@ func (r *GameManager) Start() error {
 	r.registerTimerFunction()
 
 	// Start background goroutine for pool processing
-	go r.txPool.processPools(r.ctx, r.args)
+	go r.txPool.processPools(r.ctx)
 
 	// On startup, abort any games that were left active (non-ended/non-aborted).
 	// This matches the "stateless" model: we do not attempt to recover/resume games after restart.
@@ -214,7 +213,12 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 
 	// Rebuild runtime round state from DB
 	currentRound := buildRuntimeState(gameInfo)
-	if currentRound == nil || currentRound.round == nil {
+	if currentRound == nil || currentRound.game == nil {
+		return nil, errors.New("no round data for game")
+	}
+
+	roundView := conversion.RoundByNumber(gameInfo, currentRound.roundNumber)
+	if roundView == nil {
 		return nil, errors.New("no round data for game")
 	}
 
@@ -225,10 +229,10 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 	if currentTurn != nil && currentTurn.TurnStartAt > 0 {
 		turnStartAt = currentTurn.TurnStartAt
 	} else {
-		turnStartAt = currentRound.round.CreatedAt.Unix()
+		turnStartAt = gameInfo.CreatedAt.Unix()
 	}
 
-	gamePhase := conversion.DbGameToProtoGamePhase(gameInfo, currentRound.round, turnNumber, turnStartAt)
+	gamePhase := conversion.DbGameToProtoGamePhase(gameInfo, roundView, turnNumber, turnStartAt)
 	return gamePhase, nil
 }
 

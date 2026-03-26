@@ -12,11 +12,10 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+// Service is the queue / matchmaking façade: join/exit, continue-game flow, token checks, and stat callbacks.
 type Service struct {
-	ctx                 context.Context
-	queue               *Queue
-	minTokenToJoinQueue int32
-	botWaitTime         int64
+	ctx   context.Context
+	queue *Queue
 }
 
 func NewService(ctx context.Context,
@@ -30,13 +29,10 @@ func NewService(ctx context.Context,
 	botWaitTime int64,
 	statServiceEndpoint string,
 ) *Service {
-	s := &Service{
-		ctx:                 ctx,
-		queue:               NewQueue(ctx, workerManager, pub, cache, gameCreator, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
-		minTokenToJoinQueue: minTokenToJoinQueue,
-		botWaitTime:         botWaitTime,
+	return &Service{
+		ctx:   ctx,
+		queue: NewQueue(ctx, workerManager, pub, cache, gameCreator, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
 	}
-	return s
 }
 
 func (s *Service) Start() error {

@@ -139,6 +139,9 @@ func (q *Queue) UnregisterBots(addrs ...*types.PlayerAddress) error {
 }
 
 func (q *Queue) addBotRoutine() {
+	if q.botWaitTime <= 0 {
+		return
+	}
 	go func() {
 		ticker := time.NewTicker(q.botWaitTime)
 		for {

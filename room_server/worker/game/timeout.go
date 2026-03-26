@@ -71,24 +71,25 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 	if g.gameInfo.Status == proto.GameStatus_GAME_END {
 		return 0
 	}
+	ga := g.gameInfo.GameArgs
 	timeoutDuration := int64(0)
 	switch g.gameInfo.Status {
 	case proto.GameStatus_GAME_INIT:
 		// game waitting confirmed for the first round
-		timeoutDuration = g.gameInfo.GameArgs.ConfirmationTimeout + g.gameInfo.GameArgs.ConfirmationTimeoutRedundancy
+		timeoutDuration = ga.ConfirmationTimeout + ga.ConfirmationTimeoutRedundancy
 	case proto.GameStatus_GAME_RUNNING:
 		switch g.currentRound.getTurnStatus() {
 		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION,
 			proto.TurnStatus_TURN_ROUND_COMPLETED,
 			proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN:
 			// waitting for confimation
-			timeoutDuration = g.gameInfo.GameArgs.ConfirmationTimeout + g.gameInfo.GameArgs.ConfirmationTimeoutRedundancy
+			timeoutDuration = ga.ConfirmationTimeout + ga.ConfirmationTimeoutRedundancy
 		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
 			// turn submitting commitments
-			timeoutDuration = g.gameInfo.GameArgs.CommitmentSubmissionTimeout + g.gameInfo.GameArgs.CommitmentSubmissionTimeoutRedundancy
+			timeoutDuration = ga.CommitmentSubmissionTimeout + ga.CommitmentSubmissionTimeoutRedundancy
 		case proto.TurnStatus_TURN_WAITTING_CARDS:
 			// turn submitting cards
-			timeoutDuration = g.gameInfo.GameArgs.CardSubmissionTimeout + g.gameInfo.GameArgs.CardSubmissionTimeoutRedundancy
+			timeoutDuration = ga.CardSubmissionTimeout + ga.CardSubmissionTimeoutRedundancy
 		}
 	case proto.GameStatus_GAME_END:
 		return 0
@@ -111,7 +112,7 @@ func (g *Game) sendTimerEventByCurrentRound() {
 	timerEvent := &timerEvent{
 		GameID:            g.gameInfo.ID,
 		currentGameStatus: g.gameInfo.Status,
-		currentRound:      g.currentRound.round.RoundNumber,
+		currentRound:      g.currentRound.roundNumber,
 		currentTurnNumber: g.currentRound.getCurrentTurnNumber(),
 		currentTurnStatus: g.currentRound.getTurnStatus(),
 	}
@@ -133,7 +134,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		return
 	}
 	// stale event
-	if g.currentRound.round.RoundNumber != event.currentRound {
+	if g.currentRound.roundNumber != event.currentRound {
 		return
 	}
 	// status changed go ahead
@@ -146,7 +147,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	}
 	log.Infow("timer event triggered",
 		"game id", g.gameInfo.ID,
-		"round", g.currentRound.round.RoundNumber,
+		"round", g.currentRound.roundNumber,
 		"turn", g.currentRound.getCurrentTurnNumber(),
 		"turn status", g.currentRound.getTurnStatus(),
 		"turn number", g.currentRound.getCurrentTurnNumber(),
@@ -178,7 +179,7 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 	case proto.TurnStatus_TURN_ROUND_COMPLETED:
 		log.Infow("turn round completed, but get timer event",
 			"game id", g.gameInfo.ID,
-			"round", g.currentRound.round.RoundNumber,
+			"round", g.currentRound.roundNumber,
 			"turn", g.currentRound.getCurrentTurnNumber())
 		err := g.handleTurnEnd()
 		if err != nil {

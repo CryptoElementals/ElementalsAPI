@@ -107,7 +107,7 @@ func TestChainContractInteraction(t *testing.T) {
 	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	ackReceived := make(chan struct{})
-	testWorkerManager.SpwanWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
+	testWorkerManager.SpawnWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
 
 	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireGameCreationEvent{
 		GameID:         uint(gameID),

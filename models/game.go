@@ -3,63 +3,63 @@ package dao
 import "github.com/CryptoElementals/common/rpc/proto"
 
 type GameArgs struct {
-	MaxRounds         int64
-	InitialHP         int64 `json:"initial_hp"`
-	InitialMultiplier int64
+	BaseModel
+
+	MaxRounds         int64 `gorm:"not null" json:"max_rounds"`
+	InitialHP         int64 `gorm:"not null" json:"initial_hp"`
+	InitialMultiplier int64 `gorm:"not null" json:"initial_multiplier"`
 	// timeouts
-	ConfirmationTimeout         int64 `json:"confirmation_timeout"`          // Timeout for game match and round confirmation
-	CommitmentSubmissionTimeout int64 `json:"commitment_submission_timeout"` // Timeout for commitment submission
-	CardSubmissionTimeout       int64 `json:"card_submission_timeout"`       // Timeout for card submission
-	GameContinueTimeout         int64 `json:"game_continue_timeout"`         // Timeout for game continue
+	ConfirmationTimeout         int64 `gorm:"not null" json:"confirmation_timeout"`          // Timeout for game match and round confirmation
+	CommitmentSubmissionTimeout int64 `gorm:"not null" json:"commitment_submission_timeout"` // Timeout for commitment submission
+	CardSubmissionTimeout       int64 `gorm:"not null" json:"card_submission_timeout"`       // Timeout for card submission
+	GameContinueTimeout         int64 `gorm:"not null" json:"game_continue_timeout"`         // Timeout for game continue
 
 	// timeout redundancy
-	ConfirmationTimeoutRedundancy         int64 `json:"confirmation_timeout_redundancy"`          // Redundancy for game match and round confirmation
-	CommitmentSubmissionTimeoutRedundancy int64 `json:"commitment_submission_timeout_redundancy"` // Redundancy for commitment submission
-	CardSubmissionTimeoutRedundancy       int64 `json:"card_submission_timeout_redundancy"`       // Redundancy for card submission
-	GameContinueTimeoutRedundancy         int64 `json:"game_continue_timeout_redundancy"`         // Redundancy for game continue
+	ConfirmationTimeoutRedundancy         int64 `gorm:"not null" json:"confirmation_timeout_redundancy"`          // Redundancy for game match and round confirmation
+	CommitmentSubmissionTimeoutRedundancy int64 `gorm:"not null" json:"commitment_submission_timeout_redundancy"` // Redundancy for commitment submission
+	CardSubmissionTimeoutRedundancy       int64 `gorm:"not null" json:"card_submission_timeout_redundancy"`       // Redundancy for card submission
+	GameContinueTimeoutRedundancy         int64 `gorm:"not null" json:"game_continue_timeout_redundancy"`         // Redundancy for game continue
 
-	// pool processing interval in seconds
-	PoolProcessingInterval int64
+	MaxTurnsPerRound int64 `gorm:"not null" json:"max_turns_per_round"`
 }
+
+func (GameArgs) TableName() string { return "game_args" }
 
 type Game struct {
 	BaseModel
+	GameArgsID uint `gorm:"not null;index" json:"game_args_id"`
+
 	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus `gorm:"not null" json:"status"`
 
 	Players    []*GamePlayerInfo `json:"players"`
-	Rounds     []*Round          `json:"rounds"`
+	Turns      []*Turn           `json:"turns"`
 	GameResult *GameResult       `json:"game_result"`
 
-	GameArgs
-}
-
-// Round 回合记录
-type Round struct {
-	BaseModel
-	GameID         uint                      `gorm:"index" json:"game_id"` // 匹配唯一ID
-	RoundNumber    uint32                    `json:"round_number"`         // 回合数
-	Turns          []*Turn                   `json:"turns"`
-	IsLastRound    bool                      `json:"is_last_round"`
-	CompleteReason proto.RoundCompleteReason `json:"complete_reason"`
+	GameArgs *GameArgs `gorm:"foreignKey:GameArgsID" json:"game_args,omitempty"`
 }
 
 type Turn struct {
 	BaseModel
-	RoundID         uint              `gorm:"index" json:"round_id"`
-	TurnStatus      uint32            `gorm:"status"`
-	TurnNumber      uint32            `json:"turn_number"`
-	TurnStartAt     int64             `json:"turn_start_at"`
+	GameID      uint   `gorm:"not null;uniqueIndex:uq_game_turn,priority:1" json:"game_id"`
+	RoundNumber uint32 `gorm:"not null;uniqueIndex:uq_game_turn,priority:2" json:"round_number"`
+	TurnNumber  uint32 `gorm:"not null;uniqueIndex:uq_game_turn,priority:3" json:"turn_number"`
+
+	TurnStatus  uint32 `gorm:"not null" json:"turn_status"`
+	TurnStartAt int64  `gorm:"not null" json:"turn_start_at"`
+
 	PlayerTurnInfos []*PlayerTurnInfo `json:"player_turn_infos"`
 }
 
+func (Turn) TableName() string { return "turns" }
+
 type PlayerTurnInfo struct {
 	BaseModel
-	TurnID            uint                   `gorm:"index" json:"turn_id"`
+	TurnID            uint                   `gorm:"not null;index;uniqueIndex:uq_turn_player,priority:1" json:"turn_id"`
 	PlayerID          int64                  `json:"player_id"`
 	PlayerStatus      proto.PlayerTurnStatus `json:"player_status"`
-	TemporaryAddress  string                 `json:"temporary_address"`
+	TemporaryAddress  string                 `gorm:"not null;size:128;uniqueIndex:uq_turn_player,priority:2" json:"temporary_address"`
 	TurnSubmittedCard *TurnSubmittedCard     `gorm:"embedded" json:"turn_submitted_card"`
 }
 

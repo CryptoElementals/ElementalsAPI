@@ -18,64 +18,66 @@ import (
 // It is intended for synchronous event handling (e.g. from GameManager) rather than long-lived workers.
 func NewEphemeralGameForEvent(
 	ctx context.Context,
-	workerMangerService *worker.WorkerManager,
+	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
 	gameInfo *dao.Game,
 ) *Game {
 	return &Game{
-		ctx:                 ctx,
-		gameInfo:            gameInfo,
-		currentRound:        buildRuntimeState(gameInfo),
-		workerMangerService: workerMangerService,
-		publisher:           pub,
-		txPoolEnqueuer:      txPoolEnqueuer,
-		gameResultSettler:   gameResultSettler,
+		ctx:                  ctx,
+		gameInfo:             gameInfo,
+		currentRound:         buildRuntimeState(gameInfo),
+		workerManagerService: workerManagerService,
+		publisher:            pub,
+		txPoolEnqueuer:       txPoolEnqueuer,
+		gameResultSettler:    gameResultSettler,
 	}
 }
 
 type Game struct {
-	ctx                 context.Context
-	gameInfo            *dao.Game
-	currentRound        *round
-	workerMangerService *worker.WorkerManager
-	publisher           Publisher
-	txPoolEnqueuer      TxPoolEnqueuer
-	gameResultSettler   GameResultSettler
+	ctx                  context.Context
+	gameInfo             *dao.Game
+	currentRound         *round
+	workerManagerService *worker.WorkerManager
+	publisher            Publisher
+	txPoolEnqueuer       TxPoolEnqueuer
+	gameResultSettler    GameResultSettler
 }
 
 func NewGame(
 	ctx context.Context,
 	players []types.PlayerAddress,
-	workerMangerService *worker.WorkerManager,
+	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
 	gameArgs *dao.GameArgs) *Game {
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
+	ga := *gameArgs
 	for _, player := range players {
 		daoPlayer := player.ToDao()
 		daoPlayers = append(daoPlayers, daoPlayer)
 		gamePlayers[player.TemporaryAddress] = &gamePlayer{
 			player:     daoPlayer,
-			currentHP:  gameArgs.InitialHP,
-			multiplier: uint32(gameArgs.InitialMultiplier),
+			currentHP:  ga.InitialHP,
+			multiplier: uint32(ga.InitialMultiplier),
 		}
 	}
+	gameInfo := &dao.Game{
+		Players:  daoPlayers,
+		Type:     types.GameTypePVP,
+		GameArgs: &ga,
+	}
 	game := &Game{
-		ctx: ctx,
-		gameInfo: &dao.Game{
-			Players:  daoPlayers,
-			Type:     types.GameTypePVP,
-			GameArgs: *gameArgs,
-		},
-		currentRound:        &round{round: nil, gamePlayers: gamePlayers},
-		workerMangerService: workerMangerService,
-		publisher:           pub,
-		txPoolEnqueuer:      txPoolEnqueuer,
-		gameResultSettler:   gameResultSettler,
+		ctx:                  ctx,
+		gameInfo:             gameInfo,
+		currentRound:         &round{game: gameInfo, gamePlayers: gamePlayers},
+		workerManagerService: workerManagerService,
+		publisher:            pub,
+		txPoolEnqueuer:       txPoolEnqueuer,
+		gameResultSettler:    gameResultSettler,
 	}
 	game.setupNewRound()
 	return game
@@ -83,31 +85,31 @@ func NewGame(
 
 func NewGameFromGameInfo(
 	ctx context.Context,
-	workerMangerService *worker.WorkerManager,
+	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	gameInfo *dao.Game,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler) *Game {
-	// Build runtime round and gamePlayers from fully loaded gameInfo
 	currentRound := buildRuntimeState(gameInfo)
 
 	g := &Game{
-		ctx:                 ctx,
-		gameInfo:            gameInfo,
-		currentRound:        currentRound,
-		workerMangerService: workerMangerService,
-		publisher:           pub,
-		txPoolEnqueuer:      txPoolEnqueuer,
-		gameResultSettler:   gameResultSettler,
+		ctx:                  ctx,
+		gameInfo:             gameInfo,
+		currentRound:         currentRound,
+		workerManagerService: workerManagerService,
+		publisher:            pub,
+		txPoolEnqueuer:       txPoolEnqueuer,
+		gameResultSettler:    gameResultSettler,
 	}
 
 	// Optional: expiry on recovery – skip and abort games that have clearly timed out
 	if !gameInfo.CreatedAt.IsZero() {
-		perRoundSeconds := gameInfo.ConfirmationTimeout +
-			gameInfo.CommitmentSubmissionTimeout +
-			gameInfo.CardSubmissionTimeout
-		if perRoundSeconds > 0 && gameInfo.MaxRounds > 0 {
-			expiryDuration := time.Duration(perRoundSeconds*gameInfo.MaxRounds) * time.Second
+		ga := gameInfo.GameArgs
+		perRoundSeconds := ga.ConfirmationTimeout +
+			ga.CommitmentSubmissionTimeout +
+			ga.CardSubmissionTimeout
+		if perRoundSeconds > 0 && ga.MaxRounds > 0 {
+			expiryDuration := time.Duration(perRoundSeconds*ga.MaxRounds) * time.Second
 			if time.Since(gameInfo.CreatedAt) > expiryDuration {
 				log.Infow("skipping expired game on recovery",
 					"game id", gameInfo.ID,
@@ -129,29 +131,10 @@ func NewGameFromGameInfo(
 	}
 
 	// Restore runtime state for current round and turn from DB
-	if g.currentRound.round != nil {
-		var currentTurn *dao.Turn
-		if len(g.currentRound.round.Turns) > 0 {
-			var maxTurnNum uint32
-			for _, t := range g.currentRound.round.Turns {
-				if t != nil && t.TurnNumber > maxTurnNum {
-					maxTurnNum = t.TurnNumber
-					currentTurn = t
-				}
-			}
-			if currentTurn != nil && maxTurnNum > 0 {
-				g.currentRound.turnNumber = maxTurnNum
-			} else {
-				g.currentRound.turnNumber = 1
-			}
-		} else {
-			g.currentRound.turnNumber = 1
-		}
-
-		// Use persisted TurnStatus from DB when available; otherwise fall back to a safe default.
-		r := g.currentRound.round
+	if len(g.gameInfo.Turns) > 0 {
+		currentTurn := g.currentRound.getCurrentTurn()
 		switch {
-		case r.IsLastRound || r.CompleteReason != proto.RoundCompleteReason_ROUND_COMPLETE_NORMAL:
+		case gameInfo.Status == proto.GameStatus_GAME_END || gameInfo.Status == proto.GameStatus_GAME_ABORTED:
 			g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
 		case currentTurn != nil && currentTurn.TurnStatus != 0:
 			g.currentRound.setTurnStatus(proto.TurnStatus(currentTurn.TurnStatus))
@@ -159,7 +142,6 @@ func NewGameFromGameInfo(
 			g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION)
 		}
 
-		// Restore each player's currentTurnInfo from the current turn
 		if currentTurn != nil {
 			for _, pti := range currentTurn.PlayerTurnInfos {
 				if pti == nil {
@@ -168,7 +150,6 @@ func NewGameFromGameInfo(
 				key := strings.ToLower(pti.TemporaryAddress)
 				player, ok := g.currentRound.gamePlayers[key]
 				if !ok {
-					// fallback without lowercasing in case data was stored differently
 					player, ok = g.currentRound.gamePlayers[pti.TemporaryAddress]
 				}
 				if !ok || player == nil {
@@ -176,7 +157,6 @@ func NewGameFromGameInfo(
 					continue
 				}
 				player.currentTurnInfo = pti
-				// Optionally restore HP and multiplier from latest submitted card if available
 				if pti.TurnSubmittedCard != nil && pti.TurnSubmittedCard.HealthAfter > 0 {
 					player.currentHP = int64(pti.TurnSubmittedCard.HealthAfter)
 					if pti.TurnSubmittedCard.MultiplierAfter > 0 {
@@ -187,23 +167,19 @@ func NewGameFromGameInfo(
 		}
 	}
 
-	// For recovered games, potentially re-enqueue on-chain operations that were in-flight
 	switch gameInfo.Status {
 	case proto.GameStatus_GAME_INIT:
-		// Game was matched but contract not yet created; re-push state to contract creation flow
 		if err := g.pushStateToContractCreating(); err != nil {
 			log.Errorf("recovered GAME_INIT pushStateToContractCreating failed, game: %d, err %s", gameInfo.ID, err)
 		}
 	case proto.GameStatus_GAME_RUNNING:
 		if g.currentRound.getTurnStatus() == proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN {
-			// Game was waiting for turn setup on-chain; re-send turn-ready
 			if err := g.sendTurnReady(); err != nil {
 				log.Errorf("recovered GAME_RUNNING sendTurnReady failed, game: %d, err %s", gameInfo.ID, err)
 			}
 		}
 	}
 
-	// Schedule timeout based on recovered (and possibly re-enqueued) state
 	g.sendTimerEventByCurrentRound()
 
 	return g
@@ -218,13 +194,8 @@ func (g *Game) saveGame() error {
 	return nil
 }
 
-func (g *Game) saveRound(round *dao.Round) error {
-	err := db.SaveRound(round)
-	if err != nil {
-		log.Errorw("saveRound failed", "err", err, "game id", g.gameInfo.ID, "round num", round.RoundNumber)
-		return err
-	}
-	return nil
+func (g *Game) saveRound() error {
+	return g.saveGame()
 }
 
 // pushStateToContractCreating is used for continue games to immediately start contract creation
@@ -234,8 +205,9 @@ func (g *Game) pushStateToContractCreating() error {
 	allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
 	for _, player := range g.currentRound.gamePlayers {
 		allPlayers = append(allPlayers, player.PlayerAddress())
-		// Mark player as ready for current turn
-		player.currentTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
+		if player.currentTurnInfo != nil {
+			player.currentTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
+		}
 	}
 	if err := g.sendContractCreation(allPlayers); err != nil {
 		g.handleGameAbortInternalError()
@@ -248,9 +220,8 @@ func (g *Game) pushStateToContractCreating() error {
 // setupNewTurn sends event to chain manager to setup a new turn
 // Note: For the first turn of the first round, this is not needed as the contract creation handles it
 func (g *Game) setupNewTurn() error {
-	// RoomContract check removed - always uses RoomV2 contract address
 	turnNumber := g.currentRound.getCurrentTurnNumber()
-	log.Infow("setup new turn", "game id", g.gameInfo.ID, "round number", g.currentRound.round.RoundNumber, "turn number", turnNumber)
+	log.Infow("setup new turn", "game id", g.gameInfo.ID, "round number", g.currentRound.roundNumber, "turn number", turnNumber)
 	err := g.sendTurnReady()
 	if err != nil {
 		return err
@@ -266,7 +237,7 @@ func (g *Game) incrementTurnNumber() {
 
 func (g *Game) stopGame() {
 	log.Infow("stop game", "game id", g.gameInfo.ID)
-	g.workerMangerService.CloseWorker(g.workerID())
+	g.workerManagerService.CloseWorker(g.workerID())
 }
 
 func (g *Game) workerID() string {
@@ -279,22 +250,16 @@ func (g *Game) WorkerID() string {
 }
 
 func (g *Game) setupNewRound() {
+	maxR := dao.MaxRoundNumberFromTurns(g.gameInfo.Turns)
 	roundNum := uint32(1)
-	if g.currentRound.round != nil {
-		roundNum = g.currentRound.round.RoundNumber + 1
+	if maxR >= 1 {
+		roundNum = maxR + 1
 	}
-	newRound := &dao.Round{
-		GameID:      g.gameInfo.ID,
-		RoundNumber: roundNum,
-		Turns:       make([]*dao.Turn, 0, 3), // Pre-allocate for 3 turns
-	}
-	g.currentRound.round = newRound // Update the embedded Round's reference
-	g.currentRound.turnNumber = 1   // Start with turn 1 for each new round
+	g.currentRound.roundNumber = roundNum
+	g.currentRound.turnNumber = 1
 	g.currentRound.createNewTurn()
-	g.gameInfo.Rounds = append(g.gameInfo.Rounds, newRound)
 	g.sendTimerEventByCurrentRound()
 }
-
 
 func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
 	player, ok := g.currentRound.gamePlayers[strings.ToLower(tempAddr)]
@@ -305,12 +270,13 @@ func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
 }
 
 func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
+	ga := g.gameInfo.GameArgs
 	evt := &types.RequireGameCreationEvent{
 		GameID:         g.gameInfo.ID,
 		Players:        allPlayers,
-		InitialHP:      g.gameInfo.InitialHP,
-		RoundTimeout:   g.gameInfo.CommitmentSubmissionTimeout,
-		MaxRoundNumber: g.gameInfo.MaxRounds,
+		InitialHP:      ga.InitialHP,
+		RoundTimeout:   ga.CommitmentSubmissionTimeout,
+		MaxRoundNumber: ga.MaxRounds,
 	}
 	g.txPoolEnqueuer.AddCreateRoom(evt)
 	return nil
@@ -319,7 +285,7 @@ func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
 func (g *Game) sendTurnReady() error {
 	evt := &types.RequireSetupNewTurnEvent{
 		GameID:      g.gameInfo.ID,
-		RoundNumber: uint32(g.currentRound.round.RoundNumber),
+		RoundNumber: g.currentRound.roundNumber,
 		TurnNumber:  g.currentRound.getCurrentTurnNumber(),
 	}
 	g.txPoolEnqueuer.AddSetTurnReady(evt)

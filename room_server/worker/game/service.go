@@ -10,14 +10,13 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/protopub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // Publisher publishes game events to clients (e.g. gRPC PubSub). Must be non-nil for production.
-type Publisher interface {
-	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
-}
+type Publisher = protopub.Publisher
 
 type ContractClient interface {
 	// SubmitTasks submits a pre-encoded batch of contract tasks to the chain.
@@ -88,7 +87,7 @@ func NewService(
 		CardSubmissionTimeoutRedundancy:       gameConfig.CardSubmissionTimeoutRedundancy,
 		GameContinueTimeoutRedundancy:         gameConfig.GameContinueTimeoutRedundancy,
 
-		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
+		MaxTurnsPerRound: gameConfig.MaxTurnsPerRound,
 	}
 	mgr := NewGameManager(ctx, workerManager, pub, gameArgs, chainSvc, poolBatchSize)
 	return &Service{
@@ -138,17 +137,16 @@ func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.R
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, round := range gameInfo.Rounds {
-		if round.RoundNumber == roundNum {
-			roundRes := conversion.DbRoundToRoundResult(round)
-			var gameRes *proto.GameResult
-			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.ConfirmationTimeout)
-			if gameInfo.GameResult != nil {
-				gameRes = conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
-				gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.GameContinueTimeout)
-			}
-			return roundRes, gameRes, nil
+	synth := conversion.RoundByNumber(gameInfo, roundNum)
+	if synth != nil {
+		roundRes := conversion.DbRoundToRoundResult(synth, gameInfo)
+		roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.ConfirmationTimeout)
+		var gameRes *proto.GameResult
+		if gameInfo.GameResult != nil {
+			gameRes = conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
+			gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.GameContinueTimeout)
 		}
+		return roundRes, gameRes, nil
 	}
 	return nil, nil, errors.New("round not found")
 }
@@ -234,5 +232,3 @@ func (s *Service) getPlayerStatusLocked(q PlayerQueue, address types.PlayerAddre
 func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
 	return s.gameManager.SyncGamePhase(address)
 }
-
-

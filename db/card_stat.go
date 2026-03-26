@@ -99,13 +99,13 @@ func GetCardStatsInfo(cardStats []dao.CardStat) []CardStatInfo {
 	return result
 }
 
-// queryNewPlayerTurnInfos 查询玩家的新 turn 记录，直接使用 model 表结构，表变更只需改 models
-func queryNewPlayerTurnInfos(tx *gorm.DB, playerID int64, maxRoundID uint) ([]dao.PlayerTurnInfo, error) {
+// queryNewPlayerTurnInfos 查询玩家的新 turn 记录。maxLastTurnID 为已处理的最大 turns.id（存在 card_stats.last_player_round_info_id）。
+func queryNewPlayerTurnInfos(tx *gorm.DB, playerID int64, maxLastTurnID uint) ([]dao.PlayerTurnInfo, error) {
 	q := tx.Model(&dao.PlayerTurnInfo{}).Where("player_id = ?", playerID)
-	if maxRoundID > 0 {
+	if maxLastTurnID > 0 {
 		subQuery := tx.Model(&dao.PlayerTurnInfo{}).Select("player_turn_infos.turn_id").
 			Joins("JOIN turns ON turns.id = player_turn_infos.turn_id").
-			Where("player_turn_infos.player_id = ? AND turns.round_id > ?", playerID, maxRoundID)
+			Where("player_turn_infos.player_id = ? AND turns.id > ?", playerID, maxLastTurnID)
 		q = q.Where("turn_id IN (?)", subQuery)
 	}
 	var infos []dao.PlayerTurnInfo
@@ -130,18 +130,16 @@ func queryNewPlayerTurnInfos(tx *gorm.DB, playerID int64, maxRoundID uint) ([]da
 //  3. 对每个玩家：
 //     a. 查询现有统计：从 card_stats 表获取该玩家的所有卡牌统计记录
 //     - 构建 cardID -> CardStat 映射
-//     - 记录最大 RoundCount 和 LastPlayerRoundInfoID（存储的是 RoundID）
+//     - 记录最大 RoundCount 和 LastPlayerRoundInfoID（存储的是已处理的最大 turns.id）
 //     b. 查询新数据：从 player_turn_infos 表查询该玩家的新 turn 记录
-//     - 如果已有记录，通过 JOIN turns 表过滤出 round_id > maxRoundID 的 turn
+//     - 如果已有记录，通过 JOIN turns 表过滤出 turns.id > maxLastTurnID
 //     - 只查询该玩家在新 round 中的 turn，避免查询所有玩家的 turn
 //     - 过滤掉 TurnSubmittedCard 为 nil 的记录
-//     c. 建立映射：查询 turns 表，建立 turn_id -> round_id 映射
-//     - 因为 PlayerTurnInfo 表没有 round_id 字段，需要通过 turns 表关联
-//     - 统计新增的 unique round 数量（totalNewRounds）
+//     c. 建立映射：查询 turns 表，按 (game_id, 逻辑回合) 去重得到 totalNewRounds
 //     d. 统计卡牌使用：遍历新 turn 记录，统计每张卡牌的使用情况
 //     - 统计使用次数（usageCount）
 //     - 根据 ElementRelation 判断胜负平（winCount/loseCount/tieCount）
-//     - 记录每张卡牌最新的 RoundID
+//     - 记录每张卡牌最新的 turns.id（写入 last_player_round_info_id）
 //     e. 更新/创建统计：更新或创建 card_stats 记录
 //     - 有记录则累加统计数据，更新 round_count
 //     - 无记录则创建新记录
@@ -182,21 +180,20 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 			// 创建卡牌ID到统计记录的映射
 			cardStatMap := make(map[uint]*dao.CardStat)
 			existedRoundCount := uint(0)
-			var maxRoundID uint = 0
+			var maxLastTurnID uint = 0
 			for i := range existingCardStats {
 				cardStatMap[existingCardStats[i].CardID] = &existingCardStats[i]
 				if existedRoundCount < existingCardStats[i].RoundCount {
 					existedRoundCount = existingCardStats[i].RoundCount
 				}
-				// LastPlayerRoundInfoID 现在存储的是 RoundID
-				if existingCardStats[i].LastPlayerRoundInfoID > maxRoundID {
-					maxRoundID = existingCardStats[i].LastPlayerRoundInfoID
+				if existingCardStats[i].LastPlayerRoundInfoID > maxLastTurnID {
+					maxLastTurnID = existingCardStats[i].LastPlayerRoundInfoID
 				}
 			}
 
 			// 步骤2：查询新的 PlayerTurnInfo 记录
 			// 兼容两种表结构：① GORM 展平列 turn_submitted_card_* ② 单列 turn_submitted_card (JSON，测试/旧库)
-			newPlayerTurnInfos, err := queryNewPlayerTurnInfos(tx, playerID, maxRoundID)
+			newPlayerTurnInfos, err := queryNewPlayerTurnInfos(tx, playerID, maxLastTurnID)
 			if err != nil {
 				return fmt.Errorf("failed to query new player turn infos for player ID %d: %v", playerID, err)
 			}
@@ -211,40 +208,45 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 				continue
 			}
 
-			// 步骤3：收集所有相关的 TurnID 和 RoundID
+			// 步骤3：收集所有相关的 TurnID，加载 game_id / round_number
 			turnIDs := make([]uint, 0, len(newPlayerTurnInfos))
 			for i := range newPlayerTurnInfos {
 				turnIDs = append(turnIDs, newPlayerTurnInfos[i].TurnID)
 			}
 
-			// 查询这些 Turn 对应的 RoundID（使用原始 SQL 避免 GORM 解析嵌套结构）
 			type turnRow struct {
-				ID      uint `gorm:"column:id"`
-				RoundID uint `gorm:"column:round_id"`
+				ID          uint   `gorm:"column:id"`
+				GameID      uint   `gorm:"column:game_id"`
+				RoundNumber uint32 `gorm:"column:round_number"`
 			}
 			var turnRows []turnRow
-			if err := tx.Raw("SELECT id, round_id FROM turns WHERE id IN ?", turnIDs).Scan(&turnRows).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := tx.Raw("SELECT id, game_id, round_number FROM turns WHERE id IN ?", turnIDs).Scan(&turnRows).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("failed to query turns for player ID %d: %v", playerID, err)
 			}
 
-			// 创建 TurnID -> RoundID 的映射
-			turnToRoundMap := make(map[uint]uint)
-			roundIDSet := make(map[uint]bool)
-			for _, turn := range turnRows {
-				turnToRoundMap[turn.ID] = turn.RoundID
-				roundIDSet[turn.RoundID] = true
+			turnByID := make(map[uint]turnRow, len(turnRows))
+			for _, tr := range turnRows {
+				turnByID[tr.ID] = tr
 			}
 
-			// 计算新的 Round 数量
-			totalNewRounds := uint(len(roundIDSet))
+			roundKeySet := make(map[string]bool)
+			for _, tr := range turnRows {
+				if tr.RoundNumber == 0 {
+					continue
+				}
+				key := fmt.Sprintf("%d:%d", tr.GameID, tr.RoundNumber)
+				roundKeySet[key] = true
+			}
+
+			totalNewRounds := uint(len(roundKeySet))
 
 			// 步骤4：统计每个卡牌的使用情况
 			cardUsageStats := make(map[uint]struct {
-				usageCount uint
-				winCount   uint
-				loseCount  uint
-				tieCount   uint
-				maxRoundID uint // 该卡牌最新的 RoundID
+				usageCount  uint
+				winCount    uint
+				loseCount   uint
+				tieCount    uint
+				maxTurnDBID uint // 该卡牌相关 turn 行最大 id（游标）
 			})
 
 			for _, turnInfo := range newPlayerTurnInfos {
@@ -253,16 +255,19 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 				}
 
 				cardID := uint(turnInfo.TurnSubmittedCard.CardID)
-				roundID := turnToRoundMap[turnInfo.TurnID]
+				tr, ok := turnByID[turnInfo.TurnID]
+				if !ok {
+					continue
+				}
 
 				stats, exists := cardUsageStats[cardID]
 				if !exists {
 					stats = struct {
-						usageCount uint
-						winCount   uint
-						loseCount  uint
-						tieCount   uint
-						maxRoundID uint
+						usageCount  uint
+						winCount    uint
+						loseCount   uint
+						tieCount    uint
+						maxTurnDBID uint
 					}{}
 				}
 
@@ -279,9 +284,8 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 					stats.tieCount++
 				}
 
-				// 更新该卡牌最新的 RoundID
-				if roundID > stats.maxRoundID {
-					stats.maxRoundID = roundID
+				if tr.ID > stats.maxTurnDBID {
+					stats.maxTurnDBID = tr.ID
 				}
 
 				cardUsageStats[cardID] = stats
@@ -301,7 +305,7 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 						WinCount:              stats.winCount,
 						LoseCount:             stats.loseCount,
 						TieCount:              stats.tieCount,
-						LastPlayerRoundInfoID: stats.maxRoundID, // 存储 RoundID
+						LastPlayerRoundInfoID: stats.maxTurnDBID,
 					}
 
 					if err := tx.Create(cardStat).Error; err != nil {
@@ -315,7 +319,7 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 						"win_count":                 cardStat.WinCount + stats.winCount,
 						"lose_count":                cardStat.LoseCount + stats.loseCount,
 						"tie_count":                 cardStat.TieCount + stats.tieCount,
-						"last_player_round_info_id": stats.maxRoundID, // 存储 RoundID
+						"last_player_round_info_id": stats.maxTurnDBID,
 					}
 
 					if err := tx.Model(cardStat).Updates(updateData).Error; err != nil {

@@ -10,8 +10,8 @@ func Migrate() error {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
+		&dao.GameArgs{},
 		&dao.Game{},
-		&dao.Round{},
 		&dao.Turn{},
 		&dao.PlayerTurnInfo{},
 		&dao.CardEffect{},
@@ -38,8 +38,8 @@ func MigrateMemDb() error {
 	var migrates = []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
+		&dao.GameArgs{},
 		&dao.Game{},
-		&dao.Round{},
 		&dao.Turn{},
 		&dao.PlayerTurnInfo{},
 		&dao.CardEffect{},

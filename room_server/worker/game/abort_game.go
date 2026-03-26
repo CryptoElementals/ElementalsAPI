@@ -48,10 +48,8 @@ func (g *Game) sendTurnCompletedEventForAbort() {
 
 	playerTurnInfos := make([]*proto.PlayerTurnInfo, 0)
 	if g.currentRound != nil {
-		if g.currentRound.round != nil {
-			roundNumber = uint32(g.currentRound.round.RoundNumber)
-			turnNumber = g.currentRound.getCurrentTurnNumber()
-		}
+		roundNumber = g.currentRound.roundNumber
+		turnNumber = g.currentRound.getCurrentTurnNumber()
 		if len(g.currentRound.gamePlayers) > 0 {
 			for _, p := range g.currentRound.gamePlayers {
 				var submittedCard *dao.TurnSubmittedCard
@@ -97,7 +95,7 @@ func (g *Game) handleGameAbortInit() error {
 	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
-	g.currentRound.round.IsLastRound = true
+	g.currentRound.isLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
 	g.gameInfo.GameResult = g.abortedGameResult()
 	err := g.saveGame()
@@ -114,10 +112,8 @@ func (g *Game) handleGameAbortInit() error {
 // can go into game end from any other status
 func (g *Game) handleGameAbortInternalError() error {
 	log.Infow("game aborted with internal error", "game id", g.gameInfo.ID)
-	if g.currentRound.round != nil {
-		g.currentRound.round.IsLastRound = true
-		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
-	}
+	g.currentRound.isLastRound = true
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
 
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
 	g.gameInfo.GameResult = g.abortedGameResult()

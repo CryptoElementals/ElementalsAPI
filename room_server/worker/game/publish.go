@@ -2,6 +2,7 @@ package game
 
 import (
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/room_server/worker/protopub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -35,10 +36,7 @@ func (g *Game) publishPartialReadyToOtherPlayers(readyAddress types.PlayerAddres
 }
 
 func (g *Game) publishProto(topic string, evt *proto.Event) {
-	if evt == nil {
-		return
-	}
-	if _, err := g.publisher.Publish(g.ctx, &proto.PublishRequest{Topic: topic, Event: evt}); err != nil {
+	if err := protopub.Publish(g.ctx, g.publisher, topic, evt); err != nil {
 		log.Errorw("publish to player failed", "topic", topic, "eventType", evt.Type.String(), "err", err)
 	}
 }
@@ -52,32 +50,27 @@ func (r *GameManager) notifyPlayerGameCreated(player types.PlayerAddress, evt *t
 	for _, pl := range evt.Players {
 		players = append(players, pl.ToProto())
 	}
-	if _, err := r.publisher.Publish(r.ctx, &proto.PublishRequest{
-		Topic: (&player).String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_MATCHED,
-			Event: &proto.Event_GameMatched{
-				GameMatched: &proto.GameMatched{
-					GameId:              uint32(evt.GameID),
-					Players:             players,
-					ConfirmationTimeout: evt.ConfirmationTimeout,
-				},
+	topic := (&player).String()
+	out := &proto.Event{
+		Type: proto.EventType_TYPE_MATCHED,
+		Event: &proto.Event_GameMatched{
+			GameMatched: &proto.GameMatched{
+				GameId:              uint32(evt.GameID),
+				Players:             players,
+				ConfirmationTimeout: evt.ConfirmationTimeout,
 			},
 		},
-	}); err != nil {
-		log.Errorw("publish game matched failed", "topic", (&player).String(), "err", err)
+	}
+	if err := protopub.Publish(r.ctx, r.publisher, topic, out); err != nil {
+		log.Errorw("publish game matched failed", "topic", topic, "err", err)
 	}
 }
 
 func (r *GameManager) syncGamePhasePublish(address types.PlayerAddress, gamePhase *proto.GamePhase) error {
-	_, err := r.publisher.Publish(r.ctx, &proto.PublishRequest{
-		Topic: (&address).String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_GAME_PHASE_SYNC,
-			Event: &proto.Event_GamePhase{
-				GamePhase: gamePhase,
-			},
+	return protopub.Publish(r.ctx, r.publisher, (&address).String(), &proto.Event{
+		Type: proto.EventType_TYPE_GAME_PHASE_SYNC,
+		Event: &proto.Event_GamePhase{
+			GamePhase: gamePhase,
 		},
 	})
-	return err
 }

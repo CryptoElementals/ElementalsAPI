@@ -28,7 +28,7 @@ type Service struct {
 	server    *grpc.Server
 	pubsub    *rpc.PubSub
 	rpcServer *rpc.Rpc
-	chainSvc  *chain.Chain
+	chainSvc *chain.Chain
 	gameSvc  *game.Service
 	queueSvc *queue.Service
 }

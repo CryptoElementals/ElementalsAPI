@@ -49,23 +49,20 @@ func GetActiveGameByPlayer(playerID int64, tempAddr string) (*dao.Game, error) {
 
 func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 	return tx.
+		Preload("GameArgs").
 		Preload("Players").
 		Preload("GameResult").
 		Preload("GameResult.BattleReward").
 		Preload("GameResult.BattleReward.PlayerRewards").
-		Preload("Rounds").
-		Preload("Rounds.Turns").
-		Preload("Rounds.Turns.PlayerTurnInfos").
-		Preload("Rounds.Turns.PlayerTurnInfos.TurnSubmittedCard").
-		Preload("Rounds.Turns.PlayerTurnInfos.TurnSubmittedCard.CardEffects")
+		Preload("Turns", func(db *gorm.DB) *gorm.DB {
+			return db.Order("round_number ASC, turn_number ASC")
+		}).
+		Preload("Turns.PlayerTurnInfos").
+		Preload("Turns.PlayerTurnInfos.CardEffects")
 }
 
 func SaveGame(game *dao.Game) error {
 	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(game).Error
-}
-
-func SaveRound(round *dao.Round) error {
-	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(round).Error
 }
 
 func SaveGamePlayerInfo(gamePlayerInfo *dao.GamePlayerInfo) error {

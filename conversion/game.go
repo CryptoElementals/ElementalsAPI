@@ -14,15 +14,11 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		GameId:    uint32(info.ID),
 		GameType:  proto.GameType(info.Type),
 		Status:    proto.GameStatus(info.Status),
-		InitialHp: int32(info.InitialHP),
+		InitialHp: int32(info.GameArgs.InitialHP),
 	}
-	// convert players
-	for _, player := range info.Players {
-		gameInfo.Players = append(gameInfo.Players, DbGamePlayerToProtoPlayerAddress(player))
-	}
-	// convert rounds
-	for _, round := range info.Rounds {
-		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round))
+	// convert rounds (synthetic from flat turns)
+	for _, round := range SyntheticRoundsFromTurns(info.Turns) {
+		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round, info))
 	}
 	// conver results
 	gameResult := DbGameResultToProtoGameResult(info.GameResult)
@@ -83,7 +79,7 @@ func DbGamePlayerToProtoPlayerAddress(player *dao.GamePlayerInfo) *proto.PlayerA
 	}
 }
 
-func DbGameRoundToProtoGameRound(round *dao.Round) *proto.Round {
+func DbGameRoundToProtoGameRound(round *RoundView, game *dao.Game) *proto.Round {
 	if round == nil {
 		return nil
 	}
@@ -177,7 +173,7 @@ func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
 	}
 }
 
-func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
+func DbRoundToRoundResult(round *RoundView, game *dao.Game) *proto.RoundResult {
 	if round == nil {
 		return nil
 	}
@@ -229,10 +225,18 @@ func DbRoundToRoundResult(round *dao.Round) *proto.RoundResult {
 		}
 	}
 
+	var maxR uint32
+	if game != nil {
+		maxR = dao.MaxRoundNumberFromTurns(game.Turns)
+	}
+	isGameOver := game != nil &&
+		(game.Status == proto.GameStatus_GAME_END || game.Status == proto.GameStatus_GAME_ABORTED) &&
+		maxR > 0 && round.RoundNumber == maxR
+
 	return &proto.RoundResult{
 		Players:      playerRoundStats,
 		RoundNumber:  round.RoundNumber,
-		IsGameOver:   round.IsLastRound,
+		IsGameOver:   isGameOver,
 		RoundEndTime: roundEndTime,
 	}
 }
@@ -255,7 +259,7 @@ func TurnSubmittedCardToProtoPlayerCardStat(cardNumber int, card *dao.TurnSubmit
 	}
 }
 
-func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round, turnNumber uint32, turnStartAt int64) *proto.GamePhase {
+func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber uint32, turnStartAt int64) *proto.GamePhase {
 	if game == nil || currentRound == nil {
 		return nil
 	}
@@ -285,6 +289,8 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round, turnNumber 
 		TurnStartAt: turnStartAt,
 		Players:     make([]*proto.GamePhasePlayer, 0, playerCount),
 	}
+
+	initialHP := uint32(game.GameArgs.InitialHP)
 
 	// Build players from current turn's PlayerTurnInfos
 	if currentTurn != nil {
@@ -319,7 +325,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *dao.Round, turnNumber 
 				currentMultiplier = playerTurnInfo.TurnSubmittedCard.MultiplierAfter
 			} else {
 				// Use initial values if no card submitted yet
-				currentHP = uint32(game.InitialHP)
+				currentHP = initialHP
 				currentMultiplier = 1
 			}
 

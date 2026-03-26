@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -218,9 +217,10 @@ func (p *txPool) AddSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 	p.addSetTurnReady(evt)
 }
 
-// processPools periodically processes events in the pools and sends them to chain manager
-func (p *txPool) processPools(ctx context.Context, args dao.GameArgs) {
-	ticker := time.NewTicker(time.Duration(args.PoolProcessingInterval) * time.Second)
+// processPools periodically processes events in the pools and sends them to chain manager.
+// Tick interval is fixed at 1s (previously configurable via GameArgs).
+func (p *txPool) processPools(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for {

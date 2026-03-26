@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,10 +12,14 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/protopub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 )
+
+// EventPublisher publishes outbound player notifications (same contract as game.Publisher).
+type EventPublisher = protopub.Publisher
 
 const queueInfoPrefix = "queue_info"
 const lockedTokenPrefix = "locked_token"
@@ -77,12 +82,16 @@ func NewQueue(
 }
 
 func (q *Queue) start() error {
-	conn, err := grpc.DialContext(q.ctx, q.statServiceEndpoint, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Errorf("failed to connect to stat service: %s", err.Error())
-		return err
+	if ep := strings.TrimSpace(q.statServiceEndpoint); ep != "" {
+		conn, err := grpc.DialContext(q.ctx, ep, grpc.WithInsecure(), grpc.WithBlock())
+		if err != nil {
+			log.Errorf("failed to connect to stat service: %s", err.Error())
+			return err
+		}
+		q.statSvcClient = proto.NewStatServiceClient(conn)
+	} else {
+		log.Infow("stat service endpoint empty; skipping gRPC dial and post-game UpdatePlayerStats")
 	}
-	q.statSvcClient = proto.NewStatServiceClient(conn)
 	keys, err := q.queueCache.List("")
 	if err != nil {
 		return err
@@ -139,6 +148,7 @@ func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 			return err
 		}
 		matched = true
+		break
 	}
 	if !matched {
 		q.queue[address] = time.Now()
@@ -225,74 +235,33 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		return nil
 	}
 
-	// Check if players have enough tokens to join queue after settlement
-	// If not, send continue cancel event to both players
-	shouldSendContinueCancel := false
-	for _, p := range event.GameInfo.Players {
-		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
-		// Skip bot accounts
-		if _, ok := bots[*addr]; ok {
-			continue
-		}
-
-		// Get user token to check available tokens
-		userToken, err := db.GetPlayerToken(context.Background(), p.PlayerId)
-		if err != nil {
-			log.Errorw("failed to get player token after settlement", "player_id", p.PlayerId, "err", err)
-			continue
-		}
-
-		// Calculate total locked tokens from userToken.LockedTokens
-		var totalLockedTokens int32 = 0
-		for _, locked := range userToken.LockedTokens {
-			totalLockedTokens += locked.TokenAmount
-		}
-		availableTokens := int(userToken.TokenAmount) - int(totalLockedTokens)
-
-		// Check if player has enough tokens to join queue
-		if availableTokens < int(q.minTokenToJoinQueue) {
-			log.Infow("player doesn't have enough tokens after settlement",
-				"player_id", p.PlayerId,
-				"available_tokens", availableTokens,
-				"required_tokens", q.minTokenToJoinQueue)
-			shouldSendContinueCancel = true
-			break
-		}
-	}
-
-	// If any player doesn't have enough tokens, send continue cancel event to both players
-	if shouldSendContinueCancel {
-		log.Infow("sending continue cancel events due to insufficient tokens",
-			"game_id", event.GameInfo.ID)
-		for _, p := range event.GameInfo.Players {
-			addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
-			// Skip bot accounts
-			if _, ok := bots[*addr]; ok {
-				continue
-			}
-			notifyContinueCanceled(q.ctx, q.publisher, *addr)
-		}
+	if q.anyHumanPlayerBelowQueueThreshold(event.GameInfo, bots) {
+		log.Infow("sending continue cancel events due to insufficient tokens", "game_id", event.GameInfo.ID)
+		publishContinueCanceledForHumans(q.ctx, q.publisher, event.GameInfo, bots)
 	} else {
 		q.continueManager.addGame(event.GameInfo)
 	}
-	go func() {
-		palyerIds := make([]int64, 0, len(event.GameInfo.Players))
-		for _, p := range event.GameInfo.Players {
-			palyerIds = append(palyerIds, p.PlayerId)
-		}
 
+	go func() {
+		if q.statSvcClient == nil {
+			return
+		}
+		playerIDs := make([]int64, 0, len(event.GameInfo.Players))
+		for _, p := range event.GameInfo.Players {
+			playerIDs = append(playerIDs, p.PlayerId)
+		}
 		resp, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
-			PlayerIds: palyerIds,
+			PlayerIds: playerIDs,
 		})
 		if err != nil {
 			log.Errorw("UpdatePlayerStats error", "err", err)
-		} else {
-			if !resp.Ok {
-				log.Errorw("UpdatePlayerStats failed", "err", resp.Message)
-			} else {
-				log.Infow("UpdatePlayerStats success", "players", palyerIds)
-			}
+			return
 		}
+		if !resp.Ok {
+			log.Errorw("UpdatePlayerStats failed", "message", resp.Message)
+			return
+		}
+		log.Infow("UpdatePlayerStats success", "players", playerIDs)
 	}()
 
 	return nil
@@ -306,11 +275,7 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 }
 
 func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
-	info := q.continueManager.getPlayerContinueInfo(address)
-	if info == nil {
-		return nil
-	}
-	return info
+	return q.continueManager.getPlayerContinueInfo(address)
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {

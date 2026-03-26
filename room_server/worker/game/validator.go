@@ -50,9 +50,9 @@ func (g *Game) validateCardSubmission(tx *proto.TxCardOnChain) (uint32, *dao.Tur
 
 // validateRoundAndIndex validates round number and index (1-based, 1-3) against current round and turn
 func (g *Game) validateRoundAndIndex(roundNumber, index uint32, playerAddr string, indexType string) error {
-	if roundNumber != g.currentRound.round.RoundNumber {
-		log.Errorw("stale event", "type", indexType, "game id", g.gameInfo.ID, "expected round", g.currentRound.round.RoundNumber, "got round", roundNumber, "player address", playerAddr)
-		return fmt.Errorf("round number mismatch: expected %d, got %d", g.currentRound.round.RoundNumber, roundNumber)
+	if roundNumber != g.currentRound.roundNumber {
+		log.Errorw("stale event", "type", indexType, "game id", g.gameInfo.ID, "expected round", g.currentRound.roundNumber, "got round", roundNumber, "player address", playerAddr)
+		return fmt.Errorf("round number mismatch: expected %d, got %d", g.currentRound.roundNumber, roundNumber)
 	}
 
 	expectedIndex := g.currentRound.getCurrentTurnNumber()
@@ -72,8 +72,6 @@ func (g *Game) getAndValidateCardEntry(playerAddr string, cardIndex uint32) (*da
 		return nil, fmt.Errorf("player not found: %w", err)
 	}
 
-	turnNumber := cardIndex // cardIndex is 1-based, same as turnNumber
-	var _ uint32 = turnNumber
 	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIndex)

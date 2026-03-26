@@ -10,60 +10,50 @@ import (
 // buildRuntimeState constructs a round runtime view (currentRound) from a fully-loaded dao.Game.
 // It does NOT modify or save the DB; callers are responsible for persisting changes.
 func buildRuntimeState(gameInfo *dao.Game) *round {
-	// Initialize gamePlayers map from gameInfo.Players
 	gamePlayers := make(map[string]*gamePlayer)
+	ga := gameInfo.GameArgs
+	initialHP := ga.InitialHP
+	initialMul := uint32(ga.InitialMultiplier)
 	for _, playerInfo := range gameInfo.Players {
 		if playerInfo == nil {
 			continue
 		}
 		gamePlayers[strings.ToLower(playerInfo.TemporaryAddress)] = &gamePlayer{
 			player:     playerInfo,
-			currentHP:  gameInfo.InitialHP,
-			multiplier: uint32(gameInfo.InitialMultiplier),
+			currentHP:  initialHP,
+			multiplier: initialMul,
 		}
 	}
 
 	runtimeRound := &round{
-		round:       nil,
-		gamePlayers: gamePlayers,
+		game:        gameInfo,
+		roundNumber: 1,
 		turnNumber:  1,
+		gamePlayers: gamePlayers,
 	}
 
-	// No rounds yet – start at round 1, turn 1, waiting for confirmation
-	if len(gameInfo.Rounds) == 0 {
+	if len(gameInfo.Turns) == 0 {
 		return runtimeRound
 	}
 
-	// Pick current round by RoundNumber
-	var currentRound *dao.Round
-	var maxRoundNum uint32
-	for _, r := range gameInfo.Rounds {
-		if r != nil && r.RoundNumber > maxRoundNum {
-			maxRoundNum = r.RoundNumber
-			currentRound = r
-		}
-	}
-	if currentRound == nil {
-		return runtimeRound
-	}
-	runtimeRound.round = currentRound
-
-	// Determine current turn: highest TurnNumber in current round (if any)
+	var bestR, bestT uint32
 	var currentTurn *dao.Turn
-	var maxTurnNum uint32
-	for _, t := range currentRound.Turns {
-		if t != nil && t.TurnNumber > maxTurnNum {
-			maxTurnNum = t.TurnNumber
+	for _, t := range gameInfo.Turns {
+		if t == nil {
+			continue
+		}
+		if t.RoundNumber > bestR || (t.RoundNumber == bestR && t.TurnNumber > bestT) {
+			bestR, bestT = t.RoundNumber, t.TurnNumber
 			currentTurn = t
 		}
 	}
-	if maxTurnNum > 0 {
-		runtimeRound.turnNumber = maxTurnNum
-	} else {
-		runtimeRound.turnNumber = 1
+	if currentTurn == nil {
+		return runtimeRound
 	}
 
-	// Restore each player's currentTurnInfo from the current turn (if any)
+	runtimeRound.roundNumber = bestR
+	runtimeRound.turnNumber = bestT
+
 	if currentTurn != nil {
 		for _, pti := range currentTurn.PlayerTurnInfos {
 			if pti == nil {
@@ -79,8 +69,6 @@ func buildRuntimeState(gameInfo *dao.Game) *round {
 				continue
 			}
 			player.currentTurnInfo = pti
-			// Restore current stats from the current turn snapshot (start-of-turn).
-			// If not available yet, keep initial defaults from GameArgs.
 			if pti.TurnSubmittedCard != nil && pti.TurnSubmittedCard.HealthBefore > 0 {
 				player.currentHP = int64(pti.TurnSubmittedCard.HealthBefore)
 				if pti.TurnSubmittedCard.MultiplierBefore > 0 {

@@ -30,8 +30,8 @@ type GameParamConfig struct {
 	CommitmentSubmissionTimeoutRedundancy int64 `mapstructure:"commitment-submission-timeout-redundancy"` // Redundancy for commitment submission
 	CardSubmissionTimeoutRedundancy       int64 `mapstructure:"card-submission-timeout-redundancy"`       // Redundancy for card submission
 	GameContinueTimeoutRedundancy         int64 `mapstructure:"game-continue-timeout-redundancy"`         // Redundancy for game continue
-	// pool processing interval in seconds
-	PoolProcessingInterval int64 `mapstructure:"pool-processing-interval"`
+
+	MaxTurnsPerRound int64 `mapstructure:"max-turns-per-round"`
 }
 
 // 全局可读的游戏参数
@@ -97,6 +97,9 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	}
 	if gameParams.GameContinueTimeout == 0 {
 		gameParams.GameContinueTimeout = 10
+	}
+	if gameParams.MaxTurnsPerRound == 0 {
+		gameParams.MaxTurnsPerRound = 3
 	}
 
 	// 赋值给全局变量

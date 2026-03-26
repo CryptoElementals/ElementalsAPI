@@ -11,29 +11,23 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/protopub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/timer"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// EventPublisher publishes outbound player notifications (same contract as game.Publisher).
-type EventPublisher interface {
-	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
-}
-
 func notifyContinueCanceled(ctx context.Context, pub EventPublisher, player types.PlayerAddress) {
-	_, err := pub.Publish(ctx, &proto.PublishRequest{
-		Topic: (&player).String(),
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_CONTINUE_CANCELED,
-			Event: &proto.Event_X{
-				X: &emptypb.Empty{},
-			},
+	topic := (&player).String()
+	evt := &proto.Event{
+		Type: proto.EventType_TYPE_CONTINUE_CANCELED,
+		Event: &proto.Event_X{
+			X: &emptypb.Empty{},
 		},
-	})
-	if err != nil {
-		log.Errorw("notifyContinueCanceled publish failed", "player", (&player).String(), "err", err)
+	}
+	if err := protopub.Publish(ctx, pub, topic, evt); err != nil {
+		log.Errorw("notifyContinueCanceled publish failed", "player", topic, "err", err)
 	}
 }
 

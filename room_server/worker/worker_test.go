@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 func TestWorkerManager_SendEvent(t *testing.T) {
 	h := &testEventHandler{tt: t, evtChan: make(chan *types.Event, 1)}
 	// setup a test worker
-	globalTestWorkerManager.SpwanWorker(context.Background(), "worker1", 1, h)
+	globalTestWorkerManager.SpawnWorker(context.Background(), "worker1", 1, h)
 
 	// send event to worker1
 	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &proto.SurrenderRequest{
@@ -52,7 +52,7 @@ func TestWorkerManager_SendEvent(t *testing.T) {
 func TestWorkerManager_CloseWorker(t *testing.T) {
 	h := &testEventHandler{tt: t, evtChan: make(chan *types.Event, 1)}
 	// setup a test worker
-	globalTestWorkerManager.SpwanWorker(context.Background(), "worker1", 1, h)
+	globalTestWorkerManager.SpawnWorker(context.Background(), "worker1", 1, h)
 	// close worker1
 	globalTestWorkerManager.CloseWorker("worker1")
 

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/db"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -36,6 +38,20 @@ func (noopEventPublisher) Publish(ctx context.Context, req *proto.PublishRequest
 }
 
 func TestMain(m *testing.M) {
+	if err := db.Init(&db.Config{Development: true}); err != nil {
+		panic(err)
+	}
+	if err := db.MigrateMemDb(); err != nil {
+		panic(err)
+	}
+	for _, p := range []dao.UserProfile{
+		{PlayerID: 1, Name: "queue_test_p1", Address: "addr1"},
+		{PlayerID: 2, Name: "queue_test_p2", Address: "addr2"},
+	} {
+		if err := db.Get().Save(&p).Error; err != nil {
+			panic(err)
+		}
+	}
 	globalTestWorkerManager = worker.NewWorkerManager(context.Background())
 
 	m.Run()
@@ -62,6 +78,7 @@ func TestJoinExitQueue(t *testing.T) {
 
 func TestGameMatched(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
+	gameCreator.EXPECT().HandleGameMatchedEvent(gomock.Any()).Return(uint(1), nil).Times(1)
 	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event

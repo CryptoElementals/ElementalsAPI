@@ -24,7 +24,7 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		// resolve user by address
-		profile, perr := GetUserProfileByPlayerID(strconv.FormatInt(playerId, 10))
+		profile, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
 		if perr != nil {
 			return perr
 		}
@@ -102,7 +102,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 		for i := range playerIds {
 			playerId := playerIds[i]
 			tempAddress := tempAddresses[i]
-			profile, perr := GetUserProfileByPlayerID(strconv.FormatInt(playerId, 10))
+			profile, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
 			if perr != nil {
 				return perr
 			}
@@ -159,7 +159,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 
 func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
-		_, perr := GetUserProfileByPlayerID(strconv.FormatInt(playerId, 10))
+		_, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
 		if perr != nil {
 			return perr
 		}

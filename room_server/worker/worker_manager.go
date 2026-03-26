@@ -7,6 +7,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
 
+// WorkerManager owns all Workers; it is the EventSender/WorkerCloser passed into each Worker.
 type WorkerManager struct {
 	ctx     context.Context
 	lock    sync.RWMutex
@@ -20,7 +21,8 @@ func NewWorkerManager(ctx context.Context) *WorkerManager {
 	}
 }
 
-func (w *WorkerManager) SpwanWorker(ctx context.Context, id string, t WorkerType, handler EventHandler) {
+// SpawnWorker starts a goroutine that drains events for id until the worker context is canceled.
+func (w *WorkerManager) SpawnWorker(ctx context.Context, id string, t WorkerType, handler EventHandler) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	worker := NewWorker(ctx, id, t, w, w, handler)
@@ -35,12 +37,9 @@ func (w *WorkerManager) SendEvent(to string, event *types.Event) {
 		worker.msgQueue <- event
 		return
 	}
-	// we might not find the worker, in this case, we should send an error
-	// for not blocking the sender
 	if event.AckChan != nil {
 		close(event.AckChan)
 	}
-	//log.Debugw("worker not found", "worker id", to, "eventType", reflect.TypeOf(event.Data))
 }
 
 func (w *WorkerManager) CloseWorker(id string) {
