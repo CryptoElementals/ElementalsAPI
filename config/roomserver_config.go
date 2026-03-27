@@ -21,6 +21,8 @@ type RoomServerConfig struct {
 	BotWaitTime         int64           `mapstructure:"bot-wait-time"`
 	StatServiceEndpoint string          `mapstructure:"stat-service-endpoint"`
 	ShouldRecverGames   bool            `mapstructure:"should-recover-games"`
+	// pool batch size for on-chain submissions
+	PoolBatchSize int `mapstructure:"pool-batch-size"`
 }
 
 func InitRSConfig(configPath string) error {

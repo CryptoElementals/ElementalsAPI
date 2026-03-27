@@ -4,7 +4,7 @@ echo "=== BeastRoyale API Server Restart Script ==="
 
 # 1. 停止API服务
 echo "1. Stopping API server..."
-./stop.sh api-server
+./stop.sh apiserver
 if [ $? -eq 0 ]; then
     echo "   ✓ API server stopped successfully"
 else
@@ -16,7 +16,7 @@ rm -rf ./bin/logs/*
 
 # 2. 编译应用
 echo "2. Building application..."
-make build
+make apiserver
 if [ $? -eq 0 ]; then
     echo "   ✓ Build completed successfully"
 else

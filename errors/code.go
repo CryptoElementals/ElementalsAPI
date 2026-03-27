@@ -42,19 +42,23 @@ var (
 	c_UserNotFound        ErrorCode = 8372 // 用户不存在
 	c_UserNameTooLong     ErrorCode = 8373 // 用户名过长
 	c_InvalidAvatarURL    ErrorCode = 8374 // 头像URL无效
+	c_UserNameDuplicate   ErrorCode = 8375 // 用户名重复
 
 	// Server
-	s_ActionError                ErrorCode = 8433 // [行为]出错（目前被滥用，考虑将一部分拆到s_CallThirdApiError
-	s_ActionTimeout              ErrorCode = 8438 // [行为]超时
-	s_GetZonesFailed             ErrorCode = 8439 // [行为]从数据库访问zone信息失败
-	s_RedisKeyConflict           ErrorCode = 8440 // [行为]redis里的Key冲突
-	s_ListDeployments            ErrorCode = 8441 // [行为]从数据库访问deployments信息失败
-	s_SaveSessionFailed          ErrorCode = 8442 // [行为]保存session失败
-	s_SaveRefreshTokenFailed     ErrorCode = 8443 // [行为]保存session失败
-	s_GetCloudsFailed            ErrorCode = 8450 // [行为]从数据库访问cloud信息失败
-	s_GetChainCombinationsFailed ErrorCode = 8451 // [行为]从数据库访问ChainCombination信息失败
-	s_GetUserProfileFailed       ErrorCode = 8452 // [行为]获取用户档案失败
-	s_SaveUserProfileFailed      ErrorCode = 8453 // [行为]保存用户档案失败
+	s_ActionError                 ErrorCode = 8433 // [行为]出错（目前被滥用，考虑将一部分拆到s_CallThirdApiError
+	s_ActionTimeout               ErrorCode = 8438 // [行为]超时
+	s_GetZonesFailed              ErrorCode = 8439 // [行为]从数据库访问zone信息失败
+	s_RedisKeyConflict            ErrorCode = 8440 // [行为]redis里的Key冲突
+	s_ListDeployments             ErrorCode = 8441 // [行为]从数据库访问deployments信息失败
+	s_SaveSessionFailed           ErrorCode = 8442 // [行为]保存session失败
+	s_SaveRefreshTokenFailed      ErrorCode = 8443 // [行为]保存refresh token失败
+	s_GetCloudsFailed             ErrorCode = 8450 // [行为]从数据库访问cloud信息失败
+	s_GetChainCombinationsFailed  ErrorCode = 8451 // [行为]从数据库访问ChainCombination信息失败
+	s_GetUserProfileFailed        ErrorCode = 8452 // [行为]获取用户档案失败
+	s_SaveUserProfileFailed       ErrorCode = 8453 // [行为]保存用户档案失败
+	s_DailyRewardNotActive        ErrorCode = 8455 // 每日奖励活动未开启或不在有效期内
+	s_DailyRewardAlreadyCollected ErrorCode = 8456 // 当日已领取每日奖励
+	s_DailyRewardInternalError    ErrorCode = 8457 // 每日奖励内部错误（如依赖的用户档案读写失败）
 
 	// Third Party
 	t_GetBuyPriceFailed ErrorCode = 8090 // 获取购买价格失败
@@ -139,6 +143,10 @@ func UserNameTooLong(a ...interface{}) Error {
 	return Error{code: c_UserNameTooLong, items: a, message: "User name [%s] too long, max length is 15"}
 }
 
+func UserNameDuplicate(a ...interface{}) Error {
+	return Error{code: c_UserNameDuplicate, items: a, message: "User name [%s] already exists"}
+}
+
 func InvalidAvatarURL(a ...interface{}) Error {
 	return Error{code: c_InvalidAvatarURL, items: a, message: "Avatar URL [%s] is invalid"}
 }
@@ -197,4 +205,16 @@ func SaveUserProfileFailed(a ...interface{}) Error {
 
 func OperateDbFailed(a ...interface{}) Error {
 	return Error{code: d_OperateDbFailed, items: a, message: "OperateDb Failed"}
+}
+
+func DailyRewardNotActive(a ...interface{}) Error {
+	return Error{code: s_DailyRewardNotActive, items: a, message: "Daily reward activity is not active"}
+}
+
+func DailyRewardAlreadyCollected(a ...interface{}) Error {
+	return Error{code: s_DailyRewardAlreadyCollected, items: a, message: "Daily reward already collected"}
+}
+
+func DailyRewardInternalError(a ...interface{}) Error {
+	return Error{code: s_DailyRewardInternalError, items: a, message: "Daily reward internal error"}
 }

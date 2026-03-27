@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
@@ -23,7 +23,7 @@ type JoinQueueRequest struct {
 	BaseRequest
 	Mode        string `mapstructure:"Mode" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // JoinQueueResponse 响应结构体
@@ -76,16 +76,19 @@ func NewJoinQueueTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致（用于数据库查询）
-	lowercaseAddress := strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 	lowercaseTempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 验证游戏模式
@@ -103,19 +106,11 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
+	// 检查用户token数量是否足够（仅按总 TokenAmount 判断，不再扣除锁仓）
+	userToken, err := db.GetPlayerToken(c.Request.Context(), playerID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user token information"
-		return task.Response, nil
-	}
-
-	// 获取用户已锁定的代币总数
-	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(lowercaseAddress)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get locked token information"
+		task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: failed to get user token information"
 		return task.Response, nil
 	}
 
@@ -124,13 +119,14 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 		currentTokens = userToken.TokenAmount
 	}
 
-	// 计算可用代币数量：用户token减去已锁定
-	availableTokens := int(currentTokens) - totalLockedTokens
+	// 计算可用代币数量：仅使用当前总 token 数量
+	availableTokens := int(currentTokens)
 
 	// 要求用户至少有10000个可用代币才能加入匹配队列
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+		// task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+		task.Response.BaseResponse.Message = "Insufficient available tokens"
 		return task.Response, nil
 	}
 
@@ -143,14 +139,30 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    lowercaseAddress,
+		Id:               playerID,
 		TemporaryAddress: lowercaseTempAddress,
 	}
 
 	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
-		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer JoinQueue failed: " + err.Error()
+		shortErr := ShortGRPCError(err)
+		// 检查apiserver的TokenThreshold配置是否与roomserver一致
+		if strings.Contains(shortErr, "user token is not enough") {
+			task.Response.BaseResponse.RetCode = 1004
+			//task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
+			task.Response.BaseResponse.Message = "Insufficient available tokens"
+		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_IN_GAME") {
+			// 玩家已经在对局中，不能再次加入匹配队列，返回业务错误码 1006
+			task.Response.BaseResponse.RetCode = 1006
+			task.Response.BaseResponse.Message = "Player is already in game and cannot join match queue"
+		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_MATCHED") {
+			// 玩家已经匹配上在等待确认，不能再次加入匹配队列，返回业务错误码 1007
+			task.Response.BaseResponse.RetCode = 1007
+			task.Response.BaseResponse.Message = "Player is already matched and cannot join match queue"
+		} else {
+			task.Response.BaseResponse.RetCode = 1002
+			task.Response.BaseResponse.Message = "JoinQueue failed. Internal error: " + shortErr
+		}
 		return task.Response, nil
 	}
 

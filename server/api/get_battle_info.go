@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -21,7 +23,7 @@ type GetBattleInfoRequest struct {
 	BaseRequest
 	GameID      uint32 `mapstructure:"GameID" validate:"required"` // 游戏ID
 	Round       uint32 `mapstructure:"Round" validate:"required"`  // 回合号
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress"` // 临时地址
 }
 
@@ -126,16 +128,19 @@ func NewGetBattleInfoTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 解析 PlayerID（由中间件从会话中注入）
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 
 	tempAddress := ""
 	if len(task.Request.TempAddress) > 0 {
@@ -158,7 +163,7 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 	battleInfo, err := rpcClient.GetBattleInfo(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer GetBattleInfo failed: " + err.Error()
+		task.Response.BaseResponse.Message = "GetBattleInfo failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 
@@ -171,9 +176,14 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 转换玩家统计信息
 	for _, player := range battleInfo.RoundResult.Players {
+		// 通过 player_id 获取用户地址
+		playerAddr := ""
+		if up, e := db.GetUserProfileByPlayerID(strconv.FormatInt(player.PlayerId, 10)); e == nil && up != nil {
+			playerAddr = up.Address
+		}
 		playerStat := PlayerRoundStat{
-			PlayerAddress: player.WalletAddress,
-			IsSelf:        player.WalletAddress == address,
+			PlayerAddress: playerAddr,
+			IsSelf:        player.PlayerId == playerID,
 			CardStats:     make([]PlayerCardStat, 0, len(player.CardStats)),
 		}
 
@@ -199,8 +209,13 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 	// 转换游戏结果（若有）
 	if battleInfo.GameResult != nil {
+		// Winner 地址解析
+		winnerAddr := ""
+		if up, e := db.GetUserProfileByPlayerID(strconv.FormatInt(battleInfo.GameResult.WinnerPlayerId, 10)); e == nil && up != nil {
+			winnerAddr = up.Address
+		}
 		gameResult := &GameResult{
-			Winner:              battleInfo.GameResult.WinnerWalletAddress,
+			Winner:              winnerAddr,
 			GameResultType:      uint32(battleInfo.GameResult.GameResultType),
 			GameFinalMultiplier: uint32(battleInfo.GameResult.Multiplier),
 		}
@@ -213,8 +228,12 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 			}
 
 			for _, pr := range battleInfo.GameResult.Reward.PlayerRewards {
+				addr := ""
+				if up, e := db.GetUserProfileByPlayerID(strconv.FormatInt(pr.PlayerId, 10)); e == nil && up != nil {
+					addr = up.Address
+				}
 				reward.PlayerRewards = append(reward.PlayerRewards, PlayerReward{
-					PlayerAddress: pr.WalletAddress,
+					PlayerAddress: addr,
 					TokenChange:   pr.TokenChange,
 					PointChange:   pr.PointChange,
 				})
@@ -225,20 +244,17 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 
 		if len(tempAddress) > 0 {
 			playerAddr := &proto.PlayerAddress{
-				WalletAddress:    address,
+				Id:               playerID,
 				TemporaryAddress: tempAddress,
 			}
 
 			gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
 			if err != nil {
 				task.Response.BaseResponse.RetCode = 1003
-				task.Response.BaseResponse.Message = "RoomServer GetGamePhase in GetBattleInfo failed: " + err.Error()
+				task.Response.BaseResponse.Message = "GetBattleInfo failed. Internal error: " + ShortGRPCError(err)
 				return task.Response, nil
 			}
 			log.Debugf("RequestUUID: %s, gamePhase: %+v", task.Request.BaseRequest.RequestUUID, gamePhase)
-
-			//gameResult.GameEndAt = gamePhase.PvPInfo.BeginAt
-			gameResult.GameContinueTimeout = gamePhase.PvPInfo.TimeoutDuration
 		}
 
 		task.Response.GameResult = gameResult

@@ -6,6 +6,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -18,9 +19,9 @@ func init() {
 
 type SetUserProfileRequest struct {
 	BaseRequest
-	Name    string `mapstructure:"Name" validate:"required,max=42"`
-	Avatar  string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
-	Address string `mapstructure:"Address"`
+	Name     string `mapstructure:"Name" validate:"required,max=42"`
+	Avatar   string `mapstructure:"Avatar" validate:"max=100"` // 文件名长度限制
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type SetUserProfileResponse struct {
@@ -72,21 +73,16 @@ func NewSetUserProfileTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
-	// 从请求中获取用户地址（由中间件设置）
-	address := task.Request.Address
-	if address == "" {
-		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
-	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
-
-	// 获取用户档案
-	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.GetUserProfileFailed(lowercaseAddress)
+	// 从请求中获取用户身份（由中间件基于会话注入）
+	var (
+		userProfile *dao.UserProfile
+		err         error
+	)
+	log.Infof("%s, set user profile request: %+v", task.Request.RequestUUID, task.Request)
+	userProfile, err = db.GetUserProfileByPlayerID(strings.TrimSpace(task.Request.PlayerID))
+	if err != nil || userProfile == nil {
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, task.Request.PlayerID, err)
+		return nil, errors.GetUserProfileFailed(task.Request.PlayerID)
 	}
 
 	// 更新用户档案
@@ -107,9 +103,15 @@ func (task *SetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	err = db.UpdateUserProfile(userProfile)
 	if err != nil {
 		log.Errorf("%s, failed to update user profile: %v", task.Request.RequestUUID, err)
+		// 检查是否是用户名重复错误
+		if errObj, ok := err.(errors.Error); ok {
+			// 如果已经是自定义错误类型，直接返回
+			return nil, errObj
+		}
+		// 其他错误返回通用错误
 		return nil, errors.SaveUserProfileFailed()
 	}
 
-	log.Infof("%s, user profile updated successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
+	log.Infof("%s, user profile updated successfully for player id %d", task.Request.RequestUUID, userProfile.PlayerID)
 	return task.Response, nil
 }

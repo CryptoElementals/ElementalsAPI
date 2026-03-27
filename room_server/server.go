@@ -72,15 +72,15 @@ func New(ctx context.Context,
 		}
 	}
 
-	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomManagerAddress, wallets, c)
+	chainSvc, err := chain.NewService(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV3ContractAddress, wallets)
 	if err != nil {
 		return nil, err
 	}
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.ShouldRecverGames)
+	gameSvc := game.NewService(ctx, s.mgr, &cfg.GameParams, chainSvc, cfg.PoolBatchSize, cfg.ShouldRecverGames)
 	s.gameSvc = gameSvc
 	queueSvc := queue.NewService(ctx, s.mgr, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
-		cfg.GameParams.ContinueTimeout,cfg.GameParams.ContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
+		cfg.GameParams.GameContinueTimeout, cfg.GameParams.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
 	playerSvc := player.NewService(ctx, s.pubsub, s.mgr, gameSvc, s.queueSvc)
 	s.playerSvc = playerSvc
@@ -99,22 +99,30 @@ func New(ctx context.Context,
 }
 
 func (s *Service) Start() error {
+	log.Info("starting chain service")
 	err := s.chainSvc.Start()
 	if err != nil {
 		return err
 	}
+	log.Info("chain service started")
+	log.Info("starting game service")
 	err = s.gameSvc.Start()
 	if err != nil {
 		return err
 	}
+	log.Info("game service started")
+	log.Info("starting queue service")
 	err = s.queueSvc.Start()
 	if err != nil {
 		return err
 	}
+	log.Info("queue service started")
+	log.Info("starting listener")
 	err = s.startListener()
 	if err != nil {
 		return err
 	}
+	log.Info("listener started")
 	return nil
 }
 

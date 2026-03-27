@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/log"
@@ -21,7 +22,7 @@ type RefuseContinueGameRequest struct {
 	BaseRequest
 	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // RefuseContinueGameResponse 响应结构体
@@ -73,18 +74,22 @@ func NewRefuseContinueGameTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	log.Infof("RefuseContinueGame: %s, %s", address, tempAddress)
+	log.Infof("RefuseContinueGame: player_id=%d, tempAddress=%s", playerID, tempAddress)
 
 	// 通过gRPC调用RoomServer的RefuseContinueGame
 	rpcClient := client.GetGlobalRpcClient()
@@ -96,16 +101,16 @@ func (task *RefuseContinueGameTask) Run(c *gin.Context) (Response, error) {
 
 	refuseContinueGameReq := &proto.RefuseContinueGameRequest{
 		Player: &proto.PlayerAddress{
-			WalletAddress:    address,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 		LastGameID: uint32(task.Request.GameID),
 	}
 
-	_, err := rpcClient.RefuseContinueGame(context.Background(), refuseContinueGameReq)
+	_, err = rpcClient.RefuseContinueGame(context.Background(), refuseContinueGameReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer RefuseContinueGame failed: " + err.Error()
+		task.Response.BaseResponse.Message = "RefuseContinueGame failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

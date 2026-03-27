@@ -1,10 +1,13 @@
 package db
 
 import (
-	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
+	cmnErrors "github.com/CryptoElementals/common/errors"
+	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"gorm.io/gorm"
 )
@@ -19,6 +22,29 @@ func GetUserProfileByAddress(address string) (*dao.UserProfile, error) {
 	return &userProfile, nil
 }
 
+// GetUserProfileByPlayerID 根据玩家ID获取用户档案
+func GetUserProfileByPlayerID(playerID string) (*dao.UserProfile, error) {
+	var userProfile dao.UserProfile
+	// playerID 存在于 session 中为字符串，这里解析为 uint64
+	id, err := strconv.ParseUint(playerID, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	if err := Get().Where("player_id = ?", id).First(&userProfile).Error; err != nil {
+		return nil, err
+	}
+	return &userProfile, nil
+}
+
+// GetUserProfileByPlayerID 根据玩家ID获取用户档案
+func GetUserProfileByPlayerIDInt(playerID int64) (*dao.UserProfile, error) {
+	var userProfile dao.UserProfile
+	if err := Get().Where("player_id = ?", playerID).First(&userProfile).Error; err != nil {
+		return nil, err
+	}
+	return &userProfile, nil
+}
+
 // CreateUserProfile 创建用户档案
 func CreateUserProfile(userProfile *dao.UserProfile) error {
 	return Get().Create(userProfile).Error
@@ -26,7 +52,26 @@ func CreateUserProfile(userProfile *dao.UserProfile) error {
 
 // UpdateUserProfile 更新用户档案
 func UpdateUserProfile(userProfile *dao.UserProfile) error {
-	return Get().Save(userProfile).Error
+	err := Get().Save(userProfile).Error
+	if err != nil {
+		// 检查是否是唯一性约束错误（用户名重复）
+		if isDuplicateEntryError(err) {
+			return cmnErrors.UserNameDuplicate(userProfile.Name)
+		}
+	}
+	return err
+}
+
+// isDuplicateEntryError 检查是否是 MySQL 唯一性约束错误
+func isDuplicateEntryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	// MySQL 唯一性约束错误通常包含 "duplicate entry" 或错误码 1062
+	return strings.Contains(errStr, "duplicate entry") ||
+		strings.Contains(errStr, "1062") ||
+		strings.Contains(errStr, "unique constraint")
 }
 
 // GetOrCreateUserProfile 获取或创建用户档案
@@ -34,13 +79,89 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 	var userProfile dao.UserProfile
 	err := Get().Where("address = ?", address).First(&userProfile).Error
 	if err != nil {
-		// 用户不存在，创建新用户档案
-		userProfile = dao.UserProfile{
-			Address: address,
-			Name:    address, // 默认用户名就是地址
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 使用事务确保用户档案和 token 记录同时创建
+			err = Get().Transaction(func(tx *gorm.DB) error {
+				userProfile = dao.UserProfile{
+					Address: strings.ToLower(address),
+				}
+				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
+				if err = userProfile.BeforeCreate(tx); err != nil {
+					return err
+				}
+				// 直接使用生成的 PlayerID 设置 Name
+				userProfile.Name = strconv.FormatInt(userProfile.PlayerID, 10)
+				if err = tx.Create(&userProfile).Error; err != nil {
+					return err
+				}
+
+				// 创建对应的 user_token 记录
+				userToken := dao.UserToken{
+					PlayerId:    userProfile.PlayerID,
+					Points:      0,
+					TokenAmount: 0,
+				}
+				if err = tx.Create(&userToken).Error; err != nil {
+					log.Errorf("failed to create user_token for player_id=%d: %v", userProfile.PlayerID, err)
+					return err
+				}
+				log.Infof("created user_profile and user_token for address=%s, player_id=%d", address, userProfile.PlayerID)
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
 		}
-		err = Get().Create(&userProfile).Error
-		if err != nil {
+	}
+	return &userProfile, nil
+}
+
+// GetOrCreateUserProfileByEmail 根据邮箱获取或创建用户档案
+func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile, error) {
+	var userProfile dao.UserProfile
+	log.Infof("GetOrCreateUserProfileByEmail: email: %s, name: %s", email, name)
+	log.Infof("GetOrCreateUserProfileByEmail: userProfile: %+v", userProfile)
+	err := Get().Where("email = ?", email).First(&userProfile).Error
+	log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
+	if err != nil {
+		log.Infof("GetOrCreateUserProfileByEmail: errors.Is(err, gorm.ErrRecordNotFound): %v", errors.Is(err, gorm.ErrRecordNotFound))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 使用事务确保用户档案和 token 记录同时创建
+			err = Get().Transaction(func(tx *gorm.DB) error {
+				userProfile = dao.UserProfile{
+					Email: email,
+				}
+				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
+				if err = userProfile.BeforeCreate(tx); err != nil {
+					return err
+				}
+				// 统一使用 player_id 作为默认 name
+				userProfile.Name = strconv.FormatInt(userProfile.PlayerID, 10)
+				log.Infof("GetOrCreateUserProfileByEmail: userProfile: %+v", userProfile)
+				if err = tx.Create(&userProfile).Error; err != nil {
+					log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
+					return err
+				}
+
+				// 创建对应的 user_token 记录
+				userToken := dao.UserToken{
+					PlayerId:    userProfile.PlayerID,
+					Points:      0,
+					TokenAmount: 0,
+				}
+				if err = tx.Create(&userToken).Error; err != nil {
+					log.Errorf("failed to create user_token for player_id=%d: %v", userProfile.PlayerID, err)
+					return err
+				}
+				log.Infof("created user_profile and user_token for email=%s, player_id=%d", email, userProfile.PlayerID)
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
 			return nil, err
 		}
 	}
@@ -68,6 +189,8 @@ func HasCollectedDailyReward(address string) (bool, error) {
 		now.YearDay() == collectedTime.YearDay(), nil
 }
 
+// Removed: HasCollectedDailyRewardByEmail
+
 // UpdateDailyRewardCollection 更新用户每日奖励领取时间
 func UpdateDailyRewardCollection(address string) error {
 	now := time.Now()
@@ -76,96 +199,33 @@ func UpdateDailyRewardCollection(address string) error {
 		Update("collected_reward_at", now).Error
 }
 
-// UpdateUserGameStats 更新用户游戏统计数据
-// winner: 获胜者地址，如果是平局则为""
-// multiplier: 赢家的最高倍率
-func UpdateUserGameStats(player1Address, player2Address, winner string, multiplier float64) error {
-	// 获取两个用户的档案
-	player1Profile, err := GetUserProfileByAddress(player1Address)
+// Removed: UpdateDailyRewardCollectionByEmail
+
+// HasCollectedDailyRewardByPlayerID 检查用户（按 player_id）是否已领取今日奖励
+// 使用UTC时间统一判断，确保全球用户使用相同的"今天"标准
+func HasCollectedDailyRewardByPlayerID(playerID string) (bool, error) {
+	profile, err := GetUserProfileByPlayerID(playerID)
+	if err != nil {
+		return false, err
+	}
+	if profile.CollectedRewardAt == nil {
+		return false, nil
+	}
+	// 使用UTC时间统一判断"今天"
+	now := time.Now().UTC()
+	collectedTime := profile.CollectedRewardAt.UTC()
+	return now.Year() == collectedTime.Year() &&
+		now.YearDay() == collectedTime.YearDay(), nil
+}
+
+// UpdateDailyRewardCollectionByPlayerID 更新用户（按 player_id）每日奖励领取时间
+func UpdateDailyRewardCollectionByPlayerID(playerID string) error {
+	id, err := strconv.ParseUint(playerID, 10, 64)
 	if err != nil {
 		return err
 	}
-
-	player2Profile, err := GetUserProfileByAddress(player2Address)
-	if err != nil {
-		return err
-	}
-
-	// 计算积分和代币变化
-	basePoints := 1000
-	baseTokens := 1000
-
-	// 更新用户档案中的对局统计信息
-	player1Profile.OverallGame++
-	player2Profile.OverallGame++
-
-	// 获取 / 创建用户 Token 信息
-	player1Token, err := GetPlayerToken(context.Background(), player1Address)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if player1Token == nil {
-		player1Token = &dao.UserToken{WalletAddress: player1Address}
-	}
-
-	player2Token, err := GetPlayerToken(context.Background(), player2Address)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if player2Token == nil {
-		player2Token = &dao.UserToken{WalletAddress: player2Address}
-	}
-
-	// 玩家1、玩家2基础积分变动
-	player1PointsChange := basePoints * int(multiplier)
-	player2PointsChange := basePoints * int(multiplier)
-
-	player1Token.Points += int32(player1PointsChange)
-	player2Token.Points += int32(player2PointsChange)
-
-	// 根据胜负情况更新胜场数和代币
-	if winner == player1Address {
-		// 玩家1获胜
-		player1Profile.WinCount++
-		player1Token.TokenAmount += int32(float64(baseTokens) * multiplier * 0.98) // 赢家获得98%
-		player2Token.TokenAmount -= int32(float64(baseTokens) * multiplier)        // 输家扣100%
-	} else if winner == player2Address {
-		// 玩家2获胜
-		player2Profile.WinCount++
-		player2Token.TokenAmount += int32(float64(baseTokens) * multiplier * 0.98)
-		player1Token.TokenAmount -= int32(float64(baseTokens) * multiplier)
-	} else {
-		// 平局，双方各扣0.5%
-		deduction := int32(float64(baseTokens) * 0.005)
-		player1Token.TokenAmount -= deduction
-		player2Token.TokenAmount -= deduction
-	}
-
-	// 重新计算胜率
-	player1Profile.WinningRate = float64(player1Profile.WinCount) / float64(player1Profile.OverallGame)
-	player2Profile.WinningRate = float64(player2Profile.WinCount) / float64(player2Profile.OverallGame)
-
-	// 确保代币数量不为负数
-	if player1Token.TokenAmount < 0 {
-		player1Token.TokenAmount = 0
-	}
-	if player2Token.TokenAmount < 0 {
-		player2Token.TokenAmount = 0
-	}
-
-	// 保存用户 Token 及 Profile
-	err = SaveUserToken(*player1Token, *player2Token)
-	if err != nil {
-		return err
-	}
-
-	// 更新用户档案信息
-	if err := UpdateUserProfile(player1Profile); err != nil {
-		return err
-	}
-	if err := UpdateUserProfile(player2Profile); err != nil {
-		return err
-	}
-
-	return nil
+	now := time.Now()
+	return Get().Model(&dao.UserProfile{}).
+		Where("player_id = ?", id).
+		Update("collected_reward_at", now).Error
 }

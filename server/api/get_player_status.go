@@ -2,10 +2,9 @@ package api
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"strings"
 
-	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -20,16 +19,15 @@ func init() {
 // GetPlayerStatusRequest 请求结构体
 type GetPlayerStatusRequest struct {
 	BaseRequest
-	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	Address     string `mapstructure:"Address"`
+	TempAddress string `mapstructure:"TempAddress" validate:"required"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // GetPlayerStatusResponse 响应结构体
-// Status 取值：0 default，1 matching，2 confirming，3 inbattle，4 waitingcontinue
-// Action 需返回 GetPlayerStatusResponse
 type GetPlayerStatusResponse struct {
 	BaseResponse
-	Status uint32 `json:"Status"`
+	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME, 4=WAITTING_CONTINUE
+	StatusName string `json:"StatusName"` // 状态名称：UNKNOWN, IN_QUEUE, MATCHED, IN_GAME, WAITTING_CONTINUE
 }
 
 type GetPlayerStatusTask struct {
@@ -37,7 +35,6 @@ type GetPlayerStatusTask struct {
 	Response *GetPlayerStatusResponse
 }
 
-// 解码请求
 func NewGetPlayerStatusRequest(data *map[string]interface{}) (*GetPlayerStatusRequest, error) {
 	req := &GetPlayerStatusRequest{}
 	err := mapstructure.Decode(*data, &req)
@@ -76,19 +73,24 @@ func NewGetPlayerStatusTask(data *map[string]interface{}) (Task, error) {
 	return task, nil
 }
 
-// Run 执行任务
 func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
-		return nil, fmt.Errorf("failed to get player address")
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "player id is empty"
+		return task.Response, nil
+	}
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
 	}
 
-	// 统一为小写
-	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// gRPC 客户端
+	// 通过gRPC调用RoomServer的GetPlayerStatus
 	rpcClient := client.GetGlobalRpcClient()
 	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
@@ -96,56 +98,39 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    address,
+	req := &proto.PlayerAddress{
+		Id:               playerID,
 		TemporaryAddress: tempAddress,
 	}
 
-	// 1) 调用 IsPlayerInQueue
-	inQueueResp, err := rpcClient.IsPlayerInQueue(context.Background(), playerAddr)
+	resp, err := rpcClient.GetPlayerStatus(context.Background(), req)
 	if err != nil {
-		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer IsPlayerInQueue failed: " + err.Error()
-		return task.Response, nil
-	}
-	if inQueueResp != nil && inQueueResp.IsInQueue {
-		// 匹配中 -> Status=1
-		task.Response.Status = 1
-		task.Response.BaseResponse.RetCode = 0
-		task.Response.BaseResponse.Message = "Player is in match queue"
+		task.Response.BaseResponse.RetCode = 1002
+		task.Response.BaseResponse.Message = "GetPlayerStatus failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 
-	// 2) 不在队列中，则调用 GetGamePhase 判定 phase
-	gamePhase, err := rpcClient.GetGamePhase(context.Background(), playerAddr)
-	log.Infof("gamePhase: %v, err: %v", gamePhase, err)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 0
-		task.Response.BaseResponse.Message = "Player is not participating in any game"
-		return task.Response, nil
-	}
-
-	// 将 proto.PlayerStatus 转换为所需的 Status：
-	// 2: confirming, 3: inbattle, 4: waitingcontinue；0: default
-	switch gamePhase.PvPInfo.Status {
-	case proto.PlayerStatus_PLAYER_MATCHED:
-		// confirming
-		task.Response.Status = 2
-		task.Response.BaseResponse.Message = "Player matched, waiting for confirmation"
-	case proto.PlayerStatus_PLAYER_IN_GAME:
-		// inbattle
-		task.Response.Status = 3
-		task.Response.BaseResponse.Message = "Player has entered battle"
-	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
-		// waitingcontinue
-		task.Response.Status = 4
-		task.Response.BaseResponse.Message = "Player is waiting for continue"
-	default:
-		// 不在队列且 phase 为 0 -> default
-		task.Response.Status = 0
-		task.Response.BaseResponse.Message = "Player is not participating in any game"
-	}
-
+	task.Response.Status = int32(resp.Status)
+	task.Response.StatusName = getPlayerStatusName(resp.Status)
 	task.Response.BaseResponse.RetCode = 0
+	task.Response.BaseResponse.Message = "Successfully retrieved player status"
 	return task.Response, nil
+}
+
+// getPlayerStatusName 将 PlayerStatus 枚举值转换为状态名称
+func getPlayerStatusName(status proto.PlayerStatus) string {
+	switch status {
+	case proto.PlayerStatus_PLAYER_UNKNOWN:
+		return "UNKNOWN"
+	case proto.PlayerStatus_PLAYER_IN_QUEUE:
+		return "IN_QUEUE"
+	case proto.PlayerStatus_PLAYER_MATCHED:
+		return "MATCHED"
+	case proto.PlayerStatus_PLAYER_IN_GAME:
+		return "IN_GAME"
+	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
+		return "WAITTING_CONTINUE"
+	default:
+		return "UNKNOWN"
+	}
 }

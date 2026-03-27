@@ -9,13 +9,24 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
+	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 type ContractClient interface {
-	CreateRoomContract(evt *types.RequireContractCreationEvent) error
-	SetRoundReady(evt *types.RequireSetupNewRoundEvent) error
+	// SubmitTasks submits a pre-encoded batch of contract tasks to the chain.
+	// Each task is an ABI-encoded payload compatible with RoomV3.batchSubmitTasks.
+	SubmitTasks(tasks []chain.RoomContractTask) error
+}
+
+// TxPoolEnqueuer is the interface Game uses to enqueue chain-related events (create room, set turn ready, commitments, cards).
+type TxPoolEnqueuer interface {
+	AddCreateRoom(evt *types.RequireGameCreationEvent)
+	AddSetTurnReady(evt *types.RequireSetupNewTurnEvent)
+	AddCommitment(evt *types.SubmitPlayerCommitment) error
+	AddCard(evt *types.SubmitPlayerCard) error
+	ClearGameInfo(gameID uint)
 }
 
 type GameHandler interface {
@@ -28,7 +39,6 @@ type GameResultSettler interface {
 }
 
 type Service struct {
-	ctx         context.Context
 	gameManager *GameManager
 }
 
@@ -37,24 +47,27 @@ func NewService(
 	workerManager *worker.WorkerManager,
 	gameConfig *config.GameParamConfig,
 	chainSvc ContractClient,
+	poolBatchSize int,
 	shouldRecover bool) *Service {
 	gameArgs := dao.GameArgs{
-		MaxRounds: gameConfig.MaxRounds,
-		InitialHP: gameConfig.InitialHP,
+		MaxRounds:         gameConfig.MaxRounds,
+		InitialHP:         gameConfig.InitialHP,
+		InitialMultiplier: int64(gameConfig.InitialMultiplier),
 
-		GameMatchTimeout:    gameConfig.GameMatchTimeout,
-		RoundConfirmTimeout: gameConfig.RoundConfirmTimeout,
-		RoundTimeout:        gameConfig.RoundTimeout,
-		ContinueTimeout:     gameConfig.ContinueTimeout,
+		ConfirmationTimeout:         gameConfig.ConfirmationTimeout,
+		CommitmentSubmissionTimeout: gameConfig.CommitmentSubmissionTimeout,
+		CardSubmissionTimeout:       gameConfig.CardSubmissionTimeout,
+		GameContinueTimeout:         gameConfig.GameContinueTimeout,
 
-		GameMatchTimeoutRedundancy:    gameConfig.GameMatchTimeoutRedundancy,
-		RoundConfirmTimeoutRedundancy: gameConfig.RoundConfirmTimeoutRedundancy,
-		RoundTimeoutRedundancy:        gameConfig.RoundTimeoutRedundancy,
-		ContinueTimeoutRedundancy:     gameConfig.ContinueTimeoutRedundancy,
+		ConfirmationTimeoutRedundancy:         gameConfig.ConfirmationTimeoutRedundancy,
+		CommitmentSubmissionTimeoutRedundancy: gameConfig.CommitmentSubmissionTimeoutRedundancy,
+		CardSubmissionTimeoutRedundancy:       gameConfig.CardSubmissionTimeoutRedundancy,
+		GameContinueTimeoutRedundancy:         gameConfig.GameContinueTimeoutRedundancy,
+
+		PoolProcessingInterval: gameConfig.PoolProcessingInterval,
 	}
 	return &Service{
-		ctx:         ctx,
-		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover),
+		gameManager: NewGameManager(ctx, workerManager, gameArgs, chainSvc, shouldRecover, poolBatchSize),
 	}
 }
 
@@ -76,16 +89,13 @@ func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.Ga
 }
 
 func (s *Service) GetBattleInfo(_ context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
-	game := s.gameManager.GetActiveGameByID(uint(gameID))
-	if game == nil {
-		// it is a cold game now
-		return s.LoadBattleInfoFromDB(gameID, roundNum)
+	// Try to get battle info from active game first
+	roundRes, gameRes, err := s.gameManager.GetBattleInfo(uint(gameID), roundNum)
+	if err == nil {
+		return roundRes, gameRes, nil
 	}
-	roundRes, gameRes := game.GetBattleInfo(roundNum)
-	if roundRes == nil {
-		return nil, nil, errors.New("round not found")
-	}
-	return roundRes, gameRes, nil
+	// If game is not active (cold game), load from DB
+	return s.LoadBattleInfoFromDB(gameID, roundNum)
 }
 
 func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
@@ -97,10 +107,10 @@ func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.R
 		if round.RoundNumber == roundNum {
 			roundRes := conversion.DbRoundToRoundResult(round)
 			var gameRes *proto.GameResult
-			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.RoundConfirmTimeout)
+			roundRes.RoundConfirmTimeout = uint64(gameInfo.GameArgs.ConfirmationTimeout)
 			if gameInfo.GameResult != nil {
 				gameRes = conversion.DbGameResultToProtoGameResult(gameInfo.GameResult)
-				gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.ContinueTimeout)
+				gameRes.GameContinueTimeout = uint64(gameInfo.GameArgs.GameContinueTimeout)
 			}
 			return roundRes, gameRes, nil
 		}
@@ -133,4 +143,19 @@ func (s *Service) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
 
 func (s *Service) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	return s.gameManager.GetGamePhase(address)
+}
+
+// SyncGamePhase sends the current game phase directly to the player worker
+func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
+	return s.gameManager.SyncGamePhase(address)
+}
+
+// HandleSubmitPlayerCommitment handles a player commitment submission
+func (s *Service) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
+	return s.gameManager.HandleSubmitPlayerCommitment(evt)
+}
+
+// HandleSubmitPlayerCard handles a player card submission
+func (s *Service) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
+	return s.gameManager.HandleSubmitPlayerCard(evt)
 }

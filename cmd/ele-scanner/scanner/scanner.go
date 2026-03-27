@@ -30,7 +30,13 @@ const (
 	SubmitCardsHashEventName = "submitCardsHash"
 	SubmitCardsEventName     = "submitCards"
 	StartANewRoundName       = "startANewRound"
-	rpcSubmitTimeout         = 3 * time.Second
+
+	RoomV3ContractRoomCreatedEventName    = "RoomCreated"
+	RoomV3ContractStartANewTurnEventName  = "startANewTurn"
+	RoomV3ContractSubmitCardHashEventName = "submitCardHash"
+	RoomV3ContractSubmitCardEventName     = "submitCard"
+
+	rpcSubmitTimeout = 3 * time.Second
 )
 
 type eventSigHashCache struct {
@@ -41,15 +47,16 @@ type eventSigHashCache struct {
 
 // Scanner encapsulates the state and logic for block catching up
 type Scanner struct {
-	ctx                       context.Context
-	cancel                    context.CancelFunc
-	gethWsRpc                 string
-	gethHttpRpc               string
-	roomServerHttpRpc         string
-	gethClient                *ethclient.Client
-	rpcClient                 *eleClient.RpcClient
-	roomManagerAddress        string
-	roomManagerAbi            *abi.ABI
+	ctx               context.Context
+	cancel            context.CancelFunc
+	gethWsRpc         string
+	gethHttpRpc       string
+	roomServerHttpRpc string
+	gethClient        *ethclient.Client
+	rpcClient         *eleClient.RpcClient
+	//roomManagerAddress        string
+	//roomManagerAbi            *abi.ABI
+	roomAddress               string
 	roomAbi                   *abi.ABI
 	currentScannedHeight      uint64
 	currentScannedHeightMutex sync.RWMutex
@@ -60,18 +67,39 @@ type Scanner struct {
 }
 
 // NewScanner creates a new Scanner with its own cancellable context.
-func NewScanner(parentCtx context.Context, gethWsRpc string, gethHttpRpc string, roomServerHttpRpc string, roomManagerAddress string, roomManagerAbi *abi.ABI, roomAbi *abi.ABI) *Scanner {
+// func NewScanner(parentCtx context.Context, gethWsRpc string, gethHttpRpc string, roomServerHttpRpc string, roomManagerAddress string, roomManagerAbi *abi.ABI, roomAbi *abi.ABI) *Scanner {
+// 	log.Infof("NewScanner gethWsRpc: %s, gethHttpRpc: %s, roomServerHttpRpc: %s", gethWsRpc, gethHttpRpc, roomServerHttpRpc)
+// 	ctx, cancel := context.WithCancel(parentCtx)
+// 	return &Scanner{
+// 		ctx:                ctx,
+// 		cancel:             cancel,
+// 		gethWsRpc:          gethWsRpc,
+// 		gethHttpRpc:        gethHttpRpc,
+// 		roomServerHttpRpc:  roomServerHttpRpc,
+// 		roomManagerAddress: roomManagerAddress,
+// 		roomManagerAbi:     roomManagerAbi,
+// 		roomAbi:            roomAbi,
+// 		eventSigHashCache: eventSigHashCache{
+// 			eventNameToHash: make(map[string]common.Hash),
+// 			eventHashToName: make(map[common.Hash]string),
+// 		},
+// 	}
+// }
+
+// NewScanner creates a new Scanner with its own cancellable context.
+func NewScanner(parentCtx context.Context, gethWsRpc string, gethHttpRpc string, roomServerHttpRpc string, roomAddress string, roomAbi *abi.ABI) *Scanner {
 	log.Infof("NewScanner gethWsRpc: %s, gethHttpRpc: %s, roomServerHttpRpc: %s", gethWsRpc, gethHttpRpc, roomServerHttpRpc)
 	ctx, cancel := context.WithCancel(parentCtx)
 	return &Scanner{
-		ctx:                ctx,
-		cancel:             cancel,
-		gethWsRpc:          gethWsRpc,
-		gethHttpRpc:        gethHttpRpc,
-		roomServerHttpRpc:  roomServerHttpRpc,
-		roomManagerAddress: roomManagerAddress,
-		roomManagerAbi:     roomManagerAbi,
-		roomAbi:            roomAbi,
+		ctx:               ctx,
+		cancel:            cancel,
+		gethWsRpc:         gethWsRpc,
+		gethHttpRpc:       gethHttpRpc,
+		roomServerHttpRpc: roomServerHttpRpc,
+		//roomManagerAddress: roomManagerAddress,
+		//roomManagerAbi:     roomManagerAbi,
+		roomAddress: roomAddress,
+		roomAbi:     roomAbi,
 		eventSigHashCache: eventSigHashCache{
 			eventNameToHash: make(map[string]common.Hash),
 			eventHashToName: make(map[common.Hash]string),
@@ -467,9 +495,12 @@ func (s *Scanner) getAndProcessBlockToBatch(blockHeight *big.Int) (*proto.Transa
 	}
 	txsToSubmit := make([]*proto.Transaction, 0)
 	for _, tx := range parsedTxs {
-		if tx.To != "0x4200000000000000000000000000000000000015" {
-			log.Debugf("parsed tx: %+v", tx)
+		if strings.EqualFold(tx.To, s.roomAddress) { // specail tx
+			log.Debugf("parsed special tx: %+v", tx)
+		} else {
+			continue
 		}
+
 		txs, err := s.processTx(tx)
 		if err != nil {
 			log.Errorf("processTx failed, err %s, tx %+v", err.Error(), tx)
@@ -492,17 +523,15 @@ func (s *Scanner) getAndProcessBlockToBatch(blockHeight *big.Int) (*proto.Transa
 
 func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, error) {
 	txsToSubmit := make([]*proto.Transaction, 0)
-	if strings.EqualFold(tx.To, "0x4200000000000000000000000000000000000015") { // specail tx
+	if !strings.EqualFold(tx.To, s.roomAddress) { // specail tx
 		return nil, nil
 	}
-
-	// todo: filter room manager address after 7702
 
 	// find room tx
 	hash := common.HexToHash(tx.Hash)
 	receipt, err := s.gethClient.TransactionReceipt(s.ctx, hash)
 	if err != nil {
-		return nil, err
+		return nil, err // get receipt failed, retry later
 	}
 
 	for _, vLog := range receipt.Logs {
@@ -514,102 +543,87 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 		}
 
 		var txSubmit *proto.Transaction
-		if eventName == RoomCreatedEventName {
-			eventData := contract.RoomManagerContractRoomCreated{}
-			if err := s.roomManagerAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
-			}
 
-			txSubmit = &proto.Transaction{
-				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				Tx: &proto.Transaction_RoomContractCreated{
-					RoomContractCreated: &proto.TxRoomContractCreated{
-						RoomContractAddress: eventData.RoomAddress.Hex(),
-					},
-				},
-				GameId: uint32(eventData.GameId.Uint64()),
-			}
-		}
-
-		if eventName == SubmitCardsHashEventName {
-			eventData := contract.RoomContractSubmitCardsHash{}
+		if eventName == RoomV3ContractRoomCreatedEventName {
+			eventData := contract.RoomV3ContractRoomCreated{}
 			if err := s.roomAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
-			}
-			txSubmit = &proto.Transaction{
-				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				Tx: &proto.Transaction_CommitmentsOnChain{
-					CommitmentsOnChain: &proto.TxCommitmentsOnChain{
-						RoomContractAddress: tx.To,
-						RoundNumber:         uint32(eventData.Round.Uint64()),
-						Address: &proto.PlayerAddress{
-							//WalletAddress:    eventData.Address.Hex(),
-							TemporaryAddress: eventData.Player.Hex(),
-						},
-						Commitment: eventData.CardsHash[:],
-					},
-				},
-				GameId: uint32(eventData.GameId.Uint64()),
-			}
-		}
-
-		if eventName == SubmitCardsEventName {
-			eventData := contract.RoomContractSubmitCards{}
-			if err := s.roomAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
-			}
-			cardStrs := strings.Split(eventData.Cards, ",")
-			cards := make([]uint32, 0, len(cardStrs))
-			for _, s := range cardStrs {
-				s = strings.TrimSpace(s)
-				if s == "" {
-					continue
-				}
-				n, err := strconv.ParseUint(s, 10, 32)
-				if err != nil {
-					log.Errorf("invalid card value: %v", err)
-					break
-				}
-				cards = append(cards, uint32(n))
-			}
-
-			if len(cards) == 0 {
-				log.Errorf("no proper cards found for tx %s, eventData %+v", tx.Hash, eventData)
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
 				continue
 			}
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				Tx: &proto.Transaction_CardsOnChain{
-					CardsOnChain: &proto.TxCardsOnChain{
-						RoomContractAddress: tx.To,
-						Address: &proto.PlayerAddress{
-							//WalletAddress:    eventData.Address.Hex(),
-							TemporaryAddress: eventData.Player.Hex(),
-						},
-						RoundNumber: uint32(eventData.Round.Uint64()),
-						Salt:        []byte(eventData.Salt),
-						Cards:       cards,
-					},
+				GameId: uint32(eventData.GameId.Int64()),
+				Tx: &proto.Transaction_GameCreated{
+					GameCreated: &proto.TxGameCreated{},
 				},
-				GameId: uint32(eventData.GameId.Uint64()),
 			}
 		}
 
-		if eventName == StartANewRoundName {
-			eventData := contract.RoomContractStartANewRound{}
+		if eventName == RoomV3ContractStartANewTurnEventName {
+			eventData := contract.RoomV3ContractStartANewTurn{}
 			if err := s.roomAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
-				return nil, err
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
+			}
+
+			txSubmit = &proto.Transaction{
+				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				GameId: uint32(eventData.GameId.Int64()),
+				Tx: &proto.Transaction_GameTurnSetupReady{
+					GameTurnSetupReady: &proto.TxGameTurnSetupReady{
+						RoundNumber: uint32(eventData.Round.Uint64()),
+						TurnNumber:  uint32(eventData.CardIndex.Uint64()),
+					},
+				},
+			}
+		}
+
+		if eventName == RoomV3ContractSubmitCardHashEventName {
+			eventData := contract.RoomV3ContractSubmitCardHash{}
+			if err := s.roomAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
 			}
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				Tx: &proto.Transaction_RoomContractSetupReady{
-					RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
-						RoomContractAddress: tx.To,
-						RoundNumber:         uint32(eventData.Round.Uint64()),
+				GameId: uint32(eventData.GameId.Int64()),
+				Tx: &proto.Transaction_CommitmentOnChain{
+					CommitmentOnChain: &proto.TxCommitmentOnChain{
+						Address: &proto.PlayerAddress{
+							Id:               int64(eventData.PlayerId.Uint64()),
+							TemporaryAddress: eventData.Player.Hex(),
+						},
+						RoundNumber: uint32(eventData.Round.Uint64()),
+						TurnNumber:  uint32(eventData.CardIndex.Uint64()),
+						Commitment:  eventData.CardHash[:],
 					},
 				},
-				GameId: uint32(eventData.GameId.Uint64()),
+			}
+		}
+
+		if eventName == RoomV3ContractSubmitCardEventName {
+			eventData := contract.RoomV3ContractSubmitCard{}
+			if err := s.roomAbi.UnpackIntoInterface(&eventData, eventName, vLog.Data); err != nil {
+				log.Errorf("unpack eventData failed, err %s, eventName %s, vLog %+v", err.Error(), eventName, vLog)
+				continue
+			}
+
+			txSubmit = &proto.Transaction{
+				TxHash: common.HexToHash(tx.Hash).Bytes(),
+				GameId: uint32(eventData.GameId.Int64()),
+				Tx: &proto.Transaction_CardOnChain{
+					CardOnChain: &proto.TxCardOnChain{
+						Address: &proto.PlayerAddress{
+							Id:               int64(eventData.PlayerId.Uint64()),
+							TemporaryAddress: eventData.Player.Hex(),
+						},
+						RoundNumber: uint32(eventData.Round.Uint64()),
+						TurnNumber:  uint32(eventData.CardIndex.Uint64()),
+						Salt:        eventData.Salt[:],
+						CardId:      uint32(eventData.Card.Uint64()),
+					},
+				},
 			}
 		}
 
@@ -622,8 +636,11 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 func (s *Scanner) initEventSigHashCache() error {
 	cache := &s.eventSigHashCache
-	roomEventNames := []string{SubmitCardsHashEventName, SubmitCardsEventName, StartANewRoundName}
-	roomManagerEventNames := []string{RoomCreatedEventName}
+	roomEventNames := []string{RoomV3ContractRoomCreatedEventName,
+		RoomV3ContractStartANewTurnEventName,
+		RoomV3ContractSubmitCardHashEventName,
+		RoomV3ContractSubmitCardEventName,
+	}
 
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -631,16 +648,7 @@ func (s *Scanner) initEventSigHashCache() error {
 	for _, name := range roomEventNames {
 		event, ok := s.roomAbi.Events[name]
 		if !ok {
-			return fmt.Errorf("event %s not found in room ABI", name)
-		}
-		cache.eventNameToHash[name] = event.ID
-		cache.eventHashToName[event.ID] = name
-	}
-
-	for _, name := range roomManagerEventNames {
-		event, ok := s.roomManagerAbi.Events[name]
-		if !ok {
-			return fmt.Errorf("event %s not found in roomManager ABI", name)
+			return fmt.Errorf("event %s not found in roomV2 ABI", name)
 		}
 		cache.eventNameToHash[name] = event.ID
 		cache.eventHashToName[event.ID] = name

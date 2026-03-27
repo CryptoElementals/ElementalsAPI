@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/rpc/client"
@@ -21,7 +22,7 @@ type SurrenderRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`      // 游戏ID
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // SurrenderResponse 响应结构体
@@ -79,14 +80,15 @@ func init() {
 
 // Run 执行任务
 func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
-		return nil, fmt.Errorf("failed to get player address")
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
+		return nil, fmt.Errorf("player id is empty")
 	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid player id: %v", err)
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的Surrender
@@ -101,16 +103,16 @@ func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
 	req := &pb.SurrenderRequest{
 		GameID: task.Request.GameID,
 		Address: &pb.PlayerAddress{
-			WalletAddress:    address,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 	}
 
 	// 调用 Surrender RPC
-	_, err := rpcClient.Surrender(context.Background(), req)
+	_, err = rpcClient.Surrender(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "RoomServer Surrender failed: " + err.Error()
+		task.Response.BaseResponse.Message = "Surrender failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

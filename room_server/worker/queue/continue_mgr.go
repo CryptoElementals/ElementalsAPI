@@ -40,7 +40,7 @@ func (m *continueManager) addGame(game *dao.Game) {
 	defer m.Unlock()
 	continuePlayers := make(map[types.PlayerAddress]bool)
 	for _, player := range game.Players {
-		playerAddr := types.NewPlayerAddress(player.WalletAddress, player.TemporaryAddress)
+		playerAddr := types.NewPlayerAddress(player.PlayerId, player.TemporaryAddress)
 		continuePlayers[*playerAddr] = false
 		info := gameContinueInfo{
 			gameID:  game.ID,

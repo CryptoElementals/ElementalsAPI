@@ -34,8 +34,22 @@ func (m *MockContractClient) EXPECT() *MockContractClientMockRecorder {
 	return m.recorder
 }
 
+// SubmitTasks mocks base method.
+func (m *MockContractClient) SubmitTasks(arg0 [][]byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubmitTasks", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SubmitTasks indicates an expected call of SubmitTasks.
+func (mr *MockContractClientMockRecorder) SubmitTasks(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitTasks", reflect.TypeOf((*MockContractClient)(nil).SubmitTasks), arg0)
+}
+
 // CreateRoomContract mocks base method.
-func (m *MockContractClient) CreateRoomContract(arg0 *types.RequireContractCreationEvent) error {
+func (m *MockContractClient) CreateRoomContract(arg0 *types.RequireGameCreationEvent) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateRoomContract", arg0)
 	ret0, _ := ret[0].(error)
@@ -48,16 +62,44 @@ func (mr *MockContractClientMockRecorder) CreateRoomContract(arg0 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRoomContract", reflect.TypeOf((*MockContractClient)(nil).CreateRoomContract), arg0)
 }
 
-// SetRoundReady mocks base method.
-func (m *MockContractClient) SetRoundReady(arg0 *types.RequireSetupNewRoundEvent) error {
+// SetTurnReady mocks base method.
+func (m *MockContractClient) SetTurnReady(arg0 *types.RequireSetupNewTurnEvent) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetRoundReady", arg0)
+	ret := m.ctrl.Call(m, "SetTurnReady", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetRoundReady indicates an expected call of SetRoundReady.
-func (mr *MockContractClientMockRecorder) SetRoundReady(arg0 interface{}) *gomock.Call {
+// SetTurnReady indicates an expected call of SetTurnReady.
+func (mr *MockContractClientMockRecorder) SetTurnReady(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetRoundReady", reflect.TypeOf((*MockContractClient)(nil).SetRoundReady), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTurnReady", reflect.TypeOf((*MockContractClient)(nil).SetTurnReady), arg0)
+}
+
+// SubmitPlayerCardsBatch mocks base method.
+func (m *MockContractClient) SubmitPlayerCardsBatch(arg0 []*types.SubmitPlayerCard) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubmitPlayerCardsBatch", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SubmitPlayerCardsBatch indicates an expected call of SubmitPlayerCardsBatch.
+func (mr *MockContractClientMockRecorder) SubmitPlayerCardsBatch(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitPlayerCardsBatch", reflect.TypeOf((*MockContractClient)(nil).SubmitPlayerCardsBatch), arg0)
+}
+
+// SubmitPlayerCommitmentsBatch mocks base method.
+func (m *MockContractClient) SubmitPlayerCommitmentsBatch(arg0 []*types.SubmitPlayerCommitment) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubmitPlayerCommitmentsBatch", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SubmitPlayerCommitmentsBatch indicates an expected call of SubmitPlayerCommitmentsBatch.
+func (mr *MockContractClientMockRecorder) SubmitPlayerCommitmentsBatch(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitPlayerCommitmentsBatch", reflect.TypeOf((*MockContractClient)(nil).SubmitPlayerCommitmentsBatch), arg0)
 }

@@ -72,7 +72,14 @@ func Handle(c *gin.Context) {
 			return
 		}
 	} else {
-		res := api.MakeErrorResponse(errors.ActionError(err.Error()))
+		// 检查是否是自定义错误类型，如果是则直接使用，否则包装成 ActionError
+		var errObj errors.Error
+		if customErr, ok := err.(errors.Error); ok {
+			errObj = customErr
+		} else {
+			errObj = errors.ActionError(err.Error())
+		}
+		res := api.MakeErrorResponse(errObj)
 		res.SetSession(requestUUID)
 		res.SetAction(action + "Response")
 		resJson, _ := json.Marshal(res)

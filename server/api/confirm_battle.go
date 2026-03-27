@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/rpc/client"
@@ -19,9 +20,10 @@ func init() {
 type ConfirmBattleRequest struct {
 	BaseRequest
 	GameID      uint32 `mapstructure:"GameID" validate:"required"`
-	Round       uint   `mapstructure:"Round" validate:"required"`
+	RoundNumber uint   `mapstructure:"RoundNumber" validate:"required,min=1"`
+	TurnNumber  uint   `mapstructure:"TurnNumber" validate:"required,min=1"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // ConfirmBattleResponse 响应结构体
@@ -74,16 +76,20 @@ func NewConfirmBattleTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "player id is empty"
+		return task.Response, nil
+	}
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
 		return task.Response, nil
 	}
 
-	// 统一将地址转为小写
-	address = strings.ToLower(address)
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
@@ -95,18 +101,19 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	req := &proto.ConfirmBattleRequest{
-		GameID:      task.Request.GameID,
-		RoundNumber: uint32(task.Request.Round),
+		GameID:      uint32(task.Request.GameID),
+		RoundNumber: uint32(task.Request.RoundNumber),
+		TurnNumber:  uint32(task.Request.TurnNumber),
 		PlayerAddress: &proto.PlayerAddress{
-			WalletAddress:    address,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 	}
 
-	_, err := rpcClient.ConfirmBattle(context.Background(), req)
+	_, err = rpcClient.ConfirmBattle(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ConfirmBattle failed: " + err.Error()
+		task.Response.BaseResponse.Message = "ConfirmBattle failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

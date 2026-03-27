@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/rpc/client"
@@ -20,7 +21,7 @@ type ExitQueueRequest struct {
 	BaseRequest
 	Mode        string `mapstructure:"Mode" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // ExitQueueResponse 响应结构体
@@ -73,16 +74,19 @@ func NewExitQueueTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Failed to get player address"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 	// 验证游戏模式
@@ -109,14 +113,14 @@ func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	playerAddr := &proto.PlayerAddress{
-		WalletAddress:    address,
+		Id:               playerID,
 		TemporaryAddress: tempAddress,
 	}
 
-	_, err := rpcClient.ExitQueue(context.Background(), playerAddr)
+	_, err = rpcClient.ExitQueue(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ExitQueue failed: " + err.Error()
+		task.Response.BaseResponse.Message = "ExitQueue failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

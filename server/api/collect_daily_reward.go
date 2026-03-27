@@ -2,6 +2,7 @@ package api
 
 import (
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
@@ -10,9 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"gorm.io/gorm"
-
-	dao "github.com/CryptoElementals/common/models"
 )
 
 func init() {
@@ -21,7 +19,7 @@ func init() {
 
 type CollectDailyRewardRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type CollectDailyRewardResponse struct {
@@ -73,69 +71,81 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 从请求中获取用户地址（由中间件设置）
-	address := task.Request.Address
-	if address == "" {
-		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
-		return nil, cmnErrors.MissingLoginCookie()
-	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
-
-	// 检查用户是否已领取今日奖励
-	collected, err := db.HasCollectedDailyReward(lowercaseAddress)
+	// 统一流程：检查活动期间 -> 校验是否已领取 -> 判断第一天还是后续天 -> 发放并保存代币 -> 更新领取时间
+	requestPlayerID := strings.TrimSpace(task.Request.PlayerID)
+	profile, err := db.GetUserProfileByPlayerID(requestPlayerID)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
 	}
 
-	// 如果已经领取过今日奖励，返回错误
+	// 检查活动是否在有效期内（使用UTC时间统一判断）
+	now := time.Now().UTC()
+	startDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardStartDate)
+	if err != nil {
+		log.Errorf("%s, invalid daily reward start date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardStartDate, err)
+		return nil, cmnErrors.DailyRewardNotActive()
+	}
+	endDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardEndDate)
+	if err != nil {
+		log.Errorf("%s, invalid daily reward end date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardEndDate, err)
+		return nil, cmnErrors.DailyRewardNotActive()
+	}
+
+	// 只比较日期部分，忽略时间，统一使用UTC时区
+	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	startDateOnly := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.UTC)
+	endDateOnly := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, time.UTC)
+
+	if nowDate.Before(startDateOnly) || nowDate.After(endDateOnly) {
+		log.Errorf("%s, daily reward activity is not active. Current date: %s, Activity period: %s to %s",
+			task.Request.RequestUUID, nowDate.Format("2006-01-02"), startDateOnly.Format("2006-01-02"), endDateOnly.Format("2006-01-02"))
+		return nil, cmnErrors.DailyRewardNotActive()
+	}
+
+	// 校验当日是否已领取
+	collected, err := db.HasCollectedDailyRewardByPlayerID(requestPlayerID)
+	if err != nil {
+		log.Errorf("%s, failed to check daily reward collection for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
+	}
 	if collected {
-		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, lowercaseAddress)
-		return nil, cmnErrors.ActionError("Daily reward already collected")
+		log.Errorf("%s, user %s has already collected daily reward today", task.Request.RequestUUID, requestPlayerID)
+		return nil, cmnErrors.DailyRewardAlreadyCollected()
 	}
 
-	// 获取用户档案（仅确保用户存在）
-	_, err = db.GetUserProfileByAddress(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.GetUserProfileFailed(lowercaseAddress)
-	}
-
-	// 从配置文件获取每日奖励token数量
-	dailyRewardTokens := int32(config.GameParams.DailyRewardTokens)
-
-	// 更新/创建用户的 Token 记录
-	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.OperateDbFailed()
-	}
-
-	if userToken == nil {
-		userToken = &dao.UserToken{
-			WalletAddress: lowercaseAddress,
-			Points:        0,
-			TokenAmount:   dailyRewardTokens,
-		}
+	// 判断是否是活动期间内第一次领取
+	// 条件：用户从未在活动期间内领取过（从未领取过，或上次领取时间在活动开始日期之前）
+	// 统一使用UTC时区进行比较
+	isFirstTimeInActivity := false
+	if profile.CollectedRewardAt == nil {
+		// 从未领取过，这是活动期间内第一次
+		isFirstTimeInActivity = true
 	} else {
-		userToken.TokenAmount += dailyRewardTokens
+		// 检查上次领取时间是否在活动开始日期之前（转换为UTC进行比较）
+		lastCollectedUTC := profile.CollectedRewardAt.UTC()
+		lastCollectedDate := time.Date(lastCollectedUTC.Year(), lastCollectedUTC.Month(), lastCollectedUTC.Day(), 0, 0, 0, 0, time.UTC)
+		if lastCollectedDate.Before(startDateOnly) {
+			// 上次领取时间在活动开始之前，这是活动期间内第一次
+			isFirstTimeInActivity = true
+		}
 	}
 
-	err = db.SaveUserToken(*userToken)
-	if err != nil {
-		log.Errorf("%s, failed to save user token for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.OperateDbFailed()
+	// 根据是否是活动期间内第一次领取决定发放的token数量
+	var dailyRewardTokens int32
+	if isFirstTimeInActivity {
+		dailyRewardTokens = int32(config.GameParams.FirstTimeRewardTokens)
+		log.Infof("%s, player_id=%s collecting first time reward in activity: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
+	} else {
+		dailyRewardTokens = int32(config.GameParams.DailyRewardTokensAfterFirst)
+		log.Infof("%s, player_id=%s collecting daily reward: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	}
 
-	// 更新用户每日奖励领取时间
-	err = db.UpdateDailyRewardCollection(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to update daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, cmnErrors.SaveUserProfileFailed()
+	// 在单个事务中发放 token 并更新领取时间，确保要么都成功要么都失败
+	if err = db.CollectDailyRewardByPlayerID(requestPlayerID, dailyRewardTokens); err != nil {
+		log.Errorf("%s, failed to collect daily reward in transaction for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+		return nil, cmnErrors.DailyRewardInternalError(requestPlayerID)
 	}
-
-	log.Infof("%s, daily reward collected successfully for address %s, tokens: %d", task.Request.RequestUUID, lowercaseAddress, dailyRewardTokens)
+	log.Infof("%s, daily reward collected successfully for player_id=%s, tokens: %d (isFirstTimeInActivity: %v)", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens, isFirstTimeInActivity)
 	return task.Response, nil
 }

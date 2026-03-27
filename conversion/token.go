@@ -12,9 +12,9 @@ func DbUserTokenToProtoGetPlayerTokenResponse(userToken *dao.UserToken) *proto.G
 	}
 
 	return &proto.GetPlayerTokenResponse{
-		WalletAddress: userToken.WalletAddress,
-		Tokens:        uint64(userToken.TokenAmount),
-		Points:        uint64(userToken.Points),
-		LockedTokens:  uint64(lockedPoints),
+		Id:           userToken.PlayerId,
+		Tokens:       uint64(userToken.TokenAmount),
+		Points:       uint64(userToken.Points),
+		LockedTokens: uint64(lockedPoints),
 	}
 }

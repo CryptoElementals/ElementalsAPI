@@ -17,7 +17,7 @@ func init() {
 
 type HasCollectedDailyRewardRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 type HasCollectedDailyRewardResponse struct {
@@ -70,24 +70,13 @@ func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (Task, error) 
 }
 
 func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
-	// 从请求中获取用户地址（由中间件设置）
-	address := task.Request.Address
-	if address == "" {
-		log.Errorf("%s, no address found in request", task.Request.RequestUUID)
-		return nil, errors.MissingLoginCookie()
-	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
-
-	// 检查用户是否已领取今日奖励
-	collected, err := db.HasCollectedDailyReward(lowercaseAddress)
+	playerID := strings.TrimSpace(task.Request.PlayerID)
+	collected, err := db.HasCollectedDailyRewardByPlayerID(playerID)
 	if err != nil {
-		log.Errorf("%s, failed to check daily reward collection for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.GetUserProfileFailed(lowercaseAddress)
+		log.Errorf("%s, failed to check daily reward collection for player_id=%s: %v", task.Request.RequestUUID, playerID, err)
+		return nil, errors.GetUserProfileFailed(playerID)
 	}
-
 	task.Response.Collected = collected
-	log.Infof("%s, daily reward collection status checked for address %s: %v", task.Request.RequestUUID, lowercaseAddress, collected)
+	log.Infof("%s, daily reward collection status checked (player_id=%s): %v", task.Request.RequestUUID, playerID, collected)
 	return task.Response, nil
 }

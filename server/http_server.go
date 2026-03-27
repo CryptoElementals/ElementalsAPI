@@ -2,13 +2,19 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/handler"
@@ -78,7 +84,7 @@ func New(cfg *config.ServerConfig, store sessions.Store, refreshTokenCache cache
 	if err != nil {
 		log.Fatal("login api initiation failed: %s", err.Error())
 	}
-	r := newRouter(wg, cfg.ServerMode, sessionName, store)
+	r := newRouter(wg, cfg, sessionName, store)
 	return &Server{
 		cfg: cfg,
 		e:   r,
@@ -101,8 +107,8 @@ func (s *Server) Stop() error {
 	return err
 }
 
-func newRouter(wg *sync.WaitGroup, serverMode, serviceName string, store sessions.Store) *gin.Engine {
-	mode := strings.ToLower(serverMode)
+func newRouter(wg *sync.WaitGroup, cfg *config.ServerConfig, serviceName string, store sessions.Store) *gin.Engine {
+	mode := strings.ToLower(cfg.ServerMode)
 	switch mode {
 	case "release":
 		gin.SetMode(gin.ReleaseMode)
@@ -126,7 +132,11 @@ func newRouter(wg *sync.WaitGroup, serverMode, serviceName string, store session
 	//注册session 中间件
 	r.Use(sessions.Sessions(serviceName+"_session", store))
 	// register apis here
-	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(serverMode), handler.Handle)
+	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(cfg.ServerMode), handler.Handle)
+
+	// Google OAuth endpoints
+	r.GET("/auth/google/login", googleLoginHandler(cfg))
+	r.GET("/auth/google/callback", googleCallbackHandler(cfg))
 	return r
 }
 
@@ -147,6 +157,8 @@ func corsMiddleware() gin.HandlerFunc {
 			"http://d.elementra.xyz",
 			"https://elementra.xyz",
 			"http://elementra.xyz",
+			"https://a.elementra.xyz",
+			"http://a.elementra.xyz",
 		}
 
 		// 检查来源是否被允许
@@ -193,4 +205,171 @@ func ginWaitGroup(wg *sync.WaitGroup) gin.HandlerFunc {
 func ginLogger() gin.HandlerFunc {
 	w := log.GlobalLogger().Writer()
 	return gin.LoggerWithWriter(w)
+}
+
+// Helpers for Google OAuth
+func googleLoginHandler(cfg *config.ServerConfig) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cfg.GoogleClientID == "" || cfg.GoogleClientSecret == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "google oauth not configured"})
+			return
+		}
+		// generate state and store in session
+		state, _ := randomString(24)
+		// optional environment hint, used in callback to decide frontend redirect target
+		env := c.Query("env")
+
+		session := sessions.Default(c)
+		session.Set("oauth_state", state)
+		if env != "" {
+			session.Set("oauth_env", env)
+		}
+		_ = session.Save()
+
+		q := url.Values{}
+		q.Set("client_id", cfg.GoogleClientID)
+		q.Set("redirect_uri", cfg.GoogleRedirectURL)
+		q.Set("response_type", "code")
+		q.Set("scope", "openid email profile")
+		q.Set("state", state)
+
+		if c.Query("force") == "true" {
+			q.Set("prompt", "consent")
+		}
+
+		authURL := "https://accounts.google.com/o/oauth2/auth?" + q.Encode()
+		c.Redirect(http.StatusFound, authURL)
+	}
+}
+
+func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		queryState := c.Query("state")
+		code := c.Query("code")
+		if queryState == "" || code == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing state or code"})
+			return
+		}
+		session := sessions.Default(c)
+		state := session.Get("oauth_state")
+		if state == nil || state.(string) != queryState {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state"})
+			return
+		}
+		// clear state and read env hint
+		session.Delete("oauth_state")
+		envVal := session.Get("oauth_env")
+		if envVal != nil {
+			session.Delete("oauth_env")
+		}
+		_ = session.Save()
+
+		// exchange code for token
+		form := url.Values{}
+		form.Set("code", code)
+		form.Set("client_id", cfg.GoogleClientID)
+		form.Set("client_secret", cfg.GoogleClientSecret)
+		form.Set("redirect_uri", cfg.GoogleRedirectURL)
+		form.Set("grant_type", "authorization_code")
+		tokenResp, err := http.PostForm("https://oauth2.googleapis.com/token", form)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "exchange failed"})
+			return
+		}
+		defer tokenResp.Body.Close()
+		if tokenResp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(tokenResp.Body)
+			c.JSON(http.StatusBadGateway, gin.H{"error": "exchange failed", "detail": string(body)})
+			return
+		}
+		var tokenPayload struct {
+			AccessToken string `json:"access_token"`
+			IdToken     string `json:"id_token"`
+			TokenType   string `json:"token_type"`
+			ExpiresIn   int    `json:"expires_in"`
+		}
+		if err := json.NewDecoder(tokenResp.Body).Decode(&tokenPayload); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "invalid token response"})
+			return
+		}
+		req, _ := http.NewRequest("GET", "https://openidconnect.googleapis.com/v1/userinfo", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenPayload.AccessToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "userinfo fetch failed"})
+			return
+		}
+		defer resp.Body.Close()
+		var payload struct {
+			Email string `json:"email"`
+			Name  string `json:"name"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "invalid userinfo"})
+			return
+		}
+		log.Infof("googleCallbackHandler: payload: %+v", payload)
+		log.Infof("googleCallbackHandler: email: %s", payload.Email)
+		log.Infof("googleCallbackHandler: name: %s", payload.Name)
+		log.Infof("googleCallbackHandler: access_token: %s", tokenPayload.AccessToken)
+		log.Infof("googleCallbackHandler: id_token: %s", tokenPayload.IdToken)
+		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
+		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
+		userProfile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
+			return
+		}
+		playerIDStr := fmt.Sprintf("%d", userProfile.PlayerID)
+		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
+			return
+		}
+		tempCode, err := api.SaveTempCodeForRefreshToken(token, 300)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue temp code failed"})
+			return
+		}
+
+		// decide frontend redirect target based on env hint
+		var env string
+		if envVal != nil {
+			if s, ok := envVal.(string); ok {
+				env = s
+			}
+		}
+
+		var frontendURL string
+		switch env {
+		case "local":
+			// local frontend for developer debugging
+			frontendURL = "http://localhost:5173/"
+		default:
+			frontendURL = cfg.GoogleFrontendURL
+		}
+
+		if frontendURL == "" {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "frontend redirect url not configured"})
+			return
+		}
+		u, err := url.Parse(frontendURL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid frontend redirect url"})
+			return
+		}
+		q := u.Query()
+		q.Set("code", tempCode)
+		u.RawQuery = q.Encode()
+		c.Redirect(http.StatusFound, u.String())
+		return
+	}
+}
+
+func randomString(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
@@ -77,21 +78,26 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	// 验证 nonce 是否存在于 Session 中
 	session := sessions.Default(c)
 	session.Options(sessions.Options{
-		MaxAge: globalSessionMaxAge,
+		MaxAge:   globalSessionMaxAge,
+		Path:     "/",
+		SameSite: http.SameSiteNoneMode, // 允许跨域请求携带 cookie
+		Secure:   true,                    // HTTPS 必需
+		HttpOnly: true,                    // 防止 XSS 攻击
 	})
 
 	refreshToken := task.Request.RefreshToken
-	addr, err := getAddrByRefreshToken(refreshToken)
+	userID, err := getUserIdByRefreshToken(refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	err = globalRefreshTokenCache.Set(refreshToken, addr, globalRefreshTokenMaxAge)
+	// 续期 refresh token
+	err = globalRefreshTokenCache.Set(refreshToken, userID, globalRefreshTokenMaxAge)
 	if err != nil {
 		log.Errorf("update refresh failed, err: %s", err.Error())
 	}
-	//2 generate session
-	session.Set(SESSION_ADDR_KEY, addr)
+	//2 写入会话 user
+	session.Set(SESSION_USER_KEY, userID)
 	err = session.Save()
 	if err != nil {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())
@@ -101,28 +107,52 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	return task.Response, nil
 }
 
-func saveRefreshToken(addr string) (string, error) {
+func SaveRefreshTokenForUserId(userID string) (string, error) {
 	token := uuid.NewString()
-	_, err := globalRefreshTokenCache.Exist(token)
-	if err == nil {
+	if _, err := globalRefreshTokenCache.Exist(token); err == nil {
 		return "", errors.SaveRefreshTokenFailed()
-	}
-	if err != cache.ErrNotFound {
+	} else if err != cache.ErrNotFound {
 		log.Errorf("get refresh token failed: %s", err.Error())
 		return "", errors.SaveRefreshTokenFailed()
 	}
-
-	err = globalRefreshTokenCache.Set(token, addr, globalRefreshTokenMaxAge)
-	return token, err
+	if err := globalRefreshTokenCache.Set(token, userID, globalRefreshTokenMaxAge); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
-func getAddrByRefreshToken(token string) (string, error) {
+// SaveTempCodeForRefreshToken 生成一个短期 code，并保存 code->refresh_token 的映射（ttl 秒）
+func SaveTempCodeForRefreshToken(refreshToken string, ttl int) (string, error) {
+	code := uuid.NewString()
+	key := "code:" + code
+	if err := globalRefreshTokenCache.Set(key, refreshToken, ttl); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// ExchangeRefreshTokenByCode 根据 code 找到 refresh_token，并删除该映射
+func ExchangeRefreshTokenByCode(code string) (string, error) {
+	key := "code:" + code
+	val, err := globalRefreshTokenCache.Get(key)
+	if err == cache.ErrNotFound || val == "" {
+		return "", errors.RefreshTokenInvalid(code)
+	}
+	if err != nil {
+		log.Errorf("exchange code failed, err: %s", err.Error())
+		return "", errors.ServiceUnavailable()
+	}
+	_ = globalRefreshTokenCache.Delete(key)
+	return val, nil
+}
+
+func getUserIdByRefreshToken(token string) (string, error) {
 	res, err := globalRefreshTokenCache.Get(token)
 	if err == cache.ErrNotFound || res == "" {
 		return "", errors.RefreshTokenInvalid(token)
 	}
 	if err != nil {
-		log.Errorf("get addr by refresh token failed: %s", err.Error())
+		log.Errorf("get user by refresh token failed: %s", err.Error())
 		return "", errors.ServiceUnavailable()
 	}
 	return res, nil

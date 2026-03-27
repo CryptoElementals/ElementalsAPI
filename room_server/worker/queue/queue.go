@@ -115,7 +115,7 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	if _, ok := q.queue[event.PlayerAddress]; ok {
 		return errors.New("player already in queue")
 	}
-	log.Infow("join queue", "wallet address", event.PlayerAddress.WalletAddress, "temporary address", event.PlayerAddress.TemporaryAddress)
+	log.Infow("join queue", "player id", event.PlayerAddress.Id, "temporary address", event.PlayerAddress.TemporaryAddress)
 	err := q.lockToken(&event.PlayerAddress)
 	if err != nil {
 		log.Errorf("cannot join queue, err: %s", err.Error())
@@ -125,11 +125,9 @@ func (q *Queue) HandleJoinQueueEvent(event *types.JoinQueueEvent) error {
 	q.continueManager.removeGameByAddress(event.PlayerAddress, 0)
 	matched := false
 	for player := range q.queue {
-		// don't match players with same wallet address
-		// if player.WalletAddress == event.PlayerAddress.WalletAddress {
-		// 	continue
-		// }
-		if player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
+		// don't match players with same player id or temporary address
+		if player.Id == event.PlayerAddress.Id ||
+			player.TemporaryAddress == event.PlayerAddress.TemporaryAddress {
 			continue
 		}
 
@@ -160,7 +158,7 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 	}
 
 	for _, p := range players {
-		err = db.SetLockedTokenGameID(q.ctx, p.WalletAddress, p.TemporaryAddress, gid)
+		err = db.SetLockedTokenGameID(q.ctx, p.Id, p.TemporaryAddress, gid)
 		if err != nil {
 			// bot never lock token
 			if err == db.ErrNotFound && q.botMgr.isInGame(p) {
@@ -184,6 +182,11 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 func (q *Queue) HandleExitQueueEvent(event *types.ExitQueueEvent) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
+	_, ok := q.queue[event.PlayerAddress]
+	if !ok {
+		log.Debugw("player not in queue", "player", event.PlayerAddress.String())
+		return nil
+	}
 	return q.removePlayerFromQueue(event.PlayerAddress)
 }
 
@@ -201,7 +204,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	bots := Set[types.PlayerAddress]{}
 	q.lock.Lock()
 	for _, p := range event.GameInfo.Players {
-		addr := types.NewPlayerAddress(p.WalletAddress, p.TemporaryAddress)
+		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
 		isBot := q.botMgr.releaseInGameBot(*addr)
 		if isBot {
 			bots.Add(*addr)
@@ -216,14 +219,67 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	if event.GameInfo.Status == pb.GameStatus_GAME_ABORTED {
 		return nil
 	}
-	go func() {
-		walletAddrs := make([]string, 0, len(event.GameInfo.Players))
+
+	// Check if players have enough tokens to join queue after settlement
+	// If not, send continue cancel event to both players
+	shouldSendContinueCancel := false
+	for _, p := range event.GameInfo.Players {
+		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+		// Skip bot accounts
+		if _, ok := bots[*addr]; ok {
+			continue
+		}
+
+		// Get user token to check available tokens
+		userToken, err := db.GetPlayerToken(context.Background(), p.PlayerId)
+		if err != nil {
+			log.Errorw("failed to get player token after settlement", "player_id", p.PlayerId, "err", err)
+			continue
+		}
+
+		// Calculate total locked tokens from userToken.LockedTokens
+		var totalLockedTokens int32 = 0
+		for _, locked := range userToken.LockedTokens {
+			totalLockedTokens += locked.TokenAmount
+		}
+		availableTokens := int(userToken.TokenAmount) - int(totalLockedTokens)
+
+		// Check if player has enough tokens to join queue
+		if availableTokens < int(q.minTokenToJoinQueue) {
+			log.Infow("player doesn't have enough tokens after settlement",
+				"player_id", p.PlayerId,
+				"available_tokens", availableTokens,
+				"required_tokens", q.minTokenToJoinQueue)
+			shouldSendContinueCancel = true
+			break
+		}
+	}
+
+	// If any player doesn't have enough tokens, send continue cancel event to both players
+	if shouldSendContinueCancel {
+		log.Infow("sending continue cancel events due to insufficient tokens",
+			"game_id", event.GameInfo.ID)
 		for _, p := range event.GameInfo.Players {
-			walletAddrs = append(walletAddrs, p.WalletAddress)
+			addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+			// Skip bot accounts
+			if _, ok := bots[*addr]; ok {
+				continue
+			}
+			q.workerManager.SendEvent(addr.String(), types.NewEvent(types.QUEUE_MANAGER_ID, &types.ContinueCanceledEvent{
+				GameID: event.GameInfo.ID,
+			}))
+		}
+	} else {
+		q.continueManager.addGame(event.GameInfo)
+	}
+	go func() {
+		palyerIds := make([]int64, 0, len(event.GameInfo.Players))
+		for _, p := range event.GameInfo.Players {
+			palyerIds = append(palyerIds, p.PlayerId)
 		}
 
 		resp, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
-			PlayerAddresses: walletAddrs,
+			PlayerIds: palyerIds,
 		})
 		if err != nil {
 			log.Errorw("UpdatePlayerStats error", "err", err)
@@ -231,12 +287,11 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 			if !resp.Ok {
 				log.Errorw("UpdatePlayerStats failed", "err", resp.Message)
 			} else {
-				log.Infow("UpdatePlayerStats success", "players", walletAddrs)
+				log.Infow("UpdatePlayerStats success", "players", palyerIds)
 			}
 		}
 	}()
 
-	q.continueManager.addGame(event.GameInfo)
 	return nil
 }
 
@@ -257,21 +312,10 @@ func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameCo
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
-	return db.LockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress, q.minTokenToJoinQueue)
-}
-
-func (q *Queue) lockTokenForContinue(addresses []types.PlayerAddress, gameID uint) error {
-	walletAddresses := make([]string, 0, len(addresses))
-	tempAddresses := make([]string, 0, len(addresses))
-	for i := range addresses {
-		log.Infow("lock user tokens for continue", "addr", addresses[i].String(), "token amount", q.minTokenToJoinQueue, "game id", gameID)
-		walletAddresses = append(walletAddresses, addresses[i].WalletAddress)
-		tempAddresses = append(tempAddresses, addresses[i].TemporaryAddress)
-	}
-	return db.LockUserTokenForContinue(q.ctx, walletAddresses, tempAddresses, q.minTokenToJoinQueue, gameID)
+	return db.LockUserToken(q.ctx, address.Id, address.TemporaryAddress, q.minTokenToJoinQueue)
 }
 
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	log.Infow("unlock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
-	return db.UnlockUserToken(q.ctx, address.WalletAddress, address.TemporaryAddress)
+	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress)
 }

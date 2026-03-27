@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
@@ -20,10 +21,15 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 	return Get().Save(&tokens).Error
 }
 
-func LockUserToken(ctx context.Context, address string, tempAddress string, tokenAmount int32) (err error) {
+func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
+		// resolve user by address
+		profile, perr := GetUserProfileByPlayerID(strconv.FormatInt(playerId, 10))
+		if perr != nil {
+			return perr
+		}
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			if err != gorm.ErrRecordNotFound {
 				return err
@@ -31,6 +37,7 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 			// save a record if locked token is zero
 			// mostly used in test
 			if tokenAmount == 0 {
+				userToken.PlayerId = profile.PlayerID
 				tx.Save(userToken)
 			}
 		}
@@ -90,13 +97,17 @@ func LockUserToken(ctx context.Context, address string, tempAddress string, toke
 	})
 }
 
-func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddresses []string, tokenAmount int32, gameID uint) (err error) {
+func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddresses []string, tokenAmount int32, gameID uint) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
-		for i := range addresses {
-			address := addresses[i]
+		for i := range playerIds {
+			playerId := playerIds[i]
 			tempAddress := tempAddresses[i]
+			profile, perr := GetUserProfileByPlayerID(strconv.FormatInt(playerId, 10))
+			if perr != nil {
+				return perr
+			}
 			userToken := &dao.UserToken{}
-			err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+			err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
 				if err != gorm.ErrRecordNotFound {
 					return err
@@ -104,6 +115,7 @@ func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddre
 				// save a record if locked token is zero
 				// mostly used in test
 				if tokenAmount == 0 {
+					userToken.PlayerId = profile.PlayerID
 					tx.Save(userToken)
 				}
 			}
@@ -145,10 +157,14 @@ func LockUserTokenForContinue(ctx context.Context, addresses []string, tempAddre
 	})
 }
 
-func UnlockUserToken(ctx context.Context, address string, tempAddress string) (err error) {
+func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
+		_, perr := GetUserProfileByPlayerID(strconv.FormatInt(playerId, 10))
+		if perr != nil {
+			return perr
+		}
 		userToken := &dao.UserToken{}
-		err = tx.Where("wallet_address = ?", address).Preload("LockedTokens").First(userToken).Error
+		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}
@@ -194,42 +210,108 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 	if reward == nil {
 		return errors.New("game result battle reward is nil")
 	}
-	return Get().Transaction(func(tx *gorm.DB) error {
-		for _, pr := range reward.PlayerRewards {
-			// skip bot accounts
-			if _, ok := bots[types.PlayerAddress{
-				WalletAddress:    pr.WalletAddress,
-				TemporaryAddress: pr.TemporaryAddress,
-			}]; ok {
-				continue
-			}
-			userToken := &dao.UserToken{}
-			err := tx.Where("wallet_address = ?", pr.WalletAddress).Preload("LockedTokens").First(userToken).Error
-			if err != nil {
-				return fmt.Errorf("find user token record from db failed, game id: %d, address: %s, err: %w", game.ID, pr.WalletAddress, err)
-			}
-			userToken.TokenAmount += pr.TokenChange
-			userToken.Points += pr.PointChange
-			for _, locked := range userToken.LockedTokens {
-				if locked.TemporaryAddress == pr.TemporaryAddress {
-					err = tx.Delete(locked).Error
-					if err != nil {
-						return err
-					}
-				}
-			}
-			err = tx.Save(userToken).Error
-			if err != nil {
+	// Build list of non-bot player rewards to process
+	type playerReward struct {
+		playerId    int64
+		tempAddr    string
+		tokenChange int32
+		pointChange int32
+	}
+	var toProcess []playerReward
+	for _, pr := range reward.PlayerRewards {
+		if _, ok := bots[types.PlayerAddress{
+			Id:               pr.PlayerId,
+			TemporaryAddress: pr.TemporaryAddress,
+		}]; ok {
+			continue
+		}
+		toProcess = append(toProcess, playerReward{
+			playerId:    pr.PlayerId,
+			tempAddr:    pr.TemporaryAddress,
+			tokenChange: pr.TokenChange,
+			pointChange: pr.PointChange,
+		})
+	}
+
+	// First transaction: delete locked tokens for each player
+	if err := Get().Transaction(func(tx *gorm.DB) error {
+		for _, pr := range toProcess {
+			if err := tx.Where("temporary_address = ?", pr.tempAddr).
+				Delete(&dao.LockedUserToken{}).Error; err != nil {
 				return err
 			}
 		}
 		return nil
+	}); err != nil {
+		return fmt.Errorf("battle result settlement: delete locked tokens failed, game id: %d: %w", game.ID, err)
+	}
+
+	// Second transaction: update token_amount and points using += / -= in SQL
+	if err := Get().Transaction(func(tx *gorm.DB) error {
+		for _, pr := range toProcess {
+			err := tx.Model(&dao.UserToken{}).Where("player_id = ?", pr.playerId).
+				Updates(map[string]any{
+					"token_amount": gorm.Expr("token_amount + ?", pr.tokenChange),
+					"points":       gorm.Expr("points + ?", pr.pointChange),
+				}).Error
+			if err != nil {
+				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", game.ID, pr.playerId, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("battle result settlement: update token amount and points failed, game id: %d: %w", game.ID, err)
+	}
+
+	return nil
+}
+
+// CollectDailyRewardByPlayerID 在单个事务中为用户发放每日奖励 Token 并更新领取时间
+func CollectDailyRewardByPlayerID(playerID string, dailyRewardTokens int32) error {
+	id, err := strconv.ParseInt(playerID, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	return Get().Transaction(func(tx *gorm.DB) error {
+		// 查询或创建用户的 Token 记录
+		var userToken dao.UserToken
+		if err := tx.Where("player_id = ?", id).First(&userToken).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				userToken = dao.UserToken{
+					PlayerId:    id,
+					Points:      0,
+					TokenAmount: dailyRewardTokens,
+				}
+				if err := tx.Create(&userToken).Error; err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			userToken.TokenAmount += dailyRewardTokens
+			if err := tx.Save(&userToken).Error; err != nil {
+				return err
+			}
+		}
+
+		// 同一事务内更新用户每日奖励领取时间
+		if err := tx.Model(&dao.UserProfile{}).
+			Where("player_id = ?", id).
+			Update("collected_reward_at", now).Error; err != nil {
+			return err
+		}
+
+		return nil
 	})
 }
 
-func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error) {
+func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error) {
 	var userToken dao.UserToken
-	err := Get().Where("wallet_address = ?", address).Preload("LockedTokens").First(&userToken).Error
+	err := Get().Where("player_id = ?", playerId).Preload("LockedTokens").First(&userToken).Error
 	if err != nil {
 		return nil, err
 	}
@@ -244,10 +326,10 @@ func GetPlayerToken(ctx context.Context, address string) (*dao.UserToken, error)
 	return &userToken, nil
 }
 
-func SetLockedTokenGameID(ctx context.Context, walletAddress, temporaryAddress string, gameID uint) error {
+func SetLockedTokenGameID(ctx context.Context, playerId int64, temporaryAddress string, gameID uint) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
-		err := tx.Where("wallet_address = ?", walletAddress).Preload("LockedTokens").First(userToken).Error
+		err := tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
 		}

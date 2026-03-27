@@ -52,12 +52,12 @@ func prepareCards(t *testing.T) {
 
 func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 	playerAddress1 := types.PlayerAddress{
-		WalletAddress:    "1",
+		Id:               1,
 		TemporaryAddress: "1",
 	}
 
 	playerAddress2 := types.PlayerAddress{
-		WalletAddress:    "2",
+		Id:               2,
 		TemporaryAddress: "2",
 	}
 	roundCompleteEventNumber := expectedRoundNumber - 1
@@ -73,13 +73,12 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 	testWorkerManager.SpwanWorker(context.Background(), playerAddress2.String(), types.WORKER_TYPE_PLAYER, mockPlayer2)
 	testWorkerManager.SpwanWorker(context.Background(), types.CHAIN_MANAGER_ID, types.WORKER_TYPE_CHAIN, mockChain)
 	gameCreatedEvtMatcher := tt.NewEventTypeMatcher(&types.GameCreatedEvent{})
-	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireContractCreationEvent{})).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
-		evt := event.Data.(*types.RequireContractCreationEvent)
+	mockChain.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.RequireGameCreationEvent{})).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
+		evt := event.Data.(*types.RequireGameCreationEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomContractCreated{
-			GameID:              gid,
-			RoomContractAddress: "0x123",
+		contractEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
+			GameID: gid,
 		})
 		testWorkerManager.SendEvent(wid, contractEvt)
 		return nil
@@ -103,6 +102,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   1,
+			TurnNumber:    1,
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -114,6 +114,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
 			RoundNumber:   1,
+			TurnNumber:    1,
 			PlayerAddress: playerAddress2,
 		}))
 		return nil
@@ -126,7 +127,8 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
-			RoundNumber:   evt.RoundInfo.RoundNumber + 1,
+			RoundNumber:   evt.RoundNumber + 1,
+			TurnNumber:    1, // New round starts with turn 1
 			PlayerAddress: playerAddress1,
 		}))
 		return nil
@@ -137,7 +139,8 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &types.PlayerReadyEvent{
 			GameId:        gid,
-			RoundNumber:   evt.RoundInfo.RoundNumber + 1,
+			RoundNumber:   evt.RoundNumber + 1,
+			TurnNumber:    1, // New round starts with turn 1
 			PlayerAddress: playerAddress2,
 		}))
 		return nil
@@ -182,11 +185,29 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		evt := event.Data.(*types.CommitmentsOnChainEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardsOnChain{
+		// Send one card per turn
+		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
 			GameID:      evt.GameID,
 			Address:     playerAddress1,
 			RoundNumber: evt.RoundNumber,
-			Cards:       []uint{4, 5, 3},
+			Card:        4,
+			CardIndex:   1,
+			Salt:        []byte("salt1"),
+		}))
+		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+			GameID:      evt.GameID,
+			Address:     playerAddress1,
+			RoundNumber: evt.RoundNumber,
+			Card:        5,
+			CardIndex:   2,
+			Salt:        []byte("salt1"),
+		}))
+		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+			GameID:      evt.GameID,
+			Address:     playerAddress1,
+			RoundNumber: evt.RoundNumber,
+			Card:        3,
+			CardIndex:   3,
 			Salt:        []byte("salt1"),
 		}))
 		return nil
@@ -195,11 +216,29 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		evt := event.Data.(*types.CommitmentsOnChainEvent)
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
-		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardsOnChain{
+		// Send one card per turn
+		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
 			GameID:      evt.GameID,
 			Address:     playerAddress2,
 			RoundNumber: evt.RoundNumber,
-			Cards:       []uint{1, 2, 4},
+			Card:        1,
+			CardIndex:   1,
+			Salt:        []byte("salt2"),
+		}))
+		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+			GameID:      evt.GameID,
+			Address:     playerAddress2,
+			RoundNumber: evt.RoundNumber,
+			Card:        2,
+			CardIndex:   2,
+			Salt:        []byte("salt2"),
+		}))
+		testWorkerManager.SendEvent(wid, types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
+			GameID:      evt.GameID,
+			Address:     playerAddress2,
+			RoundNumber: evt.RoundNumber,
+			Card:        4,
+			CardIndex:   3,
 			Salt:        []byte("salt2"),
 		}))
 		return nil
@@ -240,15 +279,15 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, testGameArgs, contractClient, false, 0)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
-		WalletAddress:    "1",
+		Id:               1,
 		TemporaryAddress: "1",
 	}
 
 	playerAddress2 := types.PlayerAddress{
-		WalletAddress:    "2",
+		Id:               2,
 		TemporaryAddress: "2",
 	}
 
@@ -315,7 +354,7 @@ func TestGameStateMachine(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 1000,
-		}, contractClient, false)
+		}, contractClient, 0, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -327,7 +366,7 @@ func TestGameStateMachine(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 3000,
-		}, contractClient, false)
+		}, contractClient, 0, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -340,7 +379,7 @@ func TestGameStateMachine(t *testing.T) {
 		svc := NewService(context.Background(), testWorkerManager, &config.GameParamConfig{
 			MaxRounds: 3,
 			InitialHP: 10000,
-		}, contractClient, false)
+		}, contractClient, 0, false)
 		svc.Start()
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

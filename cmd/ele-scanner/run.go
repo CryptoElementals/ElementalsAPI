@@ -23,18 +23,10 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 }
 
-func readRoomManagerAbi() (*abi.ABI, error) {
-	roomManagerAbi, err := abi.JSON(strings.NewReader(contract.RoomManagerContractABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse contract.RoomManagerContractABI: %v", err)
-	}
-	return &roomManagerAbi, nil
-}
-
 func readRoomAbi() (*abi.ABI, error) {
-	roomAbi, err := abi.JSON(strings.NewReader(contract.RoomContractABI))
+	roomAbi, err := abi.JSON(strings.NewReader(contract.RoomV3ContractABI))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse contract.RoomContractABI: %v", err)
+		return nil, fmt.Errorf("failed to parse contract.RoomV3ContractABI: %v", err)
 	}
 	return &roomAbi, nil
 }
@@ -45,11 +37,16 @@ var runCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		roomManagerAbi, err := readRoomManagerAbi()
-		if err != nil {
-			fmt.Printf("readRoomManagerAbi() failed: %+v", err)
-			os.Exit(-1)
-		}
+		// roomManagerAbi, err := readRoomManagerAbi()
+		// if err != nil {
+		// 	fmt.Printf("readRoomManagerAbi() failed: %+v", err)
+		// 	os.Exit(-1)
+		// }
+		// roomAbi, err := readRoomAbi()
+		// if err != nil {
+		// 	fmt.Printf("readRoomAbi() failed: %+v", err)
+		// 	os.Exit(-1)
+		// }
 		roomAbi, err := readRoomAbi()
 		if err != nil {
 			fmt.Printf("readRoomAbi() failed: %+v", err)
@@ -77,8 +74,9 @@ var runCmd = &cobra.Command{
 		gethWsRpc := config.ScannerGConf.ChainCfg.WsRpc
 		gethHttpRpc := config.ScannerGConf.ChainCfg.HttpRpc
 		roomServerHttpRpc := config.ScannerGConf.RoomServerHttpRpc
-		roomManagerAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress
-		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomManagerAddress, roomManagerAbi, roomAbi)
+		//roomManagerAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomManagerAddress
+		roomAddress := config.ScannerGConf.ChainCfg.ContractConfig.RoomV3ContractAddress
+		scanner := scanner.NewScanner(ctx, gethWsRpc, gethHttpRpc, roomServerHttpRpc, roomAddress, roomAbi)
 		scanner.Run()
 
 		// Wait for interrupt signal

@@ -2,8 +2,11 @@ package middlewares
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
@@ -36,11 +39,8 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 		switch authType {
 		case api.COOKIEAUTH:
 			session := sessions.Default(c)
-			sessionID := session.ID()
-			log.Debugf("Session ID: %s (Client IP: %s)", sessionID, c.ClientIP())
-			//从服务器的会话（session）中查找该 Cookie 是否存在。如果 Cookie 不存在或无效，返回错误响应，表示认证失败。
-			addr := session.Get(api.SESSION_ADDR_KEY)
-			if addr == nil {
+			userStr := session.Get(api.SESSION_USER_KEY)
+			if userStr == nil {
 				res := api.MakeErrorResponse(errors.LoginCookieInvalid(""))
 				res.SetSession(requestUUID)
 				res.SetAction(action + "Response")
@@ -51,9 +51,41 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 				return
 			}
 
-			//add addr to params 将会话中的地址信息 addr 存入请求参数中，替代原来请求中的Address（可能是假的）
-			//地址不在request里提供，而是根据cookie在redis里查
-			(*params)["Address"] = addr.(string)
+			// 从 session 中获取 player_id，然后查询用户档案，注入 Address/Email
+			playerID := userStr.(string)
+			profile, err := db.GetUserProfileByPlayerID(playerID)
+			if err != nil || profile == nil {
+				res := api.MakeErrorResponse(errors.LoginCookieInvalid("invalid user session"))
+				res.SetSession(requestUUID)
+				res.SetAction(action + "Response")
+				resJson, _ := json.Marshal(res)
+				log.Infof("%s Send response---> client %s, %s", requestUUID, c.ClientIP(), string(resJson))
+				c.Abort()
+				c.JSON(http.StatusUnauthorized, res)
+				return
+			}
+
+			// 防御性校验：如果请求体中已经带了 PlayerID，则要求与会话中的一致
+			if rawReqPlayerID, exists := (*params)["PlayerID"]; exists && rawReqPlayerID != nil {
+				reqPlayerID := fmt.Sprintf("%v", rawReqPlayerID)
+				if reqPlayerID != playerID {
+					res := api.MakeErrorResponse(errors.LoginCookieInvalid("unexpected player id"))
+					res.SetSession(requestUUID)
+					res.SetAction(action + "Response")
+					resJson, _ := json.Marshal(res)
+					log.Infof("%s Send response---> client %s, %s", requestUUID, c.ClientIP(), string(resJson))
+					c.Abort()
+					c.JSON(http.StatusUnauthorized, res)
+					return
+				}
+			}
+
+			// 注入身份字段以兼容现有 API（覆盖请求体中的 PlayerID）
+			(*params)["Address"] = profile.Address
+			(*params)["Email"] = profile.Email
+			(*params)["PlayerID"] = strconv.FormatInt(profile.PlayerID, 10)
+
+			log.Infof("params: %+v", *params)
 		}
 
 		// 继续处理请求

@@ -56,7 +56,7 @@ func (s *Rpc) GetBattleInfo(ctx context.Context, req *proto.GetBattleInfoRequest
 func (s *Rpc) ConfirmBattle(ctx context.Context, req *proto.ConfirmBattleRequest) (*emptypb.Empty, error) {
 	addr := types.PlayerAddress{}
 	addr.FromProto(req.PlayerAddress)
-	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber)
+	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(addr, uint(req.GameID), req.RoundNumber, req.TurnNumber)
 }
 
 func (s *Rpc) ContinueGame(ctx context.Context, req *proto.ContinueGameRequest) (*emptypb.Empty, error) {
@@ -81,7 +81,7 @@ func (s *Rpc) SubmitTransactions(ctx context.Context, req *proto.TransactionBatc
 }
 
 func (s *Rpc) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {
-	return s.playerHandler.GetPlayerToken(req.WalletAddress)
+	return s.playerHandler.GetPlayerToken(req.Id)
 }
 func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*proto.IsPlayerInQueueResponse, error) {
 	addr := types.PlayerAddress{}
@@ -89,6 +89,18 @@ func (s *Rpc) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*p
 	isInQueue := s.playerHandler.IsPlayerInQueue(addr)
 	return &proto.IsPlayerInQueueResponse{
 		IsInQueue: isInQueue,
+	}, nil
+}
+
+func (s *Rpc) GetPlayerStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req)
+	status, err := s.playerHandler.GetPlayerStatus(addr)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetPlayerStatusResponse{
+		Status: status,
 	}, nil
 }
 
@@ -106,6 +118,20 @@ func (s *Rpc) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*proto.Time
 	return s.playerHandler.GetTimeoutConfig()
 }
 
+func (s *Rpc) SubmitPlayerCommitment(ctx context.Context, req *proto.SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req.Address)
+	// Use TurnNumber as commitmentIndex since proto doesn't have CommitmentIndex field
+	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCommitment(addr, req.RoundNumber, req.Commitment, req.TurnNumber, req.Signature, uint(req.GameID))
+}
+
+func (s *Rpc) SubmitPlayerCard(ctx context.Context, req *proto.SubmitPlayerCardRequest) (*emptypb.Empty, error) {
+	addr := types.PlayerAddress{}
+	addr.FromProto(req.Address)
+	// Use TurnNumber as cardIndex since proto doesn't have CardIndex field
+	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCard(addr, req.RoundNumber, req.Salt, uint(req.Card), req.TurnNumber, req.Signature, uint(req.GameID))
+}
+
 type ChainRequestHandler interface {
 	SubmitTransactions(req *proto.TransactionBatch) error
 }
@@ -115,12 +141,15 @@ type PlayerRequestHandler interface {
 	ExitQueue(playerAddress types.PlayerAddress) error
 	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
 	ContinueGame(playerAddress types.PlayerAddress, gameID uint) error
-	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32) error
+	ConfirmBattle(playerAddress types.PlayerAddress, gameID uint, roundNum uint32, turnNum uint32) error
 	IsPlayerInQueue(address types.PlayerAddress) bool
 	Surrender(address types.PlayerAddress, gameID uint) error
 
 	GetGamePhase(playerAddress types.PlayerAddress) (*proto.GamePhase, error)
+	GetPlayerStatus(playerAddress types.PlayerAddress) (proto.PlayerStatus, error)
 	GetBattleInfo(ctx context.Context, gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error)
-	GetPlayerToken(walletAddress string) (*proto.GetPlayerTokenResponse, error)
+	GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error)
 	GetTimeoutConfig() (*proto.TimeoutConfig, error)
+	SubmitPlayerCommitment(address types.PlayerAddress, roundNumber uint32, commitment []byte, commitmentIndex uint32, signature []byte, gameID uint) error
+	SubmitPlayerCard(address types.PlayerAddress, roundNumber uint32, salt []byte, card uint, cardIndex uint32, signature []byte, gameID uint) error
 }

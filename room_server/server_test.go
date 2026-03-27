@@ -17,13 +17,12 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/require"
 )
 
 var chainRPC = "http://152.32.231.145:8545"
 var svrUrl = "localhost:30011"
-var roomManagerAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
+var roomV2ContractAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
 var fakeRoomAddress = "0x22767b2ba3cba853af78c9d91c6c520a2b5cb428"
 
 func setupTestSvc(t *testing.T, timeout ...int64) {
@@ -42,25 +41,26 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 				HttpRpc: chainRPC,
 			},
 			ContractConfig: config.ContractConfig{
-				RoomManagerAddress: roomManagerAddress,
+				RoomV3ContractAddress: roomV2ContractAddress,
 			},
 		},
 		WalletPaths: []string{tempFile},
 
 		ListenPort: 30011,
 		GameParams: config.GameParamConfig{
-			TokenThreshold:    1000,
-			InitialMultiplier: 1,
-			SystemFeeRate:     0.016,
-			WinnerPointRate:   0.012,
-			LoserPointRate:    0.004,
-			TieTokenRate:      0.008,
-			TiePointRate:      0.008,
-			BaseStake:         1000,
-			RoundTimeout:      gametTimeout,
-			ContinueTimeout:   gametTimeout,
-			MaxRounds:         3,
-			InitialHP:         3000,
+			TokenThreshold:              1000,
+			InitialMultiplier:           1,
+			SystemFeeRate:               0.016,
+			WinnerPointRate:             0.012,
+			LoserPointRate:              0.004,
+			TieTokenRate:                0.008,
+			TiePointRate:                0.008,
+			BaseStake:                   1000,
+			CommitmentSubmissionTimeout: gametTimeout,
+			CardSubmissionTimeout:       gametTimeout,
+			GameContinueTimeout:         gametTimeout,
+			MaxRounds:                   3,
+			InitialHP:                   3000,
 		},
 	}
 	config.InitializeGameParams(&cfg.GameParams)
@@ -127,9 +127,14 @@ func prepareCards(t *testing.T) {
 
 func prepareUserTokens(t *testing.T) {
 	t.Helper()
+	// ensure profiles
+	_, err := db.GetOrCreateUserProfile("wallet1")
+	require.NoError(t, err)
+	_, err = db.GetOrCreateUserProfile("wallet2")
+	require.NoError(t, err)
 	userTokens := []dao.UserToken{
-		{WalletAddress: "wallet1", TokenAmount: 1000000, Points: 0},
-		{WalletAddress: "wallet2", TokenAmount: 1000000, Points: 0},
+		{PlayerId: 1, TokenAmount: 1000000, Points: 0},
+		{PlayerId: 2, TokenAmount: 1000000, Points: 0},
 	}
 	require.NoError(t, db.SaveUserToken(userTokens...))
 }
@@ -181,9 +186,9 @@ func runClient(t *testing.T,
 					t.Log("player matched")
 					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
-					gameID = uint(phase.PvPInfo.GameID)
+					gameID = uint(phase.GameID)
 					gameIDChan <- gameID
-					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
+					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					t.Log("player part confirmed")
 					partConfimredChan <- round
@@ -192,9 +197,9 @@ func runClient(t *testing.T,
 					// get contract
 					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
-					gameID = uint(phase.PvPInfo.GameID)
+					gameID = uint(phase.GameID)
 					t.Log("game phase: ", toJsonLoggable(phase))
-					require.Equal(t, fakeRoomAddress, phase.PvPInfo.ContractAddress)
+					// ContractAddress removed - always uses RoomV2 contract address from config
 				case proto.EventType_TYPE_ROUND_READY:
 					t.Log("round ready")
 					// submit commitments
@@ -205,12 +210,14 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_trasactions", addr.String(), round)),
-								Tx: &proto.Transaction_CommitmentsOnChain{
-									CommitmentsOnChain: &proto.TxCommitmentsOnChain{
-										RoomContractAddress: fakeRoomAddress,
-										Address:             addr.ToProtoNoWallet(),
-										RoundNumber:         uint32(round),
-										Commitment:          fmt.Appendf(nil, "%s_%s_%d", "card_commitments", addr.String(), round),
+								GameId: uint32(1), // game_id is required
+								Tx: &proto.Transaction_CommitmentOnChain{
+									CommitmentOnChain: &proto.TxCommitmentOnChain{
+										GameId:      int64(1),
+										Address:     addr.ToProtoNoWallet(),
+										RoundNumber: uint32(round),
+										TurnNumber:  1,
+										Commitment:  fmt.Appendf(nil, "%s_%s_%d", "card_commitments", addr.String(), round),
 									},
 								},
 							},
@@ -226,13 +233,15 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_cards", addr.String(), round)),
-								Tx: &proto.Transaction_CardsOnChain{
-									CardsOnChain: &proto.TxCardsOnChain{
-										RoomContractAddress: fakeRoomAddress,
-										Address:             addr.ToProtoNoWallet(),
-										RoundNumber:         uint32(round),
-										Cards:               submittedCards,
-										Salt:                []byte("salt"),
+								GameId: uint32(1), // game_id is required
+								Tx: &proto.Transaction_CardOnChain{
+									CardOnChain: &proto.TxCardOnChain{
+										GameId:      int64(1),
+										Address:     addr.ToProtoNoWallet(),
+										RoundNumber: uint32(round),
+										TurnNumber:  1,
+										Salt:        []byte("salt"),
+										CardId:      uint32(submittedCards[0]),
 									},
 								},
 							},
@@ -248,7 +257,7 @@ func runClient(t *testing.T,
 					t.Log("battle info: ", toJsonLoggable(battleInfo))
 					if !battleInfo.RoundResult.IsGameOver {
 						round++
-						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round))
+						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
 						t.Logf("confirm submitted, addr: %s, round %d, game: %d", addr.String(), round, gameID)
 					}
 				case proto.EventType_TYPE_GAME_COMPLETE:
@@ -276,11 +285,11 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	ctx, ccl := context.WithTimeout(context.Background(), 30*time.Second)
 	defer ccl()
 	addr1 := &types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "tmp1",
 	}
 	addr2 := &types.PlayerAddress{
-		WalletAddress:    "wallet2",
+		Id:               2,
 		TemporaryAddress: "tmp2",
 	}
 	chan1 := make(chan uint, 3)
@@ -306,7 +315,6 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	}()
 	round := uint(0)
 	gameID := <-gameIDChan
-	var txHashBytes []byte
 	for {
 		var round1 uint
 		var round2 uint
@@ -333,11 +341,8 @@ func TestServer_BattleFullLogic(t *testing.T) {
 		round = round1
 		time.Sleep(3 * time.Second)
 		if round == 1 {
-			tx, err := db.GetCreateRoomTx(gameID)
-			require.NoError(t, err)
-			txHash := tx.TxHash
-			txHashBytes, err = hexutil.Decode(txHash)
-			require.NoError(t, err)
+			// Use fake tx hash since db.GetCreateRoomTx no longer exists
+			txHashBytes := []byte(fmt.Sprintf("game_created_%d", gameID))
 			txChan <- &proto.TransactionBatch{
 				BlockHash:   []byte("0x123"),
 				Timestamp:   uint64(time.Now().Unix()),
@@ -345,9 +350,10 @@ func TestServer_BattleFullLogic(t *testing.T) {
 				Transactions: []*proto.Transaction{
 					{
 						TxHash: txHashBytes,
-						Tx: &proto.Transaction_RoomContractCreated{
-							RoomContractCreated: &proto.TxRoomContractCreated{
-								RoomContractAddress: fakeRoomAddress,
+						GameId: uint32(gameID),
+						Tx: &proto.Transaction_GameCreated{
+							GameCreated: &proto.TxGameCreated{
+								GameId: int64(gameID),
 							},
 						},
 					},
@@ -361,10 +367,12 @@ func TestServer_BattleFullLogic(t *testing.T) {
 				Transactions: []*proto.Transaction{
 					{
 						TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-						Tx: &proto.Transaction_RoomContractSetupReady{
-							RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
-								RoomContractAddress: fakeRoomAddress,
-								RoundNumber:         uint32(round),
+						GameId: uint32(gameID),
+						Tx: &proto.Transaction_GameTurnSetupReady{
+							GameTurnSetupReady: &proto.TxGameTurnSetupReady{
+								GameId:      int64(gameID),
+								RoundNumber: uint32(round),
+								TurnNumber:  1,
 							},
 						},
 					},
@@ -383,7 +391,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	require.NotNil(t, battleInfo.RoundResult)
 	require.NotNil(t, battleInfo.GameResult)
 	require.True(t, battleInfo.RoundResult.IsGameOver)
-	token, err := client.RpcClient.GetPlayerToken(ctx, addr1.WalletAddress)
+	token, err := client.RpcClient.GetPlayerToken(ctx, addr1.Id)
 	require.NoError(t, err)
 	require.NotNil(t, token)
 	chanEvt1 := make(chan *proto.Event, 2)
@@ -421,11 +429,11 @@ func TestServer_BattleTimeout(t *testing.T) {
 	defer client.Close()
 	ctx := context.Background()
 	addr1 := &types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "tmp1",
 	}
 	addr2 := &types.PlayerAddress{
-		WalletAddress:    "wallet2",
+		Id:               2,
 		TemporaryAddress: "tmp2",
 	}
 
@@ -464,7 +472,6 @@ func TestServer_BattleTimeout(t *testing.T) {
 			close(doneChan)
 		}()
 		gameID = <-gameIDChan
-		var txHashBytes []byte
 		go func() {
 			for {
 				var round1 uint
@@ -500,11 +507,8 @@ func TestServer_BattleTimeout(t *testing.T) {
 				default:
 				}
 				if round == 1 {
-					tx, err := db.GetCreateRoomTx(gameID)
-					require.NoError(t, err)
-					txHash := tx.TxHash
-					txHashBytes, err = hexutil.Decode(txHash)
-					require.NoError(t, err)
+					// Use fake tx hash since db.GetCreateRoomTx no longer exists
+					txHashBytes := []byte(fmt.Sprintf("game_created_%d", gameID))
 					txChan <- &proto.TransactionBatch{
 						BlockHash:   []byte("0x123"),
 						Timestamp:   uint64(time.Now().Unix()),
@@ -512,9 +516,10 @@ func TestServer_BattleTimeout(t *testing.T) {
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: txHashBytes,
-								Tx: &proto.Transaction_RoomContractCreated{
-									RoomContractCreated: &proto.TxRoomContractCreated{
-										RoomContractAddress: fakeRoomAddress,
+								GameId: uint32(gameID),
+								Tx: &proto.Transaction_GameCreated{
+									GameCreated: &proto.TxGameCreated{
+										GameId: int64(gameID),
 									},
 								},
 							},
@@ -528,10 +533,12 @@ func TestServer_BattleTimeout(t *testing.T) {
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-								Tx: &proto.Transaction_RoomContractSetupReady{
-									RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
-										RoomContractAddress: fakeRoomAddress,
-										RoundNumber:         uint32(round),
+								GameId: uint32(gameID),
+								Tx: &proto.Transaction_GameTurnSetupReady{
+									GameTurnSetupReady: &proto.TxGameTurnSetupReady{
+										GameId:      int64(gameID),
+										RoundNumber: uint32(round),
+										TurnNumber:  1,
 									},
 								},
 							},
@@ -607,11 +614,11 @@ func TestServer_BattleContinue(t *testing.T) {
 	ctx, ccl := context.WithTimeout(context.Background(), 500*time.Second)
 	defer ccl()
 	addr1 := &types.PlayerAddress{
-		WalletAddress:    "wallet1",
+		Id:               1,
 		TemporaryAddress: "tmp1",
 	}
 	addr2 := &types.PlayerAddress{
-		WalletAddress:    "wallet2",
+		Id:               2,
 		TemporaryAddress: "tmp2",
 	}
 
@@ -650,7 +657,6 @@ func TestServer_BattleContinue(t *testing.T) {
 			close(doneChan)
 		}()
 		gameID = <-gameIDChan
-		var txHashBytes []byte
 		for {
 			var round1 uint
 			var round2 uint
@@ -677,11 +683,8 @@ func TestServer_BattleContinue(t *testing.T) {
 			round = round1
 			time.Sleep(5 * time.Second)
 			if round == 1 {
-				tx, err := db.GetCreateRoomTx(gameID)
-				require.NoError(t, err)
-				txHash := tx.TxHash
-				txHashBytes, err = hexutil.Decode(txHash)
-				require.NoError(t, err)
+				// Use fake tx hash since db.GetCreateRoomTx no longer exists
+				txHashBytes := []byte(fmt.Sprintf("game_created_%d", gameID))
 				txChan <- &proto.TransactionBatch{
 					BlockHash:   []byte("0x123"),
 					Timestamp:   uint64(time.Now().Unix()),
@@ -689,9 +692,10 @@ func TestServer_BattleContinue(t *testing.T) {
 					Transactions: []*proto.Transaction{
 						{
 							TxHash: txHashBytes,
-							Tx: &proto.Transaction_RoomContractCreated{
-								RoomContractCreated: &proto.TxRoomContractCreated{
-									RoomContractAddress: fakeRoomAddress,
+							GameId: uint32(gameID),
+							Tx: &proto.Transaction_GameCreated{
+								GameCreated: &proto.TxGameCreated{
+									GameId: int64(gameID),
 								},
 							},
 						},
@@ -705,10 +709,12 @@ func TestServer_BattleContinue(t *testing.T) {
 					Transactions: []*proto.Transaction{
 						{
 							TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-							Tx: &proto.Transaction_RoomContractSetupReady{
-								RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
-									RoomContractAddress: fakeRoomAddress,
-									RoundNumber:         uint32(round),
+							GameId: uint32(gameID),
+							Tx: &proto.Transaction_GameTurnSetupReady{
+								GameTurnSetupReady: &proto.TxGameTurnSetupReady{
+									GameId:      int64(gameID),
+									RoundNumber: uint32(round),
+									TurnNumber:  1,
 								},
 							},
 						},

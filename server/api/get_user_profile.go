@@ -2,6 +2,7 @@ package api
 
 import (
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
@@ -20,12 +21,14 @@ func init() {
 
 type GetUserProfileRequest struct {
 	BaseRequest
-	Address string `mapstructure:"Address" validate:"required"`
+	PlayerID string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // UserInfo 用户信息结构体
 type UserInfo struct {
+	PlayerID           string            `json:"PlayerID"`
 	Address            string            `json:"Address"`
+	Email              string            `json:"Email"`
 	Name               string            `json:"Name"`
 	AvatarName         string            `json:"AvatarName"`
 	AvatarURL          string            `json:"AvatarURL"`
@@ -133,70 +136,56 @@ func NewGetUserProfileTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
-	// 从请求参数中获取用户地址
-	address := task.Request.Address
-	if address == "" {
-		log.Errorf("%s, no address provided in request", task.Request.RequestUUID)
-		return nil, errors.MissingParams("Address")
-	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	lowercaseAddress := strings.ToLower(address)
-
-	// 获取用户档案
-	userProfile, err := db.GetUserProfileByAddress(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to get user profile for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		return nil, errors.GetUserProfileFailed(lowercaseAddress)
-	}
-
-	userStat, err := db.GetUserStatByAddress(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to get user stat for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-	}
-	winningRate := 0.00
-	if userStat.TotalGameCount > 0 {
-		winningRate = float64(userStat.WinCount) / float64(userStat.TotalGameCount)
-		// 保留2位小数
-		winningRate = math.Round(winningRate*100) / 100
-	}
-
-	// 从 user_token 表获取积分和代币信息（优先使用该表数据）
 	var (
-		points      int
-		tokenAmount int
+		userProfile *dao.UserProfile
+		err         error
 	)
+	playerID := strings.TrimSpace(task.Request.PlayerID)
+	userProfile, err = db.GetUserProfileByPlayerID(playerID)
+	if err != nil {
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, playerID, err)
+		return nil, errors.GetUserProfileFailed(playerID)
+	}
+	lookupAddress := strings.ToLower(strings.TrimSpace(userProfile.Address))
 
-	userToken, err := db.GetPlayerToken(c.Request.Context(), lowercaseAddress)
-	if err == nil && userToken != nil {
+	// 默认统计为 0；仅当有可用地址时查询统计
+	winningRate := 0.00
+	points := 0
+	tokenAmount := 0
+	totalGameCount := 0
+
+	// 统一基于 PlayerID 查询统计、代币、卡牌统计
+	if userStat, e := db.GetUserStatByPlayerID(playerID); e == nil && userStat != nil {
+		totalGameCount = int(userStat.TotalGameCount)
+		if userStat.TotalGameCount > 0 {
+			winningRate = float64(userStat.WinCount) / float64(userStat.TotalGameCount)
+			winningRate = math.Round(winningRate*100) / 100
+		}
+	} else if e != nil {
+		log.Errorf("%s, failed to get user stat by player_id=%s: %v", task.Request.RequestUUID, playerID, e)
+	}
+
+	if userToken, e := db.GetPlayerToken(c.Request.Context(), userProfile.PlayerID); e == nil && userToken != nil {
 		points = int(userToken.Points)
 		tokenAmount = int(userToken.TokenAmount)
 	}
 
-	// 获取用户卡牌统计信息
-	cardStats, err := db.GetCardStatsByAddress(lowercaseAddress)
-	if err != nil {
-		log.Errorf("%s, failed to get card stats for address %s: %v", task.Request.RequestUUID, lowercaseAddress, err)
-		// 卡牌统计获取失败不影响主要功能，设置为空数组
-		cardStats = []dao.CardStat{}
+	cardStatInfo := []db.CardStatInfo{}
+	if cardStats, e := db.GetCardStatsByPlayerID(playerID); e == nil {
+		cardStatInfo = db.GetCardStatsInfo(cardStats)
 	}
-
-	// 转换为API响应格式
-	cardStatInfo := db.GetCardStatsInfo(cardStats)
-
-	// 计算等级、当前等级所需积分和下一级所需积分
 	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
-
-	// 构建用户信息
 	task.Response.UserInfo = UserInfo{
+		PlayerID:           strconv.FormatInt(userProfile.PlayerID, 10),
 		Address:            userProfile.Address,
+		Email:              userProfile.Email,
 		Name:               userProfile.Name,
 		AvatarName:         userProfile.AvatarURL,
 		AvatarURL:          "",
 		BackgroundURL:      "",
 		Points:             points,
 		TokenAmount:        tokenAmount,
-		OverallGame:        int(userStat.TotalGameCount),
+		OverallGame:        totalGameCount,
 		WinningRate:        winningRate,
 		Level:              level,
 		CurrentLevelPoints: currentLevelPoints,
@@ -204,27 +193,22 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		CardStatInfo:       cardStatInfo,
 	}
 
-	// 将文件名转换为预签名URL
 	if userProfile.AvatarURL != "" {
-		avatarURL, err := utils.GetPresignedImageURL(userProfile.AvatarURL)
-		if err != nil {
-			log.Errorf("%s, failed to generate presigned avatar URL for %s: %v", task.Request.RequestUUID, userProfile.AvatarURL, err)
-			// 如果生成失败，保持原文件名
-		} else {
+		if avatarURL, err := utils.GetPresignedImageURL(userProfile.AvatarURL); err == nil {
 			task.Response.UserInfo.AvatarURL = avatarURL
+		} else {
+			log.Errorf("%s, failed to generate presigned avatar URL for %s: %v", task.Request.RequestUUID, userProfile.AvatarURL, err)
 		}
 	}
 
 	if userProfile.BackgroundURL != "" {
-		backgroundURL, err := utils.GetPresignedImageURL(userProfile.BackgroundURL)
-		if err != nil {
-			log.Errorf("%s, failed to generate presigned background URL for %s: %v", task.Request.RequestUUID, userProfile.BackgroundURL, err)
-			// 如果生成失败，保持原文件名
-		} else {
+		if backgroundURL, err := utils.GetPresignedImageURL(userProfile.BackgroundURL); err == nil {
 			task.Response.UserInfo.BackgroundURL = backgroundURL
+		} else {
+			log.Errorf("%s, failed to generate presigned background URL for %s: %v", task.Request.RequestUUID, userProfile.BackgroundURL, err)
 		}
 	}
 
-	log.Infof("%s, user profile retrieved successfully for address %s", task.Request.RequestUUID, lowercaseAddress)
+	log.Infof("%s, user profile retrieved successfully (player_id=%s, addr=%s)", task.Request.RequestUUID, playerID, lookupAddress)
 	return task.Response, nil
 }

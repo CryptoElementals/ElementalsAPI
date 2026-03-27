@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CryptoElementals/common/cache"
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -14,9 +13,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/golang/mock/gomock"
@@ -24,7 +21,7 @@ import (
 )
 
 var testWorkerManager *worker.WorkerManager
-var client bind.ContractBackend
+var client *ethclient.Client
 var w *wallet.Wallet
 
 var chainID uint64
@@ -65,9 +62,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestFilterEvent(t *testing.T) {
-	ec := client.(*ethclient.Client)
 	for {
-		receipt, err := ec.TransactionReceipt(context.Background(), common.HexToHash("0x3a9738a38f35ce59fea8d56ef6ca74d81e46e57b99bdf5a8575f92975ce25e98"))
+		receipt, err := client.TransactionReceipt(context.Background(), common.HexToHash("0x3a9738a38f35ce59fea8d56ef6ca74d81e46e57b99bdf5a8575f92975ce25e98"))
 		if err != nil {
 			time.Sleep(2 * time.Second)
 			continue
@@ -98,22 +94,22 @@ func TestChainContractInteraction(t *testing.T) {
 	roomWorkerID := "123"
 	gameID := 123
 	player1 := types.PlayerAddress{
-		WalletAddress:    "0x123",
+		Id:               123,
 		TemporaryAddress: "0x456",
 	}
 	player2 := types.PlayerAddress{
-		WalletAddress:    "0x789",
+		Id:               789,
 		TemporaryAddress: "0xabc",
 	}
 
-	svc, _ := NewService(context.Background(), testWorkerManager, int64(chainID), client, roomMamangerAddress, []*wallet.Wallet{w}, cache.NewMemCache(), true)
+	svc, _ := NewService(context.Background(), testWorkerManager, int64(chainID), client, "", []*wallet.Wallet{w}, true)
 
 	svc.Start()
 	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
 	ackReceived := make(chan struct{})
 	testWorkerManager.SpwanWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
 
-	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireContractCreationEvent{
+	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireGameCreationEvent{
 		GameID:         uint(gameID),
 		Players:        []types.PlayerAddress{player1, player2},
 		RoundTimeout:   10,
@@ -121,106 +117,87 @@ func TestChainContractInteraction(t *testing.T) {
 		InitialHP:      1000,
 	}, true))
 	<-ackReceived
-	tx, err := db.GetCreateRoomTx(uint(gameID))
-	require.NoError(t, err)
-	require.NotEmpty(t, tx)
+	// Transaction tables removed - no longer checking database
 	ackReceived = make(chan struct{})
 	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireSetupNewRoundEvent{
-		GameID:          uint(gameID),
-		RoundNumber:     2,
-		ContractAddress: roomContractAddress,
+		GameID:      uint(gameID),
+		RoundNumber: 2,
+		// ContractAddress removed - always uses RoomV2 contract address
 	}, true))
 	<-ackReceived
 
 	evtMatcher := tt.NewEventTypeMatcher(
-		&types.RoomContractCreated{},
-		&types.NewRoundSetupComplete{},
+		&types.RoomCreated{},
+		&types.NewTurnSetupComplete{},
 		&types.PlayerCommitmentOnChain{},
-		&types.PlayerCardsOnChain{},
+		&types.PlayerCardOnChain{},
 	)
-	txHash, err := hexutil.Decode(tx.TxHash)
-	require.NoError(t, err)
+	// Use a test tx hash since we're no longer getting it from database
+	txHash := []byte("test_tx_hash")
 	mockRoomHandler.EXPECT().Handle(gomock.Any(), evtMatcher).Times(5).Return(nil)
-	err = svc.SubmitTransactions(&proto.TransactionBatch{
+	err := svc.SubmitTransactions(&proto.TransactionBatch{
 		BlockHash:   []byte("0x123"),
 		Timestamp:   uint64(time.Now().Unix()),
 		BlockNumber: 1,
 		Transactions: []*proto.Transaction{
 			{
 				TxHash: txHash,
-				Tx: &proto.Transaction_RoomContractCreated{
-					RoomContractCreated: &proto.TxRoomContractCreated{
-						RoomContractAddress: roomContractAddress,
+				Tx: &proto.Transaction_GameCreated{
+					GameCreated: &proto.TxGameCreated{
+						GameId: int64(gameID),
 					},
 				},
 			},
 			{
-				TxHash: []byte("RoomContractSetup"),
-				Tx: &proto.Transaction_RoomContractSetupReady{
-					RoomContractSetupReady: &proto.TxRoomContractRoundSetupReady{
-						RoomContractAddress: roomContractAddress,
-						RoundNumber:         2,
+				TxHash: []byte("GameTurnSetupReady"),
+				Tx: &proto.Transaction_GameTurnSetupReady{
+					GameTurnSetupReady: &proto.TxGameTurnSetupReady{
+						GameId:      int64(gameID),
+						RoundNumber: 2,
+						TurnNumber:  1,
 					},
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CommitmentsOnChain"),
-				Tx: &proto.Transaction_CommitmentsOnChain{
-					CommitmentsOnChain: &proto.TxCommitmentsOnChain{
-						RoomContractAddress: roomContractAddress,
-						Address:             player1.ToProto(),
-						RoundNumber:         2,
-						Commitment:          []byte("0xcommitment"),
+				TxHash: []byte("Transaction_CommitmentOnChain"),
+				Tx: &proto.Transaction_CommitmentOnChain{
+					CommitmentOnChain: &proto.TxCommitmentOnChain{
+						GameId:      int64(gameID),
+						Address:     player1.ToProto(),
+						RoundNumber: 2,
+						TurnNumber:  1,
+						Commitment:  []byte("0xcommitment"),
 					},
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CardsOnChain"),
-				Tx: &proto.Transaction_CardsOnChain{
-					CardsOnChain: &proto.TxCardsOnChain{
-						RoomContractAddress: roomContractAddress,
-						Address:             player1.ToProto(),
-						RoundNumber:         2,
-						Salt:                []byte("0x123"),
-						Cards:               []uint32{1, 2, 3},
+				TxHash: []byte("Transaction_CardOnChain"),
+				Tx: &proto.Transaction_CardOnChain{
+					CardOnChain: &proto.TxCardOnChain{
+						GameId:      int64(gameID),
+						Address:     player1.ToProto(),
+						RoundNumber: 2,
+						TurnNumber:  1,
+						Salt:        []byte("0x123"),
+						CardId:      1,
 					},
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CardsOnChain"),
-				Tx: &proto.Transaction_CardsOnChain{
-					CardsOnChain: &proto.TxCardsOnChain{
-						RoomContractAddress: roomContractAddress,
-						Address:             player2.ToProto(),
-						RoundNumber:         2,
-						Salt:                []byte("0x123"),
-						Cards:               []uint32{4, 5, 6},
+				TxHash: []byte("Transaction_CardOnChain"),
+				Tx: &proto.Transaction_CardOnChain{
+					CardOnChain: &proto.TxCardOnChain{
+						GameId:      int64(gameID),
+						Address:     player2.ToProto(),
+						RoundNumber: 2,
+						TurnNumber:  1,
+						Salt:        []byte("0x123"),
+						CardId:      4,
 					},
 				},
 			},
 		},
 	})
 	require.NoError(t, err)
-	{
-		tx, err = db.GetCreateRoomTx(uint(gameID))
-		require.NoError(t, err)
-		require.NotEmpty(t, tx)
-	}
-	{
-		txs, err := db.GetCommitmentOnChainTx(uint(gameID), 2)
-		require.NoError(t, err)
-		require.NotEmpty(t, txs)
-	}
-
-	{
-		txs, err := db.GetCardsOnChainTx(uint(gameID), 2)
-		require.NoError(t, err)
-		require.NotEmpty(t, txs)
-	}
-	{
-		tx, err := db.GetSetRoundReadyTx(uint(gameID), 2)
-		require.NoError(t, err)
-		require.NotEmpty(t, tx)
-	}
-
+	// Transaction tables removed - no longer checking database records
 }

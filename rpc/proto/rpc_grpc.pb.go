@@ -20,18 +20,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RpcService_JoinQueue_FullMethodName            = "/rpc.RpcService/JoinQueue"
-	RpcService_ExitQueue_FullMethodName            = "/rpc.RpcService/ExitQueue"
-	RpcService_ContinueGame_FullMethodName         = "/rpc.RpcService/ContinueGame"
-	RpcService_GetGamePhase_FullMethodName         = "/rpc.RpcService/GetGamePhase"
-	RpcService_IsPlayerInQueue_FullMethodName      = "/rpc.RpcService/IsPlayerInQueue"
-	RpcService_GetBattleInfo_FullMethodName        = "/rpc.RpcService/GetBattleInfo"
-	RpcService_ConfirmBattle_FullMethodName        = "/rpc.RpcService/ConfirmBattle"
-	RpcService_RefuseContinueGame_FullMethodName   = "/rpc.RpcService/RefuseContinueGame"
-	RpcService_Surrender_FullMethodName            = "/rpc.RpcService/Surrender"
-	RpcService_GetGameTimeoutConfig_FullMethodName = "/rpc.RpcService/GetGameTimeoutConfig"
-	RpcService_GetPlayerToken_FullMethodName       = "/rpc.RpcService/GetPlayerToken"
-	RpcService_SubmitTransactions_FullMethodName   = "/rpc.RpcService/SubmitTransactions"
+	RpcService_JoinQueue_FullMethodName              = "/rpc.RpcService/JoinQueue"
+	RpcService_ExitQueue_FullMethodName              = "/rpc.RpcService/ExitQueue"
+	RpcService_ContinueGame_FullMethodName           = "/rpc.RpcService/ContinueGame"
+	RpcService_GetGamePhase_FullMethodName           = "/rpc.RpcService/GetGamePhase"
+	RpcService_IsPlayerInQueue_FullMethodName        = "/rpc.RpcService/IsPlayerInQueue"
+	RpcService_GetPlayerStatus_FullMethodName        = "/rpc.RpcService/GetPlayerStatus"
+	RpcService_GetBattleInfo_FullMethodName          = "/rpc.RpcService/GetBattleInfo"
+	RpcService_ConfirmBattle_FullMethodName          = "/rpc.RpcService/ConfirmBattle"
+	RpcService_RefuseContinueGame_FullMethodName     = "/rpc.RpcService/RefuseContinueGame"
+	RpcService_Surrender_FullMethodName              = "/rpc.RpcService/Surrender"
+	RpcService_GetGameTimeoutConfig_FullMethodName   = "/rpc.RpcService/GetGameTimeoutConfig"
+	RpcService_SubmitPlayerCommitment_FullMethodName = "/rpc.RpcService/SubmitPlayerCommitment"
+	RpcService_SubmitPlayerCard_FullMethodName       = "/rpc.RpcService/SubmitPlayerCard"
+	RpcService_GetPlayerToken_FullMethodName         = "/rpc.RpcService/GetPlayerToken"
+	RpcService_SubmitTransactions_FullMethodName     = "/rpc.RpcService/SubmitTransactions"
 )
 
 // RpcServiceClient is the client API for RpcService service.
@@ -44,11 +47,14 @@ type RpcServiceClient interface {
 	ContinueGame(ctx context.Context, in *ContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
 	IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error)
+	GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error)
 	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error)
+	SubmitPlayerCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SubmitPlayerCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// token related logic
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// chain related api
@@ -113,6 +119,16 @@ func (c *rpcServiceClient) IsPlayerInQueue(ctx context.Context, in *PlayerAddres
 	return out, nil
 }
 
+func (c *rpcServiceClient) GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPlayerStatusResponse)
+	err := c.cc.Invoke(ctx, RpcService_GetPlayerStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcServiceClient) GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetBattleInfoResponse)
@@ -163,6 +179,26 @@ func (c *rpcServiceClient) GetGameTimeoutConfig(ctx context.Context, in *emptypb
 	return out, nil
 }
 
+func (c *rpcServiceClient) SubmitPlayerCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_SubmitPlayerCommitment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcServiceClient) SubmitPlayerCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_SubmitPlayerCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
@@ -193,11 +229,14 @@ type RpcServiceServer interface {
 	ContinueGame(context.Context, *ContinueGameRequest) (*emptypb.Empty, error)
 	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
 	IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error)
+	GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error)
 	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
 	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
 	Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error)
 	GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error)
+	SubmitPlayerCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error)
+	SubmitPlayerCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error)
 	// token related logic
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	// chain related api
@@ -227,6 +266,9 @@ func (UnimplementedRpcServiceServer) GetGamePhase(context.Context, *PlayerAddres
 func (UnimplementedRpcServiceServer) IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IsPlayerInQueue not implemented")
 }
+func (UnimplementedRpcServiceServer) GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerStatus not implemented")
+}
 func (UnimplementedRpcServiceServer) GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBattleInfo not implemented")
 }
@@ -241,6 +283,12 @@ func (UnimplementedRpcServiceServer) Surrender(context.Context, *SurrenderReques
 }
 func (UnimplementedRpcServiceServer) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGameTimeoutConfig not implemented")
+}
+func (UnimplementedRpcServiceServer) SubmitPlayerCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubmitPlayerCommitment not implemented")
+}
+func (UnimplementedRpcServiceServer) SubmitPlayerCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubmitPlayerCard not implemented")
 }
 func (UnimplementedRpcServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
@@ -359,6 +407,24 @@ func _RpcService_IsPlayerInQueue_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_GetPlayerStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlayerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).GetPlayerStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_GetPlayerStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).GetPlayerStatus(ctx, req.(*PlayerAddress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RpcService_GetBattleInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetBattleInfoRequest)
 	if err := dec(in); err != nil {
@@ -449,6 +515,42 @@ func _RpcService_GetGameTimeoutConfig_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RpcService_SubmitPlayerCommitment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitPlayerCommitmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).SubmitPlayerCommitment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_SubmitPlayerCommitment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).SubmitPlayerCommitment(ctx, req.(*SubmitPlayerCommitmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RpcService_SubmitPlayerCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitPlayerCardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).SubmitPlayerCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_SubmitPlayerCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).SubmitPlayerCard(ctx, req.(*SubmitPlayerCardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RpcService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetPlayerTokenRequest)
 	if err := dec(in); err != nil {
@@ -513,6 +615,10 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RpcService_IsPlayerInQueue_Handler,
 		},
 		{
+			MethodName: "GetPlayerStatus",
+			Handler:    _RpcService_GetPlayerStatus_Handler,
+		},
+		{
 			MethodName: "GetBattleInfo",
 			Handler:    _RpcService_GetBattleInfo_Handler,
 		},
@@ -531,6 +637,14 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetGameTimeoutConfig",
 			Handler:    _RpcService_GetGameTimeoutConfig_Handler,
+		},
+		{
+			MethodName: "SubmitPlayerCommitment",
+			Handler:    _RpcService_SubmitPlayerCommitment_Handler,
+		},
+		{
+			MethodName: "SubmitPlayerCard",
+			Handler:    _RpcService_SubmitPlayerCard_Handler,
 		},
 		{
 			MethodName: "GetPlayerToken",

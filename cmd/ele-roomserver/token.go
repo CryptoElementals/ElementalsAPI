@@ -32,11 +32,10 @@ var playerSetCmd = &cobra.Command{
 			fmt.Printf("init db failed, err: %v\n", err)
 			return
 		}
-		playerAddress = strings.ToLower(playerAddress)
 		ut := dao.UserToken{
-			WalletAddress: playerAddress,
-			Points:        int32(points),
-			TokenAmount:   int32(tokens),
+			PlayerId:    playerId,
+			Points:      int32(points),
+			TokenAmount: int32(tokens),
 		}
 
 		err = db.Get().Save(&ut).Error
@@ -46,7 +45,7 @@ var playerSetCmd = &cobra.Command{
 		}
 		if cmd.Flags().Changed("name") {
 			profile := dao.UserProfile{
-				Address:       playerAddress,
+				PlayerID:      playerId,
 				Name:          playerName,
 				AvatarURL:     playerAvatarUrl,
 				BackgroundURL: backgroundUrl,
@@ -75,12 +74,12 @@ var playerGetCmd = &cobra.Command{
 			return
 		}
 		var ut dao.UserToken
-		err = db.Get().Where("wallet_address = ?", playerAddress).First(&ut).Error
+		err = db.Get().Where("player_id = ?", playerId).First(&ut).Error
 		if err != nil {
 			fmt.Printf("get token and points failed, err: %v\n", err)
 			return
 		}
-		fmt.Printf("player address: %s, points: %d, tokens: %d\n", ut.WalletAddress, ut.Points, ut.TokenAmount)
+		fmt.Printf("player ID: %d, points: %d, tokens: %d\n", ut.PlayerId, ut.Points, ut.TokenAmount)
 	},
 }
 
@@ -99,7 +98,7 @@ var tokenLockCmd = &cobra.Command{
 			return
 		}
 		var ut dao.UserToken
-		err = db.Get().Where("wallet_address = ?", playerAddress).First(&ut).Error
+		err = db.Get().Where("player_id = ?", playerId).First(&ut).Error
 		if err != nil {
 			fmt.Printf("get token and points failed, err: %v\n", err)
 			return
@@ -114,7 +113,7 @@ var tokenLockCmd = &cobra.Command{
 			fmt.Printf("save locked tokens failed, err: %v\n", err)
 			return
 		}
-		fmt.Printf("player address: %s, locked tokens: %d\n", ut.WalletAddress, ut.TokenAmount)
+		fmt.Printf("player ID: %d, locked tokens: %d\n", ut.PlayerId, ut.TokenAmount)
 	},
 }
 
@@ -133,7 +132,7 @@ var tokenUnlockCmd = &cobra.Command{
 			return
 		}
 		var ut dao.UserToken
-		err = db.Get().Where("wallet_address = ?", playerAddress).First(&ut).Error
+		err = db.Get().Where("player_id = ?", playerId).First(&ut).Error
 		if err != nil {
 			fmt.Printf("get token and points failed, err: %v\n", err)
 			return
@@ -166,7 +165,7 @@ func init() {
 	playerCmd.PersistentFlags().StringVarP(&user, "user", "u", "", "user of mysql")
 	playerCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password of mysql")
 	playerCmd.PersistentFlags().StringVarP(&dbName, "db-name", "d", "", "db name of mysql")
-	playerCmd.PersistentFlags().StringVarP(&playerAddress, "address", "a", "", "player wallet address")
+	playerCmd.PersistentFlags().Int64VarP(&playerId, "player-id", "i", 0, "player ID")
 
 	playerSetCmd.Flags().Int64VarP(&points, "points", "", 0, "points to set")
 	playerSetCmd.Flags().Int64VarP(&tokens, "tokens", "", 0, "tokens to set")

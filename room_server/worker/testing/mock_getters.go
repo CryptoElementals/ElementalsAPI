@@ -95,6 +95,48 @@ func (mr *MockGameInfoGetterMockRecorder) GetPlayerGameInfo(arg0 interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPlayerGameInfo", reflect.TypeOf((*MockGameInfoGetter)(nil).GetPlayerGameInfo), arg0)
 }
 
+// HandleSubmitPlayerCard mocks base method.
+func (m *MockGameInfoGetter) HandleSubmitPlayerCard(arg0 *types.SubmitPlayerCard) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HandleSubmitPlayerCard", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// HandleSubmitPlayerCard indicates an expected call of HandleSubmitPlayerCard.
+func (mr *MockGameInfoGetterMockRecorder) HandleSubmitPlayerCard(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleSubmitPlayerCard", reflect.TypeOf((*MockGameInfoGetter)(nil).HandleSubmitPlayerCard), arg0)
+}
+
+// HandleSubmitPlayerCommitment mocks base method.
+func (m *MockGameInfoGetter) HandleSubmitPlayerCommitment(arg0 *types.SubmitPlayerCommitment) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HandleSubmitPlayerCommitment", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// HandleSubmitPlayerCommitment indicates an expected call of HandleSubmitPlayerCommitment.
+func (mr *MockGameInfoGetterMockRecorder) HandleSubmitPlayerCommitment(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleSubmitPlayerCommitment", reflect.TypeOf((*MockGameInfoGetter)(nil).HandleSubmitPlayerCommitment), arg0)
+}
+
+// SyncGamePhase mocks base method.
+func (m *MockGameInfoGetter) SyncGamePhase(arg0 types.PlayerAddress) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncGamePhase", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncGamePhase indicates an expected call of SyncGamePhase.
+func (mr *MockGameInfoGetterMockRecorder) SyncGamePhase(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncGamePhase", reflect.TypeOf((*MockGameInfoGetter)(nil).SyncGamePhase), arg0)
+}
+
 // MockQueuer is a mock of Queuer interface.
 type MockQueuer struct {
 	ctrl     *gomock.Controller

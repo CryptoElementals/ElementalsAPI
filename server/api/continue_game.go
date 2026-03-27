@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
@@ -23,7 +24,7 @@ type ContinueGameRequest struct {
 	BaseRequest
 	GameID      uint   `mapstructure:"GameID" validate:"required"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
-	Address     string `mapstructure:"Address"`
+	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
 // ContinueGameResponse 响应结构体
@@ -76,31 +77,26 @@ func NewContinueGameTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
-	// 获取玩家地址（从认证中间件填充到请求结构）
-	address := task.Request.Address
-	if address == "" {
+	// 解析 PlayerID（由中间件从会话中注入），前端只需要传临时地址
+	playerIDStr := strings.TrimSpace(task.Request.PlayerID)
+	if playerIDStr == "" {
 		task.Response.BaseResponse.RetCode = 1001
-		task.Response.BaseResponse.Message = "Parameter parsing failed"
+		task.Response.BaseResponse.Message = "player id is empty"
 		return task.Response, nil
 	}
-
-	// 将地址转换为小写，确保与数据库中存储的格式一致
-	address = strings.ToLower(address)
+	playerID, err := strconv.ParseInt(playerIDStr, 10, 64)
+	if err != nil {
+		task.Response.BaseResponse.RetCode = 1001
+		task.Response.BaseResponse.Message = "invalid player id"
+		return task.Response, nil
+	}
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 检查用户token数量是否足够
-	userToken, err := db.GetPlayerToken(c.Request.Context(), address)
+	// 检查用户token数量是否足够（仅按总 TokenAmount 判断，不再扣除锁仓）
+	userToken, err := db.GetPlayerToken(c.Request.Context(), playerID)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user token information"
-		return task.Response, nil
-	}
-
-	// 获取用户已锁定的代币总数
-	totalLockedTokens, err := db.GetTotalLockedTokensByAddress(address)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get locked token information"
+		task.Response.BaseResponse.Message = "ContinueGame failed. Internal error: failed to get user token information"
 		return task.Response, nil
 	}
 
@@ -109,8 +105,8 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 		currentTokens = userToken.TokenAmount
 	}
 
-	// 计算可用代币数量
-	availableTokens := int(currentTokens) - totalLockedTokens
+	// 计算可用代币数量：仅使用当前总 token 数量
+	availableTokens := int(currentTokens)
 
 	if availableTokens < config.GameParams.TokenThreshold {
 		task.Response.BaseResponse.RetCode = 1004
@@ -128,7 +124,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 
 	continueGameReq := &proto.ContinueGameRequest{
 		Player: &proto.PlayerAddress{
-			WalletAddress:    address,
+			Id:               playerID,
 			TemporaryAddress: tempAddress,
 		},
 		LastGameID: uint32(task.Request.GameID),
@@ -137,7 +133,7 @@ func (task *ContinueGameTask) Run(c *gin.Context) (Response, error) {
 	_, err = rpcClient.ContinueGame(context.Background(), continueGameReq)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ContinueGame failed: " + err.Error()
+		task.Response.BaseResponse.Message = "ContinueGame failed. Internal error: " + ShortGRPCError(err)
 		return task.Response, nil
 	}
 

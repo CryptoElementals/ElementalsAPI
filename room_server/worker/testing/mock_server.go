@@ -149,17 +149,17 @@ func (m *MockPlayerRequestHandler) EXPECT() *MockPlayerRequestHandlerMockRecorde
 }
 
 // ConfirmBattle mocks base method.
-func (m *MockPlayerRequestHandler) ConfirmBattle(arg0 types.PlayerAddress, arg1 uint, arg2 uint32) error {
+func (m *MockPlayerRequestHandler) ConfirmBattle(arg0 types.PlayerAddress, arg1 uint, arg2 uint32, arg3 uint32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ConfirmBattle", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "ConfirmBattle", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ConfirmBattle indicates an expected call of ConfirmBattle.
-func (mr *MockPlayerRequestHandlerMockRecorder) ConfirmBattle(arg0, arg1, arg2 interface{}) *gomock.Call {
+func (mr *MockPlayerRequestHandlerMockRecorder) ConfirmBattle(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmBattle", reflect.TypeOf((*MockPlayerRequestHandler)(nil).ConfirmBattle), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfirmBattle", reflect.TypeOf((*MockPlayerRequestHandler)(nil).ConfirmBattle), arg0, arg1, arg2, arg3)
 }
 
 // ContinueGame mocks base method.

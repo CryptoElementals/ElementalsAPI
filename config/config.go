@@ -15,8 +15,8 @@ type NodeConfig struct {
 }
 
 type ContractConfig struct {
-	RoomManagerAddress string `mapstructure:"room-manager-address"`
-	PlayerStateAddress string `mapstructure:"player-state-address"`
+	RoomV3ContractAddress string `mapstructure:"room-v3-contract-address"`
+	PlayerStateAddress    string `mapstructure:"player-state-address"`
 }
 
 type ChainConfig struct {
@@ -108,6 +108,10 @@ type ServerConfig struct {
 	SessionMaxAge      int    `mapstructure:"session-max-age"`
 	RefreshTokenMaxAge int    `mapstructure:"refresh-token-max-age"`
 	ServiceName        string `mapstructure:"service-name"`
+	GoogleClientID     string `mapstructure:"google-client-id"`
+	GoogleClientSecret string `mapstructure:"google-client-secret"`
+	GoogleRedirectURL  string `mapstructure:"google-redirect-url"`
+	GoogleFrontendURL  string `mapstructure:"google-frontend-url"`
 }
 
 // S3Config defines the configuration for S3 storage

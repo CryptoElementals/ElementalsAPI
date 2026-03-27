@@ -16,10 +16,11 @@ const (
 // 统一的 API Label 定义
 const (
 	// 登录与会话
-	GET_LOGIN_CODE_LABEL      = "GetLoginCode"
-	LOGIN_DILL_LABEL          = "LoginWeb3"
-	REFRESH_LABEL             = "RefreshTokens"
-	IS_WALLET_LOGGED_IN_LABEL = "IsWalletLoggedIn"
+	GET_LOGIN_CODE_LABEL    = "GetLoginCode"
+	LOGIN_DILL_LABEL        = "LoginWeb3"
+	REFRESH_LABEL           = "RefreshTokens"
+	IS_USER_LOGGED_IN_LABEL = "IsUserLoggedIn"
+	LOGOUT_LABEL            = "Logout"
 
 	// 系统与资源
 	HEALTH_CHECK_LABEL = "HealthCheck"
@@ -31,23 +32,28 @@ const (
 	GET_USER_PROFILE_LABEL           = "GetUserProfile"
 	HAS_COLLECTED_DAILY_REWARD_LABEL = "HasCollectedDailyReward"
 	COLLECT_DAILY_REWARD_LABEL       = "CollectDailyReward"
+	SET_USER_TOKEN_LABEL             = "SetUserToken"
 
 	// 匹配与对战
-	JOIN_QUEUE_LABEL           = "JoinQueue"
-	EXIT_QUEUE_LABEL           = "ExitQueue"
-	CONFIRM_BATTLE_LABEL       = "ConfirmBattle"
-	GET_GAME_PHASE_LABEL       = "GetGamePhase"
-	REFUSE_CONTINUE_GAME_LABEL = "RefuseContinueGame"
-	CONTINUE_GAME_LABEL        = "ContinueGame"
-	IS_PLAYER_IN_QUEUE_LABEL   = "IsPlayerInQueue"
-	GET_BATTLE_INFO_LABEL      = "GetBattleInfo"
-	SUBSCRIBE_GAME_INFO_LABEL  = "SubscribeGameInfo"
-	SSE_EXAMPLE_LABEL          = "SSEExample"
-	SURRENDER_LABEL            = "Surrender"
-	GET_GAME_CONFIG_LABEL      = "GetGameConfig"
+	JOIN_QUEUE_LABEL               = "JoinQueue"
+	EXIT_QUEUE_LABEL               = "ExitQueue"
+	CONFIRM_BATTLE_LABEL           = "ConfirmBattle"
+	GET_GAME_PHASE_LABEL           = "GetGamePhase"
+	CLOSE_SSE_LABEL                = "CloseSSE"
+	REFUSE_CONTINUE_GAME_LABEL     = "RefuseContinueGame"
+	CONTINUE_GAME_LABEL            = "ContinueGame"
+	IS_PLAYER_IN_QUEUE_LABEL       = "IsPlayerInQueue"
+	GET_BATTLE_INFO_LABEL          = "GetBattleInfo"
+	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"
+	SSE_EXAMPLE_LABEL              = "SSEExample"
+	SURRENDER_LABEL                = "Surrender"
+	GET_GAME_CONFIG_LABEL          = "GetGameConfig"
+	SUBMIT_PLAYER_COMMITMENT_LABEL = "SubmitPlayerCommitment"
+	SUBMIT_PLAYER_CARD_LABEL       = "SubmitPlayerCard"
+	GET_PLAYER_STATUS_LABEL        = "GetPlayerStatus"
+	GET_GAME_TIMEOUT_CONFIG_LABEL  = "GetGameTimeoutConfig"
 
-	// 新增：玩家状态查询
-	GET_PLAYER_STATUS_LABEL = "GetPlayerStatus"
+	EXCHANGE_TOKEN_LABEL = "ExchangeToken"
 )
 
 type Task interface {
