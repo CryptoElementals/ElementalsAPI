@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"gorm.io/gorm"
 )
 
 // NewEphemeralGameForEvent creates a transient Game instance backed by the latest DB state.
@@ -43,6 +43,21 @@ type Game struct {
 	publisher            Publisher
 	txPoolEnqueuer       TxPoolEnqueuer
 	gameResultSettler    GameResultSettler
+
+	// mutateTx, when non-nil, is the outer game mutation transaction (pessimistic lock on games row).
+	mutateTx *gorm.DB
+	// queueAfterTxCommit schedules work to run after the mutation transaction commits (e.g. settlement DB).
+	queueAfterTxCommit func(func() error)
+}
+
+// afterTx runs fn after the pessimistic game mutation transaction commits when queueAfterTxCommit is set
+// (Phase 3: avoid Pub/Sub, timers, and tx-pool enqueue while holding FOR UPDATE). Otherwise runs fn immediately.
+func (g *Game) afterTx(fn func() error) error {
+	if g.queueAfterTxCommit != nil {
+		g.queueAfterTxCommit(fn)
+		return nil
+	}
+	return fn()
 }
 
 func NewGame(
@@ -183,19 +198,6 @@ func NewGameFromGameInfo(
 	g.sendTimerEventByCurrentRound()
 
 	return g
-}
-
-func (g *Game) saveGame() error {
-	err := db.SaveGame(g.gameInfo)
-	if err != nil {
-		log.Errorw("saveGame failed", "err", err, "game id", g.gameInfo.ID)
-		return err
-	}
-	return nil
-}
-
-func (g *Game) saveRound() error {
-	return g.saveGame()
 }
 
 // pushStateToContractCreating is used for continue games to immediately start contract creation

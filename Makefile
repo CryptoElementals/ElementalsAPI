@@ -41,7 +41,7 @@ REDISSTREAM_MAIN = ./cmd/ele-redis-stream
 
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner roomserver botserver stat tools stress redisstream clean deps lint help
+.PHONY: all build apiserver scanner roomserver botserver stat tools stress redisstream clean deps lint check-persist help
 
 all: build
 
@@ -108,6 +108,9 @@ lint:
 		echo "golangci-lint not installed, skipping code linting"; \
 	fi
 
+check-persist:
+	@./scripts/check-roomserver-persist-guard.sh
+
 help:
 	@echo "ElementalsAPI Makefile Usage:"
 	@echo ""
@@ -127,6 +130,7 @@ help:
 	@echo "  deps          - Download dependencies"
 	@echo "  fmt           - Format code"
 	@echo "  lint          - Lint code"
+	@echo "  check-persist - Fail if room_server prod code references SaveFullGameGraph"
 	@echo "  help          - Show this help information"
 	@echo ""
 	@echo "Environment variables:"

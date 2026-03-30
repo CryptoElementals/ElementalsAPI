@@ -41,6 +41,23 @@ func (g *Game) sendGameCompletedEventAndStop() {
 	g.stopGame()
 }
 
+// runAfterAbortPersisted runs PubSub + settlement after game rows are committed.
+func (g *Game) runAfterAbortPersisted() error {
+	return g.afterTx(func() error {
+		g.sendTurnCompletedEventForAbort()
+		completeEvt := &types.GameCompletedEvent{
+			GameID:   g.gameInfo.ID,
+			GameInfo: g.gameInfo,
+		}
+		if err := g.completeGameAndNotify(completeEvt); err != nil {
+			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+			return err
+		}
+		g.stopGame()
+		return nil
+	})
+}
+
 // sendTurnCompletedEventForAbort sends a turn completed event to all players when the game is aborted
 func (g *Game) sendTurnCompletedEventForAbort() {
 	var roundNumber uint32 = 1
@@ -98,14 +115,10 @@ func (g *Game) handleGameAbortInit() error {
 	g.currentRound.isLastRound = true
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
 	g.gameInfo.GameResult = g.abortedGameResult()
-	err := g.saveGame()
-	if err != nil {
+	if err := g.persistAbortInit(); err != nil {
 		return err
 	}
-	// Send turn completed event to all players
-	g.sendTurnCompletedEventForAbort()
-	g.sendGameCompletedEventAndStop()
-	return nil
+	return g.runAfterAbortPersisted()
 }
 
 // handleGameAbortInternalError handles game abortion due to internal errors
@@ -117,12 +130,8 @@ func (g *Game) handleGameAbortInternalError() error {
 
 	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
 	g.gameInfo.GameResult = g.abortedGameResult()
-	err := g.saveGame()
-	if err != nil {
+	if err := g.persistAbortInternal(); err != nil {
 		return err
 	}
-	// Send turn completed event to all players
-	g.sendTurnCompletedEventForAbort()
-	g.sendGameCompletedEventAndStop()
-	return nil
+	return g.runAfterAbortPersisted()
 }

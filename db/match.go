@@ -61,14 +61,6 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 		Preload("Turns.PlayerTurnInfos.CardEffects")
 }
 
-func SaveGame(game *dao.Game) error {
-	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(game).Error
-}
-
-func SaveGamePlayerInfo(gamePlayerInfo *dao.GamePlayerInfo) error {
-	return Get().Session(&gorm.Session{FullSaveAssociations: true}).Save(gamePlayerInfo).Error
-}
-
 // UpdateMatchStatusByRoomID 根据RoomID更新匹配记录状态
 func UpdateMatchStatusByRoomID(roomID string, status string) error {
 	return Get().Model(&dao.Game{}).Where("room_id = ?", roomID).Update("status", status).Error

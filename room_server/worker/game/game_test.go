@@ -214,6 +214,15 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 	require.NotNil(t, currentRound.getCurrentTurn())
 	require.GreaterOrEqual(t, currentRound.turnNumber, uint32(1))
 	require.LessOrEqual(t, currentRound.turnNumber, uint32(3))
+
+	// Phase 3: full-graph save must not change observable shape vs granular writes.
+	full, err := db.LoadGameByGameID(gameInfo.ID)
+	require.NoError(t, err)
+	snap := db.CaptureGamePersistenceSnapshot(full)
+	require.NoError(t, db.SaveFullGameGraph(full))
+	reloaded, err := db.LoadGameByGameID(gameInfo.ID)
+	require.NoError(t, err)
+	require.Equal(t, snap, db.CaptureGamePersistenceSnapshot(reloaded))
 }
 
 func TestGameStateMachine(t *testing.T) {

@@ -10,11 +10,10 @@ import (
 // ---- On-chain / contract callbacks (room created, turn setup, commitments, cards observed on chain) ----
 
 func (g *Game) handleRoomCreated(gameID uint, blockTime int64) error {
-	defer g.sendTimerEventByCurrentRound()
 	currentTurn := g.currentRound.getCurrentTurn()
 	currentTurn.TurnStartAt = blockTime
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_COMMITMENTS)
-	if err := g.saveRound(); err != nil {
+	if err := g.persistCurrentTurn(); err != nil {
 		return err
 	}
 
@@ -24,44 +23,47 @@ func (g *Game) handleRoomCreated(gameID uint, blockTime int64) error {
 		players = append(players, addr.ToProto())
 	}
 	ga := g.gameInfo.GameArgs
-	g.publishProtoToAllPlayers(&proto.Event{
-		Type: proto.EventType_TYPE_GAME_CREATED,
-		Event: &proto.Event_GameReady{
-			GameReady: &proto.GameReady{
-				GameId:            uint32(g.gameInfo.ID),
-				MaxRoundNum:       uint32(ga.MaxRounds),
-				MaxTurnNum:        uint32(ga.MaxTurnsPerRound),
-				InitialHP:         uint32(ga.InitialHP),
-				InitialMultiplier: uint32(ga.InitialMultiplier),
-				Players:           players,
+
+	return g.afterTx(func() error {
+		g.publishProtoToAllPlayers(&proto.Event{
+			Type: proto.EventType_TYPE_GAME_CREATED,
+			Event: &proto.Event_GameReady{
+				GameReady: &proto.GameReady{
+					GameId:            uint32(g.gameInfo.ID),
+					MaxRoundNum:       uint32(ga.MaxRounds),
+					MaxTurnNum:        uint32(ga.MaxTurnsPerRound),
+					InitialHP:         uint32(ga.InitialHP),
+					InitialMultiplier: uint32(ga.InitialMultiplier),
+					Players:           players,
+				},
 			},
-		},
-	})
-	g.publishProtoToAllPlayers(&proto.Event{
-		Type: proto.EventType_TYPE_ROUND_READY,
-		Event: &proto.Event_RoundReady{
-			RoundReady: &proto.RoundReady{
-				GameId:   uint32(g.gameInfo.ID),
-				RoundNum: g.currentRound.roundNumber,
+		})
+		g.publishProtoToAllPlayers(&proto.Event{
+			Type: proto.EventType_TYPE_ROUND_READY,
+			Event: &proto.Event_RoundReady{
+				RoundReady: &proto.RoundReady{
+					GameId:   uint32(g.gameInfo.ID),
+					RoundNum: g.currentRound.roundNumber,
+				},
 			},
-		},
-	})
-	g.publishProtoToAllPlayers(&proto.Event{
-		Type: proto.EventType_TYPE_TURN_READY,
-		Event: &proto.Event_TurnReady{
-			TurnReady: &proto.TurnReady{
-				GameId:                      uint32(g.gameInfo.ID),
-				RoundNum:                    g.currentRound.roundNumber,
-				TurnNum:                     1,
-				CommitmentSubmissionTimeout: ga.CommitmentSubmissionTimeout,
+		})
+		g.publishProtoToAllPlayers(&proto.Event{
+			Type: proto.EventType_TYPE_TURN_READY,
+			Event: &proto.Event_TurnReady{
+				TurnReady: &proto.TurnReady{
+					GameId:                      uint32(g.gameInfo.ID),
+					RoundNum:                    g.currentRound.roundNumber,
+					TurnNum:                     1,
+					CommitmentSubmissionTimeout: ga.CommitmentSubmissionTimeout,
+				},
 			},
-		},
+		})
+		g.sendTimerEventByCurrentRound()
+		return nil
 	})
-	return nil
 }
 
 func (g *Game) handleNewTurnSetupOnChain(gameID uint, blockTime int64, tx *proto.TxGameTurnSetupReady) error {
-	defer g.sendTimerEventByCurrentRound()
 	if gameID != g.gameInfo.ID {
 		return errors.New("invalid game id")
 	}
@@ -76,33 +78,40 @@ func (g *Game) handleNewTurnSetupOnChain(gameID uint, blockTime int64, tx *proto
 	currentTurn.TurnStartAt = blockTime
 
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_COMMITMENTS)
-	if err := g.saveRound(); err != nil {
+	if err := g.persistCurrentTurn(); err != nil {
 		return err
 	}
 
-	if tx.TurnNumber == 1 {
+	roundNum := tx.RoundNumber
+	turnNum := tx.TurnNumber
+	commitTimeout := g.gameInfo.GameArgs.CommitmentSubmissionTimeout
+
+	return g.afterTx(func() error {
+		if turnNum == 1 {
+			g.publishProtoToAllPlayers(&proto.Event{
+				Type: proto.EventType_TYPE_ROUND_READY,
+				Event: &proto.Event_RoundReady{
+					RoundReady: &proto.RoundReady{
+						GameId:   uint32(g.gameInfo.ID),
+						RoundNum: roundNum,
+					},
+				},
+			})
+		}
 		g.publishProtoToAllPlayers(&proto.Event{
-			Type: proto.EventType_TYPE_ROUND_READY,
-			Event: &proto.Event_RoundReady{
-				RoundReady: &proto.RoundReady{
-					GameId:   uint32(g.gameInfo.ID),
-					RoundNum: tx.RoundNumber,
+			Type: proto.EventType_TYPE_TURN_READY,
+			Event: &proto.Event_TurnReady{
+				TurnReady: &proto.TurnReady{
+					GameId:                      uint32(g.gameInfo.ID),
+					RoundNum:                    roundNum,
+					TurnNum:                     turnNum,
+					CommitmentSubmissionTimeout: commitTimeout,
 				},
 			},
 		})
-	}
-	g.publishProtoToAllPlayers(&proto.Event{
-		Type: proto.EventType_TYPE_TURN_READY,
-		Event: &proto.Event_TurnReady{
-			TurnReady: &proto.TurnReady{
-				GameId:                      uint32(g.gameInfo.ID),
-				RoundNum:                    tx.RoundNumber,
-				TurnNum:                     tx.TurnNumber,
-				CommitmentSubmissionTimeout: g.gameInfo.GameArgs.CommitmentSubmissionTimeout,
-			},
-		},
+		g.sendTimerEventByCurrentRound()
+		return nil
 	})
-	return nil
 }
 
 func (g *Game) handleGameStateWaittingCommitments(gameID uint, blockTime int64, tx *proto.TxCommitmentOnChain) error {
@@ -125,29 +134,36 @@ func (g *Game) handleGameStateWaittingCommitments(gameID uint, blockTime int64, 
 	if g.haveAllPlayersSubmittedCommitment() {
 		turnNumber := commitmentIdx + 1
 		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
-		err = g.saveRound()
+		err = g.persistCommitmentStep(playerTurnInfo, true)
 		if err != nil {
 			return err
 		}
-		g.publishProtoToAllPlayers(&proto.Event{
-			Type: proto.EventType_TYPE_COMMITMENTS_ON_CHAIN,
-			Event: &proto.Event_CommitmentsOnChain{
-				CommitmentsOnChain: &proto.CommitmentsOnChain{
-					GameId:                uint32(g.gameInfo.ID),
-					RoundNum:              tx.RoundNumber,
-					TurnNum:               turnNumber,
-					CardSubmissionTimeout: g.gameInfo.GameArgs.CardSubmissionTimeout,
+		roundNum := tx.RoundNumber
+		cardTimeout := g.gameInfo.GameArgs.CardSubmissionTimeout
+		return g.afterTx(func() error {
+			g.publishProtoToAllPlayers(&proto.Event{
+				Type: proto.EventType_TYPE_COMMITMENTS_ON_CHAIN,
+				Event: &proto.Event_CommitmentsOnChain{
+					CommitmentsOnChain: &proto.CommitmentsOnChain{
+						GameId:                uint32(g.gameInfo.ID),
+						RoundNum:              roundNum,
+						TurnNum:               turnNumber,
+						CardSubmissionTimeout: cardTimeout,
+					},
 				},
-			},
+			})
+			g.sendTimerEventByCurrentRound()
+			return nil
 		})
-	} else {
-		err = g.saveRound()
-		if err != nil {
-			return err
-		}
 	}
-	g.sendTimerEventByCurrentRound()
-	return nil
+	err = g.persistCommitmentStep(playerTurnInfo, false)
+	if err != nil {
+		return err
+	}
+	return g.afterTx(func() error {
+		g.sendTimerEventByCurrentRound()
+		return nil
+	})
 }
 
 func (g *Game) handleGameStateCardSubmitted(gameID uint, blockTime int64, tx *proto.TxCardOnChain) error {
@@ -174,5 +190,5 @@ func (g *Game) handleGameStateCardSubmitted(gameID uint, blockTime int64, tx *pr
 	if g.haveAllPlayersSubmittedCard() {
 		return g.handleTurnEnd()
 	}
-	return g.saveRound()
+	return g.persistPlayerTurnInfo(playerTurnInfo)
 }

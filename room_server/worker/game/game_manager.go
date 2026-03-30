@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"gorm.io/gorm"
 )
 
 type GameManager struct {
@@ -49,21 +50,42 @@ func (r *GameManager) withGameLock(gameID uint, fn func() error) error {
 	return fn()
 }
 
+// withGameMutation runs handler inside a DB transaction with a row lock on games.id, then runs
+// queued after-commit hooks (settlement, etc.). Process-local withGameLock still reduces contention.
+func (r *GameManager) withGameMutation(gameID uint, handler func(g *Game) error) error {
+	var afterCommit []func() error
+	err := db.WithGameMutationTx(gameID, func(tx *gorm.DB, gameInfo *dao.Game) error {
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
+		g.mutateTx = tx
+		g.queueAfterTxCommit = func(fn func() error) {
+			afterCommit = append(afterCommit, fn)
+		}
+		defer func() {
+			g.mutateTx = nil
+			g.queueAfterTxCommit = nil
+		}()
+		return handler(g)
+	})
+	if err != nil {
+		return err
+	}
+	var firstErr error
+	for _, fn := range afterCommit {
+		if fnErr := fn(); fnErr != nil && firstErr == nil {
+			firstErr = fnErr
+		}
+	}
+	return firstErr
+}
+
 func (r *GameManager) executeOnGame(gameID uint, handler func(g *Game) error) error {
 	if gameID == 0 {
 		return fmt.Errorf("executeOnGame: missing game id")
 	}
 	return r.withGameLock(gameID, func() error {
-		gameInfo, err := db.LoadGameByGameID(gameID)
-		if err != nil {
-			log.Errorw("executeOnGame: failed to load game from db", "game id", gameID, "err", err)
-			return err
-		}
-		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
-		return handler(g)
+		return r.withGameMutation(gameID, handler)
 	})
 }
-
 func (r *GameManager) HandleConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleConfirmBattle(req) })
 }
@@ -128,8 +150,9 @@ func (r *GameManager) Start() error {
 		if gameInfo == nil {
 			continue
 		}
-		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
-		if err := g.handleGameAbortInternalError(); err != nil {
+		if err := r.withGameMutation(gameInfo.ID, func(g *Game) error {
+			return g.handleGameAbortInternalError()
+		}); err != nil {
 			log.Errorw("startup abort active game failed", "game id", gameInfo.ID, "err", err)
 		}
 	}
@@ -314,7 +337,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 	if err := game.pushStateToContractCreating(); err != nil {
 		return 0, err
 	}
-	if err := game.saveGame(); err != nil {
+	if err := game.persistInsertNewGameGraph(); err != nil {
 		return 0, err
 	}
 	return game.gameInfo.ID, nil
@@ -322,7 +345,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
 	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, &r.args)
-	if err := game.saveGame(); err != nil {
+	if err := game.persistInsertNewGameGraph(); err != nil {
 		return 0, err
 	}
 	return game.gameInfo.ID, nil

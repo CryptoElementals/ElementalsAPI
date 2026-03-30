@@ -43,44 +43,48 @@ func (g *Game) handleConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
 
-	g.publishPartialReadyToOtherPlayers(player.PlayerAddress())
 	if !g.areAllPlayersReady() {
-		err = g.saveGame()
-		if err != nil {
+		if err := g.persistPlayerTurnInfo(playerTurnInfo); err != nil {
 			return err
 		}
-		return nil
+		readyAddr := player.PlayerAddress()
+		return g.afterTx(func() error {
+			g.publishPartialReadyToOtherPlayers(readyAddr)
+			return nil
+		})
 	}
 
-	// All players confirmed battle for this turn
-	// The first round, first turn needs to create contract first
+	// All players confirmed battle for this turn — persist before enqueuing chain work.
 	if g.currentRound.roundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
 		g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
-		allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
-		for _, player := range g.currentRound.gamePlayers {
-			allPlayers = append(allPlayers, player.PlayerAddress())
-		}
-		err := g.sendContractCreation(allPlayers)
-		if err != nil {
-			g.handleGameAbortInternalError()
-			return err
-		}
 		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
 	} else {
-		// For all other turns, setup new turn on chain
-		err := g.setupNewTurn()
-		if err != nil {
-			g.handleGameAbortInternalError()
-			return err
-		}
+		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
 	}
 
-	err = g.saveGame()
-	if err != nil {
+	if err := g.persistConfirmBattleAllReady(); err != nil {
 		return err
 	}
-	g.sendTimerEventByCurrentRound()
-	return nil
+
+	return g.afterTx(func() error {
+		if g.currentRound.roundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
+			allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
+			for _, pl := range g.currentRound.gamePlayers {
+				allPlayers = append(allPlayers, pl.PlayerAddress())
+			}
+			if err := g.sendContractCreation(allPlayers); err != nil {
+				g.handleGameAbortInternalError()
+				return err
+			}
+		} else {
+			if err := g.sendTurnReady(); err != nil {
+				g.handleGameAbortInternalError()
+				return err
+			}
+		}
+		g.sendTimerEventByCurrentRound()
+		return nil
+	})
 }
 
 // areAllPlayersReady checks if all players have confirmed battle for the current turn
@@ -154,37 +158,51 @@ func (g *Game) handleTurnEnd() error {
 		if isGameComplete {
 			g.currentRound.isLastRound = true
 			g.gameInfo.Status = proto.GameStatus_GAME_END
-			if err := g.saveGame(); err != nil {
+			if err := g.persistTurnEndGameOver(); err != nil {
 				return err
 			}
-			g.publishProtoToAllPlayers(turnCompletedEvt)
-			completeEvt := &types.GameCompletedEvent{
-				GameID:   g.gameInfo.ID,
-				GameInfo: g.gameInfo,
-			}
-			if err := g.completeGameAndNotify(completeEvt); err != nil {
-				log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-			}
-			g.stopGame()
-			return nil
+			evt := turnCompletedEvt
+			return g.afterTx(func() error {
+				g.publishProtoToAllPlayers(evt)
+				completeEvt := &types.GameCompletedEvent{
+					GameID:   g.gameInfo.ID,
+					GameInfo: g.gameInfo,
+				}
+				if err := g.completeGameAndNotify(completeEvt); err != nil {
+					log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
+					return err
+				}
+				g.stopGame()
+				return nil
+			})
 		}
 
+		completedTurn := g.currentRound.getCurrentTurn()
 		g.setupNewRound()
-		if err := g.saveGame(); err != nil {
+		newTurn := g.currentRound.getCurrentTurn()
+		if err := g.persistCompletedTurnAndNewTurn(completedTurn, newTurn); err != nil {
 			return err
 		}
-		g.publishProtoToAllPlayers(turnCompletedEvt)
-		return nil
+		evt := turnCompletedEvt
+		return g.afterTx(func() error {
+			g.publishProtoToAllPlayers(evt)
+			return nil
+		})
 	}
 
+	completedTurn := g.currentRound.getCurrentTurn()
 	g.incrementTurnNumber()
 	g.currentRound.createNewTurn()
-	if err = g.saveRound(); err != nil {
+	newTurn := g.currentRound.getCurrentTurn()
+	if err := g.persistCompletedTurnAndNewTurn(completedTurn, newTurn); err != nil {
 		return err
 	}
-	g.publishProtoToAllPlayers(turnCompletedEvt)
-	g.sendTimerEventByCurrentRound()
-	return nil
+	evt := turnCompletedEvt
+	return g.afterTx(func() error {
+		g.publishProtoToAllPlayers(evt)
+		g.sendTimerEventByCurrentRound()
+		return nil
+	})
 }
 
 // buildTurnCompletedEvent constructs a proto.Event for TYPE_TURN_COMPLETE from current game state.

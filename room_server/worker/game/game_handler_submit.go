@@ -24,7 +24,10 @@ func (g *Game) handleSubmitPlayerCommitment(reqEvt *proto.SubmitPlayerCommitment
 	if !valid {
 		return fmt.Errorf("invalid signature")
 	}
-	return g.txPoolEnqueuer.AddCommitment(reqEvt)
+	req := reqEvt
+	return g.afterTx(func() error {
+		return g.txPoolEnqueuer.AddCommitment(req)
+	})
 }
 
 func (g *Game) handleSubmitPlayerCard(reqEvt *proto.SubmitPlayerCardRequest) error {
@@ -71,5 +74,8 @@ func (g *Game) handleSubmitPlayerCard(reqEvt *proto.SubmitPlayerCardRequest) err
 	if !valid {
 		return fmt.Errorf("invalid signature")
 	}
-	return g.txPoolEnqueuer.AddCard(reqEvt)
+	req := reqEvt
+	return g.afterTx(func() error {
+		return g.txPoolEnqueuer.AddCard(req)
+	})
 }
