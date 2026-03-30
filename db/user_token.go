@@ -283,6 +283,13 @@ func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error)
 	return &userToken, nil
 }
 
+// DeleteAllLockedUserTokens removes all rows from locked_user_tokens (operator/tools; matchmaking reset).
+func DeleteAllLockedUserTokens() (rowsAffected int64, err error) {
+	res := Get().Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().
+		Where("1 = 1").Delete(&dao.LockedUserToken{})
+	return res.RowsAffected, res.Error
+}
+
 func SetLockedTokenGameID(ctx context.Context, playerId int64, temporaryAddress string, gameID uint) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}

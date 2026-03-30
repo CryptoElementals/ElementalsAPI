@@ -171,16 +171,14 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 	}
 
 	for _, p := range players {
+		if q.botMgr.isBot(p) {
+			log.Infof("skip set locked token game ID for bot player: %s", p)
+			continue
+		}
 		err = db.SetLockedTokenGameID(q.ctx, p.Id, p.TemporaryAddress, gid)
 		if err != nil {
-			// bot never lock token
-			if err == db.ErrNotFound && q.botMgr.isInGame(p) {
-				log.Debugw("bot token lock record not found when setting locked token game id", "player", p)
-			} else {
-				log.Errorf("set locked token game id failed: %s", err.Error())
-				return err
-			}
-
+			log.Errorf("set locked token game id failed, player: %s, err: %s", p.String(), err.Error())
+			return err
 		}
 		delete(q.queue, p)
 		err = q.queueCache.Delete(p.String())
