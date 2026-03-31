@@ -14,6 +14,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/room_server/worker/queue"
+	"github.com/CryptoElementals/common/room_server/worker/turnament"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
@@ -30,8 +31,9 @@ type Service struct {
 	pubsub    *rpc.PubSub
 	rpcServer *rpc.Rpc
 	chainSvc *chain.Chain
-	gameSvc  *game.Service
-	queueSvc *queue.Service
+	gameSvc     *game.Service
+	queueSvc    *queue.Service
+	tournSvc    *turnament.TournamentQueueService
 }
 
 func New(ctx context.Context,
@@ -83,8 +85,10 @@ func New(ctx context.Context,
 	queueSvc := queue.NewService(ctx, s.mgr, s.pubsub, c, gameSvc, cfg.MinTokenToJoinQueue,
 		argsTemplate.GameContinueTimeout, argsTemplate.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
+	tournSvc := turnament.NewTournamentQueueService(ctx, gameSvc, cfg.MinTokenToJoinQueue)
+	s.tournSvc = tournSvc
 	gameSvc.SetPlayerQueue(queueSvc)
-	gameSvc.SetGameResultSettler(queueSvc)
+	gameSvc.SetGameResultSettler(&gameResultSettlerChain{queueSvc: queueSvc, tournSvc: tournSvc})
 	s.pubsub.SetPlayerManager(gameSvc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	rpcServer := rpc.NewRpc(
@@ -96,6 +100,11 @@ func New(ctx context.Context,
 	proto.RegisterRpcServiceServer(server, s.rpcServer)
 	s.server = server
 	return s, nil
+}
+
+// TournamentQueue exposes tournament registration and lifecycle for RPC wiring.
+func (s *Service) TournamentQueue() *turnament.TournamentQueueService {
+	return s.tournSvc
 }
 
 func (s *Service) Start() error {
@@ -117,6 +126,9 @@ func (s *Service) Start() error {
 		return err
 	}
 	log.Info("queue service started")
+	log.Info("starting tournament queue service")
+	s.tournSvc.Start()
+	log.Info("tournament queue service started")
 	log.Info("starting listener")
 	err = s.startListener()
 	if err != nil {
@@ -127,6 +139,10 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Stop() {
+	log.Info("stopping tournament queue service")
+	s.tournSvc.Stop()
+	log.Info("tournament queue service stopped")
+
 	log.Info("stopping queue service")
 	s.queueSvc.Stop()
 	log.Info("queue service closed")

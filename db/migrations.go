@@ -26,6 +26,10 @@ func Migrate() error {
 		&dao.LockedUserToken{},
 		&dao.DevTempKey{},
 		&dao.UserStat{},
+		&dao.TournamentSchedule{},
+		&dao.Tournament{},
+		&dao.TournamentEntry{},
+		&dao.TournamentMatch{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -53,6 +57,10 @@ func MigrateMemDb() error {
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
 		&dao.DevTempKey{},
+		&dao.TournamentSchedule{},
+		&dao.Tournament{},
+		&dao.TournamentEntry{},
+		&dao.TournamentMatch{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

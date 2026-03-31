@@ -36,6 +36,8 @@ type GameCompletedEvent struct {
 type GameMatchedEvent struct {
 	Players             []PlayerAddress
 	ConfirmationTimeout int64 // Timeout for game match confirmation
+	// GameType is types.GameTypePVP (default) or types.GameTypeTournament; 0 means PVP.
+	GameType uint
 }
 
 type GameContinueEvent struct {

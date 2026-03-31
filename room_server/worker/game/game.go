@@ -67,7 +67,11 @@ func NewGame(
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
+	gameType uint,
 	gameArgs *dao.GameArgs) *Game {
+	if gameType == 0 {
+		gameType = types.GameTypePVP
+	}
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
 	ga := *gameArgs
@@ -82,7 +86,7 @@ func NewGame(
 	}
 	gameInfo := &dao.Game{
 		Players:  daoPlayers,
-		Type:     types.GameTypePVP,
+		Type:     gameType,
 		GameArgs: &ga,
 	}
 	game := &Game{

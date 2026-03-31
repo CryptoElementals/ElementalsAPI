@@ -201,7 +201,7 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 	if r.stopped {
 		return 0, errors.New("server stopping, drop game matched event")
 	}
-	gameID, err := r.createGame(evt.Players)
+	gameID, err := r.createGame(evt.Players, evt.GameType)
 	if err != nil {
 		return 0, err
 	}
@@ -340,7 +340,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, r.cloneGameArgs())
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, types.GameTypePVP, r.cloneGameArgs())
 	if err := game.pushStateToContractCreating(); err != nil {
 		return 0, err
 	}
@@ -350,8 +350,11 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 	return game.gameInfo.ID, nil
 }
 
-func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, r.cloneGameArgs())
+func (r *GameManager) createGame(players []types.PlayerAddress, gameType uint) (uint, error) {
+	if gameType == 0 {
+		gameType = types.GameTypePVP
+	}
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, r.cloneGameArgs())
 	if err := game.persistInsertNewGameGraph(); err != nil {
 		return 0, err
 	}

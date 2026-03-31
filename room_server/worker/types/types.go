@@ -20,7 +20,10 @@ const (
 	WORKER_TYPE_QUEUE        = 5
 )
 
-const GameTypePVP = 1
+const (
+	GameTypePVP        = 1
+	GameTypeTournament = 2
+)
 
 // well known worker id
 const (
