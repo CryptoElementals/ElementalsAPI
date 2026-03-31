@@ -8,6 +8,7 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
@@ -73,10 +74,14 @@ func New(ctx context.Context,
 		return nil, err
 	}
 	s.chainSvc = chainSvc
-	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, &cfg.GameParams, chainSvc, cfg.PoolBatchSize)
+	argsTemplate, err := db.LoadRoomServerGameArgs(cfg.GameArgsID)
+	if err != nil {
+		log.Fatalf("game_args template required (game-args-id=%d): %v", cfg.GameArgsID, err)
+	}
+	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc = gameSvc
-	queueSvc := queue.NewService(ctx, s.mgr, s.pubsub, c, gameSvc, int32(cfg.GameParams.TokenThreshold),
-		cfg.GameParams.GameContinueTimeout, cfg.GameParams.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
+	queueSvc := queue.NewService(ctx, s.mgr, s.pubsub, c, gameSvc, cfg.MinTokenToJoinQueue,
+		argsTemplate.GameContinueTimeout, argsTemplate.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
 	gameSvc.SetPlayerQueue(queueSvc)
 	gameSvc.SetGameResultSettler(queueSvc)

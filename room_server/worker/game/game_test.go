@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -17,10 +16,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testGameArgs = dao.GameArgs{
-	MaxRounds:        3,
-	MaxTurnsPerRound: 3,
-	InitialHP:        3000,
+func newTestGameArgsRow(t *testing.T, initialHP int64) *dao.GameArgs {
+	t.Helper()
+	ga := &dao.GameArgs{
+		MaxRounds:                             3,
+		MaxTurnsPerRound:                      3,
+		InitialHP:                             initialHP,
+		InitialMultiplier:                     1,
+		ConfirmationTimeout:                   60,
+		CommitmentSubmissionTimeout:           60,
+		CardSubmissionTimeout:                 60,
+		GameContinueTimeout:                   120,
+		ConfirmationTimeoutRedundancy:         10,
+		CommitmentSubmissionTimeoutRedundancy: 10,
+		CardSubmissionTimeoutRedundancy:       10,
+		GameContinueTimeoutRedundancy:         10,
+	}
+	require.NoError(t, db.Get().Create(ga).Error)
+	require.NotZero(t, ga.ID)
+	return ga
 }
 
 var testWorkerManager *worker.WorkerManager
@@ -158,10 +172,11 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 	}, 3*time.Second, 20*time.Millisecond, "persisted game after match")
 	gi, err := db.GetActiveGameByPlayer(playerAddress1.Id, playerAddress1.TemporaryAddress)
 	require.NoError(t, err)
+	require.NotNil(t, gi.GameArgs)
 	created := &types.GameCreatedEvent{
 		GameID:              gi.ID,
 		Players:             []types.PlayerAddress{playerAddress1, playerAddress2},
-		ConfirmationTimeout: testGameArgs.ConfirmationTimeout,
+		ConfirmationTimeout: gi.GameArgs.ConfirmationTimeout,
 	}
 	for _, p := range []types.PlayerAddress{playerAddress1, playerAddress2} {
 		testWorkerManager.SendEvent(p.String(), &types.Event{Sender: types.GAME_MANAGER_ID, Data: created})
@@ -177,8 +192,9 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
+	ga := newTestGameArgsRow(t, 3000)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, testGameArgs, contractClient, 0)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0)
 	registerGameManagerWorker(gameManager)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
@@ -244,10 +260,8 @@ func TestGameStateMachine(t *testing.T) {
 		require.EqualExportedValues(t, resp.GameResult, respDb.GameResult)
 	}
 	t.Run("1 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, &config.GameParamConfig{
-			MaxRounds: 3,
-			InitialHP: 1000,
-		}, contractClient, 0)
+		ga := newTestGameArgsRow(t, 1000)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -256,10 +270,8 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 1, true)
 	})
 	t.Run("2 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, &config.GameParamConfig{
-			MaxRounds: 3,
-			InitialHP: 3000,
-		}, contractClient, 0)
+		ga := newTestGameArgsRow(t, 3000)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -269,10 +281,8 @@ func TestGameStateMachine(t *testing.T) {
 		compareRound(svc, 2, true)
 	})
 	t.Run("3 rounds", func(t *testing.T) {
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, &config.GameParamConfig{
-			MaxRounds: 3,
-			InitialHP: 10000,
-		}, contractClient, 0)
+		ga := newTestGameArgsRow(t, 10000)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

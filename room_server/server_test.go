@@ -32,6 +32,24 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 	if len(timeout) > 0 {
 		gametTimeout = timeout[0]
 	}
+	if gametTimeout == 0 {
+		gametTimeout = 10
+	}
+	ga := &dao.GameArgs{
+		MaxRounds:                             3,
+		InitialHP:                             3000,
+		InitialMultiplier:                     1,
+		ConfirmationTimeout:                   gametTimeout,
+		CommitmentSubmissionTimeout:           gametTimeout,
+		CardSubmissionTimeout:                 gametTimeout,
+		GameContinueTimeout:                   gametTimeout,
+		ConfirmationTimeoutRedundancy:         10,
+		CommitmentSubmissionTimeoutRedundancy: 10,
+		CardSubmissionTimeoutRedundancy:       10,
+		GameContinueTimeoutRedundancy:         10,
+		MaxTurnsPerRound:                      3,
+	}
+	require.NoError(t, db.Get().Create(ga).Error)
 	cfg := &config.RoomServerConfig{
 		LogCfg: log.Config{
 			Development: true,
@@ -46,24 +64,24 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		},
 		WalletPaths: []string{tempFile},
 
-		ListenPort: 30011,
-		GameParams: config.GameParamConfig{
-			TokenThreshold:              1000,
-			InitialMultiplier:           1,
-			SystemFeeRate:               0.016,
-			WinnerPointRate:             0.012,
-			LoserPointRate:              0.004,
-			TieTokenRate:                0.008,
-			TiePointRate:                0.008,
-			BaseStake:                   1000,
-			CommitmentSubmissionTimeout: gametTimeout,
-			CardSubmissionTimeout:       gametTimeout,
-			GameContinueTimeout:         gametTimeout,
-			MaxRounds:                   3,
-			InitialHP:                   3000,
-		},
+		ListenPort:          30011,
+		MinTokenToJoinQueue: 1000,
+		GameArgsID:          ga.ID,
 	}
-	config.InitializeGameParams(&cfg.GameParams)
+	config.InitializeGameParams(&config.GameParamConfig{
+		InitialMultiplier: 1,
+		SystemFeeRate:     0.016,
+		WinnerPointRate:   0.012,
+		LoserPointRate:    0.004,
+		TieTokenRate:      0.008,
+		TiePointRate:      0.008,
+		BaseStake:         1000,
+		MaxRounds:         3,
+		InitialHP:         3000,
+	})
+	if config.GameParams.BaseStake == 0 {
+		config.GameParams.BaseStake = 1000
+	}
 	svr, err := New(context.Background(), cfg, true)
 	if err != nil {
 		require.NoError(t, err)

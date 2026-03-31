@@ -15,7 +15,6 @@ type RoomServerConfig struct {
 	RedisCfg            redis.Config    `mapstructure:"redis"`
 	DbCfg               db.Config       `mapstructure:"database"`
 	ChainCfg            ChainConfig     `mapstructure:"chain"`
-	GameParams          GameParamConfig `mapstructure:"game-params"`
 	WalletPaths         []string        `mapstructure:"wallet-paths"`
 	ListenPort          int64           `mapstructure:"listen-port"`
 	BotWaitTime         int64           `mapstructure:"bot-wait-time"`
@@ -23,6 +22,11 @@ type RoomServerConfig struct {
 	ShouldRecoverGames  bool            `mapstructure:"should-recover-games"`
 	// pool batch size for on-chain submissions
 	PoolBatchSize int `mapstructure:"pool-batch-size"`
+
+	// MinTokenToJoinQueue is the minimum token balance required to join matchmaking (API server uses its own game-params for HTTP checks).
+	MinTokenToJoinQueue int32 `mapstructure:"min-token-to-join-queue"`
+	// GameArgsID is the game_args row id used for new matches (must be non-zero; room server loads it at startup).
+	GameArgsID uint `mapstructure:"game-args-id"`
 }
 
 func InitRSConfig(configPath string) error {
@@ -35,8 +39,15 @@ func InitRSConfig(configPath string) error {
 		return err
 	}
 
-	// 初始化游戏参数
-	InitializeGameParams(&RSGConf.GameParams)
+	if RSGConf.MinTokenToJoinQueue == 0 {
+		RSGConf.MinTokenToJoinQueue = 10000
+	}
+
+	// Battle settlement / reward math still reads global GameParams (rates, base stake); not duplicated in game_args.
+	InitializeGameParams(&GameParamConfig{})
+	if GameParams.BaseStake == 0 {
+		GameParams.BaseStake = 1000
+	}
 
 	return nil
 }

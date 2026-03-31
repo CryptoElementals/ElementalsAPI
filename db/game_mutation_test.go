@@ -13,7 +13,7 @@ import (
 func TestWithGameMutationTx_loadsPreloadedGraph(t *testing.T) {
 	setupGamePersistMemDB(t)
 
-	ga := sampleGameArgs()
+	ga := seedSampleGameArgs(t)
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,
@@ -43,7 +43,7 @@ func TestWithGameMutationTx_loadsPreloadedGraph(t *testing.T) {
 func TestWithGameMutationTx_concurrentSameGame(t *testing.T) {
 	setupGamePersistMemDB(t)
 
-	ga := sampleGameArgs()
+	ga := seedSampleGameArgs(t)
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,

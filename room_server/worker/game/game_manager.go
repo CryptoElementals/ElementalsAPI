@@ -25,8 +25,9 @@ type GameManager struct {
 	publisher         Publisher
 	chainSvc          ContractClient
 	gameResultSettler GameResultSettler
-	args              dao.GameArgs
-	stopped           bool
+	// argsTemplate is the DB-backed game_args row (read-only, non-zero id); NewGame clones it per match.
+	argsTemplate *dao.GameArgs
+	stopped      bool
 
 	// Event pools for commitment and card submissions
 	txPool *txPool
@@ -115,23 +116,29 @@ func (r *GameManager) HandleSubmitPlayerCard(req *proto.SubmitPlayerCardRequest)
 func NewGameManager(ctx context.Context,
 	workerManagerService *worker.WorkerManager,
 	pub Publisher,
-	gameArgs dao.GameArgs,
+	argsTemplate *dao.GameArgs,
 	chainSvc ContractClient,
 	poolBatchSize int,
 ) *GameManager {
+	// argsTemplate is always a DB-loaded row with non-zero id (room server guarantees this).
 	m := &GameManager{
 		ctx:           ctx,
 		gameLocks:     make(map[uint]*sync.Mutex),
 		workerManager: workerManagerService,
 		publisher:     pub,
 		chainSvc:      chainSvc,
-		args:          gameArgs,
-	}
-	if m.args.MaxTurnsPerRound <= 0 {
-		m.args.MaxTurnsPerRound = 3
+		argsTemplate:  argsTemplate,
 	}
 	m.txPool = newTxPool(chainSvc, poolBatchSize)
 	return m
+}
+
+func (r *GameManager) cloneGameArgs() *dao.GameArgs {
+	ga := *r.argsTemplate
+	if ga.MaxTurnsPerRound <= 0 {
+		ga.MaxTurnsPerRound = 3
+	}
+	return &ga
 }
 
 func (r *GameManager) Start() error {
@@ -179,7 +186,7 @@ func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) erro
 		GameID:              gameID,
 		Players:             evt.Players,
 		IsContinueGame:      true,
-		ConfirmationTimeout: r.args.ConfirmationTimeout,
+		ConfirmationTimeout: r.argsTemplate.ConfirmationTimeout,
 	}
 	for _, player := range evt.Players {
 		r.notifyPlayerGameCreated(player, created)
@@ -202,7 +209,7 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 	created := &types.GameCreatedEvent{
 		GameID:              gameID,
 		Players:             evt.Players,
-		ConfirmationTimeout: r.args.ConfirmationTimeout,
+		ConfirmationTimeout: r.argsTemplate.ConfirmationTimeout,
 	}
 	for _, player := range evt.Players {
 		r.notifyPlayerGameCreated(player, created)
@@ -333,7 +340,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, &r.args)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, r.cloneGameArgs())
 	if err := game.pushStateToContractCreating(); err != nil {
 		return 0, err
 	}
@@ -344,7 +351,7 @@ func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) 
 }
 
 func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, &r.args)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, r.cloneGameArgs())
 	if err := game.persistInsertNewGameGraph(); err != nil {
 		return 0, err
 	}

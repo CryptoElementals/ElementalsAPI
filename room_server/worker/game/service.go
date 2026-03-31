@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
@@ -52,11 +51,12 @@ type PlayerQueue interface {
 }
 
 type Service struct {
-	ctx         context.Context
-	gameManager *GameManager
-	playerMu    sync.Mutex
-	connected   map[types.PlayerAddress]struct{}
-	queue       PlayerQueue
+	ctx              context.Context
+	gameManager      *GameManager
+	gameArgsTemplate *dao.GameArgs
+	playerMu         sync.Mutex
+	connected        map[types.PlayerAddress]struct{}
+	queue            PlayerQueue
 }
 
 // SubmitTransactions implements rpc/server.ChainRequestHandler by delegating
@@ -69,31 +69,16 @@ func NewService(
 	ctx context.Context,
 	workerManager *worker.WorkerManager,
 	pub Publisher,
-	gameConfig *config.GameParamConfig,
+	argsTemplate *dao.GameArgs,
 	chainSvc ContractClient,
-	poolBatchSize int) *Service {
-	gameArgs := dao.GameArgs{
-		MaxRounds:         gameConfig.MaxRounds,
-		InitialHP:         gameConfig.InitialHP,
-		InitialMultiplier: int64(gameConfig.InitialMultiplier),
-
-		ConfirmationTimeout:         gameConfig.ConfirmationTimeout,
-		CommitmentSubmissionTimeout: gameConfig.CommitmentSubmissionTimeout,
-		CardSubmissionTimeout:       gameConfig.CardSubmissionTimeout,
-		GameContinueTimeout:         gameConfig.GameContinueTimeout,
-
-		ConfirmationTimeoutRedundancy:         gameConfig.ConfirmationTimeoutRedundancy,
-		CommitmentSubmissionTimeoutRedundancy: gameConfig.CommitmentSubmissionTimeoutRedundancy,
-		CardSubmissionTimeoutRedundancy:       gameConfig.CardSubmissionTimeoutRedundancy,
-		GameContinueTimeoutRedundancy:         gameConfig.GameContinueTimeoutRedundancy,
-
-		MaxTurnsPerRound: gameConfig.MaxTurnsPerRound,
-	}
-	mgr := NewGameManager(ctx, workerManager, pub, gameArgs, chainSvc, poolBatchSize)
+	poolBatchSize int,
+) *Service {
+	mgr := NewGameManager(ctx, workerManager, pub, argsTemplate, chainSvc, poolBatchSize)
 	return &Service{
-		ctx:         ctx,
-		gameManager: mgr,
-		connected:   make(map[types.PlayerAddress]struct{}),
+		ctx:              ctx,
+		gameManager:      mgr,
+		gameArgsTemplate: argsTemplate,
+		connected:        make(map[types.PlayerAddress]struct{}),
 	}
 }
 

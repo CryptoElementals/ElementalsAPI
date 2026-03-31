@@ -3,7 +3,6 @@ package game
 import (
 	"fmt"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -100,8 +99,9 @@ func (r *round) updatePlayerHPAndLostHP(player *gamePlayer, beforeHP int64, hpDe
 	damage := max(int(beforeHP)-int(player.currentHP), 0)
 
 	player.totalLostHP += int64(damage)
-	if player.totalLostHP > config.GameParams.InitialHP {
-		player.totalLostHP = config.GameParams.InitialHP
+	maxHP := r.game.GameArgs.InitialHP
+	if player.totalLostHP > maxHP {
+		player.totalLostHP = maxHP
 	}
 
 	player.multiplier = r.calculateMultiplierByLostHP(int(player.totalLostHP))

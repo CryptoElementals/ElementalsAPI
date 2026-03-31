@@ -31,10 +31,19 @@ func sampleGameArgs() *dao.GameArgs {
 	}
 }
 
+// seedSampleGameArgs inserts a template game_args row (mirrors production: id exists before InsertNewGameGraph).
+func seedSampleGameArgs(t *testing.T) *dao.GameArgs {
+	t.Helper()
+	ga := sampleGameArgs()
+	require.NoError(t, Get().Create(ga).Error)
+	require.NotZero(t, ga.ID)
+	return ga
+}
+
 func TestGamePersist_InsertAndGranularUpdates(t *testing.T) {
 	setupGamePersistMemDB(t)
 
-	ga := sampleGameArgs()
+	ga := seedSampleGameArgs(t)
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,
@@ -140,7 +149,7 @@ func attachSampleTurnForPersistTest(g *dao.Game) {
 
 func TestPhase3_SaveFullGameGraphPreservesSnapshot(t *testing.T) {
 	setupGamePersistMemDB(t)
-	ga := sampleGameArgs()
+	ga := seedSampleGameArgs(t)
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,

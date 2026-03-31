@@ -36,16 +36,11 @@ func UpdateGameFieldsTx(tx *gorm.DB, gameID uint, u GameFieldsUpdate) error {
 	return tx.Model(&dao.Game{}).Where("id = ?", gameID).Updates(updates).Error
 }
 
-// InsertNewGameGraph inserts game_args (if needed), games, game_player_infos, turns, and
-// player_turn_infos in FK order. It does not persist GameResult. Mutates IDs on the given graph.
+// InsertNewGameGraph inserts games, game_player_infos, turns, and player_turn_infos in FK order.
+// game.GameArgs must be non-nil and point at an existing game_args row (non-zero id); that row is not created here.
 // Card effects on PTIs are persisted via ReplaceCardEffectsTx after each new PTI if present.
 func InsertNewGameGraph(tx *gorm.DB, game *dao.Game) error {
-	if game.GameArgs != nil && game.GameArgs.ID == 0 {
-		if err := tx.Create(game.GameArgs).Error; err != nil {
-			return err
-		}
-		game.GameArgsID = game.GameArgs.ID
-	}
+	game.GameArgsID = game.GameArgs.ID
 	if err := tx.Omit("GameArgs", "Players", "Turns", "GameResult").Create(game).Error; err != nil {
 		return err
 	}

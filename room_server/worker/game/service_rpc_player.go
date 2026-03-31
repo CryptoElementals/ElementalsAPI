@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -105,11 +104,13 @@ func (s *Service) GetPlayerToken(req *proto.GetPlayerTokenRequest) (*proto.GetPl
 }
 
 func (s *Service) GetTimeoutConfig() (*proto.TimeoutConfig, error) {
+	// gameArgsTemplate is always set when the service is constructed from the room server bootstrap path.
+	ga := s.gameArgsTemplate
 	cfg := &proto.TimeoutConfig{
-		ConfirmationTimeout:         config.GameParams.ConfirmationTimeout,
-		CommitmentSubmissionTimeout: config.GameParams.CommitmentSubmissionTimeout,
-		CardSubmissionTimeout:       config.GameParams.CardSubmissionTimeout,
-		GameContinueTimeout:         config.GameParams.GameContinueTimeout,
+		ConfirmationTimeout:         ga.ConfirmationTimeout,
+		CommitmentSubmissionTimeout: ga.CommitmentSubmissionTimeout,
+		CardSubmissionTimeout:       ga.CardSubmissionTimeout,
+		GameContinueTimeout:         ga.GameContinueTimeout,
 	}
 	return cfg, nil
 }
