@@ -134,10 +134,16 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	task.Response.PvPInfo.TurnStartAt = gamePhase.TurnStartAt
 	task.Response.PvPInfo.TimeoutDuration = uint64(config.GameParams.GameContinueTimeout)
 
-	// Determine player status from GamePhase structure
-	// If GameID == 0 and no players, check if in queue
+	// If GameID == 0 and no players, check queue on lobby
 	if gamePhase.GameID == 0 && len(gamePhase.Players) == 0 {
-		inQueueResp, err := rpcClient.IsPlayerInQueue(context.Background(), playerAddr)
+		lobbyClient := client.GetGlobalLobbyClient()
+		if lobbyClient == nil {
+			task.Response.PvPInfo.Phase = 0
+			task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
+			task.Response.BaseResponse.RetCode = 1002
+			return task.Response, nil
+		}
+		inQueueResp, err := lobbyClient.IsPlayerInQueue(context.Background(), playerAddr)
 		if err == nil && inQueueResp != nil && inQueueResp.IsInQueue {
 			task.Response.PvPInfo.Phase = 1
 			task.Response.BaseResponse.Message = "Player is in match queue"

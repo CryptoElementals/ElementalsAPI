@@ -17,9 +17,8 @@ import (
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
-type PlayerManager interface {
-	AddPlayer(address types.PlayerAddress) error
-	RemovePlayer(address types.PlayerAddress)
+// PubSubBotHooks run when a bot subscriber connects or disconnects (e.g. lobby queue bot registration).
+type PubSubBotHooks interface {
 	AddBotPlayer(address types.PlayerAddress) error
 	RemoveBotPlayer(address types.PlayerAddress)
 }
@@ -32,7 +31,7 @@ type PubSub struct {
 
 	topics        map[string]*Topic
 	subscribers   map[string]map[string]*Subscriber
-	playerManager PlayerManager
+	botHooks      PubSubBotHooks
 }
 
 type Topic struct {
@@ -62,8 +61,9 @@ func NewPubSub() *PubSub {
 	return s
 }
 
-func (s *PubSub) SetPlayerManager(playerManager PlayerManager) {
-	s.playerManager = playerManager
+// SetBotHooks registers bot subscribe/unsubscribe hooks (lobby queue).
+func (s *PubSub) SetBotHooks(b PubSubBotHooks) {
+	s.botHooks = b
 }
 
 func (s *PubSub) Stop() {
@@ -159,10 +159,8 @@ func (s *PubSub) Subscribe(req *pb.SubscribeRequest, stream pb.PubSubService_Sub
 	}
 	s.mu.Unlock()
 
-	if strings.HasPrefix(req.SubscriberId, "bot") {
-		s.playerManager.AddBotPlayer(addr)
-	} else {
-		s.playerManager.AddPlayer(addr)
+	if strings.HasPrefix(req.SubscriberId, "bot") && s.botHooks != nil {
+		_ = s.botHooks.AddBotPlayer(addr)
 	}
 
 	ctx, cancel := context.WithCancel(stream.Context())
@@ -210,15 +208,11 @@ func (s *PubSub) Unsubscribe(ctx context.Context, req *pb.UnsubscribeRequest) (*
 		return nil, status.Error(codes.InvalidArgument, "topic and subscriber_id are required")
 	}
 
-	addr := types.PlayerAddress{}
-	err := addr.Parse(req.Topic)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "topic is invalid, topic should be in 'walletAddress_temporaryAddress' format")
-	}
-	if strings.HasPrefix(req.SubscriberId, "bot") {
-		s.playerManager.RemoveBotPlayer(addr)
-	} else {
-		s.playerManager.RemovePlayer(addr)
+	if strings.HasPrefix(req.SubscriberId, "bot") && s.botHooks != nil {
+		var addr types.PlayerAddress
+		if err := addr.Parse(req.Topic); err == nil {
+			s.botHooks.RemoveBotPlayer(addr)
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

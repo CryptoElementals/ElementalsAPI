@@ -130,11 +130,10 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	// 通过gRPC调用RoomServer的JoinQueue
-	rpcClient := client.GetGlobalRpcClient()
-	if rpcClient == nil {
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "gRPC client not initialized"
+		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
 		return task.Response, nil
 	}
 
@@ -143,10 +142,10 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 		TemporaryAddress: lowercaseTempAddress,
 	}
 
-	_, err = rpcClient.JoinQueue(context.Background(), playerAddr)
+	_, err = lobbyClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer JoinQueue failed: " + err.Error()
+		task.Response.BaseResponse.Message = "Lobby JoinQueue failed: " + err.Error()
 		return task.Response, nil
 	}
 

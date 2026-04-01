@@ -5,17 +5,11 @@ import (
 	"sync"
 	"testing"
 
-	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	pb "github.com/CryptoElementals/common/rpc/proto"
-	"github.com/golang/mock/gomock"
 )
 
 func TestPubSubServer(t *testing.T) {
-	playerManager := tt.NewMockPlayerManager(gomock.NewController(t))
-	playerManager.EXPECT().AddPlayer(gomock.Any()).AnyTimes().Return(nil)
-	playerManager.EXPECT().RemovePlayer(gomock.Any()).AnyTimes()
 	server := NewPubSub()
-	server.SetPlayerManager(playerManager)
 
 	// 测试发布消息
 	t.Run("Publish", func(t *testing.T) {
@@ -95,11 +89,7 @@ func TestPubSubServer(t *testing.T) {
 }
 
 func TestPubSubServerConcurrency(t *testing.T) {
-	playerManager := tt.NewMockPlayerManager(gomock.NewController(t))
-	playerManager.EXPECT().AddPlayer(gomock.Any()).AnyTimes().Return(nil)
-	playerManager.EXPECT().RemovePlayer(gomock.Any()).AnyTimes()
 	server := NewPubSub()
-	server.SetPlayerManager(playerManager)
 	// 并发发布消息
 	t.Run("ConcurrentPublish", func(t *testing.T) {
 		const numGoroutines = 10
@@ -151,11 +141,7 @@ func TestPubSubServerConcurrency(t *testing.T) {
 }
 
 func TestPubSubServerValidation(t *testing.T) {
-	playerManager := tt.NewMockPlayerManager(gomock.NewController(t))
-	playerManager.EXPECT().AddPlayer(gomock.Any()).AnyTimes().Return(nil)
-	playerManager.EXPECT().RemovePlayer(gomock.Any()).AnyTimes()
 	server := NewPubSub()
-	server.SetPlayerManager(playerManager)
 	t.Run("PublishValidation", func(t *testing.T) {
 		// 测试空主题
 		req := &pb.PublishRequest{
@@ -167,14 +153,14 @@ func TestPubSubServerValidation(t *testing.T) {
 			t.Error("Expected error for empty topic")
 		}
 
-		// 测试空消息
+		// nil event
 		req = &pb.PublishRequest{
 			Topic: "test-topic",
-			Event: &pb.Event{},
+			Event: nil,
 		}
 		_, err = server.Publish(context.Background(), req)
 		if err == nil {
-			t.Error("Expected error for empty message")
+			t.Error("Expected error for nil event")
 		}
 	})
 

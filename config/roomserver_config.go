@@ -27,6 +27,8 @@ type RoomServerConfig struct {
 	MinTokenToJoinQueue int32 `mapstructure:"min-token-to-join-queue"`
 	// GameArgsID is the game_args row id used for new matches (must be non-zero; room server loads it at startup).
 	GameArgsID uint `mapstructure:"game-args-id"`
+	// LobbyServerAddress is the gRPC address (host:port) of ele-lobbyserver for queue hooks and game settlement.
+	LobbyServerAddress string `mapstructure:"lobby-server-address"`
 }
 
 func InitRSConfig(configPath string) error {

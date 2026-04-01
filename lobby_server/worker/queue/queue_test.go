@@ -7,15 +7,12 @@ import (
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
-
-var globalTestWorkerManager *worker.WorkerManager
 
 type testEventHandler struct {
 	evtChan chan *types.Event
@@ -52,14 +49,12 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 	}
-	globalTestWorkerManager = worker.NewWorkerManager(context.Background())
-
 	m.Run()
 }
 
 func TestJoinExitQueue(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -80,7 +75,7 @@ func TestGameMatched(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	gameCreator := tt.NewMockGameCreator(ctrl)
 	gameCreator.EXPECT().CreatePvpGameAfterQueueConfirm(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint(1), nil).Times(1)
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{

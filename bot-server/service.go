@@ -15,7 +15,6 @@ import (
 type Service struct {
 	ctx          context.Context
 	ccl          context.CancelFunc
-	mimicPlayers bool
 	bots         []*Bot
 	addresses    []*types.PlayerAddress
 	chainClient  *ethclient.Client
@@ -40,7 +39,7 @@ func NewService(
 	walletInfos []config.WalletInfo,
 	chainEndpoint string,
 	roomServerEndpoint string,
-	mimicPlayers bool,
+	lobbyServerEndpoint string,
 ) (*Service, error) {
 	chainClient, err := ethclient.Dial(chainEndpoint)
 	if err != nil {
@@ -50,7 +49,7 @@ func NewService(
 	if err != nil {
 		return nil, err
 	}
-	rpcClient, err := rpc.NewClient(roomServerEndpoint)
+	rpcClient, err := rpc.NewClient(roomServerEndpoint, lobbyServerEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +66,9 @@ func NewService(
 	}
 	ctx, ccl := context.WithCancel(ctx)
 	return &Service{
-		ctx:          ctx,
-		ccl:          ccl,
-		mimicPlayers: mimicPlayers,
-		chainClient:  chainClient,
+		ctx:         ctx,
+		ccl:         ccl,
+		chainClient: chainClient,
 		rpcClient:    rpcClient,
 		bots:         bots,
 		addresses:    addresses,

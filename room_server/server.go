@@ -6,15 +6,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
-	"github.com/CryptoElementals/common/room_server/worker/queue"
-	"github.com/CryptoElementals/common/room_server/worker/turnament"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
@@ -24,21 +21,21 @@ import (
 )
 
 type Service struct {
-	ctx       context.Context
-	cfg       *config.RoomServerConfig
-	mgr       *worker.WorkerManager
-	server    *grpc.Server
-	pubsub    *rpc.PubSub
-	rpcServer *rpc.Rpc
-	chainSvc *chain.Chain
-	gameSvc     *game.Service
-	queueSvc    *queue.Service
-	tournSvc    *turnament.TournamentQueueService
+	ctx        context.Context
+	cfg        *config.RoomServerConfig
+	mgr        *worker.WorkerManager
+	server     *grpc.Server
+	pubsub     *rpc.PubSub
+	chainSvc   *chain.Chain
+	gameSvc    *game.Service
+	lobbyConn  *grpc.ClientConn
+	rpcServer  *rpc.Rpc
 }
 
 func New(ctx context.Context,
 	cfg *config.RoomServerConfig,
 	isDevelop ...bool) (*Service, error) {
+	_ = isDevelop
 	s := &Service{
 		ctx:    ctx,
 		cfg:    cfg,
@@ -61,16 +58,6 @@ func New(ctx context.Context,
 		}
 		wallets = append(wallets, w)
 	}
-	var c cache.Cache
-	if len(isDevelop) != 0 && isDevelop[0] {
-		c = cache.NewMemCache()
-	} else {
-		c, err = cache.NewRedisCache()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	chainSvc, err := chain.NewChain(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV3ContractAddress, wallets)
 	if err != nil {
 		return nil, err
@@ -82,30 +69,15 @@ func New(ctx context.Context,
 	}
 	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc = gameSvc
-	queueSvc := queue.NewService(ctx, s.mgr, s.pubsub, c, gameSvc, cfg.MinTokenToJoinQueue,
-		argsTemplate.ConfirmationTimeout,
-		argsTemplate.GameContinueTimeout, argsTemplate.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
-	s.queueSvc = queueSvc
-	tournSvc := turnament.NewTournamentQueueService(ctx, gameSvc, cfg.MinTokenToJoinQueue)
-	s.tournSvc = tournSvc
-	gameSvc.SetPlayerQueue(queueSvc)
-	gameSvc.SetGameResultSettler(&gameResultSettlerChain{queueSvc: queueSvc, tournSvc: tournSvc})
-	s.pubsub.SetPlayerManager(gameSvc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
-	rpcServer := rpc.NewRpc(
-		gameSvc,
-		gameSvc,
-	)
+	// game.Service implements chain RPC, player RPC, and GamePhaseHandler.
+	rpcServer := rpc.NewRpc(gameSvc, gameSvc, gameSvc)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)
 	proto.RegisterRpcServiceServer(server, s.rpcServer)
+	proto.RegisterRoomWorkerServiceServer(server, newRoomWorkerService(gameSvc))
 	s.server = server
 	return s, nil
-}
-
-// TournamentQueue exposes tournament registration and lifecycle for RPC wiring.
-func (s *Service) TournamentQueue() *turnament.TournamentQueueService {
-	return s.tournSvc
 }
 
 func (s *Service) Start() error {
@@ -121,36 +93,35 @@ func (s *Service) Start() error {
 		return err
 	}
 	log.Info("game service started")
-	log.Info("starting queue service")
-	err = s.queueSvc.Start()
-	if err != nil {
-		return err
-	}
-	log.Info("queue service started")
-	log.Info("starting tournament queue service")
-	s.tournSvc.Start()
-	log.Info("tournament queue service started")
+
 	log.Info("starting listener")
 	err = s.startListener()
 	if err != nil {
 		return err
 	}
 	log.Info("listener started")
+
+	log.Info("connecting to lobby server (background)")
+	go func() {
+		if err := s.connectLobby(s.ctx); err != nil {
+			log.Errorw("lobby connection failed", "err", err)
+			return
+		}
+		log.Info("lobby connection established")
+	}()
+
 	return nil
 }
 
 func (s *Service) Stop() {
-	log.Info("stopping tournament queue service")
-	s.tournSvc.Stop()
-	log.Info("tournament queue service stopped")
-
-	log.Info("stopping queue service")
-	s.queueSvc.Stop()
-	log.Info("queue service closed")
-
 	log.Info("stopping game service")
 	s.gameSvc.Stop()
 	log.Info("game service stopped")
+
+	if s.lobbyConn != nil {
+		_ = s.lobbyConn.Close()
+		s.lobbyConn = nil
+	}
 
 	log.Info("stopping pubsub service")
 	s.pubsub.Stop()
@@ -178,7 +149,6 @@ func (s *Service) startListener() error {
 func UnaryServerInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	start := time.Now()
 
-	// Call the next handler in the chain (your actual service method)
 	resp, err := handler(ctx, req)
 
 	duration := time.Since(start)

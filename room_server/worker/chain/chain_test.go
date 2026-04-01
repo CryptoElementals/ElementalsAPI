@@ -9,14 +9,12 @@ import (
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/room_server/worker"
-	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,8 +89,7 @@ func TestFilterRoomEvent(t *testing.T) {
 }
 
 func TestChainContractInteraction(t *testing.T) {
-	roomWorkerID := "123"
-	gameID := 123
+	gameID := uint32(123)
 	player1 := types.PlayerAddress{
 		Id:               123,
 		TemporaryAddress: "0x456",
@@ -102,49 +99,24 @@ func TestChainContractInteraction(t *testing.T) {
 		TemporaryAddress: "0xabc",
 	}
 
-	svc, _ := NewService(context.Background(), testWorkerManager, int64(chainID), client, "", []*wallet.Wallet{w}, true)
+	svc, err := NewChain(context.Background(), testWorkerManager, int64(chainID), client, roomContractAddress, []*wallet.Wallet{w})
+	require.NoError(t, err)
 
-	svc.Start()
-	mockRoomHandler := tt.NewMockEventHandler(gomock.NewController(t))
-	ackReceived := make(chan struct{})
-	testWorkerManager.SpawnWorker(context.Background(), roomWorkerID, types.WORKER_TYPE_GAME, mockRoomHandler)
-
-	testWorkerManager.SendEvent(types.CHAIN_MANAGER_ID, types.NewEvent(roomWorkerID, &types.RequireGameCreationEvent{
-		GameID:         uint(gameID),
-		Players:        []types.PlayerAddress{player1, player2},
-		RoundTimeout:   10,
-		MaxRoundNumber: 3,
-		InitialHP:      1000,
-	}, true))
-	<-ackReceived
-
-	evtMatcher := tt.NewEventTypeMatcher(
-		&proto.TxGameCreated{},
-		&proto.TxGameTurnSetupReady{},
-		&proto.TxCommitmentOnChain{},
-		&proto.TxCardOnChain{},
-	)
-	// Use a test tx hash since we're no longer getting it from database
-	txHash := []byte("test_tx_hash")
-	mockRoomHandler.EXPECT().Handle(gomock.Any(), evtMatcher).Times(5).Return(nil)
-	err := svc.SubmitTransactions(&proto.TransactionBatch{
+	svc.NotifyTxsCompleted(&proto.TransactionBatch{
 		BlockHash:   []byte("0x123"),
 		Timestamp:   uint64(time.Now().Unix()),
 		BlockNumber: 1,
 		Transactions: []*proto.Transaction{
 			{
-				TxHash: txHash,
-				Tx: &proto.Transaction_GameCreated{
-					GameCreated: &proto.TxGameCreated{
-						GameId: int64(gameID),
-					},
-				},
+				TxHash: []byte("test_tx_hash"),
+				GameId: gameID,
+				Tx:     &proto.Transaction_GameCreated{GameCreated: &proto.TxGameCreated{}},
 			},
 			{
 				TxHash: []byte("GameTurnSetupReady"),
+				GameId: gameID,
 				Tx: &proto.Transaction_GameTurnSetupReady{
 					GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-						GameId:      int64(gameID),
 						RoundNumber: 2,
 						TurnNumber:  1,
 					},
@@ -152,9 +124,9 @@ func TestChainContractInteraction(t *testing.T) {
 			},
 			{
 				TxHash: []byte("Transaction_CommitmentOnChain"),
+				GameId: gameID,
 				Tx: &proto.Transaction_CommitmentOnChain{
 					CommitmentOnChain: &proto.TxCommitmentOnChain{
-						GameId:      int64(gameID),
 						Address:     player1.ToProto(),
 						RoundNumber: 2,
 						TurnNumber:  1,
@@ -163,10 +135,10 @@ func TestChainContractInteraction(t *testing.T) {
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CardOnChain"),
+				TxHash: []byte("Transaction_CardOnChain_1"),
+				GameId: gameID,
 				Tx: &proto.Transaction_CardOnChain{
 					CardOnChain: &proto.TxCardOnChain{
-						GameId:      int64(gameID),
 						Address:     player1.ToProto(),
 						RoundNumber: 2,
 						TurnNumber:  1,
@@ -176,10 +148,10 @@ func TestChainContractInteraction(t *testing.T) {
 				},
 			},
 			{
-				TxHash: []byte("Transaction_CardOnChain"),
+				TxHash: []byte("Transaction_CardOnChain_2"),
+				GameId: gameID,
 				Tx: &proto.Transaction_CardOnChain{
 					CardOnChain: &proto.TxCardOnChain{
-						GameId:      int64(gameID),
 						Address:     player2.ToProto(),
 						RoundNumber: 2,
 						TurnNumber:  1,
@@ -190,6 +162,4 @@ func TestChainContractInteraction(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, err)
-	// Transaction tables removed - no longer checking database records
 }

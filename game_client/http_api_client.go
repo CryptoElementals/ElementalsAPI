@@ -256,25 +256,9 @@ func (c *HttpApiClient) ConfirmBattle(gameID uint, roundNumber, turnNumber uint3
 	return nil
 }
 
-// ConfirmMatch confirms a pending game_match (queue PVP or continue rematch) via HTTP API.
+// ConfirmMatch confirms a pending game_match. HTTP API support is not wired; use gRPC LobbyService.ConfirmMatch.
 func (c *HttpApiClient) ConfirmMatch(matchID int64, tempAddress, playerID string) error {
-	req := &api.ConfirmMatchRequest{
-		BaseRequest: api.BaseRequest{
-			Action:      api.CONFIRM_MATCH_LABEL,
-			RequestUUID: uuid.NewString(),
-		},
-		MatchID:     matchID,
-		TempAddress: tempAddress,
-		PlayerID:    playerID,
-	}
-	var resp api.ConfirmMatchResponse
-	if err := c.makeRequest(api.CONFIRM_MATCH_LABEL, req, &resp, true); err != nil {
-		return err
-	}
-	if resp.RetCode != 0 {
-		return fmt.Errorf("confirm match failed: %s", resp.Message)
-	}
-	return nil
+	return fmt.Errorf("ConfirmMatch is not available on HttpApiClient (match_id=%d); use gRPC lobby or add server API action", matchID)
 }
 
 // HasCollectedDailyReward checks if the daily reward has been collected

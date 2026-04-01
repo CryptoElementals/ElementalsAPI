@@ -90,11 +90,10 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 通过gRPC调用RoomServer的GetPlayerStatus
-	rpcClient := client.GetGlobalRpcClient()
-	if rpcClient == nil {
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "gRPC client not initialized"
+		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
 		return task.Response, nil
 	}
 
@@ -103,10 +102,10 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 		TemporaryAddress: tempAddress,
 	}
 
-	resp, err := rpcClient.GetPlayerStatus(context.Background(), req)
+	resp, err := lobbyClient.GetPlayerStatus(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer GetPlayerStatus failed: " + err.Error()
+		task.Response.BaseResponse.Message = "Lobby GetPlayerStatus failed: " + err.Error()
 		return task.Response, nil
 	}
 
@@ -134,4 +133,3 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "UNKNOWN"
 	}
 }
-

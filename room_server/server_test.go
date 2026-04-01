@@ -12,6 +12,7 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
+	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -22,6 +23,7 @@ import (
 
 var chainRPC = "http://152.32.231.145:8545"
 var svrUrl = "localhost:30011"
+var lobbyURL = "localhost:30012"
 var roomV2ContractAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
 var fakeRoomAddress = "0x22767b2ba3cba853af78c9d91c6c520a2b5cb428"
 
@@ -64,9 +66,10 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		},
 		WalletPaths: []string{tempFile},
 
-		ListenPort:          30011,
-		MinTokenToJoinQueue: 1000,
-		GameArgsID:          ga.ID,
+		ListenPort:           30011,
+		LobbyServerAddress:   "127.0.0.1:30012",
+		MinTokenToJoinQueue:  1000,
+		GameArgsID:           ga.ID,
 	}
 	config.InitializeGameParams(&config.GameParamConfig{
 		InitialMultiplier: 1,
@@ -90,6 +93,27 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 	if err != nil {
 		require.NoError(t, err)
 	}
+	lcfg := &config.LobbyServerConfig{
+		LogCfg:              cfg.LogCfg,
+		DbCfg:               cfg.DbCfg,
+		ListenPort:          30012,
+		RoomServerAddress:   "127.0.0.1:30011",
+		MinTokenToJoinQueue: cfg.MinTokenToJoinQueue,
+		GameArgsID:          ga.ID,
+		BotWaitTime:         0,
+		StatServiceEndpoint: "",
+		IsDevelop:           true,
+	}
+	go func() {
+		ls, e := lobbyserver.New(context.Background(), lcfg)
+		if e != nil {
+			panic(e)
+		}
+		if e := ls.Start(); e != nil {
+			panic(e)
+		}
+	}()
+	time.Sleep(3 * time.Second)
 }
 
 func TestMain(m *testing.M) {
@@ -241,7 +265,6 @@ func runClient(t *testing.T,
 								GameId: uint32(1), // game_id is required
 								Tx: &proto.Transaction_CommitmentOnChain{
 									CommitmentOnChain: &proto.TxCommitmentOnChain{
-										GameId:      int64(1),
 										Address:     addr.ToProtoNoWallet(),
 										RoundNumber: uint32(round),
 										TurnNumber:  1,
@@ -264,7 +287,6 @@ func runClient(t *testing.T,
 								GameId: uint32(1), // game_id is required
 								Tx: &proto.Transaction_CardOnChain{
 									CardOnChain: &proto.TxCardOnChain{
-										GameId:      int64(1),
 										Address:     addr.ToProtoNoWallet(),
 										RoundNumber: uint32(round),
 										TurnNumber:  1,
@@ -275,8 +297,8 @@ func runClient(t *testing.T,
 							},
 						},
 					}
-				case proto.EventType_TYPE_CARDS_ON_CHAIN:
-					t.Log("cards on chain")
+				case proto.EventType_TYPE_TURN_COMPLETE:
+					t.Log("turn complete")
 					// skip
 				case proto.EventType_TYPE_ROUND_COMPLETE:
 					t.Log("round complete")
@@ -307,7 +329,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	prepareCards(t)
 	prepareUserTokens(t)
 	setupTestSvc(t)
-	client, err := rpc.NewClient(svrUrl)
+	client, err := rpc.NewClient(svrUrl, lobbyURL)
 	require.NoError(t, err)
 	defer client.Close()
 	ctx, ccl := context.WithTimeout(context.Background(), 30*time.Second)
@@ -380,9 +402,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 						TxHash: txHashBytes,
 						GameId: uint32(gameID),
 						Tx: &proto.Transaction_GameCreated{
-							GameCreated: &proto.TxGameCreated{
-								GameId: int64(gameID),
-							},
+							GameCreated: &proto.TxGameCreated{},
 						},
 					},
 				},
@@ -398,7 +418,6 @@ func TestServer_BattleFullLogic(t *testing.T) {
 						GameId: uint32(gameID),
 						Tx: &proto.Transaction_GameTurnSetupReady{
 							GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-								GameId:      int64(gameID),
 								RoundNumber: uint32(round),
 								TurnNumber:  1,
 							},
@@ -431,7 +450,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 	prepareUserTokens(t)
 	prepareCards(t)
 	setupTestSvc(t, 10)
-	client, err := rpc.NewClient(svrUrl)
+	client, err := rpc.NewClient(svrUrl, lobbyURL)
 	require.NoError(t, err)
 	defer client.Close()
 	ctx := context.Background()
@@ -517,9 +536,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 								TxHash: txHashBytes,
 								GameId: uint32(gameID),
 								Tx: &proto.Transaction_GameCreated{
-									GameCreated: &proto.TxGameCreated{
-										GameId: int64(gameID),
-									},
+									GameCreated: &proto.TxGameCreated{},
 								},
 							},
 						},
@@ -535,7 +552,6 @@ func TestServer_BattleTimeout(t *testing.T) {
 								GameId: uint32(gameID),
 								Tx: &proto.Transaction_GameTurnSetupReady{
 									GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-										GameId:      int64(gameID),
 										RoundNumber: uint32(round),
 										TurnNumber:  1,
 									},
@@ -603,7 +619,7 @@ func TestServer_BattleContinue(t *testing.T) {
 	prepareUserTokens(t)
 	prepareCards(t)
 	setupTestSvc(t)
-	client, err := rpc.NewClient(svrUrl)
+	client, err := rpc.NewClient(svrUrl, lobbyURL)
 	require.NoError(t, err)
 	defer client.Close()
 	ctx, ccl := context.WithTimeout(context.Background(), 500*time.Second)
@@ -681,9 +697,7 @@ func TestServer_BattleContinue(t *testing.T) {
 							TxHash: txHashBytes,
 							GameId: uint32(gameID),
 							Tx: &proto.Transaction_GameCreated{
-								GameCreated: &proto.TxGameCreated{
-									GameId: int64(gameID),
-								},
+								GameCreated: &proto.TxGameCreated{},
 							},
 						},
 					},
@@ -699,7 +713,6 @@ func TestServer_BattleContinue(t *testing.T) {
 							GameId: uint32(gameID),
 							Tx: &proto.Transaction_GameTurnSetupReady{
 								GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-									GameId:      int64(gameID),
 									RoundNumber: uint32(round),
 									TurnNumber:  1,
 								},

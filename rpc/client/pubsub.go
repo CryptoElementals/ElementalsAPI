@@ -15,10 +15,11 @@ import (
 )
 
 type PubSubClient struct {
-	client pb.PubSubServiceClient
-	conn   *grpc.ClientConn
-	mu     sync.RWMutex
-	subs   map[string]context.CancelFunc
+	room  pb.PubSubServiceClient
+	lobby pb.PubSubServiceClient
+	conn  *grpc.ClientConn
+	mu    sync.RWMutex
+	subs  map[string]context.CancelFunc
 }
 
 func DailGrpcEndpoint(serverAddr string) (*grpc.ClientConn, error) {
@@ -29,132 +30,130 @@ func DailGrpcEndpoint(serverAddr string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
+// NewPubSubClient subscribes only to room PubSub (lobby events will not be delivered).
 func NewPubSubClient(conn *grpc.ClientConn) *PubSubClient {
-	client := pb.NewPubSubServiceClient(conn)
+	return NewPubSubClientDual(pb.NewPubSubServiceClient(conn), nil)
+}
+
+// NewPubSubClientDual subscribes to room and optionally lobby PubSub for the same player topic.
+func NewPubSubClientDual(room, lobby pb.PubSubServiceClient) *PubSubClient {
 	return &PubSubClient{
-		client: client,
-		conn:   conn,
-		subs:   make(map[string]context.CancelFunc),
+		room:  room,
+		lobby: lobby,
+		subs:  make(map[string]context.CancelFunc),
 	}
 }
 
 func (c *PubSubClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	// 取消所有订阅
 	for _, cancel := range c.subs {
 		cancel()
 	}
-
 	return nil
 }
 
 func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[string]string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	req := &pb.PublishRequest{
-		Topic:    topic,
-		Event:    event,
-		Metadata: metadata,
-	}
-
-	resp, err := c.client.Publish(ctx, req)
+	req := &pb.PublishRequest{Topic: topic, Event: event, Metadata: metadata}
+	resp, err := c.room.Publish(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to publish: %v", err)
 	}
-
 	fmt.Printf("Published message %s to topic %s (subscribers: %d)\n",
 		resp.MessageId, topic, resp.SubscriberCount)
 	return nil
 }
 
 func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Event, errChan chan error) error {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	c.mu.Lock()
-	c.subs[topic] = cancel
-	c.mu.Unlock()
-
-	req := &pb.SubscribeRequest{
-		Topic:        topic,
-		SubscriberId: subscriberID,
-	}
-
-	stream, err := c.client.Subscribe(ctx, req)
-	if err != nil {
-		cancel()
-		return fmt.Errorf("failed to subscribe: %v", err)
-	}
-
-	log.Infof("Subscribed to topic %s with ID %s\n", topic, subscriberID)
-	go func() {
-		defer close(evtChan)
-		defer close(errChan)
-		for {
-			msg, err := stream.Recv()
-			if err == io.EOF || ctx.Err() != nil {
-				return
-			}
-			if err != nil {
-				errChan <- err
-				return
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case evtChan <- msg.Event:
-			}
+	start := func(client pb.PubSubServiceClient, label string) error {
+		if client == nil {
+			return nil
 		}
-	}()
+		ctx, cancel := context.WithCancel(context.Background())
+		key := topic + "|" + subscriberID + "|" + label
+		c.mu.Lock()
+		c.subs[key] = cancel
+		c.mu.Unlock()
+		req := &pb.SubscribeRequest{Topic: topic, SubscriberId: subscriberID + "-" + label}
+		stream, err := client.Subscribe(ctx, req)
+		if err != nil {
+			cancel()
+			c.mu.Lock()
+			delete(c.subs, key)
+			c.mu.Unlock()
+			return fmt.Errorf("subscribe %s: %w", label, err)
+		}
+		log.Infof("Subscribed to topic %s with ID %s (%s)\n", topic, subscriberID, label)
+		go func() {
+			for {
+				msg, err := stream.Recv()
+				if err == io.EOF || ctx.Err() != nil {
+					return
+				}
+				if err != nil {
+					select {
+					case errChan <- err:
+					default:
+					}
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case evtChan <- msg.Event:
+				}
+			}
+		}()
+		return nil
+	}
+	if err := start(c.room, "room"); err != nil {
+		return err
+	}
+	if c.lobby != nil {
+		if err := start(c.lobby, "lobby"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 func (c *PubSubClient) Unsubscribe(topic, subscriberID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	req := &pb.UnsubscribeRequest{
-		Topic:        topic,
-		SubscriberId: subscriberID,
+	for _, label := range []string{"room", "lobby"} {
+		key := topic + "|" + subscriberID + "|" + label
+		c.mu.Lock()
+		if cc, ok := c.subs[key]; ok {
+			cc()
+			delete(c.subs, key)
+		}
+		c.mu.Unlock()
+		var client pb.PubSubServiceClient
+		switch label {
+		case "room":
+			client = c.room
+		case "lobby":
+			client = c.lobby
+		}
+		if client == nil {
+			continue
+		}
+		req := &pb.UnsubscribeRequest{Topic: topic, SubscriberId: subscriberID + "-" + label}
+		_, _ = client.Unsubscribe(ctx, req)
 	}
-
-	resp, err := c.client.Unsubscribe(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to unsubscribe: %v", err)
-	}
-
-	if resp.Success {
-		fmt.Printf("Unsubscribed from topic %s\n", topic)
-	} else {
-		fmt.Printf("Failed to unsubscribe from topic %s: %s\n", topic, resp.Error)
-	}
-
-	// 取消本地订阅
-	c.mu.Lock()
-	if cancel, exists := c.subs[topic]; exists {
-		cancel()
-		delete(c.subs, topic)
-	}
-	c.mu.Unlock()
-
 	return nil
 }
 
 func (c *PubSubClient) ListTopics(pattern string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	req := &pb.ListTopicsRequest{
-		Pattern: pattern,
-	}
-
-	resp, err := c.client.ListTopics(ctx, req)
+	req := &pb.ListTopicsRequest{Pattern: pattern}
+	resp, err := c.room.ListTopics(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to list topics: %v", err)
 	}
-
 	fmt.Printf("Topics (%d):\n", len(resp.Topics))
 	for _, topic := range resp.Topics {
 		fmt.Printf("  - %s (subscribers: %d, messages: %d)\n",
@@ -164,28 +163,21 @@ func (c *PubSubClient) ListTopics(pattern string) error {
 				time.Unix(topic.LastMessageTime, 0).Format("2006-01-02 15:04:05"))
 		}
 	}
-
 	return nil
 }
 
 func (c *PubSubClient) GetSubscriberCount(topic string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	req := &pb.GetSubscriberCountRequest{
-		Topic: topic,
-	}
-
-	resp, err := c.client.GetSubscriberCount(ctx, req)
+	req := &pb.GetSubscriberCountRequest{Topic: topic}
+	resp, err := c.room.GetSubscriberCount(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to get subscriber count: %v", err)
 	}
-
 	if resp.Success {
 		fmt.Printf("Topic %s has %d subscribers\n", topic, resp.SubscriberCount)
 	} else {
 		fmt.Printf("Failed to get subscriber count for topic %s: %s\n", topic, resp.Error)
 	}
-
 	return nil
 }

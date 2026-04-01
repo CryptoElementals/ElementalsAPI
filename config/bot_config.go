@@ -13,9 +13,9 @@ type WalletInfo struct {
 type BotConfig struct {
 	LogCfg             log.Config   `mapstructure:"log"`
 	ChainCfg           ChainConfig  `mapstructure:"chain"`
-	RoomServerEndpoint string       `mapstructure:"room-server-endpoint"`
+	RoomServerEndpoint  string `mapstructure:"room-server-endpoint"`
+	LobbyServerEndpoint string `mapstructure:"lobby-server-endpoint"`
 	WalletInfos        []WalletInfo `mapstructure:"wallet-infos"`
-	MimicPlayers       bool         `mapstructure:"mimic-player"`
 }
 
 var BotCfg BotConfig
@@ -28,6 +28,9 @@ func InitBotConfig(configPath string) error {
 	}
 	if err := viper.Unmarshal(&BotCfg); err != nil {
 		return err
+	}
+	if BotCfg.LobbyServerEndpoint == "" {
+		BotCfg.LobbyServerEndpoint = "127.0.0.1:50052"
 	}
 
 	return nil

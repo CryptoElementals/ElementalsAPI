@@ -146,7 +146,7 @@ func (s *Scanner) Run() {
 	}
 
 	for {
-		s.rpcClient, err = eleClient.NewRpcClientWithAddr(s.roomServerHttpRpc)
+		s.rpcClient, err = eleClient.NewRpcClientRoomOnly(s.roomServerHttpRpc)
 		if err != nil {
 			log.Errorf("Failed to create rpcClient to roomServer: %v, retrying in %d seconds...", err.Error(), dialTimeout)
 			time.Sleep(time.Duration(dialTimeout) * time.Second)

@@ -7,7 +7,6 @@ import (
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -19,7 +18,6 @@ type Service struct {
 }
 
 func NewService(ctx context.Context,
-	workerManager *worker.WorkerManager,
 	pub EventPublisher,
 	cache cache.Cache,
 	gameCreator GameCreator,
@@ -32,7 +30,7 @@ func NewService(ctx context.Context,
 ) *Service {
 	return &Service{
 		ctx:   ctx,
-		queue: NewQueue(ctx, workerManager, pub, cache, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
+		queue: NewQueue(ctx, pub, cache, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
 	}
 }
 

@@ -1,6 +1,6 @@
 package cache
 
-// Prefixes must match room_server/worker/queue.Queue (queue_info / locked_token).
+// Prefixes must match lobby_server/worker/queue.Queue (queue_info / locked_token).
 const (
 	roomQueueInfoPrefix   = "queue_info"
 	roomLockedTokenPrefix = "locked_token"

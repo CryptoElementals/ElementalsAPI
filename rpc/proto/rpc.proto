@@ -9,23 +9,13 @@ import "rpc/proto/battle.proto";
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 service RpcService {
-    // game related api
-    rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
-    rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
+    // game related api (queue / match / status / token live on LobbyService)
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
-    rpc IsPlayerInQueue(PlayerAddress) returns (IsPlayerInQueueResponse);
-    rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
-    rpc ConfirmMatch(ConfirmMatchRequest) returns (google.protobuf.Empty);
-    rpc CancelMatch(CancelMatchRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
-    rpc GetGameTimeoutConfig(google.protobuf.Empty)returns(TimeoutConfig);
     rpc SubmitPlayerCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
     rpc SubmitPlayerCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
-
-    // token related logic
-    rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
 
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);

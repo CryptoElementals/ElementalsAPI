@@ -13,53 +13,80 @@ import (
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
-// 全局gRPC客户端变量
+func defaultGRPCDialOptions() []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(4*1024*1024),
+			grpc.MaxCallSendMsgSize(4*1024*1024),
+		),
+	}
+}
+
+// 全局gRPC客户端变量（room + lobby）
 var (
-	globalRpcClient    pb.RpcServiceClient
-	globalPubSubClient pb.PubSubServiceClient
+	globalRoomAddr     string
+	globalLobbyAddr    string
 	globalConn         *grpc.ClientConn
+	globalLobbyConn    *grpc.ClientConn
+	globalRpcClient    pb.RpcServiceClient
+	globalLobbyClient  pb.LobbyServiceClient
+	globalPubSubClient pb.PubSubServiceClient
 	globalMutex        sync.RWMutex
 	initialized        bool
 )
 
-// InitGlobalClients 初始化全局gRPC客户端
-func InitGlobalClients(serverAddress string) error {
+// dialGlobalLocked opens room and lobby connections. Caller must hold globalMutex (write lock).
+func dialGlobalLocked() error {
+	if globalConn != nil {
+		_ = globalConn.Close()
+		globalConn = nil
+	}
+	if globalLobbyConn != nil {
+		_ = globalLobbyConn.Close()
+		globalLobbyConn = nil
+	}
+	roomConn, err := grpc.NewClient(globalRoomAddr, defaultGRPCDialOptions()...)
+	if err != nil {
+		return fmt.Errorf("dial room %s: %w", globalRoomAddr, err)
+	}
+	lobbyConn, err := grpc.NewClient(globalLobbyAddr, defaultGRPCDialOptions()...)
+	if err != nil {
+		_ = roomConn.Close()
+		return fmt.Errorf("dial lobby %s: %w", globalLobbyAddr, err)
+	}
+	globalConn = roomConn
+	globalLobbyConn = lobbyConn
+	globalRpcClient = pb.NewRpcServiceClient(roomConn)
+	globalLobbyClient = pb.NewLobbyServiceClient(lobbyConn)
+	globalPubSubClient = pb.NewPubSubServiceClient(roomConn)
+	return nil
+}
+
+// InitGlobalClients connects to room (Rpc + PubSub) and lobby (LobbyService).
+func InitGlobalClients(roomAddress, lobbyAddress string) error {
 	globalMutex.Lock()
 	defer globalMutex.Unlock()
 
 	if initialized {
-		return nil // 已经初始化过了
+		return nil
 	}
-
-	// 设置连接选项
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB
-			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB
-		),
+	globalRoomAddr = roomAddress
+	globalLobbyAddr = lobbyAddress
+	if err := dialGlobalLocked(); err != nil {
+		return err
 	}
-
-	conn, err := grpc.NewClient(serverAddress, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %v", serverAddress, err)
-	}
-
-	globalConn = conn
-	globalRpcClient = pb.NewRpcServiceClient(conn)
-	globalPubSubClient = pb.NewPubSubServiceClient(conn)
 	initialized = true
 
-	// 启动健康检查协程
-	go startHealthCheck(serverAddress)
+	go startHealthCheck()
 
-	log.Infof("全局gRPC客户端初始化成功，连接到: %s", serverAddress)
+	log.Infof("全局gRPC客户端初始化成功，room=%s lobby=%s", roomAddress, lobbyAddress)
 	return nil
 }
 
-// startHealthCheck 启动健康检查
-func startHealthCheck(serverAddress string) {
-	ticker := time.NewTicker(10 * 60 * time.Second) // 每10分钟检查一次
+// startHealthCheck 启动健康检查（监控 room 连接；失败时重连 room+lobby）
+func startHealthCheck() {
+	ticker := time.NewTicker(10 * 60 * time.Second)
 	defer ticker.Stop()
 
 	var consecutiveFailures int
@@ -74,11 +101,9 @@ func startHealthCheck(serverAddress string) {
 			continue
 		}
 
-		// 检查连接状态
 		state := conn.GetState()
 		switch state {
 		case connectivity.Ready:
-			// 连接正常，重置失败计数
 			if consecutiveFailures > 0 {
 				log.Infof("gRPC连接恢复正常")
 				consecutiveFailures = 0
@@ -88,10 +113,11 @@ func startHealthCheck(serverAddress string) {
 			log.Warnf("gRPC连接状态异常: %v，连续失败次数: %d/%d", state, consecutiveFailures, maxRetries)
 
 			if consecutiveFailures >= maxRetries {
-				log.Errorf("连续失败次数达到上限，尝试重新连接")
-
-				// 重新连接
-				if err := reconnectGlobalClients(serverAddress); err != nil {
+				log.Errorf("连续失败次数达到上限，尝试重新连接 room+lobby")
+				globalMutex.Lock()
+				err := dialGlobalLocked()
+				globalMutex.Unlock()
+				if err != nil {
 					log.Errorf("重新连接失败: %v", err)
 				} else {
 					log.Infof("gRPC连接重新建立成功")
@@ -106,95 +132,91 @@ func startHealthCheck(serverAddress string) {
 	}
 }
 
-// reconnectGlobalClients 重新连接
-func reconnectGlobalClients(serverAddress string) error {
-	globalMutex.Lock()
-	defer globalMutex.Unlock()
-
-	// 关闭旧连接
-	if globalConn != nil {
-		globalConn.Close()
-	}
-
-	// 建立新连接
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(4*1024*1024), // 4MB
-			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB
-		),
-	}
-
-	conn, err := grpc.NewClient(serverAddress, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to reconnect to %s: %v", serverAddress, err)
-	}
-
-	globalConn = conn
-	globalRpcClient = pb.NewRpcServiceClient(conn)
-	globalPubSubClient = pb.NewPubSubServiceClient(conn)
-
-	log.Infof("gRPC连接重新建立成功到: %s", serverAddress)
-	return nil
-}
-
-// GetGlobalRpcClient 获取全局RPC客户端
+// GetGlobalRpcClient 获取 room RpcService 客户端
 func GetGlobalRpcClient() pb.RpcServiceClient {
 	globalMutex.RLock()
 	defer globalMutex.RUnlock()
 	return globalRpcClient
 }
 
-// GetGlobalPubSubClient 获取全局PubSub客户端
+// GetGlobalLobbyClient 获取 lobby LobbyService 客户端
+func GetGlobalLobbyClient() pb.LobbyServiceClient {
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
+	return globalLobbyClient
+}
+
+// GetGlobalPubSubClient 获取 room PubSub 客户端
 func GetGlobalPubSubClient() pb.PubSubServiceClient {
 	globalMutex.RLock()
 	defer globalMutex.RUnlock()
 	return globalPubSubClient
 }
 
-// CloseGlobalClients 关闭全局客户端连接
+// CloseGlobalClients 关闭全局连接
 func CloseGlobalClients() error {
 	globalMutex.Lock()
 	defer globalMutex.Unlock()
 
-	if globalConn != nil {
-		err := globalConn.Close()
-		globalConn = nil
-		globalRpcClient = nil
-		globalPubSubClient = nil
-		initialized = false
-		return err
+	var firstErr error
+	if globalLobbyConn != nil {
+		if err := globalLobbyConn.Close(); err != nil {
+			firstErr = err
+		}
+		globalLobbyConn = nil
 	}
-	return nil
+	if globalConn != nil {
+		if err := globalConn.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		globalConn = nil
+	}
+	globalRpcClient = nil
+	globalLobbyClient = nil
+	globalPubSubClient = nil
+	initialized = false
+	return firstErr
 }
 
 // Client 统一的客户端接口，组合了 RPC 和 PubSub 客户端
 type Client struct {
-	conn *grpc.ClientConn
+	roomConn  *grpc.ClientConn
+	lobbyConn *grpc.ClientConn
 	*PubSubClient
 	*RpcClient
 }
 
-// NewClient 创建新的统一客户端
-func NewClient(addr string) (*Client, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+// NewClient 连接 room 与 lobby（RPC + 双 PubSub）。
+func NewClient(roomAddr, lobbyAddr string) (*Client, error) {
+	opts := defaultGRPCDialOptions()
+	roomConn, err := grpc.NewClient(roomAddr, opts...)
 	if err != nil {
 		return nil, err
 	}
+	lobbyConn, err := grpc.NewClient(lobbyAddr, opts...)
+	if err != nil {
+		_ = roomConn.Close()
+		return nil, err
+	}
+	lobbySvc := pb.NewLobbyServiceClient(lobbyConn)
 	return &Client{
-		conn:         conn,
-		PubSubClient: NewPubSubClient(conn),
-		RpcClient:    NewRpcClient(conn),
+		roomConn:     roomConn,
+		lobbyConn:    lobbyConn,
+		PubSubClient: NewPubSubClientDual(pb.NewPubSubServiceClient(roomConn), pb.NewPubSubServiceClient(lobbyConn)),
+		RpcClient:    NewRpcClient(roomConn, lobbyConn, lobbySvc),
 	}, nil
 }
 
 // Close 关闭客户端连接
 func (c *Client) Close() error {
 	if c.PubSubClient != nil {
-		c.PubSubClient.Close()
+		_ = c.PubSubClient.Close()
 	}
-	if c.conn != nil {
-		return c.conn.Close()
+	if c.lobbyConn != nil {
+		_ = c.lobbyConn.Close()
+	}
+	if c.roomConn != nil {
+		return c.roomConn.Close()
 	}
 	return nil
 }

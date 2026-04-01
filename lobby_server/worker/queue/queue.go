@@ -11,7 +11,6 @@ import (
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/protopub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
@@ -32,9 +31,8 @@ type Queue struct {
 	pendingMatchByPlayer map[types.PlayerAddress]int64
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
 	continueRematchCancelTimeoutSec          int64
-	continueRematchCancelRedundancySec       int64
-	workerManager                            *worker.WorkerManager
-	publisher                EventPublisher
+	continueRematchCancelRedundancySec int64
+	publisher                          EventPublisher
 	queueCache               cache.Cache
 	lockedTokenCache         cache.Cache
 	closing                  bool
@@ -56,7 +54,6 @@ type GameCreator interface {
 
 func NewQueue(
 	ctx context.Context,
-	workerManager *worker.WorkerManager,
 	pub EventPublisher,
 	c cache.Cache,
 	gameCreator GameCreator,
@@ -70,11 +67,10 @@ func NewQueue(
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	tokenCache := cache.WithPrefix(lockedTokenPrefix, c)
 	q := &Queue{
-		ctx:                      ctx,
-		queue:                    make(map[types.PlayerAddress]time.Time),
-		pendingMatchByPlayer:     make(map[types.PlayerAddress]int64),
-		workerManager:            workerManager,
-		publisher:                pub,
+		ctx:                  ctx,
+		queue:                make(map[types.PlayerAddress]time.Time),
+		pendingMatchByPlayer: make(map[types.PlayerAddress]int64),
+		publisher:            pub,
 		lockedTokenCache:         tokenCache,
 		queueCache:               queueCache,
 		gameCreator:                        gameCreator,
