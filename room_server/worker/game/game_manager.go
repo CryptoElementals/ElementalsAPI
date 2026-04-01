@@ -174,25 +174,29 @@ func (r *GameManager) Stop() {
 	log.Info("game manager closed")
 }
 
-func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	gameID, err := r.continueGame(evt.Players)
-	if err != nil {
-		return err
+// createGameAndNotify persists the new game graph, bootstraps first turn / chain flow (same for queue PVP, continue, tournament),
+// then returns the game id. completedMatchID is queue PVP only (non-zero → games.queue_match_id for GameReady.MatchId).
+func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+	if err := r.validatePlayersNotInGame(players); err != nil {
+		return 0, err
 	}
-	// also notify players
-	created := &types.GameCreatedEvent{
-		GameID:              gameID,
-		Players:             evt.Players,
-		IsContinueGame:      true,
-		ConfirmationTimeout: r.argsTemplate.ConfirmationTimeout,
+	if gameType == 0 {
+		gameType = types.GameTypePVP
 	}
-	for _, player := range evt.Players {
-		r.notifyPlayerGameCreated(player, created)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, r.cloneGameArgs())
+	if completedMatchID != 0 {
+		game.gameInfo.QueueMatchID = completedMatchID
 	}
-	log.Infow("gameContinue", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
-	return nil
+	if err := game.persistInsertNewGameGraph(); err != nil {
+		return 0, err
+	}
+	gameID := game.gameInfo.ID
+	if err := r.executeOnGame(gameID, func(g *Game) error {
+		return g.bootstrapFirstTurnAfterQueueConfirmations()
+	}); err != nil {
+		return 0, err
+	}
+	return gameID, nil
 }
 
 func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
@@ -201,20 +205,26 @@ func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint,
 	if r.stopped {
 		return 0, errors.New("server stopping, drop game matched event")
 	}
-	gameID, err := r.createGame(evt.Players, evt.GameType)
+	gameID, err := r.createGameAndNotify(evt.Players, evt.GameType, 0)
 	if err != nil {
 		return 0, err
 	}
-	// also notify players
-	created := &types.GameCreatedEvent{
-		GameID:              gameID,
-		Players:             evt.Players,
-		ConfirmationTimeout: r.argsTemplate.ConfirmationTimeout,
-	}
-	for _, player := range evt.Players {
-		r.notifyPlayerGameCreated(player, created)
-	}
 	log.Infow("gameMatched", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
+	return gameID, nil
+}
+
+// CreatePvpGameAfterQueueConfirm inserts a PVP game after both players confirmed game_match, bootstraps chain for turn 1, then notifies.
+func (r *GameManager) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.stopped {
+		return 0, errors.New("server stopping, drop queue match finalize")
+	}
+	gameID, err := r.createGameAndNotify(players, gameType, completedMatchID)
+	if err != nil {
+		return 0, err
+	}
+	log.Infow("queueMatchGameCreated", "game id", gameID, "match id", completedMatchID, "players", types.ToJsonLoggable(players))
 	return gameID, nil
 }
 
@@ -334,29 +344,4 @@ func (r *GameManager) validatePlayersNotInGame(players []types.PlayerAddress) er
 		}
 	}
 	return nil
-}
-
-func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) {
-	if err := r.validatePlayersNotInGame(players); err != nil {
-		return 0, err
-	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, types.GameTypePVP, r.cloneGameArgs())
-	if err := game.pushStateToContractCreating(); err != nil {
-		return 0, err
-	}
-	if err := game.persistInsertNewGameGraph(); err != nil {
-		return 0, err
-	}
-	return game.gameInfo.ID, nil
-}
-
-func (r *GameManager) createGame(players []types.PlayerAddress, gameType uint) (uint, error) {
-	if gameType == 0 {
-		gameType = types.GameTypePVP
-	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, r.cloneGameArgs())
-	if err := game.persistInsertNewGameGraph(); err != nil {
-		return 0, err
-	}
-	return game.gameInfo.ID, nil
 }

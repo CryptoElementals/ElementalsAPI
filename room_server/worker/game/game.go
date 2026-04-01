@@ -204,8 +204,8 @@ func NewGameFromGameInfo(
 	return g
 }
 
-// pushStateToContractCreating is used for continue games to immediately start contract creation
-// It marks all players as ready and initiates contract creation
+// pushStateToContractCreating marks all players ready and enqueues contract creation (no DB persist of PTIs).
+// Used when recovering a GAME_INIT row from DB after restart; new games use bootstrapFirstTurnAfterQueueConfirmations after insert.
 func (g *Game) pushStateToContractCreating() error {
 	g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
 	allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))

@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 
 func TestJoinExitQueue(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -77,9 +77,10 @@ func TestJoinExitQueue(t *testing.T) {
 }
 
 func TestGameMatched(t *testing.T) {
-	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	gameCreator.EXPECT().HandleGameMatchedEvent(gomock.Any()).Return(uint(1), nil).Times(1)
-	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 0, 0, 0, "")
+	ctrl := gomock.NewController(t)
+	gameCreator := tt.NewMockGameCreator(ctrl)
+	gameCreator.EXPECT().CreatePvpGameAfterQueueConfirm(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint(1), nil).Times(1)
+	globalTestQueueService = NewService(context.Background(), globalTestWorkerManager, noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -104,7 +105,31 @@ func TestGameMatched(t *testing.T) {
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1))
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1DuplicatedWallet))
 
-	// send join queue event
+	// Third join triggers a PVP match and inserts game_match (no game row until both confirm).
 	err = globalTestQueueService.HandleJoinQueueEvent(player2.ToProto())
 	require.NoError(t, err)
+
+	var gm dao.GameMatch
+	require.NoError(t, db.Get().Order("id desc").First(&gm).Error)
+	require.Equal(t, dao.GameMatchStatusPending, gm.Status)
+
+	pa := types.NewPlayerAddress(gm.Player1ID, gm.Player1TempAddress)
+	pb := types.NewPlayerAddress(gm.Player2ID, gm.Player2TempAddress)
+
+	reqA := &proto.ConfirmMatchRequest{
+		PlayerAddress: pa.ToProto(),
+		MatchId:       gm.ID,
+	}
+	require.NoError(t, globalTestQueueService.HandleConfirmMatch(reqA))
+
+	reqB := &proto.ConfirmMatchRequest{
+		PlayerAddress: pb.ToProto(),
+		MatchId:       gm.ID,
+	}
+	require.NoError(t, globalTestQueueService.HandleConfirmMatch(reqB))
+
+	require.NoError(t, db.Get().First(&gm, "id = ?", gm.ID).Error)
+	require.Equal(t, dao.GameMatchStatusGameCreated, gm.Status)
+	require.NotNil(t, gm.GameID)
+	require.Equal(t, uint(1), *gm.GameID)
 }

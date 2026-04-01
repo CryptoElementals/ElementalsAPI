@@ -202,21 +202,31 @@ func runClient(t *testing.T,
 					return
 				case proto.EventType_TYPE_MATCHED:
 					t.Log("player matched")
-					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
-					require.NoError(t, err)
-					gameID = uint(phase.GameID)
-					gameIDChan <- gameID
-					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
+					matched := evt.GetGameMatched()
+					if matched != nil && matched.GetMatchId() != 0 {
+						require.NoError(t, client.RpcClient.ConfirmMatch(ctx, addr, matched.GetMatchId()))
+					}
+				case proto.EventType_TYPE_GAME_CONTINUABLE:
+					t.Log("game continuable")
+					gc := evt.GetGameContinuable()
+					if gc != nil && gc.GetMatchId() != 0 {
+						require.NoError(t, client.RpcClient.ConfirmMatch(ctx, addr, gc.GetMatchId()))
+					}
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					t.Log("player part confirmed")
 					partConfimredChan <- round
 				case proto.EventType_TYPE_GAME_CREATED:
 					t.Log("game created")
-					// get contract
 					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
 					require.NoError(t, err)
 					gameID = uint(phase.GameID)
+					require.NotZero(t, gameID, "game id must be available after TYPE_GAME_CREATED")
+					select {
+					case gameIDChan <- gameID:
+					default:
+					}
 					t.Log("game phase: ", toJsonLoggable(phase))
+					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1))
 					// ContractAddress removed - always uses RoomV2 contract address from config
 				case proto.EventType_TYPE_ROUND_READY:
 					t.Log("round ready")
@@ -412,29 +422,8 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	token, err := client.RpcClient.GetPlayerToken(ctx, addr1.Id)
 	require.NoError(t, err)
 	require.NotNil(t, token)
-	chanEvt1 := make(chan *proto.Event, 2)
-	chanErr1 := make(chan error, 2)
-	chanEvt2 := make(chan *proto.Event, 2)
-	chanErr2 := make(chan error, 2)
-	require.NoError(t, client.PubSubClient.Subscribe(addr1.String(), addr1.String(), chanEvt1, chanErr1))
-	require.NoError(t, client.PubSubClient.Subscribe(addr2.String(), addr2.String(), chanEvt2, chanErr2))
-	time.Sleep(1 * time.Second)
-	client.RpcClient.RefuseContinueGame(ctx, addr1, gameID)
-	for i := 0; i < 2; i++ {
-		select {
-		case evt := <-chanEvt1:
-			require.NotNil(t, evt)
-			require.Equal(t, proto.EventType_TYPE_CONTINUE_CANCELED, evt.Type)
-		case evt := <-chanEvt2:
-			require.NotNil(t, evt)
-			require.Equal(t, proto.EventType_TYPE_CONTINUE_CANCELED, evt.Type)
-		case err := <-chanErr1:
-			require.NoError(t, err)
-		case err := <-chanErr2:
-			require.NoError(t, err)
-		}
-	}
-
+	// After game end, players are PLAYER_MATCHED (pending continue rematch); JoinQueue must fail until they ConfirmMatch or the rematch times out.
+	require.Error(t, client.RpcClient.JoinQueue(ctx, addr1))
 }
 
 func TestServer_BattleTimeout(t *testing.T) {
@@ -473,17 +462,9 @@ func TestServer_BattleTimeout(t *testing.T) {
 		}()
 		runClient(t, ctx, &wg, client, addr1, []uint32{4, 5, 3}, txChan, chan1, gameIDChan)
 		runClient(t, ctx, &wg, client, addr2, []uint32{1, 2, 4}, txChan, chan2, gameIDChan)
-		if doContinue {
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr1, gameID))
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr2, gameID))
-			// input expected game id manually
-			gameIDChan <- 2
-			chan1 <- 1
-			chan2 <- 1
-		} else {
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
-		}
+		_ = doContinue
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
 
 		go func() {
 			wg.Wait()
@@ -614,11 +595,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 	runCase()
 	clear(timeoutMapByPlayer)
 
-	// test continue confirm timeout
-	runCase()
-	time.Sleep(12 * time.Second)
-	err = client.RpcClient.ContinueGame(ctx, addr1, gameID)
-	require.NotNil(t, err)
+	// Continue rematch uses ConfirmMatch + match confirmation timeout (same as queue PVP); no ContinueGame RPC.
 }
 
 func TestServer_BattleContinue(t *testing.T) {
@@ -658,17 +635,9 @@ func TestServer_BattleContinue(t *testing.T) {
 		}()
 		runClient(t, ctx, &wg, client, addr1, []uint32{4, 5, 3}, txChan, chan1, gameIDChan)
 		runClient(t, ctx, &wg, client, addr2, []uint32{1, 2, 4}, txChan, chan2, gameIDChan)
-		if doContinue {
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr1, gameID))
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr2, gameID))
-			// input expected game id manually
-			gameIDChan <- 2
-			chan1 <- 1
-			chan2 <- 1
-		} else {
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
-		}
+		_ = doContinue
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
 
 		go func() {
 			wg.Wait()

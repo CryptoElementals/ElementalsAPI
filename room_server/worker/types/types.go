@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -147,9 +146,3 @@ func ToJsonLoggableIndent(obj any) string {
 	return string(res)
 }
 
-type GameContinueInfo struct {
-	GameID          uint
-	EndTime         time.Time
-	ContinueTimeout int64
-	Players         []PlayerAddress
-}

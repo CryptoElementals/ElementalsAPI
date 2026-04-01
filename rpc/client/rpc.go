@@ -70,25 +70,25 @@ func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress
 	return err
 }
 
+func (c *RpcClient) ConfirmMatch(ctx context.Context, addr *types.PlayerAddress, matchID int64) error {
+	_, err := c.client.ConfirmMatch(ctx, &proto.ConfirmMatchRequest{
+		PlayerAddress: addr.ToProto(),
+		MatchId:       matchID,
+	})
+	return err
+}
+
+func (c *RpcClient) CancelMatch(ctx context.Context, addr *types.PlayerAddress, matchID int64) error {
+	_, err := c.client.CancelMatch(ctx, &proto.CancelMatchRequest{
+		PlayerAddress: addr.ToProto(),
+		MatchId:       matchID,
+	})
+	return err
+}
+
 // chain related api
 func (c *RpcClient) SubmitTransactions(ctx context.Context, in *proto.TransactionBatch) error {
 	_, err := c.client.SubmitTransactions(ctx, in)
-	return err
-}
-
-func (c *RpcClient) ContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
-	_, err := c.client.ContinueGame(ctx, &proto.ContinueGameRequest{
-		Player:     addr.ToProto(),
-		LastGameID: uint32(gameID),
-	})
-	return err
-}
-
-func (c *RpcClient) RefuseContinueGame(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
-	_, err := c.client.RefuseContinueGame(ctx, &proto.RefuseContinueGameRequest{
-		Player:     addr.ToProto(),
-		LastGameID: uint32(gameID),
-	})
 	return err
 }
 

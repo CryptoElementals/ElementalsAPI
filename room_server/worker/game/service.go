@@ -42,10 +42,10 @@ type GameResultSettler interface {
 type PlayerQueue interface {
 	HandleJoinQueueEvent(player *proto.PlayerAddress) error
 	HandleExitQueueEvent(player *proto.PlayerAddress) error
-	HandleContinueGameEvent(req *proto.ContinueGameRequest) error
+	HandleConfirmMatch(req *proto.ConfirmMatchRequest) error
+	HandleCancelMatch(req *proto.CancelMatchRequest) error
 	IsPlayerInQueue(playerAddress types.PlayerAddress) bool
-	GetPlayerContinueInfo(playerAddress types.PlayerAddress) *types.GameContinueInfo
-	RefuseContinueGame(playerAddress types.PlayerAddress, gameID uint) error
+	IsPlayerPendingMatch(playerAddress types.PlayerAddress) bool
 	RegisterBots(addrs ...*types.PlayerAddress) error
 	UnregisterBots(addrs ...*types.PlayerAddress) error
 }
@@ -155,8 +155,9 @@ func (s *Service) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, err
 	return s.gameManager.HandleGameMatchedEvent(evt)
 }
 
-func (s *Service) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
-	return s.gameManager.HandleGameContinueEvent(evt)
+// CreatePvpGameAfterQueueConfirm is used by the matchmaking queue after both players confirm game_match.
+func (s *Service) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+	return s.gameManager.CreatePvpGameAfterQueueConfirm(players, gameType, completedMatchID)
 }
 
 // GetGamePhase returns phase for RPC clients (queue, continue, and in-game), mirroring former player.Service.
@@ -171,33 +172,20 @@ func (s *Service) GetGamePhase(req *proto.PlayerAddress) (*proto.GamePhase, erro
 	}
 	status := s.getPlayerStatusLocked(q, address)
 	switch status {
-	case proto.PlayerStatus_PLAYER_IN_GAME, proto.PlayerStatus_PLAYER_MATCHED:
+	case proto.PlayerStatus_PLAYER_MATCHED:
+		if q.IsPlayerPendingMatch(address) {
+			return &proto.GamePhase{
+				GameType: proto.GameType_PVP,
+			}, nil
+		}
+		fallthrough
+	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return s.gameManager.GetGamePhase(address)
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		return &proto.GamePhase{
 			GameType: proto.GameType_PVP,
 		}, nil
 	case proto.PlayerStatus_PLAYER_UNKNOWN:
-		continueInfo := q.GetPlayerContinueInfo(address)
-		if continueInfo != nil {
-			players := make([]*proto.GamePhasePlayer, 0, len(continueInfo.Players))
-			for _, playerInfo := range continueInfo.Players {
-				addr := types.NewPlayerAddress(
-					playerInfo.Id,
-					playerInfo.TemporaryAddress,
-				).ToProto()
-				players = append(players, &proto.GamePhasePlayer{
-					Address:    addr,
-					TurnStatus: proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
-				})
-			}
-			return &proto.GamePhase{
-				GameType:    proto.GameType_PVP,
-				GameID:      uint32(continueInfo.GameID),
-				TurnStartAt: continueInfo.EndTime.Unix(),
-				Players:     players,
-			}, nil
-		}
 		return &proto.GamePhase{
 			GameType: proto.GameType_PVP,
 		}, nil
@@ -209,6 +197,9 @@ func (s *Service) GetGamePhase(req *proto.PlayerAddress) (*proto.GamePhase, erro
 func (s *Service) getPlayerStatusLocked(q PlayerQueue, address types.PlayerAddress) proto.PlayerStatus {
 	if q.IsPlayerInQueue(address) {
 		return proto.PlayerStatus_PLAYER_IN_QUEUE
+	}
+	if q.IsPlayerPendingMatch(address) {
+		return proto.PlayerStatus_PLAYER_MATCHED
 	}
 	return s.GetPlayerGameInfo(address)
 }

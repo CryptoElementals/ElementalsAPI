@@ -22,7 +22,6 @@ const tickInterval = 2 * time.Second
 // GameCreator starts tournament matches the same way as PVP (HandleGameMatchedEvent with GameTypeTournament).
 type GameCreator interface {
 	HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error)
-	HandleGameContinueEvent(evt *types.GameContinueEvent) error
 }
 
 type coordinator struct {

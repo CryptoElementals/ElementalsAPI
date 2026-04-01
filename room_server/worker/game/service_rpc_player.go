@@ -44,26 +44,24 @@ func (s *Service) ExitQueue(req *proto.PlayerAddress) error {
 	return q.HandleExitQueueEvent(req)
 }
 
-func (s *Service) RefuseContinueGame(req *proto.RefuseContinueGameRequest) error {
-	var address types.PlayerAddress
-	address.FromProto(req.Player)
-	q, err := s.queueOrErr()
-	if err != nil {
-		return err
-	}
-	return q.RefuseContinueGame(address, uint(req.LastGameID))
-}
-
-func (s *Service) ContinueGame(req *proto.ContinueGameRequest) error {
-	q, err := s.queueOrErr()
-	if err != nil {
-		return err
-	}
-	return q.HandleContinueGameEvent(req)
-}
-
 func (s *Service) ConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	return s.gameManager.HandleConfirmBattle(req)
+}
+
+func (s *Service) ConfirmMatch(req *proto.ConfirmMatchRequest) error {
+	q, err := s.queueOrErr()
+	if err != nil {
+		return err
+	}
+	return q.HandleConfirmMatch(req)
+}
+
+func (s *Service) CancelMatch(req *proto.CancelMatchRequest) error {
+	q, err := s.queueOrErr()
+	if err != nil {
+		return err
+	}
+	return q.HandleCancelMatch(req)
 }
 
 func (s *Service) IsPlayerInQueue(req *proto.PlayerAddress) (*proto.IsPlayerInQueueResponse, error) {

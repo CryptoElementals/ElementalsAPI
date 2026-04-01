@@ -35,32 +35,32 @@ func (m *MockPlayerQueue) EXPECT() *MockPlayerQueueMockRecorder {
 	return m.recorder
 }
 
-// GetPlayerContinueInfo mocks base method.
-func (m *MockPlayerQueue) GetPlayerContinueInfo(arg0 types.PlayerAddress) *types.GameContinueInfo {
+// HandleConfirmMatch mocks base method.
+func (m *MockPlayerQueue) HandleConfirmMatch(arg0 *proto.ConfirmMatchRequest) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPlayerContinueInfo", arg0)
-	ret0, _ := ret[0].(*types.GameContinueInfo)
-	return ret0
-}
-
-// GetPlayerContinueInfo indicates an expected call of GetPlayerContinueInfo.
-func (mr *MockPlayerQueueMockRecorder) GetPlayerContinueInfo(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPlayerContinueInfo", reflect.TypeOf((*MockPlayerQueue)(nil).GetPlayerContinueInfo), arg0)
-}
-
-// HandleContinueGameEvent mocks base method.
-func (m *MockPlayerQueue) HandleContinueGameEvent(arg0 *proto.ContinueGameRequest) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleContinueGameEvent", arg0)
+	ret := m.ctrl.Call(m, "HandleConfirmMatch", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// HandleContinueGameEvent indicates an expected call of HandleContinueGameEvent.
-func (mr *MockPlayerQueueMockRecorder) HandleContinueGameEvent(arg0 interface{}) *gomock.Call {
+// HandleConfirmMatch indicates an expected call of HandleConfirmMatch.
+func (mr *MockPlayerQueueMockRecorder) HandleConfirmMatch(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleContinueGameEvent", reflect.TypeOf((*MockPlayerQueue)(nil).HandleContinueGameEvent), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleConfirmMatch", reflect.TypeOf((*MockPlayerQueue)(nil).HandleConfirmMatch), arg0)
+}
+
+// HandleCancelMatch mocks base method.
+func (m *MockPlayerQueue) HandleCancelMatch(arg0 *proto.CancelMatchRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HandleCancelMatch", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// HandleCancelMatch indicates an expected call of HandleCancelMatch.
+func (mr *MockPlayerQueueMockRecorder) HandleCancelMatch(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleCancelMatch", reflect.TypeOf((*MockPlayerQueue)(nil).HandleCancelMatch), arg0)
 }
 
 // HandleExitQueueEvent mocks base method.
@@ -105,18 +105,18 @@ func (mr *MockPlayerQueueMockRecorder) IsPlayerInQueue(arg0 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPlayerInQueue", reflect.TypeOf((*MockPlayerQueue)(nil).IsPlayerInQueue), arg0)
 }
 
-// RefuseContinueGame mocks base method.
-func (m *MockPlayerQueue) RefuseContinueGame(arg0 types.PlayerAddress, arg1 uint) error {
+// IsPlayerPendingMatch mocks base method.
+func (m *MockPlayerQueue) IsPlayerPendingMatch(arg0 types.PlayerAddress) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RefuseContinueGame", arg0, arg1)
-	ret0, _ := ret[0].(error)
+	ret := m.ctrl.Call(m, "IsPlayerPendingMatch", arg0)
+	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// RefuseContinueGame indicates an expected call of RefuseContinueGame.
-func (mr *MockPlayerQueueMockRecorder) RefuseContinueGame(arg0, arg1 interface{}) *gomock.Call {
+// IsPlayerPendingMatch indicates an expected call of IsPlayerPendingMatch.
+func (mr *MockPlayerQueueMockRecorder) IsPlayerPendingMatch(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefuseContinueGame", reflect.TypeOf((*MockPlayerQueue)(nil).RefuseContinueGame), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPlayerPendingMatch", reflect.TypeOf((*MockPlayerQueue)(nil).IsPlayerPendingMatch), arg0)
 }
 
 // RegisterBots mocks base method.

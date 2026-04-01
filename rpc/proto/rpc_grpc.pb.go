@@ -22,13 +22,13 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	RpcService_JoinQueue_FullMethodName              = "/rpc.RpcService/JoinQueue"
 	RpcService_ExitQueue_FullMethodName              = "/rpc.RpcService/ExitQueue"
-	RpcService_ContinueGame_FullMethodName           = "/rpc.RpcService/ContinueGame"
 	RpcService_GetGamePhase_FullMethodName           = "/rpc.RpcService/GetGamePhase"
 	RpcService_IsPlayerInQueue_FullMethodName        = "/rpc.RpcService/IsPlayerInQueue"
 	RpcService_GetPlayerStatus_FullMethodName        = "/rpc.RpcService/GetPlayerStatus"
 	RpcService_GetBattleInfo_FullMethodName          = "/rpc.RpcService/GetBattleInfo"
 	RpcService_ConfirmBattle_FullMethodName          = "/rpc.RpcService/ConfirmBattle"
-	RpcService_RefuseContinueGame_FullMethodName     = "/rpc.RpcService/RefuseContinueGame"
+	RpcService_ConfirmMatch_FullMethodName           = "/rpc.RpcService/ConfirmMatch"
+	RpcService_CancelMatch_FullMethodName            = "/rpc.RpcService/CancelMatch"
 	RpcService_Surrender_FullMethodName              = "/rpc.RpcService/Surrender"
 	RpcService_GetGameTimeoutConfig_FullMethodName   = "/rpc.RpcService/GetGameTimeoutConfig"
 	RpcService_SubmitPlayerCommitment_FullMethodName = "/rpc.RpcService/SubmitPlayerCommitment"
@@ -44,13 +44,13 @@ type RpcServiceClient interface {
 	// game related api
 	JoinQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	ContinueGame(ctx context.Context, in *ContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
 	IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error)
 	GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error)
 	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ConfirmMatch(ctx context.Context, in *ConfirmMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CancelMatch(ctx context.Context, in *CancelMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error)
 	SubmitPlayerCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -83,16 +83,6 @@ func (c *rpcServiceClient) ExitQueue(ctx context.Context, in *PlayerAddress, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, RpcService_ExitQueue_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) ContinueGame(ctx context.Context, in *ContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_ContinueGame_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -149,10 +139,20 @@ func (c *rpcServiceClient) ConfirmBattle(ctx context.Context, in *ConfirmBattleR
 	return out, nil
 }
 
-func (c *rpcServiceClient) RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *rpcServiceClient) ConfirmMatch(ctx context.Context, in *ConfirmMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_RefuseContinueGame_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RpcService_ConfirmMatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcServiceClient) CancelMatch(ctx context.Context, in *CancelMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RpcService_CancelMatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -226,13 +226,13 @@ type RpcServiceServer interface {
 	// game related api
 	JoinQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
-	ContinueGame(context.Context, *ContinueGameRequest) (*emptypb.Empty, error)
 	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
 	IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error)
 	GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error)
 	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
-	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
+	ConfirmMatch(context.Context, *ConfirmMatchRequest) (*emptypb.Empty, error)
+	CancelMatch(context.Context, *CancelMatchRequest) (*emptypb.Empty, error)
 	Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error)
 	GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error)
 	SubmitPlayerCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error)
@@ -257,9 +257,6 @@ func (UnimplementedRpcServiceServer) JoinQueue(context.Context, *PlayerAddress) 
 func (UnimplementedRpcServiceServer) ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExitQueue not implemented")
 }
-func (UnimplementedRpcServiceServer) ContinueGame(context.Context, *ContinueGameRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ContinueGame not implemented")
-}
 func (UnimplementedRpcServiceServer) GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGamePhase not implemented")
 }
@@ -275,8 +272,11 @@ func (UnimplementedRpcServiceServer) GetBattleInfo(context.Context, *GetBattleIn
 func (UnimplementedRpcServiceServer) ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmBattle not implemented")
 }
-func (UnimplementedRpcServiceServer) RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RefuseContinueGame not implemented")
+func (UnimplementedRpcServiceServer) ConfirmMatch(context.Context, *ConfirmMatchRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfirmMatch not implemented")
+}
+func (UnimplementedRpcServiceServer) CancelMatch(context.Context, *CancelMatchRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelMatch not implemented")
 }
 func (UnimplementedRpcServiceServer) Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Surrender not implemented")
@@ -349,24 +349,6 @@ func _RpcService_ExitQueue_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RpcServiceServer).ExitQueue(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_ContinueGame_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ContinueGameRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).ContinueGame(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_ContinueGame_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).ContinueGame(ctx, req.(*ContinueGameRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -461,20 +443,38 @@ func _RpcService_ConfirmBattle_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_RefuseContinueGame_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RefuseContinueGameRequest)
+func _RpcService_ConfirmMatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmMatchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).RefuseContinueGame(ctx, in)
+		return srv.(RpcServiceServer).ConfirmMatch(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_RefuseContinueGame_FullMethodName,
+		FullMethod: RpcService_ConfirmMatch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).RefuseContinueGame(ctx, req.(*RefuseContinueGameRequest))
+		return srv.(RpcServiceServer).ConfirmMatch(ctx, req.(*ConfirmMatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RpcService_CancelMatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelMatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServiceServer).CancelMatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RpcService_CancelMatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServiceServer).CancelMatch(ctx, req.(*CancelMatchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -603,10 +603,6 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RpcService_ExitQueue_Handler,
 		},
 		{
-			MethodName: "ContinueGame",
-			Handler:    _RpcService_ContinueGame_Handler,
-		},
-		{
 			MethodName: "GetGamePhase",
 			Handler:    _RpcService_GetGamePhase_Handler,
 		},
@@ -627,8 +623,12 @@ var RpcService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RpcService_ConfirmBattle_Handler,
 		},
 		{
-			MethodName: "RefuseContinueGame",
-			Handler:    _RpcService_RefuseContinueGame_Handler,
+			MethodName: "ConfirmMatch",
+			Handler:    _RpcService_ConfirmMatch_Handler,
+		},
+		{
+			MethodName: "CancelMatch",
+			Handler:    _RpcService_CancelMatch_Handler,
 		},
 		{
 			MethodName: "Surrender",

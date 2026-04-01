@@ -152,17 +152,41 @@ func (c *GameContextHTTP) Run() error {
 					log.Warnw("game matched event missing GameMatched data", "player_id", c.playerID)
 					continue
 				}
-				log.Infow("game matched", "player_id", c.playerID, "game_id", matched.GameId)
-				c.gameID = uint(matched.GameId)
+				log.Infow("game matched", "player_id", c.playerID, "match_id", matched.GetMatchId())
 				c.currentRound = 1
 				c.currentTurn = 1
-				if err := c.confirmBattle(); err != nil {
-					log.Errorw("failed to confirm battle", "player_id", c.playerID, "game_id", c.gameID, "round", c.currentRound, "turn", c.currentTurn, "error", err)
+				if matched.GetMatchId() != 0 {
+					if err := c.confirmMatch(matched.GetMatchId()); err != nil {
+						log.Errorw("failed to confirm match", "player_id", c.playerID, "match_id", matched.GetMatchId(), "error", err)
+					}
+				}
+			case proto.EventType_TYPE_GAME_CONTINUABLE:
+				gc := evt.GetGameContinuable()
+				if gc == nil {
+					log.Warnw("game continuable event missing payload", "player_id", c.playerID)
+					continue
+				}
+				log.Infow("game continuable", "player_id", c.playerID, "match_id", gc.GetMatchId(), "last_game_id", gc.GetLastGameId())
+				c.currentRound = 1
+				c.currentTurn = 1
+				if gc.GetMatchId() != 0 {
+					if err := c.confirmMatch(gc.GetMatchId()); err != nil {
+						log.Errorw("failed to confirm match after continuable", "player_id", c.playerID, "match_id", gc.GetMatchId(), "error", err)
+					}
 				}
 			case proto.EventType_TYPE_PART_CONFIRMED:
 				log.Infow("player part confirmed", "player_id", c.playerID, "game_id", c.gameID)
 			case proto.EventType_TYPE_GAME_CREATED:
+				gr := evt.GetGameReady()
+				if gr == nil {
+					log.Warnw("game created event missing GameReady data", "player_id", c.playerID)
+					continue
+				}
+				c.gameID = uint(gr.GetGameId())
 				log.Infow("game created", "player_id", c.playerID, "game_id", c.gameID)
+				if err := c.confirmBattle(); err != nil {
+					log.Errorw("failed to confirm battle after game created", "player_id", c.playerID, "game_id", c.gameID, "error", err)
+				}
 			case proto.EventType_TYPE_ROUND_READY:
 				roundReady := evt.GetRoundReady()
 				if roundReady == nil {
@@ -290,6 +314,10 @@ func (c *GameContextHTTP) confirmBattle() error {
 	return c.apiClient.ConfirmBattle(c.gameID, c.currentRound, c.currentTurn, c.address, c.playerID)
 }
 
+func (c *GameContextHTTP) confirmMatch(matchID int64) error {
+	return c.apiClient.ConfirmMatch(matchID, c.address, c.playerID)
+}
+
 // prepareNewCard generates a new salt and calculates the commitment for the given card
 func (c *GameContextHTTP) prepareNewCard(card uint32) error {
 	saltBytes := make([]byte, saltSize)
@@ -409,11 +437,6 @@ func (c *GameContextHTTP) validateRoundTurn(receivedRound, receivedTurn, expecte
 // validateRoundTurnInfo validates round and turn numbers from a RoundTurnInfo interface
 func (c *GameContextHTTP) validateRoundTurnInfo(info RoundTurnInfo, expectedTurn uint32) bool {
 	return c.validateRoundTurn(info.GetRoundNum(), info.GetTurnNum(), expectedTurn)
-}
-
-// Continue continues the game via HTTP API
-func (c *GameContextHTTP) Continue() error {
-	return c.apiClient.ContinueGame(c.gameID, c.address, c.playerID)
 }
 
 // Close closes the SSE connection

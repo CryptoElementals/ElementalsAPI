@@ -35,6 +35,7 @@ func (g *Game) handleRoomCreated(gameID uint, blockTime int64) error {
 					InitialHP:         uint32(ga.InitialHP),
 					InitialMultiplier: uint32(ga.InitialMultiplier),
 					Players:           players,
+					MatchId:           g.gameInfo.QueueMatchID,
 				},
 			},
 		})

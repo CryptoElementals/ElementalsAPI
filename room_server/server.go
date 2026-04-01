@@ -83,6 +83,7 @@ func New(ctx context.Context,
 	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc = gameSvc
 	queueSvc := queue.NewService(ctx, s.mgr, s.pubsub, c, gameSvc, cfg.MinTokenToJoinQueue,
+		argsTemplate.ConfirmationTimeout,
 		argsTemplate.GameContinueTimeout, argsTemplate.GameContinueTimeoutRedundancy, cfg.BotWaitTime, cfg.StatServiceEndpoint)
 	s.queueSvc = queueSvc
 	tournSvc := turnament.NewTournamentQueueService(ctx, gameSvc, cfg.MinTokenToJoinQueue)

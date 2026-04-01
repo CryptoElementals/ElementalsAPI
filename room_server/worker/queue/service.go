@@ -12,7 +12,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// Service is the queue / matchmaking façade: join/exit, continue-game flow, token checks, and stat callbacks.
+// Service is the queue / matchmaking façade: join/exit, post-game continue rematch, token checks, and stat callbacks.
 type Service struct {
 	ctx   context.Context
 	queue *Queue
@@ -24,6 +24,7 @@ func NewService(ctx context.Context,
 	cache cache.Cache,
 	gameCreator GameCreator,
 	minTokenToJoinQueue int32,
+	matchConfirmationTimeout int64,
 	continueTimeout int64,
 	continueTimeoutRedundancy int64,
 	botWaitTime int64,
@@ -31,7 +32,7 @@ func NewService(ctx context.Context,
 ) *Service {
 	return &Service{
 		ctx:   ctx,
-		queue: NewQueue(ctx, workerManager, pub, cache, gameCreator, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
+		queue: NewQueue(ctx, workerManager, pub, cache, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
 	}
 }
 
@@ -47,20 +48,12 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.isPlayerInQueue(address)
 }
 
-func (s *Service) GetPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
-	return s.queue.getPlayerContinueInfo(address)
-}
-
 func (s *Service) HandleJoinQueueEvent(player *proto.PlayerAddress) error {
 	return s.queue.HandleJoinQueueEvent(player)
 }
 
 func (s *Service) HandleExitQueueEvent(player *proto.PlayerAddress) error {
 	return s.queue.HandleExitQueueEvent(player)
-}
-
-func (s *Service) HandleContinueGameEvent(req *proto.ContinueGameRequest) error {
-	return s.queue.HandleContinueGameEvent(req)
 }
 
 func (s *Service) GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse, error) {
@@ -76,14 +69,25 @@ func (s *Service) GameResultSettlement(event *types.GameCompletedEvent) error {
 	return s.queue.GameResultSettlement(event)
 }
 
-func (s *Service) RefuseContinueGame(playerAddress types.PlayerAddress, lastGameID uint) error {
-	return s.queue.RefuseContinueGame(playerAddress, lastGameID)
-}
-
 func (s *Service) RegisterBots(addrs ...*types.PlayerAddress) error {
 	return s.queue.RegisterBots(addrs...)
 }
 
 func (s *Service) UnregisterBots(addrs ...*types.PlayerAddress) error {
 	return s.queue.UnregisterBots(addrs...)
+}
+
+// HandleConfirmMatch records a queue-side confirmation for a pending game_match (see Rpc ConfirmMatch).
+func (s *Service) HandleConfirmMatch(req *proto.ConfirmMatchRequest) error {
+	return s.queue.HandleConfirmMatch(req)
+}
+
+// HandleCancelMatch cancels a pending game_match (see Rpc CancelMatch).
+func (s *Service) HandleCancelMatch(req *proto.CancelMatchRequest) error {
+	return s.queue.HandleCancelMatch(req)
+}
+
+// IsPlayerPendingMatch reports whether the player is in the pre-game game_match confirmation phase.
+func (s *Service) IsPlayerPendingMatch(address types.PlayerAddress) bool {
+	return s.queue.IsPlayerPendingMatch(address)
 }

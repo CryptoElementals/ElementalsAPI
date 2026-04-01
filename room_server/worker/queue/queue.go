@@ -26,17 +26,21 @@ const lockedTokenPrefix = "locked_token"
 const queueInfoVal = "v"
 
 type Queue struct {
-	ctx                 context.Context
-	lock                sync.RWMutex
-	queue               map[types.PlayerAddress]time.Time
-	continueManager     *continueManager
-	workerManager       *worker.WorkerManager
-	publisher           EventPublisher
-	queueCache          cache.Cache
-	lockedTokenCache    cache.Cache
-	closing             bool
-	gameCreator         GameCreator
-	minTokenToJoinQueue int32
+	ctx                      context.Context
+	lock                     sync.RWMutex
+	queue                    map[types.PlayerAddress]time.Time
+	pendingMatchByPlayer map[types.PlayerAddress]int64
+	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
+	continueRematchCancelTimeoutSec          int64
+	continueRematchCancelRedundancySec       int64
+	workerManager                            *worker.WorkerManager
+	publisher                EventPublisher
+	queueCache               cache.Cache
+	lockedTokenCache         cache.Cache
+	closing                  bool
+	gameCreator              GameCreator
+	minTokenToJoinQueue      int32
+	matchConfirmationTimeout int64
 
 	botMgr      *botManager
 	botWaitTime time.Duration
@@ -47,7 +51,7 @@ type Queue struct {
 
 type GameCreator interface {
 	HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error)
-	HandleGameContinueEvent(evt *types.GameContinueEvent) error
+	CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error)
 }
 
 func NewQueue(
@@ -56,6 +60,7 @@ func NewQueue(
 	pub EventPublisher,
 	c cache.Cache,
 	gameCreator GameCreator,
+	matchConfirmationTimeout int64,
 	continueTimeout int64,
 	continueTimeoutRedundancy int64,
 	botWaitTime int64,
@@ -65,19 +70,23 @@ func NewQueue(
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	tokenCache := cache.WithPrefix(lockedTokenPrefix, c)
 	q := &Queue{
-		ctx:                 ctx,
-		queue:               make(map[types.PlayerAddress]time.Time),
-		workerManager:       workerManager,
-		publisher:           pub,
-		lockedTokenCache:    tokenCache,
-		queueCache:          queueCache,
-		gameCreator:         gameCreator,
-		continueManager:     newContinueManager(ctx, workerManager, pub, continueTimeout, continueTimeoutRedundancy),
-		botMgr:              newBotManager(),
-		botWaitTime:         time.Duration(botWaitTime) * time.Second,
-		minTokenToJoinQueue: minTokenToJoinQueue,
-		statServiceEndpoint: statServiceEndpoint,
+		ctx:                      ctx,
+		queue:                    make(map[types.PlayerAddress]time.Time),
+		pendingMatchByPlayer:     make(map[types.PlayerAddress]int64),
+		workerManager:            workerManager,
+		publisher:                pub,
+		lockedTokenCache:         tokenCache,
+		queueCache:               queueCache,
+		gameCreator:                        gameCreator,
+		continueRematchCancelTimeoutSec:    continueTimeout,
+		continueRematchCancelRedundancySec: continueTimeoutRedundancy,
+		botMgr:                             newBotManager(),
+		botWaitTime:              time.Duration(botWaitTime) * time.Second,
+		minTokenToJoinQueue:      minTokenToJoinQueue,
+		matchConfirmationTimeout: matchConfirmationTimeout,
+		statServiceEndpoint:      statServiceEndpoint,
 	}
+	q.registerPendingMatchConfirmationTimeoutHandler()
 	return q
 }
 
@@ -135,7 +144,6 @@ func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 		log.Errorf("cannot join queue, err: %s", err.Error())
 		return err
 	}
-	q.continueManager.removeGameByAddress(address, 0)
 	matched := false
 	for player := range q.queue {
 		if player.Id == address.Id ||
@@ -161,33 +169,7 @@ func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 }
 
 func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
-	evt := &types.GameMatchedEvent{
-		Players: players,
-	}
-	gid, err := q.gameCreator.HandleGameMatchedEvent(evt)
-	if err != nil {
-		log.Errorf("handle game matched event failed: %s", err.Error())
-		return err
-	}
-
-	for _, p := range players {
-		if q.botMgr.isBot(p) {
-			log.Infof("skip set locked token game ID for bot player: %s", p)
-			continue
-		}
-		err = db.SetLockedTokenGameID(q.ctx, p.Id, p.TemporaryAddress, gid)
-		if err != nil {
-			log.Errorf("set locked token game id failed, player: %s, err: %s", p.String(), err.Error())
-			return err
-		}
-		delete(q.queue, p)
-		err = q.queueCache.Delete(p.String())
-		if err != nil {
-			log.Errorf("delete player from queue cache failed: %s", err.Error())
-			return err
-		}
-	}
-	return nil
+	return q.createPvpMatchFromQueue(players)
 }
 
 func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
@@ -237,7 +219,9 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		log.Infow("sending continue cancel events due to insufficient tokens", "game_id", event.GameInfo.ID)
 		publishContinueCanceledForHumans(q.ctx, q.publisher, event.GameInfo, bots)
 	} else {
-		q.continueManager.addGame(event.GameInfo)
+		q.lock.Lock()
+		q.tryStartContinueRematchAfterGame(event.GameInfo, bots)
+		q.lock.Unlock()
 	}
 
 	go func() {
@@ -270,10 +254,6 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	defer q.lock.RUnlock()
 	_, ok := q.queue[address]
 	return ok
-}
-
-func (q *Queue) getPlayerContinueInfo(address types.PlayerAddress) *types.GameContinueInfo {
-	return q.continueManager.getPlayerContinueInfo(address)
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {

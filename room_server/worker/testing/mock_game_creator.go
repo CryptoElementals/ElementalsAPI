@@ -34,20 +34,6 @@ func (m *MockGameCreator) EXPECT() *MockGameCreatorMockRecorder {
 	return m.recorder
 }
 
-// HandleGameContinueEvent mocks base method.
-func (m *MockGameCreator) HandleGameContinueEvent(arg0 *types.GameContinueEvent) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleGameContinueEvent", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// HandleGameContinueEvent indicates an expected call of HandleGameContinueEvent.
-func (mr *MockGameCreatorMockRecorder) HandleGameContinueEvent(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleGameContinueEvent", reflect.TypeOf((*MockGameCreator)(nil).HandleGameContinueEvent), arg0)
-}
-
 // HandleGameMatchedEvent mocks base method.
 func (m *MockGameCreator) HandleGameMatchedEvent(arg0 *types.GameMatchedEvent) (uint, error) {
 	m.ctrl.T.Helper()
@@ -61,4 +47,19 @@ func (m *MockGameCreator) HandleGameMatchedEvent(arg0 *types.GameMatchedEvent) (
 func (mr *MockGameCreatorMockRecorder) HandleGameMatchedEvent(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleGameMatchedEvent", reflect.TypeOf((*MockGameCreator)(nil).HandleGameMatchedEvent), arg0)
+}
+
+// CreatePvpGameAfterQueueConfirm mocks base method.
+func (m *MockGameCreator) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePvpGameAfterQueueConfirm", players, gameType, completedMatchID)
+	ret0, _ := ret[0].(uint)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePvpGameAfterQueueConfirm indicates an expected call of CreatePvpGameAfterQueueConfirm.
+func (mr *MockGameCreatorMockRecorder) CreatePvpGameAfterQueueConfirm(players, gameType, completedMatchID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePvpGameAfterQueueConfirm", reflect.TypeOf((*MockGameCreator)(nil).CreatePvpGameAfterQueueConfirm), players, gameType, completedMatchID)
 }

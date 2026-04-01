@@ -30,6 +30,7 @@ func Migrate() error {
 		&dao.Tournament{},
 		&dao.TournamentEntry{},
 		&dao.TournamentMatch{},
+		&dao.GameMatch{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -61,6 +62,7 @@ func MigrateMemDb() error {
 		&dao.Tournament{},
 		&dao.TournamentEntry{},
 		&dao.TournamentMatch{},
+		&dao.GameMatch{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

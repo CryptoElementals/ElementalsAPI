@@ -41,31 +41,6 @@ func (g *Game) publishProto(topic string, evt *proto.Event) {
 	}
 }
 
-// notifyPlayerGameCreated publishes TYPE_MATCHED when a game is matched (skipped for continue games).
-func (r *GameManager) notifyPlayerGameCreated(player types.PlayerAddress, evt *types.GameCreatedEvent) {
-	if evt.IsContinueGame {
-		return
-	}
-	players := make([]*proto.PlayerAddress, 0, len(evt.Players))
-	for _, pl := range evt.Players {
-		players = append(players, pl.ToProto())
-	}
-	topic := (&player).String()
-	out := &proto.Event{
-		Type: proto.EventType_TYPE_MATCHED,
-		Event: &proto.Event_GameMatched{
-			GameMatched: &proto.GameMatched{
-				GameId:              uint32(evt.GameID),
-				Players:             players,
-				ConfirmationTimeout: evt.ConfirmationTimeout,
-			},
-		},
-	}
-	if err := protopub.Publish(r.ctx, r.publisher, topic, out); err != nil {
-		log.Errorw("publish game matched failed", "topic", topic, "err", err)
-	}
-}
-
 func (r *GameManager) syncGamePhasePublish(address types.PlayerAddress, gamePhase *proto.GamePhase) error {
 	return protopub.Publish(r.ctx, r.publisher, (&address).String(), &proto.Event{
 		Type: proto.EventType_TYPE_GAME_PHASE_SYNC,

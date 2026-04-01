@@ -43,12 +43,12 @@ func (s *Rpc) ConfirmBattle(ctx context.Context, req *proto.ConfirmBattleRequest
 	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(req)
 }
 
-func (s *Rpc) ContinueGame(ctx context.Context, req *proto.ContinueGameRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.playerHandler.ContinueGame(req)
+func (s *Rpc) ConfirmMatch(ctx context.Context, req *proto.ConfirmMatchRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, s.playerHandler.ConfirmMatch(req)
 }
 
-func (s *Rpc) RefuseContinueGame(ctx context.Context, req *proto.RefuseContinueGameRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.playerHandler.RefuseContinueGame(req)
+func (s *Rpc) CancelMatch(ctx context.Context, req *proto.CancelMatchRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, s.playerHandler.CancelMatch(req)
 }
 
 func (s *Rpc) SubmitTransactions(ctx context.Context, req *proto.TransactionBatch) (*emptypb.Empty, error) {
@@ -90,9 +90,9 @@ type ChainRequestHandler interface {
 type PlayerRequestHandler interface {
 	JoinQueue(req *proto.PlayerAddress) error
 	ExitQueue(req *proto.PlayerAddress) error
-	RefuseContinueGame(req *proto.RefuseContinueGameRequest) error
-	ContinueGame(req *proto.ContinueGameRequest) error
 	ConfirmBattle(req *proto.ConfirmBattleRequest) error
+	ConfirmMatch(req *proto.ConfirmMatchRequest) error
+	CancelMatch(req *proto.CancelMatchRequest) error
 	Surrender(req *proto.SurrenderRequest) error
 
 	IsPlayerInQueue(req *proto.PlayerAddress) (*proto.IsPlayerInQueueResponse, error)

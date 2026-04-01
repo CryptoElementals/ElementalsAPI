@@ -100,8 +100,8 @@ func (m *mockGameCreator) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (u
 	return m.nextGameID, nil
 }
 
-func (m *mockGameCreator) HandleGameContinueEvent(*types.GameContinueEvent) error {
-	return nil
+func (m *mockGameCreator) CreatePvpGameAfterQueueConfirm([]types.PlayerAddress, uint, int64) (uint, error) {
+	return 0, nil
 }
 
 func TestEnsureOpenTournament_CreatesFirstInstance(t *testing.T) {

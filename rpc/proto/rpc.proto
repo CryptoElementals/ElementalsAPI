@@ -12,13 +12,13 @@ service RpcService {
     // game related api
     rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
     rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
-    rpc ContinueGame(ContinueGameRequest) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
     rpc IsPlayerInQueue(PlayerAddress) returns (IsPlayerInQueueResponse);
     rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
     rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
-    rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
+    rpc ConfirmMatch(ConfirmMatchRequest) returns (google.protobuf.Empty);
+    rpc CancelMatch(CancelMatchRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
     rpc GetGameTimeoutConfig(google.protobuf.Empty)returns(TimeoutConfig);
     rpc SubmitPlayerCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
@@ -71,21 +71,12 @@ message PlayerAddress {
     string temporary_address = 2;
 }
 
-message ContinueGameRequest {
-    PlayerAddress player = 1;
-    uint32 LastGameID = 2;
-}
-
-message RefuseContinueGameRequest {
-    PlayerAddress player = 1;
-    uint32 LastGameID = 2;
-}
-
 enum PlayerStatus {
     PLAYER_UNKNOWN = 0;
     PLAYER_IN_QUEUE = 1;
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
+    // Deprecated: no longer used; continue rematch uses PLAYER_MATCHED (pending game_match) instead.
     PLAYER_WAITTING_CONTINUE = 4;
 }
 
@@ -129,6 +120,16 @@ message ConfirmBattleRequest {
     uint32 GameID = 2;
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
+}
+
+message ConfirmMatchRequest {
+    PlayerAddress PlayerAddress = 1;
+    int64 MatchId = 2;
+}
+
+message CancelMatchRequest {
+    PlayerAddress PlayerAddress = 1;
+    int64 MatchId = 2;
 }
 
 enum TurnStatus {

@@ -25,7 +25,7 @@ type UserProfile struct {
 // BeforeCreate 确保在创建记录时生成主键
 func (u *UserProfile) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.PlayerID == 0 {
-		u.PlayerID = generateSnowflakeID()
+		u.PlayerID = GenerateSnowflakeID()
 	}
 	return nil
 }
@@ -64,8 +64,8 @@ func initSnowflakeNode() {
 	})
 }
 
-// generateSnowflakeID 生成雪花ID
-func generateSnowflakeID() int64 {
+// GenerateSnowflakeID returns a new snowflake id (shared by user_profiles, game_match, etc.).
+func GenerateSnowflakeID() int64 {
 	initSnowflakeNode()
 	return snowflakeNode.Generate().Int64()
 }

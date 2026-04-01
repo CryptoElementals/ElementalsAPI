@@ -26,8 +26,8 @@ type GetPlayerStatusRequest struct {
 // GetPlayerStatusResponse 响应结构体
 type GetPlayerStatusResponse struct {
 	BaseResponse
-	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME, 4=WAITTING_CONTINUE
-	StatusName string `json:"StatusName"` // 状态名称：UNKNOWN, IN_QUEUE, MATCHED, IN_GAME, WAITTING_CONTINUE
+	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME (4 deprecated)
+	StatusName string `json:"StatusName"` // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME
 }
 
 type GetPlayerStatusTask struct {
@@ -129,7 +129,7 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return "IN_GAME"
 	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
-		return "WAITTING_CONTINUE"
+		return "WAITTING_CONTINUE" // deprecated proto value; server should not return this for new flows
 	default:
 		return "UNKNOWN"
 	}

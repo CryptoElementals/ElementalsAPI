@@ -32,6 +32,8 @@ type Game struct {
 	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
 	Status       proto.GameStatus `gorm:"not null" json:"status"`
+	// QueueMatchID is the game_match snowflake when this game was created after queue ConfirmMatch; 0 otherwise.
+	QueueMatchID int64 `gorm:"not null;default:0" json:"queue_match_id"`
 
 	Players    []*GamePlayerInfo `json:"players"`
 	Turns      []*Turn           `json:"turns"`

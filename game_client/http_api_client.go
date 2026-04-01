@@ -256,27 +256,24 @@ func (c *HttpApiClient) ConfirmBattle(gameID uint, roundNumber, turnNumber uint3
 	return nil
 }
 
-// ContinueGame continues the game via HTTP API
-func (c *HttpApiClient) ContinueGame(gameID uint, tempAddress, playerID string) error {
-	req := &api.ContinueGameRequest{
+// ConfirmMatch confirms a pending game_match (queue PVP or continue rematch) via HTTP API.
+func (c *HttpApiClient) ConfirmMatch(matchID int64, tempAddress, playerID string) error {
+	req := &api.ConfirmMatchRequest{
 		BaseRequest: api.BaseRequest{
-			Action:      api.CONTINUE_GAME_LABEL,
+			Action:      api.CONFIRM_MATCH_LABEL,
 			RequestUUID: uuid.NewString(),
 		},
-		GameID:      uint(gameID),
+		MatchID:     matchID,
 		TempAddress: tempAddress,
 		PlayerID:    playerID,
 	}
-
-	var resp api.ContinueGameResponse
-	if err := c.makeRequest(api.CONTINUE_GAME_LABEL, req, &resp, true); err != nil {
+	var resp api.ConfirmMatchResponse
+	if err := c.makeRequest(api.CONFIRM_MATCH_LABEL, req, &resp, true); err != nil {
 		return err
 	}
-
 	if resp.RetCode != 0 {
-		return fmt.Errorf("continue game failed: %s", resp.Message)
+		return fmt.Errorf("confirm match failed: %s", resp.Message)
 	}
-
 	return nil
 }
 
@@ -566,7 +563,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 	var sseEvent struct {
 		Type      string                 `json:"type"`
 		Data      map[string]interface{} `json:"data"`
-		Timestamp time.Time               `json:"timestamp"`
+		Timestamp time.Time              `json:"timestamp"`
 	}
 
 	if err := json.Unmarshal([]byte(eventData), &sseEvent); err != nil {
@@ -586,8 +583,10 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 		protoEvent.Type = proto.EventType_TYPE_MATCHED
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
 			gameMatched := &proto.GameMatched{}
-			if gameId, ok := msg["GameId"].(float64); ok {
-				gameMatched.GameId = uint32(gameId)
+			if mid, ok := msg["MatchId"].(float64); ok {
+				gameMatched.MatchId = int64(mid)
+			} else if mid, ok := msg["matchId"].(float64); ok {
+				gameMatched.MatchId = int64(mid)
 			}
 			if players, ok := msg["Players"].([]interface{}); ok {
 				for _, p := range players {
@@ -604,6 +603,53 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 				}
 			}
 			protoEvent.Event = &proto.Event_GameMatched{GameMatched: gameMatched}
+		}
+	case "gameContinuable":
+		protoEvent.Type = proto.EventType_TYPE_GAME_CONTINUABLE
+		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
+			gc := &proto.GameContinuable{}
+			if mid, ok := msg["MatchId"].(float64); ok {
+				gc.MatchId = int64(mid)
+			} else if mid, ok := msg["matchId"].(float64); ok {
+				gc.MatchId = int64(mid)
+			}
+			if lid, ok := msg["LastGameId"].(float64); ok {
+				gc.LastGameId = uint32(lid)
+			} else if lid, ok := msg["lastGameId"].(float64); ok {
+				gc.LastGameId = uint32(lid)
+			}
+			if players, ok := msg["Players"].([]interface{}); ok {
+				for _, p := range players {
+					if playerMap, ok := p.(map[string]interface{}); ok {
+						player := &proto.PlayerAddress{}
+						if id, ok := playerMap["Id"].(float64); ok {
+							player.Id = int64(id)
+						} else if id, ok := playerMap["id"].(float64); ok {
+							player.Id = int64(id)
+						}
+						if tempAddr, ok := playerMap["TemporaryAddress"].(string); ok {
+							player.TemporaryAddress = tempAddr
+						} else if tempAddr, ok := playerMap["temporary_address"].(string); ok {
+							player.TemporaryAddress = tempAddr
+						}
+						gc.Players = append(gc.Players, player)
+					}
+				}
+			} else if players, ok := msg["players"].([]interface{}); ok {
+				for _, p := range players {
+					if playerMap, ok := p.(map[string]interface{}); ok {
+						player := &proto.PlayerAddress{}
+						if id, ok := playerMap["id"].(float64); ok {
+							player.Id = int64(id)
+						}
+						if tempAddr, ok := playerMap["temporary_address"].(string); ok {
+							player.TemporaryAddress = tempAddr
+						}
+						gc.Players = append(gc.Players, player)
+					}
+				}
+			}
+			protoEvent.Event = &proto.Event_GameContinuable{GameContinuable: gc}
 		}
 	case "partConfirmed":
 		protoEvent.Type = proto.EventType_TYPE_PART_CONFIRMED

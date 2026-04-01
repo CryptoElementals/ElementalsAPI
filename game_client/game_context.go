@@ -99,21 +99,49 @@ func (c *GameContext) Run() error {
 					log.Warnw("game matched event missing GameMatched data")
 					continue
 				}
-				log.Infow("game matched", "game id", matched.GameId)
-				c.gameID = uint(matched.GameId)
+				log.Infow("game matched", "match id", matched.GetMatchId())
 				c.players = c.players[:0] // Reuse slice, more efficient than nil
 				for _, pp := range matched.Players {
 					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
 				}
 				c.currentRound = 1
 				c.currentTurn = 1
-				if err := c.confirmBattle(); err != nil {
-					log.Errorw("failed to confirm battle", "error", err)
+				if matched.GetMatchId() != 0 {
+					if err := c.confirmMatch(matched.GetMatchId()); err != nil {
+						log.Errorw("failed to confirm match", "error", err)
+					}
+				}
+			case proto.EventType_TYPE_GAME_CONTINUABLE:
+				gc := evt.GetGameContinuable()
+				if gc == nil {
+					log.Warnw("game continuable event missing payload")
+					continue
+				}
+				log.Infow("game continuable", "match id", gc.GetMatchId(), "last game id", gc.GetLastGameId())
+				c.players = c.players[:0]
+				for _, pp := range gc.Players {
+					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
+				}
+				c.currentRound = 1
+				c.currentTurn = 1
+				if gc.GetMatchId() != 0 {
+					if err := c.confirmMatch(gc.GetMatchId()); err != nil {
+						log.Errorw("failed to confirm match after continuable", "error", err)
+					}
 				}
 			case proto.EventType_TYPE_PART_CONFIRMED:
 				log.Infow("player part confirmed")
 			case proto.EventType_TYPE_GAME_CREATED:
-				log.Infow("game created")
+				gr := evt.GetGameReady()
+				if gr == nil {
+					log.Warnw("game created event missing GameReady data")
+					continue
+				}
+				c.gameID = uint(gr.GetGameId())
+				log.Infow("game created", "game id", c.gameID)
+				if err := c.confirmBattle(); err != nil {
+					log.Errorw("failed to confirm battle after game created", "error", err)
+				}
 			case proto.EventType_TYPE_ROUND_READY:
 				roundReady := evt.GetRoundReady()
 				if roundReady == nil {
@@ -255,6 +283,10 @@ func (c *GameContext) confirmBattle() error {
 	return nil
 }
 
+func (c *GameContext) confirmMatch(matchID int64) error {
+	return c.rpcClient.RpcClient.ConfirmMatch(c.ctx, c.myself, matchID)
+}
+
 // PrepareNewCard generates a new salt and calculates the commitment for the given card
 func (c *GameContext) prepareNewCard(card uint32) error {
 	// Generate random bytes for salt
@@ -375,10 +407,3 @@ func (c *GameContext) submitCard(card uint32, salt string) error {
 	return nil
 }
 
-func (c *GameContext) Continue() error {
-	err := c.rpcClient.RpcClient.ContinueGame(c.ctx, c.myself, c.gameID)
-	if err != nil {
-		return err
-	}
-	return nil
-}

@@ -6,8 +6,24 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/room_server/worker/protopub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+func notifyContinueCanceled(ctx context.Context, pub EventPublisher, player types.PlayerAddress) {
+	topic := (&player).String()
+	evt := &proto.Event{
+		Type: proto.EventType_TYPE_CONTINUE_CANCELED,
+		Event: &proto.Event_X{
+			X: &emptypb.Empty{},
+		},
+	}
+	if err := protopub.Publish(ctx, pub, topic, evt); err != nil {
+		log.Errorw("notifyContinueCanceled publish failed", "player", topic, "err", err)
+	}
+}
 
 // availableTokens returns recorded balance minus locked rows (same gate as joining the matchmaking queue).
 func availableTokens(ut *dao.UserToken) int {

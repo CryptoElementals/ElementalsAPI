@@ -104,9 +104,25 @@ message GetSubscriberCountResponse {
 } 
 
 message GameMatched {
-  uint32 GameId = 1;
-  int64 ConfirmationTimeout = 2;
-  repeated rpc.PlayerAddress Players = 3; 
+  int64 ConfirmationTimeout = 1;
+  repeated rpc.PlayerAddress Players = 2;
+  // Queue PVP: snowflake id for ConfirmMatch RPC. Zero for modes that only use this event as a lobby signal (e.g. tournament before GameReady).
+  int64 MatchId = 3;
+}
+
+// GameContinuable is sent when both players chose to continue after a game; same ConfirmMatch flow as TYPE_MATCHED once pending.
+message GameContinuable {
+  int64 ConfirmationTimeout = 1;
+  repeated rpc.PlayerAddress Players = 2;
+  int64 MatchId = 3;
+  uint32 LastGameId = 4;
+}
+
+// MatchCanceled is sent to both players when a pending game_match is cancelled (CancelMatch RPC or confirmation timeout).
+message MatchCanceled {
+  int64 MatchId = 1;
+  repeated rpc.PlayerAddress Players = 2;
+  bool FromTimeout = 3;
 }
 
 message GameReady {
@@ -115,7 +131,9 @@ message GameReady {
   uint32 MaxTurnNum = 3;
   uint32 InitialHP = 4;
   uint32 InitialMultiplier = 5;
-  repeated rpc.PlayerAddress Players = 6; 
+  repeated rpc.PlayerAddress Players = 6;
+  // Set when the game was created from a queue game_match (same snowflake as TYPE_MATCHED / ConfirmMatch). Zero otherwise.
+  int64 MatchId = 7;
 }
 
 message RoundReady {
@@ -189,12 +207,16 @@ enum EventType {
   TYPE_PLAYER_OFFLINE = 10;
   TYPE_CONTINUE_CANCELED = 11;
   TYPE_GAME_PHASE_SYNC = 12;
+  TYPE_GAME_CONTINUABLE = 13;
+  TYPE_MATCH_CANCELED = 14;
 }
 
 message Event {
   EventType Type = 1;
   oneof Event {
     GameMatched GameMatched = 2; // TYPE_MATCHED
+    GameContinuable GameContinuable = 12; // TYPE_GAME_CONTINUABLE
+    MatchCanceled MatchCanceled = 13; // TYPE_MATCH_CANCELED
     GameReady GameReady = 3; // TYPE_GAME_CREATED
     RoundReady RoundReady = 4; // TYPE_ROUND_READY
     CommitmentsOnChain CommitmentsOnChain = 5; // TYPE_COMMITMENTS_ON_CHAIN

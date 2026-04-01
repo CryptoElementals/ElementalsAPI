@@ -21,11 +21,13 @@ type RoomContractTask struct {
 	Task  []byte
 }
 
+// GameCreatedEvent is used by in-process worker tests / harnesses (not for PubSub TYPE_MATCHED).
 type GameCreatedEvent struct {
 	GameID              uint
 	Players             []PlayerAddress
 	IsContinueGame      bool
-	ConfirmationTimeout int64 // Timeout for game match confirmation
+	ConfirmationTimeout int64
+	MatchID             int64
 }
 
 type GameCompletedEvent struct {
@@ -40,6 +42,3 @@ type GameMatchedEvent struct {
 	GameType uint
 }
 
-type GameContinueEvent struct {
-	Players []PlayerAddress
-}

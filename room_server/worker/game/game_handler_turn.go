@@ -35,6 +35,9 @@ func (g *Game) handleConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	if req.TurnNumber != currentTurnNumber {
 		return nil
 	}
+	if g.currentRound.getTurnStatus() != proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION {
+		return nil
+	}
 	player, err := g.getGamePlayer(req.PlayerAddress.TemporaryAddress)
 	if err != nil {
 		return err
@@ -81,6 +84,41 @@ func (g *Game) handleConfirmBattle(req *proto.ConfirmBattleRequest) error {
 				g.handleGameAbortInternalError()
 				return err
 			}
+		}
+		g.sendTimerEventByCurrentRound()
+		return nil
+	})
+}
+
+// bootstrapFirstTurnAfterQueueConfirmations applies in-DB state and chain enqueue for round 1 / turn 1
+// after both players already confirmed via queue-side game_match (skips redundant client ConfirmBattle).
+func (g *Game) bootstrapFirstTurnAfterQueueConfirmations() error {
+	if g.currentRound.roundNumber != 1 || g.currentRound.getCurrentTurnNumber() != 1 {
+		return fmt.Errorf("bootstrapFirstTurnAfterQueueConfirmations: expected round 1 turn 1")
+	}
+	for _, pl := range g.currentRound.gamePlayers {
+		pti := pl.getCurrentPlayerTurnInfo()
+		if pti == nil {
+			continue
+		}
+		pti.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
+		if err := g.persistPlayerTurnInfo(pti); err != nil {
+			return err
+		}
+	}
+	g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
+	if err := g.persistConfirmBattleAllReady(); err != nil {
+		return err
+	}
+	return g.afterTx(func() error {
+		allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
+		for _, pl := range g.currentRound.gamePlayers {
+			allPlayers = append(allPlayers, pl.PlayerAddress())
+		}
+		if err := g.sendContractCreation(allPlayers); err != nil {
+			g.handleGameAbortInternalError()
+			return err
 		}
 		g.sendTimerEventByCurrentRound()
 		return nil
