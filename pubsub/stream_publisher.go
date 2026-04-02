@@ -1,4 +1,4 @@
-package types
+package pubsub
 
 import (
 	"context"
@@ -10,8 +10,7 @@ import (
 	goproto "google.golang.org/protobuf/proto"
 )
 
-// StreamPublisher adapts a Stream backend into the Publisher / EventPublisher
-// interface used by game.Service and queue.Service. Each player topic maps to
+// StreamPublisher adapts a Stream backend into [Publisher]. Each player topic maps to
 // its own Redis stream key (<prefix>:<topic>), so consumers can XREAD from a
 // single, well-known key per player.
 type StreamPublisher struct {
@@ -34,7 +33,6 @@ func (p *StreamPublisher) streamKey(topic string) string {
 }
 
 // Publish serializes the proto.Event and writes it to the stream keyed by topic.
-// It satisfies both game.Publisher and queue.EventPublisher.
 func (p *StreamPublisher) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
 	if req.Topic == "" {
 		return nil, fmt.Errorf("topic is required")

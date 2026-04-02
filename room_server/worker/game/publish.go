@@ -2,7 +2,7 @@ package game
 
 import (
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker/protopub"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -36,13 +36,13 @@ func (g *Game) publishPartialReadyToOtherPlayers(readyAddress types.PlayerAddres
 }
 
 func (g *Game) publishProto(topic string, evt *proto.Event) {
-	if err := protopub.Publish(g.ctx, g.publisher, topic, evt); err != nil {
+	if err := pubsub.Publish(g.ctx, g.publisher, topic, evt); err != nil {
 		log.Errorw("publish to player failed", "topic", topic, "eventType", evt.Type.String(), "err", err)
 	}
 }
 
 func (r *GameManager) syncGamePhasePublish(address types.PlayerAddress, gamePhase *proto.GamePhase) error {
-	return protopub.Publish(r.ctx, r.publisher, (&address).String(), &proto.Event{
+	return pubsub.Publish(r.ctx, r.publisher, (&address).String(), &proto.Event{
 		Type: proto.EventType_TYPE_GAME_PHASE_SYNC,
 		Event: &proto.Event_GamePhase{
 			GamePhase: gamePhase,

@@ -11,14 +11,14 @@ import (
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker/protopub"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 )
 
 // EventPublisher publishes outbound player notifications (same contract as game.Publisher).
-type EventPublisher = protopub.Publisher
+type EventPublisher = pubsub.Publisher
 
 const queueInfoPrefix = "queue_info"
 const lockedTokenPrefix = "locked_token"

@@ -8,13 +8,13 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
-	"github.com/CryptoElementals/common/room_server/worker/protopub"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // Publisher publishes game events to clients (e.g. gRPC PubSub). Must be non-nil for production.
-type Publisher = protopub.Publisher
+type Publisher = pubsub.Publisher
 
 type ContractClient interface {
 	SubmitTasks(tasks []types.RoomContractTask) error

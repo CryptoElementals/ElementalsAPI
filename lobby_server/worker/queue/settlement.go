@@ -6,7 +6,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker/protopub"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -20,7 +20,7 @@ func notifyContinueCanceled(ctx context.Context, pub EventPublisher, player type
 			X: &emptypb.Empty{},
 		},
 	}
-	if err := protopub.Publish(ctx, pub, topic, evt); err != nil {
+	if err := pubsub.Publish(ctx, pub, topic, evt); err != nil {
 		log.Errorw("notifyContinueCanceled publish failed", "player", topic, "err", err)
 	}
 }

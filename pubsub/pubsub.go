@@ -1,5 +1,6 @@
-// Package protopub centralizes gRPC PubSub-style publishes used by game and queue workers.
-package protopub
+// Package pubsub defines the minimal proto PubSub publish contract shared by room game,
+// lobby queue, and stream-backed publishers.
+package pubsub
 
 import (
 	"context"

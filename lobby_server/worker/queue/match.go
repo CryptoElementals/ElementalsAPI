@@ -8,7 +8,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker/protopub"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
@@ -100,7 +100,7 @@ func (q *Queue) publishMatchPending(forPlayer types.PlayerAddress, matchID int64
 			},
 		},
 	}
-	if err := protopub.Publish(q.ctx, q.publisher, topic, out); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, topic, out); err != nil {
 		log.Errorw("publish match pending failed", "topic", topic, "err", err)
 	}
 }
@@ -122,7 +122,7 @@ func (q *Queue) publishGameContinuable(forPlayer types.PlayerAddress, matchID in
 			},
 		},
 	}
-	if err := protopub.Publish(q.ctx, q.publisher, topic, out); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, topic, out); err != nil {
 		log.Errorw("publish game continuable failed", "topic", topic, "err", err)
 	}
 }
@@ -143,7 +143,7 @@ func (q *Queue) publishMatchCanceled(forPlayer types.PlayerAddress, matchID int6
 			},
 		},
 	}
-	if err := protopub.Publish(q.ctx, q.publisher, topic, out); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, topic, out); err != nil {
 		log.Errorw("publish match canceled failed", "topic", topic, "err", err)
 	}
 }
