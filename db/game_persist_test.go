@@ -16,7 +16,10 @@ func setupGamePersistMemDB(t *testing.T) {
 
 func sampleGameArgs() *dao.GameArgs {
 	return &dao.GameArgs{
-		MaxRounds:                             3,
+		MaxNormalRounds:                       3,
+		MaxExtraRounds:                        0,
+		MaxTurnsPerNormalRound:                3,
+		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
 		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   60,
@@ -27,7 +30,6 @@ func sampleGameArgs() *dao.GameArgs {
 		CommitmentSubmissionTimeoutRedundancy: 10,
 		CardSubmissionTimeoutRedundancy:       10,
 		GameContinueTimeoutRedundancy:         10,
-		MaxTurnsPerRound:                      3,
 	}
 }
 

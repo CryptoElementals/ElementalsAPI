@@ -19,8 +19,10 @@ import (
 func newTestGameArgsRow(t *testing.T, initialHP int64) *dao.GameArgs {
 	t.Helper()
 	ga := &dao.GameArgs{
-		MaxRounds:                             3,
-		MaxTurnsPerRound:                      3,
+		MaxNormalRounds:                       3,
+		MaxExtraRounds:                        0,
+		MaxTurnsPerNormalRound:                3,
+		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             initialHP,
 		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   60,
@@ -33,6 +35,7 @@ func newTestGameArgsRow(t *testing.T, initialHP int64) *dao.GameArgs {
 		GameContinueTimeoutRedundancy:         10,
 	}
 	require.NoError(t, db.Get().Create(ga).Error)
+	dao.MustValidateGameArgs(ga)
 	require.NotZero(t, ga.ID)
 	return ga
 }

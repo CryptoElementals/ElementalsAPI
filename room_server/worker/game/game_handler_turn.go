@@ -5,6 +5,7 @@ import (
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -175,7 +176,8 @@ func (g *Game) handleTurnEnd() error {
 	}
 	g.gameInfo.GameResult = gameResult
 
-	isRoundComplete := turnNumber >= uint32(g.gameInfo.GameArgs.MaxTurnsPerRound) || isGameOver
+	turnsThisRound := dao.TurnsPerRoundForGame(g.gameInfo, roundNumber)
+	isRoundComplete := turnNumber >= turnsThisRound || isGameOver
 	isGameComplete := isGameOver
 
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_COMPLETED)

@@ -26,7 +26,10 @@ func setupSQLite(t *testing.T) {
 func seedGameArgs(t *testing.T) *dao.GameArgs {
 	t.Helper()
 	ga := &dao.GameArgs{
-		MaxRounds:                             3,
+		MaxNormalRounds:                       3,
+		MaxExtraRounds:                        0,
+		MaxTurnsPerNormalRound:                3,
+		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
 		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   60,
@@ -37,7 +40,6 @@ func seedGameArgs(t *testing.T) *dao.GameArgs {
 		CommitmentSubmissionTimeoutRedundancy: 10,
 		CardSubmissionTimeoutRedundancy:       10,
 		GameContinueTimeoutRedundancy:         10,
-		MaxTurnsPerRound:                      3,
 	}
 	require.NoError(t, db.Get().Create(ga).Error)
 	return ga

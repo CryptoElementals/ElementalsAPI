@@ -136,9 +136,6 @@ func NewGameManager(ctx context.Context,
 
 func (r *GameManager) cloneGameArgs() *dao.GameArgs {
 	ga := *r.argsTemplate
-	if ga.MaxTurnsPerRound <= 0 {
-		ga.MaxTurnsPerRound = 3
-	}
 	return &ga
 }
 
@@ -189,6 +186,14 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, r.cloneGameArgs())
 	if completedMatchID != 0 {
 		game.gameInfo.QueueMatchID = completedMatchID
+	}
+	if gameType == types.GameTypeTournament {
+		rr := uint32(game.gameInfo.GameArgs.MaxNormalRounds)
+		if rr == 0 {
+			rr = 3
+		}
+		game.gameInfo.RegulationRounds = rr
+		game.gameInfo.OvertimeRoundsCap = dao.TournamentMaxOvertimeRounds
 	}
 	if err := game.persistInsertNewGameGraph(); err != nil {
 		return 0, err

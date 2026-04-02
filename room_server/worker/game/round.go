@@ -77,14 +77,14 @@ func (r *round) maxConfiguredRounds() uint32 {
 	if r.game == nil {
 		return 0
 	}
-	return uint32(r.game.GameArgs.MaxRounds)
+	return dao.EffectiveMaxRounds(r.game)
 }
 
 func (r *round) turnsPerRound() uint32 {
 	if r == nil || r.game == nil {
 		return 0
 	}
-	return dao.TurnsPerRoundFromArgs(r.game.GameArgs)
+	return dao.TurnsPerRoundForGame(r.game, r.roundNumber)
 }
 
 // getCurrentTurnNumber returns the current turn index (1..turnsPerRound) within this round.

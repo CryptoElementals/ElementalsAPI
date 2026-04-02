@@ -3,6 +3,7 @@ package game
 import (
 	"errors"
 
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -23,19 +24,22 @@ func (g *Game) handleRoomCreated(gameID uint, blockTime int64) error {
 		players = append(players, addr.ToProto())
 	}
 	ga := g.gameInfo.GameArgs
+	gi := g.gameInfo
 
 	return g.afterTx(func() error {
 		g.publishProtoToAllPlayers(&proto.Event{
 			Type: proto.EventType_TYPE_GAME_CREATED,
 			Event: &proto.Event_GameReady{
 				GameReady: &proto.GameReady{
-					GameId:            uint32(g.gameInfo.ID),
-					MaxRoundNum:       uint32(ga.MaxRounds),
-					MaxTurnNum:        uint32(ga.MaxTurnsPerRound),
-					InitialHP:         uint32(ga.InitialHP),
-					InitialMultiplier: uint32(ga.InitialMultiplier),
-					Players:           players,
-					MatchId:           g.gameInfo.QueueMatchID,
+					GameId:                  uint32(gi.ID),
+					InitialHP:               uint32(ga.InitialHP),
+					InitialMultiplier:       uint32(ga.InitialMultiplier),
+					Players:                 players,
+					MatchId:                 gi.QueueMatchID,
+					RegulationRounds:        dao.RegulationRoundsForPub(gi),
+					OvertimeRounds:          dao.ExtraRoundsForPub(gi),
+					RegulationTurnsPerRound: dao.RegulationTurnsPerRoundForPub(gi),
+					OvertimeTurnsPerRound:   dao.OvertimeTurnsPerRoundForPub(gi),
 				},
 			},
 		})

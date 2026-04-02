@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -102,108 +101,6 @@ func NewGame(
 	return game
 }
 
-func NewGameFromGameInfo(
-	ctx context.Context,
-	workerManagerService *worker.WorkerManager,
-	pub Publisher,
-	gameInfo *dao.Game,
-	txPoolEnqueuer TxPoolEnqueuer,
-	gameResultSettler GameResultSettler) *Game {
-	currentRound := buildRuntimeState(gameInfo)
-
-	g := &Game{
-		ctx:                  ctx,
-		gameInfo:             gameInfo,
-		currentRound:         currentRound,
-		workerManagerService: workerManagerService,
-		publisher:            pub,
-		txPoolEnqueuer:       txPoolEnqueuer,
-		gameResultSettler:    gameResultSettler,
-	}
-
-	// Optional: expiry on recovery – skip and abort games that have clearly timed out
-	if !gameInfo.CreatedAt.IsZero() {
-		ga := gameInfo.GameArgs
-		perRoundSeconds := ga.ConfirmationTimeout +
-			ga.CommitmentSubmissionTimeout +
-			ga.CardSubmissionTimeout
-		if perRoundSeconds > 0 && ga.MaxRounds > 0 {
-			expiryDuration := time.Duration(perRoundSeconds*ga.MaxRounds) * time.Second
-			if time.Since(gameInfo.CreatedAt) > expiryDuration {
-				log.Infow("skipping expired game on recovery",
-					"game id", gameInfo.ID,
-					"status", gameInfo.Status,
-					"created_at", gameInfo.CreatedAt,
-					"expiry_duration", expiryDuration.Seconds())
-				if gameInfo.Status == proto.GameStatus_GAME_INIT {
-					if err := g.handleGameAbortInit(); err != nil {
-						log.Errorf("expired game abort init failed, game: %d, err %s", gameInfo.ID, err)
-					}
-				} else {
-					if err := g.handleGameAbortInternalError(); err != nil {
-						log.Errorf("expired game abort internal failed, game: %d, err %s", gameInfo.ID, err)
-					}
-				}
-				return nil
-			}
-		}
-	}
-
-	// Restore runtime state for current round and turn from DB
-	if len(g.gameInfo.Turns) > 0 {
-		currentTurn := g.currentRound.getCurrentTurn()
-		switch {
-		case gameInfo.Status == proto.GameStatus_GAME_END || gameInfo.Status == proto.GameStatus_GAME_ABORTED:
-			g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
-		case currentTurn != nil && currentTurn.TurnStatus != 0:
-			g.currentRound.setTurnStatus(proto.TurnStatus(currentTurn.TurnStatus))
-		default:
-			g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION)
-		}
-
-		if currentTurn != nil {
-			for _, pti := range currentTurn.PlayerTurnInfos {
-				if pti == nil {
-					continue
-				}
-				key := strings.ToLower(pti.TemporaryAddress)
-				player, ok := g.currentRound.gamePlayers[key]
-				if !ok {
-					player, ok = g.currentRound.gamePlayers[pti.TemporaryAddress]
-				}
-				if !ok || player == nil {
-					log.Errorf("recovery: player %s not found in gamePlayers for game %d", pti.TemporaryAddress, gameInfo.ID)
-					continue
-				}
-				player.currentTurnInfo = pti
-				if pti.TurnSubmittedCard != nil && pti.TurnSubmittedCard.HealthAfter > 0 {
-					player.currentHP = int64(pti.TurnSubmittedCard.HealthAfter)
-					if pti.TurnSubmittedCard.MultiplierAfter > 0 {
-						player.multiplier = pti.TurnSubmittedCard.MultiplierAfter
-					}
-				}
-			}
-		}
-	}
-
-	switch gameInfo.Status {
-	case proto.GameStatus_GAME_INIT:
-		if err := g.pushStateToContractCreating(); err != nil {
-			log.Errorf("recovered GAME_INIT pushStateToContractCreating failed, game: %d, err %s", gameInfo.ID, err)
-		}
-	case proto.GameStatus_GAME_RUNNING:
-		if g.currentRound.getTurnStatus() == proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN {
-			if err := g.sendTurnReady(); err != nil {
-				log.Errorf("recovered GAME_RUNNING sendTurnReady failed, game: %d, err %s", gameInfo.ID, err)
-			}
-		}
-	}
-
-	g.sendTimerEventByCurrentRound()
-
-	return g
-}
-
 // pushStateToContractCreating marks all players ready and enqueues contract creation (no DB persist of PTIs).
 // Used when recovering a GAME_INIT row from DB after restart; new games use bootstrapFirstTurnAfterQueueConfirmations after insert.
 func (g *Game) pushStateToContractCreating() error {
@@ -282,7 +179,7 @@ func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
 		Players:        allPlayers,
 		InitialHP:      ga.InitialHP,
 		RoundTimeout:   ga.CommitmentSubmissionTimeout,
-		MaxRoundNumber: ga.MaxRounds,
+		MaxRoundNumber: int64(dao.EffectiveMaxRounds(g.gameInfo)),
 	}
 	g.txPoolEnqueuer.AddCreateRoom(evt)
 	return nil

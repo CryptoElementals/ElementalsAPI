@@ -15,5 +15,6 @@ func LoadRoomServerGameArgs(templateID uint) (*dao.GameArgs, error) {
 		return nil, fmt.Errorf("game_args template (id=%d): %w", templateID, err)
 	}
 	out := row
+	dao.MustValidateGameArgs(&out)
 	return &out, nil
 }

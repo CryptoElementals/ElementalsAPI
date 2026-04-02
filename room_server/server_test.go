@@ -38,7 +38,10 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		gametTimeout = 10
 	}
 	ga := &dao.GameArgs{
-		MaxRounds:                             3,
+		MaxNormalRounds:                       3,
+		MaxExtraRounds:                        0,
+		MaxTurnsPerNormalRound:                3,
+		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
 		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   gametTimeout,
@@ -49,9 +52,9 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		CommitmentSubmissionTimeoutRedundancy: 10,
 		CardSubmissionTimeoutRedundancy:       10,
 		GameContinueTimeoutRedundancy:         10,
-		MaxTurnsPerRound:                      3,
 	}
 	require.NoError(t, db.Get().Create(ga).Error)
+	dao.MustValidateGameArgs(ga)
 	cfg := &config.RoomServerConfig{
 		LogCfg: log.Config{
 			Development: true,

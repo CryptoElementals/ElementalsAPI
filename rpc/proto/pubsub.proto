@@ -127,13 +127,15 @@ message MatchCanceled {
 
 message GameReady {
   uint32 GameId = 1;
-  uint32 MaxRoundNum = 2;
-  uint32 MaxTurnNum = 3;
   uint32 InitialHP = 4;
   uint32 InitialMultiplier = 5;
   repeated rpc.PlayerAddress Players = 6;
   // Set when the game was created from a queue game_match (same snowflake as TYPE_MATCHED / ConfirmMatch). Zero otherwise.
   int64 MatchId = 7;
+  uint32 RegulationRounds = 8;
+  uint32 OvertimeRounds = 9;
+  uint32 RegulationTurnsPerRound = 10;
+  uint32 OvertimeTurnsPerRound = 11;
 }
 
 message RoundReady {

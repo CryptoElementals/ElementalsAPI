@@ -3,24 +3,29 @@ package dao
 import "github.com/CryptoElementals/common/rpc/proto"
 
 type GameArgs struct {
-	BaseModel
+	BaseModel `validate:"-"`
 
-	MaxRounds         int64 `gorm:"not null" json:"max_rounds"`
-	InitialHP         int64 `gorm:"not null" json:"initial_hp"`
-	InitialMultiplier int64 `gorm:"not null" json:"initial_multiplier"`
+	// MaxNormalRounds maps to legacy column max_rounds.
+	MaxNormalRounds int64 `validate:"gt=0" gorm:"column:max_rounds;not null;default:3" json:"max_normal_rounds"`
+	// MaxExtraRounds / MaxTurnsPerExtraRound are unused for match layout: overtime exists only for tournament (see Game.OvertimeRoundsCap).
+	MaxExtraRounds int64 `validate:"gte=0" gorm:"not null;default:0" json:"max_extra_rounds"`
+	// MaxTurnsPerNormalRound maps to legacy column max_turns_per_round.
+	MaxTurnsPerNormalRound int64 `validate:"gt=0" gorm:"column:max_turns_per_round;not null;default:3" json:"max_turns_per_normal_round"`
+	MaxTurnsPerExtraRound  int64 `validate:"gte=0" gorm:"not null;default:0" json:"max_turns_per_extra_round"`
+
+	InitialHP         int64 `validate:"gt=0" gorm:"not null" json:"initial_hp"`
+	InitialMultiplier int64 `validate:"gt=0" gorm:"not null" json:"initial_multiplier"`
 	// timeouts
-	ConfirmationTimeout         int64 `gorm:"not null" json:"confirmation_timeout"`          // Timeout for game match and round confirmation
-	CommitmentSubmissionTimeout int64 `gorm:"not null" json:"commitment_submission_timeout"` // Timeout for commitment submission
-	CardSubmissionTimeout       int64 `gorm:"not null" json:"card_submission_timeout"`       // Timeout for card submission
-	GameContinueTimeout         int64 `gorm:"not null" json:"game_continue_timeout"`         // Timeout for game continue
+	ConfirmationTimeout         int64 `validate:"gt=0" gorm:"not null" json:"confirmation_timeout"`          // Timeout for game match and round confirmation
+	CommitmentSubmissionTimeout int64 `validate:"gt=0" gorm:"not null" json:"commitment_submission_timeout"` // Timeout for commitment submission
+	CardSubmissionTimeout       int64 `validate:"gt=0" gorm:"not null" json:"card_submission_timeout"`       // Timeout for card submission
+	GameContinueTimeout         int64 `validate:"gt=0" gorm:"not null" json:"game_continue_timeout"`         // Timeout for game continue
 
 	// timeout redundancy
-	ConfirmationTimeoutRedundancy         int64 `gorm:"not null" json:"confirmation_timeout_redundancy"`          // Redundancy for game match and round confirmation
-	CommitmentSubmissionTimeoutRedundancy int64 `gorm:"not null" json:"commitment_submission_timeout_redundancy"` // Redundancy for commitment submission
-	CardSubmissionTimeoutRedundancy       int64 `gorm:"not null" json:"card_submission_timeout_redundancy"`       // Redundancy for card submission
-	GameContinueTimeoutRedundancy         int64 `gorm:"not null" json:"game_continue_timeout_redundancy"`         // Redundancy for game continue
-
-	MaxTurnsPerRound int64 `gorm:"not null" json:"max_turns_per_round"`
+	ConfirmationTimeoutRedundancy         int64 `validate:"gte=0" gorm:"not null" json:"confirmation_timeout_redundancy"`          // Redundancy for game match and round confirmation
+	CommitmentSubmissionTimeoutRedundancy int64 `validate:"gte=0" gorm:"not null" json:"commitment_submission_timeout_redundancy"` // Redundancy for commitment submission
+	CardSubmissionTimeoutRedundancy       int64 `validate:"gte=0" gorm:"not null" json:"card_submission_timeout_redundancy"`       // Redundancy for card submission
+	GameContinueTimeoutRedundancy         int64 `validate:"gte=0" gorm:"not null" json:"game_continue_timeout_redundancy"`         // Redundancy for game continue
 }
 
 func (GameArgs) TableName() string { return "game_args" }
@@ -31,7 +36,11 @@ type Game struct {
 
 	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
 	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
-	Status       proto.GameStatus `gorm:"not null" json:"status"`
+	// RegulationRounds is the count of full regulation rounds (e.g. tournament); 0 means infer from GameArgs for older rows.
+	RegulationRounds uint32 `gorm:"not null;default:0" json:"regulation_rounds"`
+	// OvertimeRoundsCap is the max tie-breaker rounds after regulation for tournament matches (1 turn each).
+	OvertimeRoundsCap uint32 `gorm:"not null;default:0" json:"overtime_rounds_cap"`
+	Status            proto.GameStatus `gorm:"not null" json:"status"`
 	// QueueMatchID is the game_match snowflake when this game was created after queue ConfirmMatch; 0 otherwise.
 	QueueMatchID int64 `gorm:"not null;default:0" json:"queue_match_id"`
 
