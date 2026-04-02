@@ -34,32 +34,17 @@ func (m *MockGameCreator) EXPECT() *MockGameCreatorMockRecorder {
 	return m.recorder
 }
 
-// HandleGameMatchedEvent mocks base method.
-func (m *MockGameCreator) HandleGameMatchedEvent(arg0 *types.GameMatchedEvent) (uint, error) {
+// CreateGameAndRun mocks base method.
+func (m *MockGameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleGameMatchedEvent", arg0)
+	ret := m.ctrl.Call(m, "CreateGameAndRun", players, gameType, completedMatchID)
 	ret0, _ := ret[0].(uint)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// HandleGameMatchedEvent indicates an expected call of HandleGameMatchedEvent.
-func (mr *MockGameCreatorMockRecorder) HandleGameMatchedEvent(arg0 interface{}) *gomock.Call {
+// CreateGameAndRun indicates an expected call of CreateGameAndRun.
+func (mr *MockGameCreatorMockRecorder) CreateGameAndRun(players, gameType, completedMatchID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleGameMatchedEvent", reflect.TypeOf((*MockGameCreator)(nil).HandleGameMatchedEvent), arg0)
-}
-
-// CreatePvpGameAfterQueueConfirm mocks base method.
-func (m *MockGameCreator) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreatePvpGameAfterQueueConfirm", players, gameType, completedMatchID)
-	ret0, _ := ret[0].(uint)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreatePvpGameAfterQueueConfirm indicates an expected call of CreatePvpGameAfterQueueConfirm.
-func (mr *MockGameCreatorMockRecorder) CreatePvpGameAfterQueueConfirm(players, gameType, completedMatchID interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePvpGameAfterQueueConfirm", reflect.TypeOf((*MockGameCreator)(nil).CreatePvpGameAfterQueueConfirm), players, gameType, completedMatchID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGameAndRun", reflect.TypeOf((*MockGameCreator)(nil).CreateGameAndRun), players, gameType, completedMatchID)
 }

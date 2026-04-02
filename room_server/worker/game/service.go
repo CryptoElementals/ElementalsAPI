@@ -120,12 +120,8 @@ func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.Pla
 	return proto.PlayerStatus_PLAYER_IN_GAME
 }
 
-func (s *Service) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
-	return s.gameManager.HandleGameMatchedEvent(evt)
-}
-
-func (s *Service) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
-	return s.gameManager.CreatePvpGameAfterQueueConfirm(players, gameType, completedMatchID)
+func (s *Service) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+	return s.gameManager.CreateGameAndRun(players, gameType, completedMatchID)
 }
 
 // GetGamePhase returns persisted in-game phase from DB/runtime (rpc/server.GamePhaseHandler). Queue / pending state is on the lobby API.

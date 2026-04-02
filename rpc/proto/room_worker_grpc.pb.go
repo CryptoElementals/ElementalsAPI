@@ -19,9 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RoomWorkerService_CreatePvpGameAfterQueueConfirm_FullMethodName = "/rpc.RoomWorkerService/CreatePvpGameAfterQueueConfirm"
-	RoomWorkerService_HandleGameMatchedEvent_FullMethodName         = "/rpc.RoomWorkerService/HandleGameMatchedEvent"
-	RoomWorkerService_GetPlayerGameStatus_FullMethodName            = "/rpc.RoomWorkerService/GetPlayerGameStatus"
+	RoomWorkerService_CreateGameAndRun_FullMethodName    = "/rpc.RoomWorkerService/CreateGameAndRun"
+	RoomWorkerService_GetPlayerGameStatus_FullMethodName = "/rpc.RoomWorkerService/GetPlayerGameStatus"
 )
 
 // RoomWorkerServiceClient is the client API for RoomWorkerService service.
@@ -30,8 +29,7 @@ const (
 //
 // RoomWorkerService is served by the room server; lobby calls it to create games and read in-game status.
 type RoomWorkerServiceClient interface {
-	CreatePvpGameAfterQueueConfirm(ctx context.Context, in *CreatePvpGameAfterQueueConfirmRequest, opts ...grpc.CallOption) (*CreatePvpGameAfterQueueConfirmResponse, error)
-	HandleGameMatchedEvent(ctx context.Context, in *HandleGameMatchedEventRequest, opts ...grpc.CallOption) (*HandleGameMatchedEventResponse, error)
+	CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error)
 	GetPlayerGameStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerGameStatusResponse, error)
 }
 
@@ -43,20 +41,10 @@ func NewRoomWorkerServiceClient(cc grpc.ClientConnInterface) RoomWorkerServiceCl
 	return &roomWorkerServiceClient{cc}
 }
 
-func (c *roomWorkerServiceClient) CreatePvpGameAfterQueueConfirm(ctx context.Context, in *CreatePvpGameAfterQueueConfirmRequest, opts ...grpc.CallOption) (*CreatePvpGameAfterQueueConfirmResponse, error) {
+func (c *roomWorkerServiceClient) CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreatePvpGameAfterQueueConfirmResponse)
-	err := c.cc.Invoke(ctx, RoomWorkerService_CreatePvpGameAfterQueueConfirm_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *roomWorkerServiceClient) HandleGameMatchedEvent(ctx context.Context, in *HandleGameMatchedEventRequest, opts ...grpc.CallOption) (*HandleGameMatchedEventResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HandleGameMatchedEventResponse)
-	err := c.cc.Invoke(ctx, RoomWorkerService_HandleGameMatchedEvent_FullMethodName, in, out, cOpts...)
+	out := new(CreateGameAndRunResponse)
+	err := c.cc.Invoke(ctx, RoomWorkerService_CreateGameAndRun_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +67,7 @@ func (c *roomWorkerServiceClient) GetPlayerGameStatus(ctx context.Context, in *P
 //
 // RoomWorkerService is served by the room server; lobby calls it to create games and read in-game status.
 type RoomWorkerServiceServer interface {
-	CreatePvpGameAfterQueueConfirm(context.Context, *CreatePvpGameAfterQueueConfirmRequest) (*CreatePvpGameAfterQueueConfirmResponse, error)
-	HandleGameMatchedEvent(context.Context, *HandleGameMatchedEventRequest) (*HandleGameMatchedEventResponse, error)
+	CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error)
 	GetPlayerGameStatus(context.Context, *PlayerAddress) (*GetPlayerGameStatusResponse, error)
 	mustEmbedUnimplementedRoomWorkerServiceServer()
 }
@@ -92,11 +79,8 @@ type RoomWorkerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRoomWorkerServiceServer struct{}
 
-func (UnimplementedRoomWorkerServiceServer) CreatePvpGameAfterQueueConfirm(context.Context, *CreatePvpGameAfterQueueConfirmRequest) (*CreatePvpGameAfterQueueConfirmResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreatePvpGameAfterQueueConfirm not implemented")
-}
-func (UnimplementedRoomWorkerServiceServer) HandleGameMatchedEvent(context.Context, *HandleGameMatchedEventRequest) (*HandleGameMatchedEventResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method HandleGameMatchedEvent not implemented")
+func (UnimplementedRoomWorkerServiceServer) CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateGameAndRun not implemented")
 }
 func (UnimplementedRoomWorkerServiceServer) GetPlayerGameStatus(context.Context, *PlayerAddress) (*GetPlayerGameStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerGameStatus not implemented")
@@ -122,38 +106,20 @@ func RegisterRoomWorkerServiceServer(s grpc.ServiceRegistrar, srv RoomWorkerServ
 	s.RegisterService(&RoomWorkerService_ServiceDesc, srv)
 }
 
-func _RoomWorkerService_CreatePvpGameAfterQueueConfirm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreatePvpGameAfterQueueConfirmRequest)
+func _RoomWorkerService_CreateGameAndRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateGameAndRunRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RoomWorkerServiceServer).CreatePvpGameAfterQueueConfirm(ctx, in)
+		return srv.(RoomWorkerServiceServer).CreateGameAndRun(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RoomWorkerService_CreatePvpGameAfterQueueConfirm_FullMethodName,
+		FullMethod: RoomWorkerService_CreateGameAndRun_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RoomWorkerServiceServer).CreatePvpGameAfterQueueConfirm(ctx, req.(*CreatePvpGameAfterQueueConfirmRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RoomWorkerService_HandleGameMatchedEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HandleGameMatchedEventRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RoomWorkerServiceServer).HandleGameMatchedEvent(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RoomWorkerService_HandleGameMatchedEvent_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RoomWorkerServiceServer).HandleGameMatchedEvent(ctx, req.(*HandleGameMatchedEventRequest))
+		return srv.(RoomWorkerServiceServer).CreateGameAndRun(ctx, req.(*CreateGameAndRunRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -184,12 +150,8 @@ var RoomWorkerService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*RoomWorkerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "CreatePvpGameAfterQueueConfirm",
-			Handler:    _RoomWorkerService_CreatePvpGameAfterQueueConfirm_Handler,
-		},
-		{
-			MethodName: "HandleGameMatchedEvent",
-			Handler:    _RoomWorkerService_HandleGameMatchedEvent_Handler,
+			MethodName: "CreateGameAndRun",
+			Handler:    _RoomWorkerService_CreateGameAndRun_Handler,
 		},
 		{
 			MethodName: "GetPlayerGameStatus",

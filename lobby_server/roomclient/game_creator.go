@@ -14,11 +14,11 @@ type GameCreator struct {
 	Client proto.RoomWorkerServiceClient
 }
 
-func (c *GameCreator) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+func (c *GameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
 	if c.Client == nil {
 		return 0, status.Error(codes.Unavailable, "room worker client not configured")
 	}
-	req := &proto.CreatePvpGameAfterQueueConfirmRequest{
+	req := &proto.CreateGameAndRunRequest{
 		GameType:         uint32(gameType),
 		CompletedMatchId: completedMatchID,
 	}
@@ -26,26 +26,7 @@ func (c *GameCreator) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddre
 		p := players[i]
 		req.Players = append(req.Players, (&p).ToProto())
 	}
-	resp, err := c.Client.CreatePvpGameAfterQueueConfirm(context.Background(), req)
-	if err != nil {
-		return 0, err
-	}
-	return uint(resp.GameId), nil
-}
-
-func (c *GameCreator) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
-	if c.Client == nil {
-		return 0, status.Error(codes.Unavailable, "room worker client not configured")
-	}
-	req := &proto.HandleGameMatchedEventRequest{
-		ConfirmationTimeout: evt.ConfirmationTimeout,
-		GameType:            uint32(evt.GameType),
-	}
-	for i := range evt.Players {
-		p := evt.Players[i]
-		req.Players = append(req.Players, (&p).ToProto())
-	}
-	resp, err := c.Client.HandleGameMatchedEvent(context.Background(), req)
+	resp, err := c.Client.CreateGameAndRun(context.Background(), req)
 	if err != nil {
 		return 0, err
 	}

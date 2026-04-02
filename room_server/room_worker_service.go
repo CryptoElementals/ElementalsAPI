@@ -17,35 +17,18 @@ func newRoomWorkerService(g *game.Service) *roomWorkerService {
 	return &roomWorkerService{game: g}
 }
 
-func (s *roomWorkerService) CreatePvpGameAfterQueueConfirm(ctx context.Context, req *proto.CreatePvpGameAfterQueueConfirmRequest) (*proto.CreatePvpGameAfterQueueConfirmResponse, error) {
+func (s *roomWorkerService) CreateGameAndRun(ctx context.Context, req *proto.CreateGameAndRunRequest) (*proto.CreateGameAndRunResponse, error) {
 	players := make([]types.PlayerAddress, 0, len(req.GetPlayers()))
 	for _, p := range req.GetPlayers() {
 		var a types.PlayerAddress
 		a.FromProto(p)
 		players = append(players, a)
 	}
-	gid, err := s.game.CreatePvpGameAfterQueueConfirm(players, uint(req.GetGameType()), req.GetCompletedMatchId())
+	gid, err := s.game.CreateGameAndRun(players, uint(req.GetGameType()), req.GetCompletedMatchId())
 	if err != nil {
 		return nil, err
 	}
-	return &proto.CreatePvpGameAfterQueueConfirmResponse{GameId: uint32(gid)}, nil
-}
-
-func (s *roomWorkerService) HandleGameMatchedEvent(ctx context.Context, req *proto.HandleGameMatchedEventRequest) (*proto.HandleGameMatchedEventResponse, error) {
-	evt := &types.GameMatchedEvent{
-		ConfirmationTimeout: req.GetConfirmationTimeout(),
-		GameType:            uint(req.GetGameType()),
-	}
-	for _, p := range req.GetPlayers() {
-		var a types.PlayerAddress
-		a.FromProto(p)
-		evt.Players = append(evt.Players, a)
-	}
-	gid, err := s.game.HandleGameMatchedEvent(evt)
-	if err != nil {
-		return nil, err
-	}
-	return &proto.HandleGameMatchedEventResponse{GameId: uint32(gid)}, nil
+	return &proto.CreateGameAndRunResponse{GameId: uint32(gid)}, nil
 }
 
 func (s *roomWorkerService) GetPlayerGameStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerGameStatusResponse, error) {

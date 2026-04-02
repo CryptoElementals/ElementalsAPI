@@ -48,8 +48,7 @@ type Queue struct {
 }
 
 type GameCreator interface {
-	HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error)
-	CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error)
+	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error)
 }
 
 func NewQueue(

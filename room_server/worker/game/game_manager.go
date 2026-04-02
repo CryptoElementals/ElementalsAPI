@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
 	"gorm.io/gorm"
 )
 
@@ -142,6 +143,7 @@ func (r *GameManager) cloneGameArgs() *dao.GameArgs {
 }
 
 func (r *GameManager) Start() error {
+	timer.InitTimer(timer.ScopeRoom)
 	r.registerTimerFunction()
 
 	// Start background goroutine for pool processing
@@ -171,6 +173,7 @@ func (r *GameManager) Stop() {
 	log.Info("closing game manager")
 	r.stopped = true
 	r.lock.Unlock()
+	timer.StopTimer(timer.ScopeRoom)
 	log.Info("game manager closed")
 }
 
@@ -199,22 +202,8 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	return gameID, nil
 }
 
-func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	if r.stopped {
-		return 0, errors.New("server stopping, drop game matched event")
-	}
-	gameID, err := r.createGameAndNotify(evt.Players, evt.GameType, 0)
-	if err != nil {
-		return 0, err
-	}
-	log.Infow("gameMatched", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
-	return gameID, nil
-}
-
-// CreatePvpGameAfterQueueConfirm inserts a PVP game after both players confirmed game_match, bootstraps chain for turn 1, then notifies.
-func (r *GameManager) CreatePvpGameAfterQueueConfirm(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+// CreateGameAndRun persists a new game (queue PVP, continue, or tournament), bootstraps chain for turn 1, then notifies.
+func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if r.stopped {

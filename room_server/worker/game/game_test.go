@@ -47,7 +47,7 @@ type gmEventHandler struct {
 func (h *gmEventHandler) Handle(ctx context.Context, event *types.Event) error {
 	switch d := event.Data.(type) {
 	case *types.GameMatchedEvent:
-		_, err := h.gm.HandleGameMatchedEvent(d)
+		_, err := h.gm.CreateGameAndRun(d.Players, d.GameType, 0)
 		return err
 	default:
 		return nil

@@ -8,28 +8,18 @@ option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 // RoomWorkerService is served by the room server; lobby calls it to create games and read in-game status.
 service RoomWorkerService {
-  rpc CreatePvpGameAfterQueueConfirm(CreatePvpGameAfterQueueConfirmRequest) returns (CreatePvpGameAfterQueueConfirmResponse);
-  rpc HandleGameMatchedEvent(HandleGameMatchedEventRequest) returns (HandleGameMatchedEventResponse);
+  rpc CreateGameAndRun(CreateGameAndRunRequest) returns (CreateGameAndRunResponse);
   rpc GetPlayerGameStatus(PlayerAddress) returns (GetPlayerGameStatusResponse);
 }
 
-message CreatePvpGameAfterQueueConfirmRequest {
+message CreateGameAndRunRequest {
   repeated PlayerAddress players = 1;
   uint32 game_type = 2;
+  // Queue PVP: snowflake game_match id after ConfirmMatch; 0 for tournament / no lobby match row.
   int64 completed_match_id = 3;
 }
 
-message CreatePvpGameAfterQueueConfirmResponse {
-  uint32 game_id = 1;
-}
-
-message HandleGameMatchedEventRequest {
-  repeated PlayerAddress players = 1;
-  int64 confirmation_timeout = 2;
-  uint32 game_type = 3;
-}
-
-message HandleGameMatchedEventResponse {
+message CreateGameAndRunResponse {
   uint32 game_id = 1;
 }
 

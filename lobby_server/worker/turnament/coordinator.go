@@ -19,9 +19,9 @@ import (
 
 const tickInterval = 2 * time.Second
 
-// GameCreator starts tournament matches the same way as PVP (HandleGameMatchedEvent with GameTypeTournament).
+// GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
-	HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error)
+	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error)
 }
 
 type coordinator struct {
@@ -355,11 +355,9 @@ func (tc *coordinator) startMatchGame(m *dao.TournamentMatch) error {
 
 	pa := types.NewPlayerAddress(ea.PlayerId, ea.TemporaryAddress)
 	pb := types.NewPlayerAddress(eb.PlayerId, eb.TemporaryAddress)
-	evt := &types.GameMatchedEvent{
-		Players:  []types.PlayerAddress{*pa, *pb},
-		GameType: types.GameTypeTournament,
-	}
-	gid, err := tc.gameCreator.HandleGameMatchedEvent(evt)
+	players := []types.PlayerAddress{*pa, *pb}
+	// Tournament games are not backed by a queue game_match row; completedMatchID stays 0.
+	gid, err := tc.gameCreator.CreateGameAndRun(players, types.GameTypeTournament, 0)
 	if err != nil {
 		return err
 	}
@@ -368,7 +366,7 @@ func (tc *coordinator) startMatchGame(m *dao.TournamentMatch) error {
 	if err := db.TournamentSaveMatch(db.Get(), &cur); err != nil {
 		return err
 	}
-	for _, p := range evt.Players {
+	for _, p := range players {
 		if err := db.SetLockedTokenGameID(tc.ctx, p.Id, p.TemporaryAddress, gid); err != nil {
 			log.Errorw("tournament: SetLockedTokenGameID", "player", p.String(), "err", err)
 			return err

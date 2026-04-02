@@ -60,7 +60,7 @@ func (e *timerEvent) String() string {
 // registerTimerFunction registers the game timer handler with the global timer package.
 // The handler routes the fired event directly into GameManager handling path.
 func (m *GameManager) registerTimerFunction() {
-	timer.RegisterHandler(&timerEvent{}, func(evt timer.TimerEvent) error {
+	_ = timer.RegisterHandler(timer.ScopeRoom, &timerEvent{}, func(evt timer.TimerEvent) error {
 		te := evt.(*timerEvent)
 		return m.HandleTimerEvent(m.ctx, te)
 	})
@@ -123,7 +123,7 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		"turn status", timerEvent.currentTurnStatus,
 		"timeout", timeout.Seconds(),
 	)
-	if err := timer.ProcessIn(timeout, timerEvent); err != nil {
+	if err := timer.ProcessIn(timer.ScopeRoom, timeout, timerEvent); err != nil {
 		log.Errorw("schedule game timer failed", "game id", g.gameInfo.ID, "err", err)
 	}
 }

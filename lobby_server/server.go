@@ -14,6 +14,7 @@ import (
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	"github.com/CryptoElementals/common/lobby_server/worker/turnament"
 	rpcserver "github.com/CryptoElementals/common/rpc/server"
+	"github.com/CryptoElementals/common/timer"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -108,6 +109,7 @@ func dialRoomWorkerWithRetry(ctx context.Context, addr string, opts []grpc.DialO
 
 // Start queue, tournament coordinator, and gRPC listener.
 func (s *Service) Start() error {
+	timer.InitTimer(timer.ScopeLobby)
 	if err := s.queueSvc.Start(); err != nil {
 		return err
 	}
@@ -132,6 +134,7 @@ func (s *Service) startListener() error {
 func (s *Service) Stop() {
 	s.tournSvc.Stop()
 	s.queueSvc.Stop()
+	timer.StopTimer(timer.ScopeLobby)
 	s.pubsub.Stop()
 	s.grpcServer.GracefulStop()
 	if s.roomConn != nil {

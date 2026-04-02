@@ -92,16 +92,12 @@ type mockGameCreator struct {
 	onMatch    func([]types.PlayerAddress) (uint, error)
 }
 
-func (m *mockGameCreator) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
+func (m *mockGameCreator) CreateGameAndRun(players []types.PlayerAddress, _ uint, _ int64) (uint, error) {
 	if m.onMatch != nil {
-		return m.onMatch(evt.Players)
+		return m.onMatch(players)
 	}
 	m.nextGameID++
 	return m.nextGameID, nil
-}
-
-func (m *mockGameCreator) CreatePvpGameAfterQueueConfirm([]types.PlayerAddress, uint, int64) (uint, error) {
-	return 0, nil
 }
 
 func TestEnsureOpenTournament_CreatesFirstInstance(t *testing.T) {

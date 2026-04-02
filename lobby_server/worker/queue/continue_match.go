@@ -33,7 +33,7 @@ func (e *pendingMatchConfirmationTimeoutEvent) String() string {
 }
 
 func (q *Queue) registerPendingMatchConfirmationTimeoutHandler() {
-	_ = timer.RegisterHandler(&pendingMatchConfirmationTimeoutEvent{}, func(evt timer.TimerEvent) error {
+	_ = timer.RegisterHandler(timer.ScopeLobby, &pendingMatchConfirmationTimeoutEvent{}, func(evt timer.TimerEvent) error {
 		return q.handlePendingMatchConfirmationTimeout(evt.(*pendingMatchConfirmationTimeoutEvent))
 	})
 }
@@ -43,7 +43,7 @@ func (q *Queue) schedulePendingMatchConfirmationTimeout(matchID int64, timeoutSe
 		return
 	}
 	d := time.Duration(timeoutSec+redundancySec) * time.Second
-	if err := timer.ProcessIn(d, &pendingMatchConfirmationTimeoutEvent{MatchID: matchID}); err != nil {
+	if err := timer.ProcessIn(timer.ScopeLobby, d, &pendingMatchConfirmationTimeoutEvent{MatchID: matchID}); err != nil {
 		log.Errorw("schedule pending match confirmation timeout failed", "match_id", matchID, "err", err)
 	}
 }

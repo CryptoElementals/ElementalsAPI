@@ -258,7 +258,7 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 	if gt == 0 {
 		gt = types.GameTypePVP
 	}
-	gid, err := q.gameCreator.CreatePvpGameAfterQueueConfirm(players, gt, m.ID)
+	gid, err := q.gameCreator.CreateGameAndRun(players, gt, m.ID)
 	if err != nil {
 		if revErr := db.RevertGameMatchToPending(q.ctx, m.ID); revErr != nil {
 			log.Errorw("revert game_match after failed game create", "match_id", m.ID, "err", revErr)
