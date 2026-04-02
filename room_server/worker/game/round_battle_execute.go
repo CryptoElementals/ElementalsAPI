@@ -96,7 +96,7 @@ func hpDeltaForElementalPlayerType(playerType string, selfCard, opponentCard *da
 	switch playerType {
 	case RelationOverpower, RelationOverpowered:
 		v := max(opponentCard.Attack-selfCard.Defense, 0)
-		return -2 * v // two strike lines, same as former double-attack effects
+		return -v
 	case RelationNurture, RelationNurtured:
 		return max(selfCard.LifeForce, 0)
 	default:

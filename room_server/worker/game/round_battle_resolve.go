@@ -12,36 +12,26 @@ import (
 
 func (r *round) buildGameEndStates() []*gameEndState {
 	spread := r.hpSpreadMultiplier()
-	playerCount := len(r.gamePlayers)
-	gameEndStates := make([]*gameEndState, 0, playerCount)
+	gameEndStates := make([]*gameEndState, 0, len(r.gamePlayers))
 	for _, player := range r.gamePlayers {
-		if player.status == playerStatusSurrendered {
-			gameEndStates = append(gameEndStates, &gameEndState{
-				HP:               int(player.currentHP),
-				Multiplier:       spread,
-				PlayerId:         player.player.PlayerId,
-				TemporaryAddress: player.player.TemporaryAddress,
-				Status:           player.status,
-			})
-			continue
-		}
+		if player.status != playerStatusSurrendered {
+			submittedCard := player.getLastSubmittedCard()
+			hasSubmittedCommitment := submittedCard != nil && len(submittedCard.CommitmentHash) > 0
+			hasSubmittedCard := submittedCard != nil && submittedCard.CardID > 0
 
-		submittedCard := player.getLastSubmittedCard()
-		hasSubmittedCommitment := submittedCard != nil && len(submittedCard.CommitmentHash) > 0
-		hasSubmittedCard := submittedCard != nil && submittedCard.CardID > 0
-
-		switch r.getTurnStatus() {
-		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
-			if !player.isPlayerReady() {
-				player.status = playerStatusOffline
-			}
-		case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
-			if !hasSubmittedCommitment {
-				player.status = playerStatusOffline
-			}
-		case proto.TurnStatus_TURN_WAITTING_CARDS:
-			if !hasSubmittedCard {
-				player.status = playerStatusOffline
+			switch r.getTurnStatus() {
+			case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
+				if !player.isPlayerReady() {
+					player.status = playerStatusOffline
+				}
+			case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
+				if !hasSubmittedCommitment {
+					player.status = playerStatusOffline
+				}
+			case proto.TurnStatus_TURN_WAITTING_CARDS:
+				if !hasSubmittedCard {
+					player.status = playerStatusOffline
+				}
 			}
 		}
 
@@ -56,7 +46,7 @@ func (r *round) buildGameEndStates() []*gameEndState {
 	return gameEndStates
 }
 
-// hpSpreadMultiplier is max(currentHP) − min(currentHP) over all players in this round (0 if fewer than 2 players).
+// hpSpreadMultiplier is (max HP − min HP) / dao.HPDiffPerMultiplierUnit among players (0 if fewer than 2).
 func (r *round) hpSpreadMultiplier() uint32 {
 	if r == nil || len(r.gamePlayers) < 2 {
 		return 0
@@ -77,7 +67,7 @@ func (r *round) hpSpreadMultiplier() uint32 {
 			maxHP = h
 		}
 	}
-	return uint32(maxHP - minHP)
+	return dao.MultiplierFromHPSpread(maxHP - minHP)
 }
 
 func (r *round) buildGameResult(grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32) *dao.GameResult {
@@ -99,23 +89,20 @@ func (r *round) buildGameResult(grType gameResultType, winnerPlayerId int64, tem
 }
 
 func (r *round) checkGameOverFromGamePlayersPreExecution() (bool, *dao.GameResult) {
-	gameEndStates := r.buildGameEndStates()
-	isGameOver, grType, winnerPlayerId, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.roundNumber, false)
-	var gameResult *dao.GameResult
-	if isGameOver {
-		gameResult = r.buildGameResult(grType, winnerPlayerId, temporaryAddress, finalMul)
-	}
-	return isGameOver, gameResult
+	return r.checkGameOverWithResult(false)
 }
 
 func (r *round) checkGameOverFromGamePlayersPostExecution() (bool, *dao.GameResult) {
-	gameEndStates := r.buildGameEndStates()
-	isGameOver, grType, winnerPlayerId, temporaryAddress, finalMul := r.checkGameOver(gameEndStates, r.roundNumber, true)
-	var gameResult *dao.GameResult
-	if isGameOver {
-		gameResult = r.buildGameResult(grType, winnerPlayerId, temporaryAddress, finalMul)
+	return r.checkGameOverWithResult(true)
+}
+
+func (r *round) checkGameOverWithResult(checkRoundTurnLimit bool) (bool, *dao.GameResult) {
+	states := r.buildGameEndStates()
+	ok, grType, winnerID, winnerTemp, finalMul := r.checkGameOver(states, r.roundNumber, checkRoundTurnLimit)
+	if !ok {
+		return false, nil
 	}
-	return isGameOver, gameResult
+	return true, r.buildGameResult(grType, winnerID, winnerTemp, finalMul)
 }
 
 func (r *round) isGameEndsByRoundAndTurn() bool {
@@ -188,7 +175,7 @@ func rewardSpreadMultiplier(hps []int) uint32 {
 	if d < 1 {
 		return 1
 	}
-	return uint32(d)
+	return dao.MultiplierFromHPSpread(int64(d))
 }
 
 func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
@@ -308,7 +295,11 @@ func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePla
 	case gameResultNormal, gameResultKO:
 		if winnerPlayerId != 0 && temporaryAddress != "" {
 			loserCount := len(players) - 1
-			totalPool := int(float64(baseStake) * float64(finalMul))
+			poolMul := finalMul
+			if poolMul < 1 {
+				poolMul = 1 // stake math uses at least 1× when HP spread maps to 0
+			}
+			totalPool := int(float64(baseStake) * float64(poolMul))
 
 			winnerTokenPerPlayer := int(float64(totalPool) * (1.0 - 0.016))
 			loserTokenPerPlayer := totalPool / loserCount

@@ -12,6 +12,7 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/CryptoElementals/common/utils"
@@ -600,38 +601,45 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 		})
 	}
 
-	// 第二轮遍历：倍率值为双方本回合结算后的血量差的绝对值（与房间逻辑一致）
-	for i, sc := range submittedCards {
+	// 本回合各提交卡结算血量的 max−min，与房间端 HP spread 倍率一致（通常为 2 人对局）
+	var mulVal uint32
+	var minEnd, maxEnd uint32
+	var nEnds int
+	for _, sc := range submittedCards {
 		if sc == nil {
 			continue
 		}
-		var oppEnd uint32
-		for j, other := range submittedCards {
-			if j == i || other == nil {
+		e := sc.PlayerHealthEnd
+		if nEnds == 0 {
+			minEnd, maxEnd = e, e
+		} else {
+			if e < minEnd {
+				minEnd = e
+			}
+			if e > maxEnd {
+				maxEnd = e
+			}
+		}
+		nEnds++
+	}
+	if nEnds >= 2 {
+		mulVal = dao.MultiplierFromHPSpread(int64(maxEnd - minEnd))
+	}
+	if mulVal != 0 {
+		for _, sc := range submittedCards {
+			if sc == nil {
 				continue
 			}
-			oppEnd = other.PlayerHealthEnd
-			break
-		}
-		diff := int64(sc.PlayerHealthEnd) - int64(oppEnd)
-		if diff < 0 {
-			diff = -diff
-		}
-		mulVal := uint32(diff)
-
-		switch sc.ElementRelation {
-		case 0, 4:
-			if mulVal != 0 {
+			switch sc.ElementRelation {
+			case 0, 4:
 				sc.MultiplierTag = "bonus"
 				sc.MultiplierValue = mulVal
-			}
-		case 1:
-			if mulVal != 0 {
+			case 1:
 				sc.MultiplierTag = "multiple"
 				sc.MultiplierValue = mulVal
+			default:
+				// leave zero values
 			}
-		default:
-			// 其它情况不赋值，保持默认零值/空字符串
 		}
 	}
 

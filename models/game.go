@@ -2,6 +2,17 @@ package dao
 
 import "github.com/CryptoElementals/common/rpc/proto"
 
+// HPDiffPerMultiplierUnit maps raw HP spread to the integer multiplier (rewards, APIs).
+const HPDiffPerMultiplierUnit int64 = 1000
+
+// MultiplierFromHPSpread returns spread / HPDiffPerMultiplierUnit for spread >= 0.
+func MultiplierFromHPSpread(spread int64) uint32 {
+	if spread < 0 {
+		return 0
+	}
+	return uint32(spread / HPDiffPerMultiplierUnit)
+}
+
 type GameArgs struct {
 	BaseModel `validate:"-"`
 
@@ -33,12 +44,12 @@ type Game struct {
 	BaseModel
 	GameArgsID uint `gorm:"not null;index" json:"game_args_id"`
 
-	RoomContract string           `gorm:"index" json:"room_contract"` // 房间合约地址
-	Type         uint             `gorm:"not null" json:"type"`       // 游戏模式
+	RoomContract string `gorm:"index" json:"room_contract"` // 房间合约地址
+	Type         uint   `gorm:"not null" json:"type"`       // 游戏模式
 	// RegulationRounds is the count of full regulation rounds (e.g. tournament); 0 means infer from GameArgs for older rows.
 	RegulationRounds uint32 `gorm:"not null;default:0" json:"regulation_rounds"`
 	// OvertimeRoundsCap is the max tie-breaker rounds after regulation for tournament matches (1 turn each).
-	OvertimeRoundsCap uint32 `gorm:"not null;default:0" json:"overtime_rounds_cap"`
+	OvertimeRoundsCap uint32           `gorm:"not null;default:0" json:"overtime_rounds_cap"`
 	Status            proto.GameStatus `gorm:"not null" json:"status"`
 	// QueueMatchID is the game_match snowflake when this game was created after queue ConfirmMatch; 0 otherwise.
 	QueueMatchID int64 `gorm:"not null;default:0" json:"queue_match_id"`
