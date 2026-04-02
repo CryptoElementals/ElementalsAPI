@@ -9,7 +9,6 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
 
@@ -99,38 +98,6 @@ func NewGame(
 	}
 	game.setupNewRound()
 	return game
-}
-
-// pushStateToContractCreating marks all players ready and enqueues contract creation (no DB persist of PTIs).
-// Used when recovering a GAME_INIT row from DB after restart; new games use bootstrapFirstTurnAfterQueueConfirmations after insert.
-func (g *Game) pushStateToContractCreating() error {
-	g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
-	allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
-	for _, player := range g.currentRound.gamePlayers {
-		allPlayers = append(allPlayers, player.PlayerAddress())
-		if player.currentTurnInfo != nil {
-			player.currentTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_READY
-		}
-	}
-	if err := g.sendContractCreation(allPlayers); err != nil {
-		g.handleGameAbortInternalError()
-		return err
-	}
-	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
-	return nil
-}
-
-// setupNewTurn sends event to chain manager to setup a new turn
-// Note: For the first turn of the first round, this is not needed as the contract creation handles it
-func (g *Game) setupNewTurn() error {
-	turnNumber := g.currentRound.getCurrentTurnNumber()
-	log.Infow("setup new turn", "game id", g.gameInfo.ID, "round number", g.currentRound.roundNumber, "turn number", turnNumber)
-	err := g.sendTurnReady()
-	if err != nil {
-		return err
-	}
-	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
-	return nil
 }
 
 // incrementTurnNumber increments the turn number for the current round
