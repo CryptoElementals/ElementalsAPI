@@ -29,14 +29,12 @@ type GetBattleInfoRequest struct {
 
 // PlayerCardStat 玩家卡牌统计信息
 type PlayerCardStat struct {
-	CardNumber       int32  `json:"CardNumber"`       // 卡牌序号
-	CardID           int32  `json:"CardID"`           // 卡牌ID
-	HPBefore         int32  `json:"HPBefore"`         // 使用前血量
-	HPAfter          int32  `json:"HPAfter"`          // 使用后血量
-	MultiplierBefore int32  `json:"MultiplierBefore"` // 使用前倍率
-	MultiplierAfter  int32  `json:"MultiplierAfter"`  // 使用后倍率
-	Description      string `json:"Description"`      // 描述
-	ElementRelation  int32  `json:"ElementRelation"`  // 元素关系
+	CardNumber      int32  `json:"CardNumber"`      // 卡牌序号
+	CardID          int32  `json:"CardID"`          // 卡牌ID
+	HPBefore        int32  `json:"HPBefore"`        // 使用前血量
+	HPAfter         int32  `json:"HPAfter"`         // 使用后血量
+	Description     string `json:"Description"`     // 描述
+	ElementRelation int32  `json:"ElementRelation"` // 元素关系
 }
 
 // PlayerRoundStat 玩家回合统计
@@ -190,14 +188,12 @@ func (task *GetBattleInfoTask) Run(c *gin.Context) (Response, error) {
 		// 转换卡牌信息，去掉了不需要的effects字段
 		for _, cardStat := range player.CardStats {
 			cardStatInfo := PlayerCardStat{
-				CardNumber:       cardStat.CardNumber,
-				CardID:           cardStat.CardID,
-				HPBefore:         cardStat.HPBefore,
-				HPAfter:          cardStat.HPAfter,
-				MultiplierBefore: cardStat.MultiplierBefore,
-				MultiplierAfter:  cardStat.MultiplierAfter,
-				Description:      cardStat.Description,
-				ElementRelation:  int32(cardStat.ElementRelation),
+				CardNumber:      cardStat.CardNumber,
+				CardID:          cardStat.CardID,
+				HPBefore:        cardStat.HPBefore,
+				HPAfter:         cardStat.HPAfter,
+				Description:     cardStat.Description,
+				ElementRelation: int32(cardStat.ElementRelation),
 			}
 			playerStat.CardStats = append(playerStat.CardStats, cardStatInfo)
 		}

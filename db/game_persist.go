@@ -38,7 +38,6 @@ func UpdateGameFieldsTx(tx *gorm.DB, gameID uint, u GameFieldsUpdate) error {
 
 // InsertNewGameGraph inserts games, game_player_infos, turns, and player_turn_infos in FK order.
 // game.GameArgs must be non-nil and point at an existing game_args row (non-zero id); that row is not created here.
-// Card effects on PTIs are persisted via ReplaceCardEffectsTx after each new PTI if present.
 func InsertNewGameGraph(tx *gorm.DB, game *dao.Game) error {
 	game.GameArgsID = game.GameArgs.ID
 	if err := tx.Omit("GameArgs", "Players", "Turns", "GameResult").Create(game).Error; err != nil {
@@ -93,53 +92,11 @@ func SaveTurnTx(tx *gorm.DB, turn *dao.Turn) error {
 }
 
 // SavePlayerTurnInfoTx creates or updates a player_turn_infos row (embedded submitted-card columns).
-// CardEffects are replaced on every call: nil or empty slice clears all card_effects for this PTI.
 func SavePlayerTurnInfoTx(tx *gorm.DB, pti *dao.PlayerTurnInfo) error {
-	var eff []*dao.CardEffect
-	if pti.TurnSubmittedCard != nil {
-		eff = pti.TurnSubmittedCard.CardEffects
-		pti.TurnSubmittedCard.CardEffects = nil
-		defer func() {
-			if pti.TurnSubmittedCard != nil {
-				pti.TurnSubmittedCard.CardEffects = eff
-			}
-		}()
-	}
-
 	if pti.ID == 0 {
-		if err := tx.Session(&gorm.Session{FullSaveAssociations: false}).Create(pti).Error; err != nil {
-			return err
-		}
-	} else {
-		if err := tx.Session(&gorm.Session{FullSaveAssociations: false}).Save(pti).Error; err != nil {
-			return err
-		}
+		return tx.Session(&gorm.Session{FullSaveAssociations: false}).Create(pti).Error
 	}
-
-	for _, e := range eff {
-		if e != nil {
-			e.PlayerTurnInfoID = pti.ID
-		}
-	}
-	return ReplaceCardEffectsTx(tx, pti.ID, eff)
-}
-
-// ReplaceCardEffectsTx hard-deletes existing card_effects for the PTI and inserts the given rows.
-func ReplaceCardEffectsTx(tx *gorm.DB, ptiID uint, effects []*dao.CardEffect) error {
-	if err := tx.Unscoped().Where("player_turn_info_id = ?", ptiID).Delete(&dao.CardEffect{}).Error; err != nil {
-		return err
-	}
-	for _, e := range effects {
-		if e == nil {
-			continue
-		}
-		e.ID = 0
-		e.PlayerTurnInfoID = ptiID
-		if err := tx.Create(e).Error; err != nil {
-			return err
-		}
-	}
-	return nil
+	return tx.Session(&gorm.Session{FullSaveAssociations: false}).Save(pti).Error
 }
 
 // SaveGameResultTreeTx inserts or updates game_results and nested battle_rewards / player_rewards.
@@ -205,13 +162,6 @@ func SaveTurnCommit(turn *dao.Turn) error {
 func SavePlayerTurnInfoCommit(pti *dao.PlayerTurnInfo) error {
 	return GamePersistTx(func(tx *gorm.DB) error {
 		return SavePlayerTurnInfoTx(tx, pti)
-	})
-}
-
-// ReplaceCardEffectsCommit runs ReplaceCardEffectsTx in a transaction.
-func ReplaceCardEffectsCommit(ptiID uint, effects []*dao.CardEffect) error {
-	return GamePersistTx(func(tx *gorm.DB) error {
-		return ReplaceCardEffectsTx(tx, ptiID, effects)
 	})
 }
 

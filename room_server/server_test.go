@@ -43,7 +43,6 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		MaxTurnsPerNormalRound:                3,
 		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
-		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   gametTimeout,
 		CommitmentSubmissionTimeout:           gametTimeout,
 		CardSubmissionTimeout:                 gametTimeout,
@@ -75,7 +74,6 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		GameArgsID:           ga.ID,
 	}
 	config.InitializeGameParams(&config.GameParamConfig{
-		InitialMultiplier: 1,
 		SystemFeeRate:     0.016,
 		WinnerPointRate:   0.012,
 		LoserPointRate:    0.004,

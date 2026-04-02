@@ -13,8 +13,7 @@ type GameArgs struct {
 	MaxTurnsPerNormalRound int64 `validate:"gt=0" gorm:"column:max_turns_per_round;not null;default:3" json:"max_turns_per_normal_round"`
 	MaxTurnsPerExtraRound  int64 `validate:"gte=0" gorm:"not null;default:0" json:"max_turns_per_extra_round"`
 
-	InitialHP         int64 `validate:"gt=0" gorm:"not null" json:"initial_hp"`
-	InitialMultiplier int64 `validate:"gt=0" gorm:"not null" json:"initial_multiplier"`
+	InitialHP int64 `validate:"gt=0" gorm:"not null" json:"initial_hp"`
 	// timeouts
 	ConfirmationTimeout         int64 `validate:"gt=0" gorm:"not null" json:"confirmation_timeout"`          // Timeout for game match and round confirmation
 	CommitmentSubmissionTimeout int64 `validate:"gt=0" gorm:"not null" json:"commitment_submission_timeout"` // Timeout for commitment submission
@@ -80,23 +79,10 @@ type TurnSubmittedCard struct {
 	CardID         uint32 `json:"card_id"`
 	Salt           []byte `json:"salt"`
 
-	HealthBefore     uint32                `json:"health_before"`
-	HealthAfter      uint32                `json:"health_after"`
-	MultiplierBefore uint32                `json:"multiplier_before"`
-	MultiplierAfter  uint32                `json:"multiplier_after"`
-	Description      string                `json:"description"`
-	ElementRelation  proto.ElementRelation `json:"element_relation"`
-	CardEffects      []*CardEffect         `json:"card_effects"`
-}
-
-type CardEffect struct {
-	BaseModel
-	PlayerTurnInfoID       uint `gorm:"index"`
-	Type                   proto.BattleEffectType
-	Value                  int32
-	Description            string
-	TargetPlayerId         int64
-	TargetTemporaryAddress string
+	HealthBefore    uint32                `json:"health_before"`
+	HealthAfter     uint32                `json:"health_after"`
+	Description     string                `json:"description"`
+	ElementRelation proto.ElementRelation `json:"element_relation"`
 }
 
 type GamePlayerInfo struct {

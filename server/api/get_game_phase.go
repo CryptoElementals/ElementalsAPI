@@ -203,17 +203,15 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 			}
 
 			players = append(players, MatchPlayer{
-				Address:           userProfile.Address,
-				IsMyself:          p.Address.TemporaryAddress == tempAddress && p.Address.Id == playerID,
-				IsConfirmed:       isConfirmed,
-				Cards:             cards,
-				Name:              userProfile.Name,
-				AvatarURL:         userProfile.AvatarURL,
-				CurrentHP:         int32(p.CurrentHP),
-				CurrentMultiplier: int32(p.CurrentMultiplier),
-				InitialHP:         int32(config.GameParams.InitialHP),
-				MaxHPOneLine:      int32(config.GameParams.InitialHP),
-				InitialMultipler:  int32(config.GameParams.InitialMultiplier),
+				Address:      userProfile.Address,
+				IsMyself:     p.Address.TemporaryAddress == tempAddress && p.Address.Id == playerID,
+				IsConfirmed:  isConfirmed,
+				Cards:        cards,
+				Name:         userProfile.Name,
+				AvatarURL:    userProfile.AvatarURL,
+				CurrentHP:    int32(p.CurrentHP),
+				InitialHP:    int32(config.GameParams.InitialHP),
+				MaxHPOneLine: int32(config.GameParams.InitialHP),
 			})
 		}
 		task.Response.Players = players
@@ -224,15 +222,13 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 }
 
 type MatchPlayer struct {
-	Address           string   `json:"Address"`
-	Name              string   `json:"Name"`
-	AvatarURL         string   `json:"AvatarURL"`
-	IsMyself          bool     `json:"IsMyself"`
-	IsConfirmed       bool     `json:"IsConfirmed"`
-	Cards             []uint32 `json:"Cards"`
-	CurrentHP         int32    `json:"CurrentHP"`
-	CurrentMultiplier int32    `json:"CurrentMultiplier"`
-	InitialHP         int32    `json:"InitialHP"`
-	MaxHPOneLine      int32    `json:"MaxHPOneLine"`
-	InitialMultipler  int32    `json:"InitialMultipler"`
+	Address      string   `json:"Address"`
+	Name         string   `json:"Name"`
+	AvatarURL    string   `json:"AvatarURL"`
+	IsMyself     bool     `json:"IsMyself"`
+	IsConfirmed  bool     `json:"IsConfirmed"`
+	Cards        []uint32 `json:"Cards"`
+	CurrentHP    int32    `json:"CurrentHP"`
+	InitialHP    int32    `json:"InitialHP"`
+	MaxHPOneLine int32    `json:"MaxHPOneLine"`
 }

@@ -57,8 +57,7 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 		Preload("Turns", func(db *gorm.DB) *gorm.DB {
 			return db.Order("round_number ASC, turn_number ASC")
 		}).
-		Preload("Turns.PlayerTurnInfos").
-		Preload("Turns.PlayerTurnInfos.CardEffects")
+		Preload("Turns.PlayerTurnInfos")
 }
 
 // UpdateMatchStatusByRoomID 根据RoomID更新匹配记录状态

@@ -11,13 +11,6 @@ const (
 	gameResultTie
 )
 
-// Battle action description constants (human-readable card effect lines).
-const (
-	ActionAttackedBy       = "is attacked by"
-	ActionDoubleAttackedBy = "is double attacked by"
-	ActionHealedBy         = "is healed by"
-)
-
 // gameEndState is a player's snapshot for win/loss/tie logic.
 type gameEndState struct {
 	HP               int

@@ -66,27 +66,16 @@ type PlayerAddressDTO struct {
 	TemporaryAddress string `json:"temporaryAddress"`
 }
 
-type BattleEffectDTO struct {
-	Description            string `json:"Description"`
-	TargetPlayerId         string `json:"TargetPlayerId"`
-	TargetTemporaryAddress string `json:"TargetTemporaryAddress"`
-	Type                   string `json:"Type"`
-	Value                  int32  `json:"Value"`
-}
-
 type RoundSubmittedCardDTO struct {
-	Description         string            `json:"Description"`
-	Effects             []BattleEffectDTO `json:"Effects"`
-	ElementRelation     int32             `json:"ElementRelation"`
-	MultiplierAfter     uint32            `json:"MultiplierAfter"`
-	MultiplierBefore    uint32            `json:"MultiplierBefore"`
-	MultiplierValue     uint32            `json:"MultiplierValue"`
-	MultiplierTag       string            `json:"MultiplierTag"`
-	PlayerHealthBefore  uint32            `json:"PlayerHealthBefore"`
-	PlayerHealthEnd     uint32            `json:"PlayerHealthEnd"`
-	Salt                string            `json:"Salt"`
-	SubmittedCardId     uint32            `json:"SubmittedCardId"`
-	SubmittedCommitment string            `json:"SubmittedCommitment"`
+	Description         string `json:"Description"`
+	ElementRelation     int32  `json:"ElementRelation"`
+	MultiplierValue     uint32 `json:"MultiplierValue"`
+	MultiplierTag       string `json:"MultiplierTag"`
+	PlayerHealthBefore  uint32 `json:"PlayerHealthBefore"`
+	PlayerHealthEnd     uint32 `json:"PlayerHealthEnd"`
+	Salt                string `json:"Salt"`
+	SubmittedCardId     uint32 `json:"SubmittedCardId"`
+	SubmittedCommitment string `json:"SubmittedCommitment"`
 }
 
 type MatchedPlayerInfo struct {
@@ -97,12 +86,11 @@ type MatchedPlayerInfo struct {
 }
 
 type GameReadyPlayerInfo struct {
-	PlayerID          string `json:"PlayerID"`
-	Name              string `json:"Name"`
-	AvatarURL         string `json:"AvatarURL"`
-	IsMyself          bool   `json:"IsMyself"`
-	InitialHP         int32  `json:"InitialHP"`
-	InitialMultiplier int32  `json:"InitialMultiplier"`
+	PlayerID  string `json:"PlayerID"`
+	Name      string `json:"Name"`
+	AvatarURL string `json:"AvatarURL"`
+	IsMyself  bool   `json:"IsMyself"`
+	InitialHP int32  `json:"InitialHP"`
 }
 
 func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameInfoRequest, error) {
@@ -413,7 +401,6 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 
 	players := gameReady.GetPlayers()
 	initialHP := gameReady.GetInitialHP()
-	initialMultiplier := gameReady.GetInitialMultiplier()
 	if len(players) == 0 {
 		return nil
 	}
@@ -431,9 +418,8 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 
 		playerIDStr := strconv.FormatInt(p.GetId(), 10)
 		info := GameReadyPlayerInfo{
-			PlayerID:          playerIDStr,
-			InitialHP:         int32(initialHP),
-			InitialMultiplier: int32(initialMultiplier),
+			PlayerID:  playerIDStr,
+			InitialHP: int32(initialHP),
 		}
 
 		userProfile, err := db.GetUserProfileByPlayerID(playerIDStr)
@@ -596,8 +582,6 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 				Description: card.GetDescription(),
 				// 直接使用枚举的底层数值，前端拿到的是数字
 				ElementRelation:     int32(card.GetElementRelation()),
-				MultiplierAfter:     card.GetMultiplierAfter(),
-				MultiplierBefore:    card.GetMultiplierBefore(),
 				PlayerHealthBefore:  card.GetPlayerHealthBefore(),
 				PlayerHealthEnd:     card.GetPlayerHealthEnd(),
 				Salt:                base64.StdEncoding.EncodeToString(card.GetSalt()),
@@ -605,27 +589,8 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 				SubmittedCommitment: base64.StdEncoding.EncodeToString(card.GetSubmittedCommitment()),
 			}
 
-			// 先缓存，后面统一根据 ElementRelation 和双方 MultiplierAfter 计算 Multipliervalue / multiprefix
+			// 先缓存，后面根据 ElementRelation 与双方本回合结算血量差计算 MultiplierValue / MultiplierTag
 			submittedCards[idx] = submittedCardDTO
-
-			effects := card.GetEffects()
-			if len(effects) > 0 {
-				submittedCardDTO.Effects = make([]BattleEffectDTO, 0, len(effects))
-				for _, ef := range effects {
-					if ef == nil {
-						continue
-					}
-					submittedCardDTO.Effects = append(submittedCardDTO.Effects, BattleEffectDTO{
-						Description:            ef.GetDescription(),
-						TargetPlayerId:         strconv.FormatInt(ef.GetTargetPlayerId(), 10),
-						TargetTemporaryAddress: ef.GetTargetTemporaryAddress(),
-						Type:                   ef.GetType().String(),
-						Value:                  ef.GetValue(),
-					})
-				}
-			} else {
-				submittedCardDTO.Effects = []BattleEffectDTO{}
-			}
 		}
 
 		dto.PlayerTurnInfos = append(dto.PlayerTurnInfos, TurnCompletedPlayerInfoDTO{
@@ -635,31 +600,36 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 		})
 	}
 
-	// 第二轮遍历，根据 ElementRelation 计算 MultiplierValue 和 MultiplierTag
+	// 第二轮遍历：倍率值为双方本回合结算后的血量差的绝对值（与房间逻辑一致）
 	for i, sc := range submittedCards {
 		if sc == nil {
 			continue
 		}
+		var oppEnd uint32
+		for j, other := range submittedCards {
+			if j == i || other == nil {
+				continue
+			}
+			oppEnd = other.PlayerHealthEnd
+			break
+		}
+		diff := int64(sc.PlayerHealthEnd) - int64(oppEnd)
+		if diff < 0 {
+			diff = -diff
+		}
+		mulVal := uint32(diff)
 
 		switch sc.ElementRelation {
 		case 0, 4:
-			// bonus：取“对方”的 MultiplierAfter
-			var opponentMultiplier uint32
-			for j, other := range submittedCards {
-				if j == i || other == nil {
-					continue
-				}
-				opponentMultiplier = other.MultiplierAfter
-				break
-			}
-			if opponentMultiplier != 0 {
+			if mulVal != 0 {
 				sc.MultiplierTag = "bonus"
-				sc.MultiplierValue = opponentMultiplier
+				sc.MultiplierValue = mulVal
 			}
 		case 1:
-			// multiple：取自己的 MultiplierAfter
-			sc.MultiplierTag = "multiple"
-			sc.MultiplierValue = sc.MultiplierAfter
+			if mulVal != 0 {
+				sc.MultiplierTag = "multiple"
+				sc.MultiplierValue = mulVal
+			}
 		default:
 			// 其它情况不赋值，保持默认零值/空字符串
 		}

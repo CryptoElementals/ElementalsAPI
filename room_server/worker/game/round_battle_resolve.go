@@ -11,13 +11,14 @@ import (
 // round_battle_resolve: game-over detection, rewards, and timeout tie result.
 
 func (r *round) buildGameEndStates() []*gameEndState {
+	spread := r.hpSpreadMultiplier()
 	playerCount := len(r.gamePlayers)
 	gameEndStates := make([]*gameEndState, 0, playerCount)
 	for _, player := range r.gamePlayers {
 		if player.status == playerStatusSurrendered {
 			gameEndStates = append(gameEndStates, &gameEndState{
 				HP:               int(player.currentHP),
-				Multiplier:       player.multiplier,
+				Multiplier:       spread,
 				PlayerId:         player.player.PlayerId,
 				TemporaryAddress: player.player.TemporaryAddress,
 				Status:           player.status,
@@ -46,13 +47,37 @@ func (r *round) buildGameEndStates() []*gameEndState {
 
 		gameEndStates = append(gameEndStates, &gameEndState{
 			HP:               int(player.currentHP),
-			Multiplier:       player.multiplier,
+			Multiplier:       spread,
 			PlayerId:         player.player.PlayerId,
 			TemporaryAddress: player.player.TemporaryAddress,
 			Status:           player.status,
 		})
 	}
 	return gameEndStates
+}
+
+// hpSpreadMultiplier is max(currentHP) − min(currentHP) over all players in this round (0 if fewer than 2 players).
+func (r *round) hpSpreadMultiplier() uint32 {
+	if r == nil || len(r.gamePlayers) < 2 {
+		return 0
+	}
+	var minHP, maxHP int64
+	first := true
+	for _, p := range r.gamePlayers {
+		h := p.currentHP
+		if first {
+			minHP, maxHP = h, h
+			first = false
+			continue
+		}
+		if h < minHP {
+			minHP = h
+		}
+		if h > maxHP {
+			maxHP = h
+		}
+	}
+	return uint32(maxHP - minHP)
 }
 
 func (r *round) buildGameResult(grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32) *dao.GameResult {
@@ -146,13 +171,30 @@ func (r *round) checkGameOver(states []*gameEndState, round uint32, checkRoundTu
 	return r.checkGameOverByHP(states, round, false, checkRoundTurnLimit)
 }
 
+func rewardSpreadMultiplier(hps []int) uint32 {
+	if len(hps) == 0 {
+		return 1
+	}
+	minH, maxH := hps[0], hps[0]
+	for _, h := range hps[1:] {
+		if h < minH {
+			minH = h
+		}
+		if h > maxH {
+			maxH = h
+		}
+	}
+	d := maxH - minH
+	if d < 1 {
+		return 1
+	}
+	return uint32(d)
+}
+
 func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
 	hps := make([]int, len(states))
-	multipliers := make([]uint32, len(states))
-
 	for i, state := range states {
 		hps[i] = state.HP
-		multipliers[i] = state.Multiplier
 	}
 
 	allSameHP := true
@@ -183,18 +225,13 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 
 	if hasZeroHP {
 		gType = gameResultKO
-		maxLoserMul := uint32(1)
 		for i, state := range states {
 			if hps[i] > 0 {
 				winnerPlayerId = state.PlayerId
 				winnerTemp = state.TemporaryAddress
-			} else {
-				if multipliers[i] > maxLoserMul {
-					maxLoserMul = multipliers[i]
-				}
 			}
 		}
-		finalMultiplier = maxLoserMul
+		finalMultiplier = rewardSpreadMultiplier(hps)
 	} else {
 		if !hasOffline && !(checkRoundTurnLimit && r.isGameEndsByRoundAndTurn()) {
 			return false, gameResultNormal, 0, "", 1
@@ -208,18 +245,13 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 			}
 		}
 
-		maxLoserMul := uint32(1)
 		for i, state := range states {
 			if hps[i] == maxHP {
 				winnerPlayerId = state.PlayerId
 				winnerTemp = state.TemporaryAddress
-			} else {
-				if multipliers[i] > maxLoserMul {
-					maxLoserMul = multipliers[i]
-				}
 			}
 		}
-		finalMultiplier = maxLoserMul
+		finalMultiplier = rewardSpreadMultiplier(hps)
 	}
 
 	return true, gType, winnerPlayerId, winnerTemp, finalMultiplier

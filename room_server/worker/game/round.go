@@ -20,11 +20,8 @@ const (
 type gamePlayer struct {
 	player          *dao.GamePlayerInfo
 	currentTurnInfo *dao.PlayerTurnInfo
-	totalLostHP     int64
 	currentHP       int64
-	// Battle state fields (used during battle execution)
-	multiplier uint32       // Calculated from totalLostHP
-	status     playerStatus // Runtime player status during battle
+	status          playerStatus // Runtime player status during battle
 }
 
 func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
@@ -149,8 +146,7 @@ func (r *round) createNewTurn() *dao.Turn {
 			PlayerStatus:     proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
 			TurnSubmittedCard: &dao.TurnSubmittedCard{
 				// Snapshot the player's current runtime stats at the start of this turn.
-				HealthBefore:     uint32(player.currentHP),
-				MultiplierBefore: player.multiplier,
+				HealthBefore: uint32(player.currentHP),
 			},
 		}
 		player.currentTurnInfo = newTurnInfo

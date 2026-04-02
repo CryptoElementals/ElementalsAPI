@@ -21,7 +21,6 @@ func sampleGameArgs() *dao.GameArgs {
 		MaxTurnsPerNormalRound:                3,
 		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
-		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   60,
 		CommitmentSubmissionTimeout:           60,
 		CardSubmissionTimeout:                 60,
@@ -81,9 +80,6 @@ func TestGamePersist_InsertAndGranularUpdates(t *testing.T) {
 		pti.TurnSubmittedCard = &dao.TurnSubmittedCard{}
 	}
 	pti.TurnSubmittedCard.CommitmentHash = []byte{1, 2, 3}
-	pti.TurnSubmittedCard.CardEffects = []*dao.CardEffect{
-		{Type: proto.BattleEffectType_ATTACK, Value: 10, Description: "test"},
-	}
 	require.NoError(t, SavePlayerTurnInfoCommit(pti))
 
 	loaded2, err := LoadGameByGameID(game.ID)
@@ -98,7 +94,7 @@ func TestGamePersist_InsertAndGranularUpdates(t *testing.T) {
 		}
 	}
 	require.NotNil(t, found)
-	require.Len(t, found.TurnSubmittedCard.CardEffects, 1)
+	require.Equal(t, []byte{1, 2, 3}, found.TurnSubmittedCard.CommitmentHash)
 
 	gr := &dao.GameResult{
 		Multiplier:             2,
@@ -132,16 +128,14 @@ func attachSampleTurnForPersistTest(g *dao.Game) {
 				PlayerID:         g.Players[0].PlayerId,
 				TemporaryAddress: g.Players[0].TemporaryAddress,
 				TurnSubmittedCard: &dao.TurnSubmittedCard{
-					HealthBefore:     3000,
-					MultiplierBefore: 1,
+					HealthBefore: 3000,
 				},
 			},
 			{
 				PlayerID:         g.Players[1].PlayerId,
 				TemporaryAddress: g.Players[1].TemporaryAddress,
 				TurnSubmittedCard: &dao.TurnSubmittedCard{
-					HealthBefore:     3000,
-					MultiplierBefore: 1,
+					HealthBefore: 3000,
 				},
 			},
 		},

@@ -138,38 +138,11 @@ func TurnSubmittedCardToProtoRoundSubmittedCard(card *dao.TurnSubmittedCard, tur
 	return &proto.RoundSubmittedCard{
 		PlayerHealthBefore:  card.HealthBefore,
 		PlayerHealthEnd:     card.HealthAfter,
-		MultiplierBefore:    card.MultiplierBefore,
-		MultiplierAfter:     card.MultiplierAfter,
 		Description:         card.Description,
 		ElementRelation:     card.ElementRelation,
-		Effects:             DbCardEffectsToProto(card.CardEffects),
 		SubmittedCardId:     card.CardID,
 		SubmittedCommitment: card.CommitmentHash,
 		Salt:                card.Salt,
-	}
-}
-
-func DbCardEffectsToProto(effects []*dao.CardEffect) []*proto.BattleEffect {
-	if len(effects) == 0 {
-		return nil
-	}
-	var effectsProto []*proto.BattleEffect
-	for _, effect := range effects {
-		effectsProto = append(effectsProto, DbCardEffectToProto(effect))
-	}
-	return effectsProto
-}
-
-func DbCardEffectToProto(effect *dao.CardEffect) *proto.BattleEffect {
-	if effect == nil {
-		return nil
-	}
-	return &proto.BattleEffect{
-		Type:                   effect.Type,
-		Value:                  effect.Value,
-		Description:            effect.Description,
-		TargetPlayerId:         effect.TargetPlayerId,
-		TargetTemporaryAddress: effect.TargetTemporaryAddress,
 	}
 }
 
@@ -247,15 +220,12 @@ func TurnSubmittedCardToProtoPlayerCardStat(cardNumber int, card *dao.TurnSubmit
 		return nil
 	}
 	return &proto.PlayerCardStat{
-		CardNumber:       int32(cardNumber),
-		CardID:           int32(card.CardID),
-		HPBefore:         int32(card.HealthBefore),
-		HPAfter:          int32(card.HealthAfter),
-		MultiplierBefore: int32(card.MultiplierBefore),
-		MultiplierAfter:  int32(card.MultiplierAfter),
-		Description:      card.Description,
-		ElementRelation:  card.ElementRelation,
-		Effects:          DbCardEffectsToProto(card.CardEffects),
+		CardNumber:      int32(cardNumber),
+		CardID:          int32(card.CardID),
+		HPBefore:        int32(card.HealthBefore),
+		HPAfter:         int32(card.HealthAfter),
+		Description:     card.Description,
+		ElementRelation: card.ElementRelation,
 	}
 }
 
@@ -317,23 +287,22 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 				}
 			}
 
-			// Calculate current HP and multiplier from TurnSubmittedCard
+			// Current HP: after battle use HealthAfter; before resolution the stub only has HealthBefore (HealthAfter is still zero).
 			var currentHP uint32
-			var currentMultiplier uint32
-			if playerTurnInfo.TurnSubmittedCard != nil {
-				currentHP = playerTurnInfo.TurnSubmittedCard.HealthAfter
-				currentMultiplier = playerTurnInfo.TurnSubmittedCard.MultiplierAfter
+			if c := playerTurnInfo.TurnSubmittedCard; c != nil {
+				if c.Description != "" || c.HealthAfter != 0 {
+					currentHP = c.HealthAfter
+				} else {
+					currentHP = c.HealthBefore
+				}
 			} else {
-				// Use initial values if no card submitted yet
 				currentHP = initialHP
-				currentMultiplier = 1
 			}
 
 			player := &proto.GamePhasePlayer{
-				Address:           addr,
-				TurnStatus:        turnStatus,
-				CurrentHP:         currentHP,
-				CurrentMultiplier: currentMultiplier,
+				Address:    addr,
+				TurnStatus: turnStatus,
+				CurrentHP:  currentHP,
 			}
 
 			if commitment != nil {

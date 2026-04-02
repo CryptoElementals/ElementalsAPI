@@ -23,7 +23,6 @@ func setupTestDB(t *testing.T) {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
-		&dao.CardEffect{},
 	}
 	err = Get().AutoMigrate(migrates...)
 	require.NoError(t, err)
@@ -103,7 +102,7 @@ func createTurn(t *testing.T, roundID uint, turnNumber uint32) uint {
 // createPlayerTurnInfoWithCard 创建 PlayerTurnInfo 并手动序列化 TurnSubmittedCard 为 JSON
 func createPlayerTurnInfoWithCard(t *testing.T, turnID uint, playerID int64, tempAddr string, card *dao.TurnSubmittedCard) {
 	t.Helper()
-	// 序列化 TurnSubmittedCard 为 JSON（不包含 CardEffects，因为它是关联表）
+	// 序列化 TurnSubmittedCard 为 JSON
 	cardJSON, err := json.Marshal(card)
 	require.NoError(t, err)
 

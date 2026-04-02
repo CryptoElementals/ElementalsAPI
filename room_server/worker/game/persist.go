@@ -40,7 +40,7 @@ func (g *Game) persistCurrentTurn() error {
 	return nil
 }
 
-// persistPlayerTurnInfo saves a single PTI row (and card_effects replacement).
+// persistPlayerTurnInfo saves a single PTI row.
 func (g *Game) persistPlayerTurnInfo(pti *dao.PlayerTurnInfo) error {
 	if err := g.runGamePersist(func(tx *gorm.DB) error {
 		return db.SavePlayerTurnInfoTx(tx, pti)

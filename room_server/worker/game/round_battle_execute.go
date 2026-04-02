@@ -8,7 +8,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// round_battle_execute: per-turn card resolution, HP/multiplier updates, and elemental effects.
+// round_battle_execute: per-turn card resolution, HP updates, and elemental relations.
 
 // executeCardIndex runs the battle for the current card slot between the two players.
 // Returns (isGameOver, gameResult, error).
@@ -75,46 +75,47 @@ func (r *round) isServerTimeout() bool {
 
 func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
 	relation := getElementalRelation(card1, card2, p1.player.PlayerId, p2.player.PlayerId)
-	effects1 := r.buildPlayerEffects(relation.P1Type, card1, card2, p1.player.PlayerId, p1.player.TemporaryAddress, p2.player.PlayerId)
-	effects2 := r.buildPlayerEffects(relation.P2Type, card2, card1, p2.player.PlayerId, p2.player.TemporaryAddress, p1.player.PlayerId)
+	var d1, d2 int
+	if relation.P1Type != RelationEven {
+		d1 = hpDeltaForElementalPlayerType(relation.P1Type, card1, card2)
+		d2 = hpDeltaForElementalPlayerType(relation.P2Type, card2, card1)
+	}
 
 	p1BeforeHP := p1.currentHP
 	p2BeforeHP := p2.currentHP
-	p1BeforeMul := p1.multiplier
-	p2BeforeMul := p2.multiplier
 
-	r.updatePlayerHPAndLostHP(p1, p1BeforeHP, r.executeEffects(effects1))
-	r.updatePlayerHPAndLostHP(p2, p2BeforeHP, r.executeEffects(effects2))
+	r.updatePlayerHPFromEffects(p1, d1)
+	r.updatePlayerHPFromEffects(p2, d2)
 
-	r.updateCardStats(p1.getLastSubmittedCard(), int(p1BeforeHP), int(p1.currentHP), p1BeforeMul, p1.multiplier, relation.P1Type, relation.P1Description, effects1)
-	r.updateCardStats(p2.getLastSubmittedCard(), int(p2BeforeHP), int(p2.currentHP), p2BeforeMul, p2.multiplier, relation.P2Type, relation.P2Description, effects2)
+	r.updateCardStats(p1.getLastSubmittedCard(), int(p1BeforeHP), int(p1.currentHP), relation.P1Type, relation.P1Description)
+	r.updateCardStats(p2.getLastSubmittedCard(), int(p2BeforeHP), int(p2.currentHP), relation.P2Type, relation.P2Description)
 }
 
-func (r *round) updatePlayerHPAndLostHP(player *gamePlayer, beforeHP int64, hpDelta int) {
+// hpDeltaForElementalPlayerType returns the HP change for selfCard's player (negative = damage, positive = heal).
+func hpDeltaForElementalPlayerType(playerType string, selfCard, opponentCard *dao.Card) int {
+	switch playerType {
+	case RelationOverpower, RelationOverpowered:
+		v := max(opponentCard.Attack-selfCard.Defense, 0)
+		return -2 * v // two strike lines, same as former double-attack effects
+	case RelationNurture, RelationNurtured:
+		return max(selfCard.LifeForce, 0)
+	default:
+		return 0
+	}
+}
+
+func (r *round) updatePlayerHPFromEffects(player *gamePlayer, hpDelta int) {
 	player.currentHP += int64(hpDelta)
 	if player.currentHP < 0 {
 		player.currentHP = 0
 	}
-
-	damage := max(int(beforeHP)-int(player.currentHP), 0)
-
-	player.totalLostHP += int64(damage)
-	maxHP := r.game.GameArgs.InitialHP
-	if player.totalLostHP > maxHP {
-		player.totalLostHP = maxHP
-	}
-
-	player.multiplier = r.calculateMultiplierByLostHP(int(player.totalLostHP))
 }
 
-func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP int, beforeMul, afterMul uint32, relationType, description string, effects []*dao.CardEffect) {
+func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP int, relationType, description string) {
 	card.HealthBefore = uint32(beforeHP)
 	card.HealthAfter = uint32(afterHP)
-	card.MultiplierBefore = beforeMul
-	card.MultiplierAfter = afterMul
 	card.Description = description
 	card.ElementRelation = r.mapElementRelationStringToEnum(relationType)
-	card.CardEffects = effects
 }
 
 func (r *round) getCard(cardID int) (*dao.Card, error) {
@@ -123,72 +124,6 @@ func (r *round) getCard(cardID int) (*dao.Card, error) {
 		return nil, fmt.Errorf("failed to get card [ID:%d]: %v", cardID, err)
 	}
 	return dbCard, nil
-}
-
-func (r *round) calculateMultiplierByLostHP(lostHP int) uint32 {
-	if lostHP <= 2000 {
-		return 1
-	}
-	excessHP := lostHP - 2000
-	bonusMultiplier := uint32(excessHP) / 500
-	newMultiplier := min(1+bonusMultiplier, 9)
-	return newMultiplier
-}
-
-func (r *round) buildPlayerEffects(playerType string, selfCard, opponentCard *dao.Card, selfPlayerId int64, selfTemp string, opponentPlayerId int64) []*dao.CardEffect {
-	var effects []*dao.CardEffect
-
-	desc := func(action string) string {
-		return fmt.Sprintf("%s(%d) %s %s(%d)", selfCard.ElementType, selfPlayerId, action, opponentCard.ElementType, opponentPlayerId)
-	}
-
-	switch playerType {
-	case RelationOverpower:
-	case RelationOverpowered:
-		attackValue := opponentCard.Attack - selfCard.Defense
-		for _, action := range []string{ActionAttackedBy, ActionDoubleAttackedBy} {
-			effects = append(effects, &dao.CardEffect{
-				Type:                   proto.BattleEffectType_ATTACK,
-				Value:                  int32(attackValue),
-				Description:            desc(action),
-				TargetPlayerId:         selfPlayerId,
-				TargetTemporaryAddress: selfTemp,
-			})
-		}
-	case RelationNurture:
-	case RelationNurtured:
-		effects = append(effects, &dao.CardEffect{
-			Type:                   proto.BattleEffectType_HEAL,
-			Value:                  int32(selfCard.LifeForce),
-			Description:            desc(ActionHealedBy),
-			TargetPlayerId:         selfPlayerId,
-			TargetTemporaryAddress: selfTemp,
-		})
-	case RelationEven:
-		effects = append(effects, &dao.CardEffect{
-			Type:                   proto.BattleEffectType_ATTACK,
-			Value:                  int32(opponentCard.Attack - selfCard.Defense),
-			Description:            desc(ActionAttackedBy),
-			TargetPlayerId:         selfPlayerId,
-			TargetTemporaryAddress: selfTemp,
-		})
-	}
-
-	return effects
-}
-
-func (r *round) executeEffects(effects []*dao.CardEffect) int {
-	hpDelta := 0
-	for _, effect := range effects {
-		value := max(int(effect.Value), 0)
-		switch effect.Type {
-		case proto.BattleEffectType_ATTACK:
-			hpDelta -= value
-		case proto.BattleEffectType_HEAL:
-			hpDelta += value
-		}
-	}
-	return hpDelta
 }
 
 func (r *round) mapElementRelationStringToEnum(s string) proto.ElementRelation {

@@ -17,9 +17,6 @@ message PlayerCardStat {
     int32 CardID = 2;
     int32 HPBefore = 3;
     int32 HPAfter = 4;
-    int32 MultiplierBefore = 5;
-    int32 MultiplierAfter = 6;
-    repeated BattleEffect Effects = 7;
     string Description = 8;
     ElementRelation ElementRelation = 9;
 }
@@ -75,19 +72,6 @@ message GameResult {
     GameResultType GameResultType = 5;
     BattleReward Reward = 6;
     uint64 GameContinueTimeout = 7;
-}
-
-enum BattleEffectType {
-    ATTACK = 0;
-    HEAL = 1;
-}
-
-message BattleEffect {
-    BattleEffectType Type = 1;    // "attack" or "heal"
-    int32 Value = 2;        // effect value
-    int64 TargetPlayerId = 3;      // target player address
-    string TargetTemporaryAddress = 4;      // target player address
-    string Description = 5; // effect description
 }
 
 enum RoundCompleteReason {

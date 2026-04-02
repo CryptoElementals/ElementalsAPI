@@ -128,7 +128,6 @@ message MatchCanceled {
 message GameReady {
   uint32 GameId = 1;
   uint32 InitialHP = 4;
-  uint32 InitialMultiplier = 5;
   repeated rpc.PlayerAddress Players = 6;
   // Set when the game was created from a queue game_match (same snowflake as TYPE_MATCHED / ConfirmMatch). Zero otherwise.
   int64 MatchId = 7;

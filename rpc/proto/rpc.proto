@@ -81,7 +81,6 @@ message GamePhasePlayer {
     PlayerAddress Address = 1;
     PlayerTurnStatus TurnStatus = 2;
     uint32 CurrentHP = 3;
-    uint32 CurrentMultiplier = 4;
     optional bytes Commitment = 7;
     optional uint32 Card = 8;
 }
@@ -143,11 +142,8 @@ message RoundSubmittedCard {
     uint32 SubmittedCardId = 1;
     uint32 PlayerHealthBefore = 2;
     uint32 PlayerHealthEnd = 3;
-    uint32 MultiplierBefore = 4;      // multiplier before this card
-    uint32 MultiplierAfter = 5;       // multiplier after this card  
     string Description = 6;            // battle description
     battle.ElementRelation ElementRelation = 7;       // element relation type
-    repeated battle.BattleEffect Effects = 8; // effects applied to this player
     bytes SubmittedCommitment = 9;
     bytes Salt = 10;
 }

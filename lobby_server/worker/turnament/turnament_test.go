@@ -31,7 +31,6 @@ func seedGameArgs(t *testing.T) *dao.GameArgs {
 		MaxTurnsPerNormalRound:                3,
 		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
-		InitialMultiplier:                     1,
 		ConfirmationTimeout:                   60,
 		CommitmentSubmissionTimeout:           60,
 		CardSubmissionTimeout:                 60,

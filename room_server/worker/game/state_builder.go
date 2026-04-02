@@ -13,15 +13,13 @@ func buildRuntimeState(gameInfo *dao.Game) *round {
 	gamePlayers := make(map[string]*gamePlayer)
 	ga := gameInfo.GameArgs
 	initialHP := ga.InitialHP
-	initialMul := uint32(ga.InitialMultiplier)
 	for _, playerInfo := range gameInfo.Players {
 		if playerInfo == nil {
 			continue
 		}
 		gamePlayers[strings.ToLower(playerInfo.TemporaryAddress)] = &gamePlayer{
-			player:     playerInfo,
-			currentHP:  initialHP,
-			multiplier: initialMul,
+			player:    playerInfo,
+			currentHP: initialHP,
 		}
 	}
 
@@ -71,9 +69,6 @@ func buildRuntimeState(gameInfo *dao.Game) *round {
 			player.currentTurnInfo = pti
 			if pti.TurnSubmittedCard != nil && pti.TurnSubmittedCard.HealthBefore > 0 {
 				player.currentHP = int64(pti.TurnSubmittedCard.HealthBefore)
-				if pti.TurnSubmittedCard.MultiplierBefore > 0 {
-					player.multiplier = pti.TurnSubmittedCard.MultiplierBefore
-				}
 			}
 		}
 	}

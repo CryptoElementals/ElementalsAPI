@@ -77,9 +77,8 @@ func NewGame(
 		daoPlayer := player.ToDao()
 		daoPlayers = append(daoPlayers, daoPlayer)
 		gamePlayers[player.TemporaryAddress] = &gamePlayer{
-			player:     daoPlayer,
-			currentHP:  ga.InitialHP,
-			multiplier: uint32(ga.InitialMultiplier),
+			player:    daoPlayer,
+			currentHP: ga.InitialHP,
 		}
 	}
 	gameInfo := &dao.Game{
