@@ -21,12 +21,12 @@ import (
 )
 
 type Service struct {
-	ctx        context.Context
-	cfg        *config.RoomServerConfig
-	mgr        *worker.WorkerManager
-	server     *grpc.Server
-	pubsub     *rpc.PubSub
-	chainSvc   *chain.Chain
+	ctx       context.Context
+	cfg       *config.RoomServerConfig
+	mgr       *worker.WorkerManager
+	server    *grpc.Server
+	pubsub    *rpc.PubSub
+	chainSvc  *chain.Chain
 	gameSvc   *game.Service
 	rpcServer *rpc.Rpc
 }
@@ -66,16 +66,15 @@ func New(ctx context.Context,
 	if err != nil {
 		log.Fatalf("game_args template required (game-args-id=%d): %v", cfg.GameArgsID, err)
 	}
-	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
-	gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, s.pubsub))
-	s.gameSvc = gameSvc
+	s.gameSvc = game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
+	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, s.pubsub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	// game.Service implements chain RPC and player RPC handlers.
-	rpcServer := rpc.NewRpc(gameSvc, gameSvc)
+	rpcServer := rpc.NewRpc(s.gameSvc, s.gameSvc)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)
 	proto.RegisterRpcServiceServer(server, s.rpcServer)
-	proto.RegisterRoomWorkerServiceServer(server, newRoomWorkerService(gameSvc))
+	proto.RegisterRoomWorkerServiceServer(server, newRoomWorkerService(s.gameSvc))
 	s.server = server
 	return s, nil
 }
@@ -108,8 +107,6 @@ func (s *Service) Stop() {
 	log.Info("stopping game service")
 	s.gameSvc.Stop()
 	log.Info("game service stopped")
-
-
 	log.Info("stopping pubsub service")
 	s.pubsub.Stop()
 	log.Info("pubsub service stopped")

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
@@ -18,17 +17,8 @@ import (
 type PubSubClient struct {
 	room  pb.PubSubServiceClient
 	lobby pb.PubSubServiceClient
-	conn  *grpc.ClientConn
 	mu    sync.RWMutex
 	subs  map[string]context.CancelFunc
-}
-
-func DailGrpcEndpoint(serverAddr string) (*grpc.ClientConn, error) {
-	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect: %v", err)
-	}
-	return conn, nil
 }
 
 // NewPubSubClient subscribes only to room PubSub (lobby events will not be delivered).
@@ -62,8 +52,7 @@ func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[strin
 	if err != nil {
 		return fmt.Errorf("failed to publish: %v", err)
 	}
-	fmt.Printf("Published message %s to topic %s (subscribers: %d)\n",
-		resp.MessageId, topic, resp.SubscriberCount)
+	log.Debugw("pubsub published", "message_id", resp.MessageId, "topic", topic, "subscriber_count", resp.SubscriberCount)
 	return nil
 }
 
@@ -88,7 +77,7 @@ func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, ev
 			c.mu.Unlock()
 			return fmt.Errorf("subscribe %s: %w", label, err)
 		}
-		log.Infof("Subscribed to topic %s with ID %s (%s)\n", streamTopic, subscriberID, label)
+		log.Infow("pubsub subscribed", "topic", streamTopic, "subscriber_id", subscriberID, "stream", label)
 		go func() {
 			for {
 				msg, err := stream.Recv()
@@ -164,14 +153,8 @@ func (c *PubSubClient) ListTopics(pattern string) error {
 	if err != nil {
 		return fmt.Errorf("failed to list topics: %v", err)
 	}
-	fmt.Printf("Topics (%d):\n", len(resp.Topics))
-	for _, topic := range resp.Topics {
-		fmt.Printf("  - %s (subscribers: %d, messages: %d)\n",
-			topic.Name, topic.SubscriberCount, topic.MessageCount)
-		if topic.LastMessageTime > 0 {
-			fmt.Printf("    Last message: %s\n",
-				time.Unix(topic.LastMessageTime, 0).Format("2006-01-02 15:04:05"))
-		}
+	for _, t := range resp.Topics {
+		log.Debugw("pubsub topic", "name", t.Name, "subscribers", t.SubscriberCount, "messages", t.MessageCount, "last_message_time", t.LastMessageTime)
 	}
 	return nil
 }
@@ -185,9 +168,9 @@ func (c *PubSubClient) GetSubscriberCount(topic string) error {
 		return fmt.Errorf("failed to get subscriber count: %v", err)
 	}
 	if resp.Success {
-		fmt.Printf("Topic %s has %d subscribers\n", topic, resp.SubscriberCount)
+		log.Debugw("pubsub subscriber count", "topic", topic, "count", resp.SubscriberCount)
 	} else {
-		fmt.Printf("Failed to get subscriber count for topic %s: %s\n", topic, resp.Error)
+		log.Warnw("pubsub subscriber count failed", "topic", topic, "error", resp.Error)
 	}
 	return nil
 }

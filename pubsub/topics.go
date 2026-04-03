@@ -1,11 +1,8 @@
 package pubsub
 
-// Shared Redis stream / gRPC topic names. All room events use TopicRoom; all lobby queue events use TopicLobby.
-// Subscribers filter by [proto.Event.Receivers].
+// gRPC/Redis stream names. Player-facing streams use Event.receivers for filtering; TopicRoomSettlement is lobby-internal only.
 const (
-	TopicRoom = "room_events"
-	// TopicLobby is the shared lobby→client stream (matchmaking, settlement to players, etc.).
-	TopicLobby = "lobby_events"
-	// TopicRoomSettlement is room→lobby only: game finished (see GameCompletedNotice). Not subscribed by player clients.
+	TopicRoom           = "room_events"
+	TopicLobby          = "lobby_events"
 	TopicRoomSettlement = "room_settlement"
 )

@@ -87,22 +87,12 @@ func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerT
 }
 
 func (s *GRPCServices) RegisterBots(ctx context.Context, req *proto.RegisterBotsForLobbyRequest) (*emptypb.Empty, error) {
-	addrs := make([]*types.PlayerAddress, 0, len(req.Addresses))
-	for _, p := range req.Addresses {
-		var a types.PlayerAddress
-		a.FromProto(p)
-		addrs = append(addrs, &a)
-	}
+	addrs := playerAddressesFromRegisterBotsRequest(req)
 	return &emptypb.Empty{}, s.queueSvc.RegisterBots(addrs...)
 }
 
 func (s *GRPCServices) UnregisterBots(ctx context.Context, req *proto.RegisterBotsForLobbyRequest) (*emptypb.Empty, error) {
-	addrs := make([]*types.PlayerAddress, 0, len(req.Addresses))
-	for _, p := range req.Addresses {
-		var a types.PlayerAddress
-		a.FromProto(p)
-		addrs = append(addrs, &a)
-	}
+	addrs := playerAddressesFromRegisterBotsRequest(req)
 	return &emptypb.Empty{}, s.queueSvc.UnregisterBots(addrs...)
 }
 
@@ -119,10 +109,21 @@ func (s *GRPCServices) HandleGameCompletedFromRoom(gameID uint32) error {
 	if err := s.queueSvc.GameResultSettlement(ev); err != nil {
 		return err
 	}
-	if s.tournSvc != nil {
-		if err := s.tournSvc.GameResultSettlementHook(ev); err != nil {
-			return err
-		}
+	if s.tournSvc == nil {
+		return nil
 	}
-	return nil
+	return s.tournSvc.GameResultSettlementHook(ev)
+}
+
+func playerAddressesFromRegisterBotsRequest(req *proto.RegisterBotsForLobbyRequest) []*types.PlayerAddress {
+	if req == nil {
+		return nil
+	}
+	out := make([]*types.PlayerAddress, 0, len(req.Addresses))
+	for _, p := range req.Addresses {
+		var a types.PlayerAddress
+		a.FromProto(p)
+		out = append(out, &a)
+	}
+	return out
 }

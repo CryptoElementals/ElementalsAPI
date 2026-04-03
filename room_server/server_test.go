@@ -71,7 +71,6 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		WalletPaths: []string{tempFile},
 
 		ListenPort:           30011,
-		LobbyServerAddress:   "127.0.0.1:30012",
 		MinTokenToJoinQueue:  1000,
 		GameArgsID:           ga.ID,
 	}

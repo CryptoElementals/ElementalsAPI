@@ -17,9 +17,6 @@ func (s *Service) runRoomSettlementSubscriber() {
 	pc := proto.NewPubSubServiceClient(s.roomConn)
 	go func() {
 		for {
-			if s.ctx.Err() != nil {
-				return
-			}
 			err := s.readRoomSettlementStream(s.ctx, pc)
 			if s.ctx.Err() != nil {
 				return
@@ -53,15 +50,16 @@ func (s *Service) readRoomSettlementStream(ctx context.Context, pc proto.PubSubS
 			return err
 		}
 		ev := msg.GetEvent()
-		if ev == nil || ev.Type != proto.EventType_TYPE_GAME_COMPLETED {
+		if ev == nil || ev.GetType() != proto.EventType_TYPE_GAME_COMPLETED {
 			continue
 		}
 		notice := ev.GetGameCompletedNotice()
 		if notice == nil {
 			continue
 		}
-		if err := s.grpcHandlers.HandleGameCompletedFromRoom(notice.GetGameId()); err != nil {
-			log.Errorw("lobby: game completed settlement failed", "game_id", notice.GetGameId(), "err", err)
+		gameID := notice.GetGameId()
+		if err := s.grpcHandlers.HandleGameCompletedFromRoom(gameID); err != nil {
+			log.Errorw("lobby: game completed settlement failed", "game_id", gameID, "err", err)
 		}
 	}
 }
