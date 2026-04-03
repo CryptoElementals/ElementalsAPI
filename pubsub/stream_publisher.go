@@ -10,29 +10,19 @@ import (
 	goproto "google.golang.org/protobuf/proto"
 )
 
-// StreamPublisher adapts a Stream backend into [Publisher]. Each player topic maps to
-// its own Redis stream key (<prefix>:<topic>), so consumers can XREAD from a
-// single, well-known key per player.
+// StreamPublisher adapts a Stream backend into [Publisher]. The Redis stream key is
+// exactly req.Topic (same string used by [StreamSubscriber]).
 type StreamPublisher struct {
 	stream stream.Stream
-	prefix string // Redis key prefix, e.g. "player_events"
 }
 
 // NewStreamPublisher creates a publisher that writes proto.Event messages into
-// the underlying Stream. prefix is prepended to the topic to form the stream
-// key (e.g. prefix "player_events" + topic "1_0xabc" → "player_events:1_0xabc").
-func NewStreamPublisher(s stream.Stream, prefix string) *StreamPublisher {
-	return &StreamPublisher{stream: s, prefix: prefix}
+// the underlying Stream, one stream per topic.
+func NewStreamPublisher(s stream.Stream) *StreamPublisher {
+	return &StreamPublisher{stream: s}
 }
 
-func (p *StreamPublisher) streamKey(topic string) string {
-	if p.prefix == "" {
-		return topic
-	}
-	return p.prefix + ":" + topic
-}
-
-// Publish serializes the proto.Event and writes it to the stream keyed by topic.
+// Publish serializes the proto.Event and writes it to the stream keyed by req.Topic.
 func (p *StreamPublisher) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
 	if req.Topic == "" {
 		return nil, fmt.Errorf("topic is required")
@@ -47,7 +37,7 @@ func (p *StreamPublisher) Publish(ctx context.Context, req *proto.PublishRequest
 	}
 
 	ts := time.Now().UnixMilli()
-	msgID, err := p.stream.Publish(ctx, p.streamKey(req.Topic), req.Topic, payload, ts)
+	msgID, err := p.stream.Publish(ctx, req.Topic, req.Topic, payload, ts)
 	if err != nil {
 		return nil, fmt.Errorf("stream publish: %w", err)
 	}

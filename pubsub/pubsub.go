@@ -1,5 +1,5 @@
 // Package pubsub defines the minimal proto PubSub publish contract shared by room game,
-// lobby queue, and stream-backed publishers.
+// lobby queue, and stream-backed publishers and subscribers.
 package pubsub
 
 import (
@@ -8,7 +8,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// Publisher is the minimal surface for pushing a proto.Event to a topic (player id, worker id, etc.).
+// Publisher is the minimal surface for pushing a proto.Event to a topic.
 type Publisher interface {
 	Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error)
 }
