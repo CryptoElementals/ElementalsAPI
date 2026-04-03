@@ -25,20 +25,20 @@ const lockedTokenPrefix = "locked_token"
 const queueInfoVal = "v"
 
 type Queue struct {
-	ctx                      context.Context
-	lock                     sync.RWMutex
-	queue                    map[types.PlayerAddress]time.Time
+	ctx                  context.Context
+	lock                 sync.RWMutex
+	queue                map[types.PlayerAddress]time.Time
 	pendingMatchByPlayer map[types.PlayerAddress]int64
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
-	continueRematchCancelTimeoutSec          int64
+	continueRematchCancelTimeoutSec    int64
 	continueRematchCancelRedundancySec int64
 	publisher                          EventPublisher
-	queueCache               cache.Cache
-	lockedTokenCache         cache.Cache
-	closing                  bool
-	gameCreator              GameCreator
-	minTokenToJoinQueue      int32
-	matchConfirmationTimeout int64
+	queueCache                         cache.Cache
+	lockedTokenCache                   cache.Cache
+	closing                            bool
+	gameCreator                        GameCreator
+	minTokenToJoinQueue                int32
+	matchConfirmationTimeout           int64
 
 	botMgr      *botManager
 	botWaitTime time.Duration
@@ -66,20 +66,20 @@ func NewQueue(
 	queueCache := cache.WithPrefix(queueInfoPrefix, c)
 	tokenCache := cache.WithPrefix(lockedTokenPrefix, c)
 	q := &Queue{
-		ctx:                  ctx,
-		queue:                make(map[types.PlayerAddress]time.Time),
-		pendingMatchByPlayer: make(map[types.PlayerAddress]int64),
-		publisher:            pub,
-		lockedTokenCache:         tokenCache,
-		queueCache:               queueCache,
+		ctx:                                ctx,
+		queue:                              make(map[types.PlayerAddress]time.Time),
+		pendingMatchByPlayer:               make(map[types.PlayerAddress]int64),
+		publisher:                          pub,
+		lockedTokenCache:                   tokenCache,
+		queueCache:                         queueCache,
 		gameCreator:                        gameCreator,
 		continueRematchCancelTimeoutSec:    continueTimeout,
 		continueRematchCancelRedundancySec: continueTimeoutRedundancy,
 		botMgr:                             newBotManager(),
-		botWaitTime:              time.Duration(botWaitTime) * time.Second,
-		minTokenToJoinQueue:      minTokenToJoinQueue,
-		matchConfirmationTimeout: matchConfirmationTimeout,
-		statServiceEndpoint:      statServiceEndpoint,
+		botWaitTime:                        time.Duration(botWaitTime) * time.Second,
+		minTokenToJoinQueue:                minTokenToJoinQueue,
+		matchConfirmationTimeout:           matchConfirmationTimeout,
+		statServiceEndpoint:                statServiceEndpoint,
 	}
 	q.registerPendingMatchConfirmationTimeoutHandler()
 	return q

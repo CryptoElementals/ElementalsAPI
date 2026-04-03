@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/CryptoElementals/common/battlereward"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -203,6 +204,13 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 		log.Debugw("unlock player token caused by abort", "game id", game.ID)
 		return UnlockUserTokenByGameID(context.Background(), game.ID)
 	}
+	if game.GameArgs == nil {
+		return errors.New("game args is nil")
+	}
+	baseStake := game.GameArgs.BaseStake
+	if baseStake <= 0 {
+		return fmt.Errorf("game_args.base_stake must be positive (game id %d)", game.ID)
+	}
 	if game.GameResult == nil {
 		return errors.New("game result is nil")
 	}
@@ -210,7 +218,8 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 	if reward == nil {
 		return errors.New("game result battle reward is nil")
 	}
-	// Build list of non-bot player rewards to process
+	battlereward.ComputeBattleRewardAmounts(game.GameResult, int(baseStake))
+
 	type playerReward struct {
 		playerId    int64
 		tempAddr    string
@@ -233,34 +242,36 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 		})
 	}
 
-	// First transaction: delete locked tokens for each player
 	if err := Get().Transaction(func(tx *gorm.DB) error {
+		for _, pr := range reward.PlayerRewards {
+			if err := tx.Model(&dao.PlayerReward{}).Where("id = ?", pr.ID).
+				Updates(map[string]any{
+					"token_change": pr.TokenChange,
+					"point_change": pr.PointChange,
+				}).Error; err != nil {
+				return fmt.Errorf("update player_reward id %d: %w", pr.ID, err)
+			}
+		}
+		if err := tx.Model(&dao.BattleReward{}).Where("id = ?", reward.ID).
+			Update("system_fee", reward.SystemFee).Error; err != nil {
+			return fmt.Errorf("update battle_reward id %d: %w", reward.ID, err)
+		}
 		for _, pr := range toProcess {
 			if err := tx.Where("temporary_address = ?", pr.tempAddr).
 				Delete(&dao.LockedUserToken{}).Error; err != nil {
 				return err
 			}
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("battle result settlement: delete locked tokens failed, game id: %d: %w", game.ID, err)
-	}
-
-	// Second transaction: update token_amount and points using += / -= in SQL
-	if err := Get().Transaction(func(tx *gorm.DB) error {
-		for _, pr := range toProcess {
-			err := tx.Model(&dao.UserToken{}).Where("player_id = ?", pr.playerId).
+			if err := tx.Model(&dao.UserToken{}).Where("player_id = ?", pr.playerId).
 				Updates(map[string]any{
 					"token_amount": gorm.Expr("token_amount + ?", pr.tokenChange),
 					"points":       gorm.Expr("points + ?", pr.pointChange),
-				}).Error
-			if err != nil {
+				}).Error; err != nil {
 				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", game.ID, pr.playerId, err)
 			}
 		}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("battle result settlement: update token amount and points failed, game id: %d: %w", game.ID, err)
+		return fmt.Errorf("battle result settlement: game id: %d: %w", game.ID, err)
 	}
 
 	return nil

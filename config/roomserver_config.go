@@ -45,7 +45,7 @@ func InitRSConfig(configPath string) error {
 		RSGConf.MinTokenToJoinQueue = 10000
 	}
 
-	// Battle settlement / reward math still reads global GameParams (rates, base stake); not duplicated in game_args.
+	// GameParams on room is for tests / non-DB defaults; match base stake lives on game_args.base_stake (copied per match) for lobby settlement.
 	InitializeGameParams(&GameParamConfig{})
 	if GameParams.BaseStake == 0 {
 		GameParams.BaseStake = 1000

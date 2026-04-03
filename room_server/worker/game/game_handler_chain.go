@@ -10,7 +10,7 @@ import (
 
 // ---- On-chain / contract callbacks (room created, turn setup, commitments, cards observed on chain) ----
 
-func (g *Game) handleRoomCreated(gameID uint, blockTime int64) error {
+func (g *Game) handleRoomCreated(blockTime int64) error {
 	currentTurn := g.currentRound.getCurrentTurn()
 	currentTurn.TurnStartAt = blockTime
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_COMMITMENTS)
@@ -118,7 +118,7 @@ func (g *Game) handleNewTurnSetupOnChain(gameID uint, blockTime int64, tx *proto
 	})
 }
 
-func (g *Game) handleGameStateWaittingCommitments(gameID uint, blockTime int64, tx *proto.TxCommitmentOnChain) error {
+func (g *Game) handleGameStateWaittingCommitments(tx *proto.TxCommitmentOnChain) error {
 	commitmentIdx, err := g.validateCommitmentSubmission(tx)
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func (g *Game) handleGameStateWaittingCommitments(gameID uint, blockTime int64, 
 	})
 }
 
-func (g *Game) handleGameStateCardSubmitted(gameID uint, blockTime int64, tx *proto.TxCardOnChain) error {
+func (g *Game) handleGameStateCardSubmitted(tx *proto.TxCardOnChain) error {
 	_, cardEntry, cardID, err := g.validateCardSubmission(tx)
 	if err != nil {
 		return err

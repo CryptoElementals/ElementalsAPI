@@ -3,7 +3,6 @@ package game
 import (
 	"slices"
 
-	"github.com/CryptoElementals/common/config"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -76,7 +75,7 @@ func (r *round) buildGameResult(grType gameResultType, winnerPlayerId int64, tem
 		playerStatuses[player.player.TemporaryAddress] = player.status
 	}
 
-	battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winnerPlayerId, temporaryAddress, finalMul, playerStatuses)
+	battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winnerPlayerId, temporaryAddress, playerStatuses)
 
 	return &dao.GameResult{
 		GameID:                 r.game.ID,
@@ -244,124 +243,50 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 	return true, gType, winnerPlayerId, winnerTemp, finalMultiplier
 }
 
-// calculateBattleRewardFromGamePlayers calculates battle rewards for all players based on game result type.
-//
-// Reward Calculation Logic:
-// 1. Tie Game (gameResultTie):
-//   - All players lose 0.8% of base stake in tokens (0.008 * baseStake)
-//   - All players gain 0.8% of base stake in points (0.008 * baseStake)
-//   - System fee = token deduction * number of players
-//   - All players marked with PLAYER_TIE status
-//
-// 2. Win/Loss Game (gameResultNormal or gameResultKO):
-//   - Total pool = baseStake * finalMultiplier
-//   - Winner receives: (totalPool * 0.984) tokens + points (0.012 * totalPool for normal, 0.016 * totalPool for KO)
-//   - Each loser loses: (totalPool / loserCount) tokens + points (0.004 * totalPool / loserCount for normal, 0 for KO)
-//   - System fee = totalPool * 0.016 (1.6%)
-//
-// Surrender and Offline Handling:
-// - For win/loss games: If a loser surrenders or goes offline, their points are transferred to the winner.
-//   - Surrendered/offline losers receive 0 points (instead of their normal loser points)
-//   - Winner receives bonus points equal to the sum of all surrendered/offline losers' points
-//
-// - For tie games: All players receive the same points regardless of status.
-// - The IsOffline and Surrendered flags are set in PlayerReward for record-keeping.
-// - Status is determined from playerStatuses map passed as parameter, which reflects the player's state at game end.
-func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.BattleReward {
-	baseStake := config.GameParams.BaseStake
+// buildBattleRewardMetadata persists per-player outcome flags for lobby settlement.
+// TokenChange, PointChange, and SystemFee are computed in the lobby (battlereward.ComputeBattleRewardAmounts) and written in the same transaction as wallet settlement.
+func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerId int64, temporaryAddress string, playerStatuses map[string]playerStatus) *dao.BattleReward {
 	var playerRewards []*dao.PlayerReward
-	var systemFee int
 
 	switch grType {
 	case gameResultTie:
-		tokenDeduction := int(float64(baseStake) * 0.008)
-		pointGain := int(float64(baseStake) * 0.008)
 		playerRewards = make([]*dao.PlayerReward, 0, len(players))
-
 		for _, player := range players {
 			status := playerStatuses[player.player.TemporaryAddress]
 			playerRewards = append(playerRewards, &dao.PlayerReward{
 				PlayerId:               player.player.PlayerId,
 				TemporaryAddress:       player.player.TemporaryAddress,
-				TokenChange:            int32(-tokenDeduction),
-				PointChange:            int32(pointGain),
 				IsOffline:              status == playerStatusOffline,
 				Surrendered:            status == playerStatusSurrendered,
 				PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
 			})
 		}
-		systemFee = tokenDeduction * len(players)
 
 	case gameResultNormal, gameResultKO:
 		if winnerPlayerId != 0 && temporaryAddress != "" {
-			loserCount := len(players) - 1
-			poolMul := finalMul
-			if poolMul < 1 {
-				poolMul = 1 // stake math uses at least 1× when HP spread maps to 0
-			}
-			totalPool := int(float64(baseStake) * float64(poolMul))
-
-			winnerTokenPerPlayer := int(float64(totalPool) * (1.0 - 0.016))
-			loserTokenPerPlayer := totalPool / loserCount
-
-			var winnerPointPerPlayer, loserPointPerPlayer int
-			if grType == gameResultNormal {
-				winnerPointPerPlayer = int(float64(totalPool) * 0.012)
-				loserPointPerPlayer = int(float64(totalPool)*0.004) / loserCount
-			} else {
-				winnerPointPerPlayer = int(float64(totalPool) * 0.016)
-				loserPointPerPlayer = 0
-			}
-
-			bonusPointsForWinner := 0
-			for _, player := range players {
-				if player.player.TemporaryAddress != temporaryAddress {
-					status := playerStatuses[player.player.TemporaryAddress]
-					if status == playerStatusSurrendered || status == playerStatusOffline {
-						bonusPointsForWinner += loserPointPerPlayer
-					}
-				}
-			}
-
 			playerRewards = make([]*dao.PlayerReward, 0, len(players))
 			for _, player := range players {
 				status := playerStatuses[player.player.TemporaryAddress]
 				isWinner := player.player.TemporaryAddress == temporaryAddress
-
-				var tokenChange, pointChange int
 				var gameResultStatus proto.PlayerGameResultStatus
 				if isWinner {
-					tokenChange = winnerTokenPerPlayer
-					pointChange = winnerPointPerPlayer + bonusPointsForWinner
 					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_WIN
 				} else {
-					tokenChange = -loserTokenPerPlayer
-					if status == playerStatusSurrendered || status == playerStatusOffline {
-						pointChange = 0
-					} else {
-						pointChange = loserPointPerPlayer
-					}
 					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_LOSE
 				}
-
 				playerRewards = append(playerRewards, &dao.PlayerReward{
 					PlayerId:               player.player.PlayerId,
 					TemporaryAddress:       player.player.TemporaryAddress,
-					TokenChange:            int32(tokenChange),
-					PointChange:            int32(pointChange),
 					IsOffline:              status == playerStatusOffline,
 					Surrendered:            status == playerStatusSurrendered,
 					PlayerGameResultStatus: gameResultStatus,
 				})
 			}
-
-			systemFee = int(float64(totalPool) * 0.016)
 		}
 	}
 
 	return &dao.BattleReward{
 		PlayerRewards: playerRewards,
-		SystemFee:     int32(systemFee),
 	}
 }
 
@@ -374,8 +299,6 @@ func (r *round) handleServerTimeout() (bool, *dao.GameResult, error) {
 		playerRewards = append(playerRewards, &dao.PlayerReward{
 			PlayerId:               gamePlayer.player.PlayerId,
 			TemporaryAddress:       gamePlayer.player.TemporaryAddress,
-			TokenChange:            0,
-			PointChange:            0,
 			IsOffline:              !hasCommitment,
 			Surrendered:            gamePlayer.isSurrendered(),
 			PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,

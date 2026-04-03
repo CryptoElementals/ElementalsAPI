@@ -14,6 +14,7 @@ func validGameArgs() *GameArgs {
 		MaxTurnsPerNormalRound:                3,
 		MaxTurnsPerExtraRound:                 0,
 		InitialHP:                             3000,
+		BaseStake:                             1000,
 		ConfirmationTimeout:                   10,
 		CommitmentSubmissionTimeout:           20,
 		CardSubmissionTimeout:                 20,

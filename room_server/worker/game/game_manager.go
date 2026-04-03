@@ -293,7 +293,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 		gameID := uint(protoTx.GameId)
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
-			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(gameID, blockTime) }); err != nil {
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(blockTime) }); err != nil {
 				return err
 			}
 		case *proto.Transaction_GameTurnSetupReady:
@@ -310,7 +310,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				continue
 			}
 			if err := r.executeOnGame(gameID, func(g *Game) error {
-				return g.handleGameStateWaittingCommitments(gameID, blockTime, tx.CommitmentOnChain)
+				return g.handleGameStateWaittingCommitments(tx.CommitmentOnChain)
 			}); err != nil {
 				return err
 			}
@@ -319,7 +319,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 				continue
 			}
 			if err := r.executeOnGame(gameID, func(g *Game) error {
-				return g.handleGameStateCardSubmitted(gameID, blockTime, tx.CardOnChain)
+				return g.handleGameStateCardSubmitted(tx.CardOnChain)
 			}); err != nil {
 				return err
 			}

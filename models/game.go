@@ -25,6 +25,9 @@ type GameArgs struct {
 	MaxTurnsPerExtraRound  int64 `validate:"gte=0" gorm:"not null;default:0" json:"max_turns_per_extra_round"`
 
 	InitialHP int64 `validate:"gt=0" gorm:"not null" json:"initial_hp"`
+	// BaseStake is copied from the room template row into each match; lobby settlement uses this (not config).
+	BaseStake int64 `validate:"gt=0" gorm:"not null;default:1000" json:"base_stake"`
+
 	// timeouts
 	ConfirmationTimeout         int64 `validate:"gt=0" gorm:"not null" json:"confirmation_timeout"`          // Timeout for game match and round confirmation
 	CommitmentSubmissionTimeout int64 `validate:"gt=0" gorm:"not null" json:"commitment_submission_timeout"` // Timeout for commitment submission
@@ -105,9 +108,10 @@ type GamePlayerInfo struct {
 
 type PlayerReward struct {
 	BaseModel
-	BattleRewardID         uint  `gorm:"index"`
-	PlayerId               int64 `gorm:"not null;index:wallet_address" json:"player_id"`
-	TemporaryAddress       string
+	BattleRewardID   uint  `gorm:"index"`
+	PlayerId         int64 `gorm:"not null;index:wallet_address" json:"player_id"`
+	TemporaryAddress string
+	// TokenChange and PointChange are computed in lobby settlement (see battlereward.ComputeBattleRewardAmounts); room persists zeros until then.
 	TokenChange            int32
 	PointChange            int32
 	PlayerGameResultStatus proto.PlayerGameResultStatus

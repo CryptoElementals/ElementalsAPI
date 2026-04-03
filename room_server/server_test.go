@@ -43,6 +43,7 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		MaxTurnsPerNormalRound:                3,
 		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             3000,
+		BaseStake:                             1000,
 		ConfirmationTimeout:                   gametTimeout,
 		CommitmentSubmissionTimeout:           gametTimeout,
 		CardSubmissionTimeout:                 gametTimeout,

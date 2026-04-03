@@ -24,6 +24,7 @@ func newTestGameArgsRow(t *testing.T, initialHP int64) *dao.GameArgs {
 		MaxTurnsPerNormalRound:                3,
 		MaxTurnsPerExtraRound:                 1,
 		InitialHP:                             initialHP,
+		BaseStake:                             1000,
 		ConfirmationTimeout:                   60,
 		CommitmentSubmissionTimeout:           60,
 		CardSubmissionTimeout:                 60,

@@ -36,9 +36,5 @@ func InitLSConfig(configPath string) error {
 	if LSGConf.MinTokenToJoinQueue == 0 {
 		LSGConf.MinTokenToJoinQueue = 10000
 	}
-	InitializeGameParams(&GameParamConfig{})
-	if GameParams.BaseStake == 0 {
-		GameParams.BaseStake = 1000
-	}
 	return nil
 }
