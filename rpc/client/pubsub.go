@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/pubsub"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
@@ -35,7 +36,7 @@ func NewPubSubClient(conn *grpc.ClientConn) *PubSubClient {
 	return NewPubSubClientDual(pb.NewPubSubServiceClient(conn), nil)
 }
 
-// NewPubSubClientDual subscribes to room and optionally lobby PubSub for the same player topic.
+// NewPubSubClientDual subscribes to shared room and lobby topics ([pubsub.TopicRoom], [pubsub.TopicLobby]) and filters by Receivers.
 func NewPubSubClientDual(room, lobby pb.PubSubServiceClient) *PubSubClient {
 	return &PubSubClient{
 		room:  room,
@@ -66,17 +67,19 @@ func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[strin
 	return nil
 }
 
-func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Event, errChan chan error) error {
-	start := func(client pb.PubSubServiceClient, label string) error {
+// Subscribe opens one stream on [pubsub.TopicRoom] (room gRPC) and one on [pubsub.TopicLobby] when lobby is configured.
+// Events are delivered only when [pubsub.EventTargetsReceiver] accepts them for self.
+func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, evtChan chan *pb.Event, errChan chan error) error {
+	start := func(client pb.PubSubServiceClient, label string, streamTopic string) error {
 		if client == nil {
 			return nil
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		key := topic + "|" + subscriberID + "|" + label
+		key := streamTopic + "|" + subscriberID + "|" + label
 		c.mu.Lock()
 		c.subs[key] = cancel
 		c.mu.Unlock()
-		req := &pb.SubscribeRequest{Topic: topic, SubscriberId: subscriberID + "-" + label}
+		req := &pb.SubscribeRequest{Topic: streamTopic, SubscriberId: subscriberID + "-" + label}
 		stream, err := client.Subscribe(ctx, req)
 		if err != nil {
 			cancel()
@@ -85,7 +88,7 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Ev
 			c.mu.Unlock()
 			return fmt.Errorf("subscribe %s: %w", label, err)
 		}
-		log.Infof("Subscribed to topic %s with ID %s (%s)\n", topic, subscriberID, label)
+		log.Infof("Subscribed to topic %s with ID %s (%s)\n", streamTopic, subscriberID, label)
 		go func() {
 			for {
 				msg, err := stream.Recv()
@@ -99,49 +102,56 @@ func (c *PubSubClient) Subscribe(topic, subscriberID string, evtChan chan *pb.Ev
 					}
 					return
 				}
+				ev := msg.GetEvent()
+				if !pubsub.EventTargetsReceiver(ev, self) {
+					continue
+				}
 				select {
 				case <-ctx.Done():
 					return
-				case evtChan <- msg.Event:
+				case evtChan <- ev:
 				}
 			}
 		}()
 		return nil
 	}
-	if err := start(c.room, "room"); err != nil {
+	if err := start(c.room, "room", pubsub.TopicRoom); err != nil {
 		return err
 	}
 	if c.lobby != nil {
-		if err := start(c.lobby, "lobby"); err != nil {
+		if err := start(c.lobby, "lobby", pubsub.TopicLobby); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *PubSubClient) Unsubscribe(topic, subscriberID string) error {
+// Unsubscribe stops room and lobby streams for subscriberID.
+func (c *PubSubClient) Unsubscribe(subscriberID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	for _, label := range []string{"room", "lobby"} {
-		key := topic + "|" + subscriberID + "|" + label
+	type pair struct {
+		label string
+		topic string
+		cli   pb.PubSubServiceClient
+	}
+	pairs := []pair{{"room", pubsub.TopicRoom, c.room}}
+	if c.lobby != nil {
+		pairs = append(pairs, pair{"lobby", pubsub.TopicLobby, c.lobby})
+	}
+	for _, p := range pairs {
+		if p.cli == nil {
+			continue
+		}
+		key := p.topic + "|" + subscriberID + "|" + p.label
 		c.mu.Lock()
 		if cc, ok := c.subs[key]; ok {
 			cc()
 			delete(c.subs, key)
 		}
 		c.mu.Unlock()
-		var client pb.PubSubServiceClient
-		switch label {
-		case "room":
-			client = c.room
-		case "lobby":
-			client = c.lobby
-		}
-		if client == nil {
-			continue
-		}
-		req := &pb.UnsubscribeRequest{Topic: topic, SubscriberId: subscriberID + "-" + label}
-		_, _ = client.Unsubscribe(ctx, req)
+		req := &pb.UnsubscribeRequest{Topic: p.topic, SubscriberId: subscriberID + "-" + p.label}
+		_, _ = p.cli.Unsubscribe(ctx, req)
 	}
 	return nil
 }

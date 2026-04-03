@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/CryptoElementals/common/utils"
@@ -148,11 +149,10 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 
 	temp_address := strings.ToLower(task.Request.TempAddress)
 
-	game_topic := fmt.Sprintf("%d_%s", playerID, temp_address)
-
 	eventManager := events.GetGlobalEventManager()
 
-	clientID := fmt.Sprintf("%s_%s", task.Request.RequestUUID, game_topic)
+	clientID := fmt.Sprintf("%s_%d_%s", task.Request.RequestUUID, playerID, temp_address)
+	self := &proto.PlayerAddress{Id: playerID, TemporaryAddress: temp_address}
 	eventHandler := func(msg *proto.Message) {
 		sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
 		if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
@@ -160,22 +160,34 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 		}
 	}
 
-	eventManager.RegisterSSEClient(clientID, eventHandler)
+	eventManager.RegisterSSEPlayerClient(clientID, self, eventHandler)
 	defer eventManager.UnregisterSSEClient(clientID)
 
-	// 订阅游戏主题
-	if err := eventManager.SubscribeToTopic(clientID, game_topic); err != nil {
-		log.Errorf("failed to subscribe to topic: %v", err)
+	if err := eventManager.SubscribeToTopic(clientID, pubsub.TopicRoom); err != nil {
+		log.Errorf("failed to subscribe to room topic: %v", err)
 		errorEvent := events.Event{
 			Type:        events.EventTypeError,
-			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to subscribe to topic: %v", err)},
+			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to subscribe to room topic: %v", err)},
 			Timestamp:   time.Now(),
 			RequestUUID: task.Request.RequestUUID,
 		}
 		sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
-	defer eventManager.UnsubscribeFromTopic(clientID, game_topic)
+	defer eventManager.UnsubscribeFromTopic(clientID, pubsub.TopicRoom)
+
+	if err := eventManager.SubscribeToTopic(clientID, pubsub.TopicLobby); err != nil {
+		log.Errorf("failed to subscribe to lobby topic: %v", err)
+		errorEvent := events.Event{
+			Type:        events.EventTypeError,
+			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to subscribe to lobby topic: %v", err)},
+			Timestamp:   time.Now(),
+			RequestUUID: task.Request.RequestUUID,
+		}
+		sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+		return nil, err
+	}
+	defer eventManager.UnsubscribeFromTopic(clientID, pubsub.TopicLobby)
 
 	connectedEvent := events.Event{
 		Type: events.EventTypeNotification,
@@ -316,11 +328,22 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_TYPE_CONTINUE_CANCELED:
+	case proto.EventType_TYPE_NOT_MATCHABLE:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
-				"EventType": "continueCanceled",
+				"EventType": "notMatchable",
+				"Message":   msg.Event.GetNotMatchable(),
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"EventType": "gameSettlementResult",
+				"Message":   msg.Event.GetGameSettlementResult(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,

@@ -44,18 +44,18 @@ func (q *Queue) createPvpMatchFromQueue(players []types.PlayerAddress) error {
 	q.pendingMatchByPlayer[p2] = matchID
 	pair := []types.PlayerAddress{p1, p2}
 	for _, p := range pair {
-		q.publishMatchPending(p, matchID, pair)
 		delete(q.queue, p)
 		if err := q.queueCache.Delete(p.String()); err != nil {
 			log.Errorf("delete player from queue cache failed: %s", err.Error())
 		}
 	}
+	q.publishMatchPending(matchID, pair, nil)
 	log.Infow("pvp match pending confirmations", "match_id", matchID, "p1", p1.String(), "p2", p2.String())
 	q.schedulePendingMatchConfirmationTimeout(matchID, q.matchConfirmationTimeout, 0)
 	return nil
 }
 
-// createContinueRematchMatch inserts game_match (with last_game_id), registers pending confirmations, and publishes TYPE_GAME_CONTINUABLE per player. Caller must hold q.lock.
+// createContinueRematchMatch inserts game_match (with last_game_id), registers pending confirmations, and publishes TYPE_MATCHED (GameMatched with LastGameId) per player. Caller must hold q.lock.
 func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGameID uint) (int64, error) {
 	if len(players) != 2 {
 		return 0, fmt.Errorf("continue rematch requires 2 players, got %d", len(players))
@@ -77,64 +77,46 @@ func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGa
 	q.pendingMatchByPlayer[p1] = matchID
 	q.pendingMatchByPlayer[p2] = matchID
 	pair := []types.PlayerAddress{p1, p2}
-	for _, p := range pair {
-		q.publishGameContinuable(p, matchID, lastGameID, pair)
-	}
+	lg := uint32(lastGameID)
+	q.publishMatchPending(matchID, pair, &lg)
 	log.Infow("continue rematch pending confirmations", "match_id", matchID, "last_game_id", lastGameID, "p1", p1.String(), "p2", p2.String())
 	return matchID, nil
 }
 
-func (q *Queue) publishMatchPending(forPlayer types.PlayerAddress, matchID int64, players []types.PlayerAddress) {
+func (q *Queue) publishMatchPending(matchID int64, players []types.PlayerAddress, lastGameID *uint32) {
 	topics := make([]*pb.PlayerAddress, 0, len(players))
 	for _, pl := range players {
 		topics = append(topics, pl.ToProto())
 	}
-	topic := (&forPlayer).String()
+	gm := &pb.GameMatched{
+		ConfirmationTimeout: q.matchConfirmationTimeout,
+		Players:             topics,
+		MatchId:             matchID,
+	}
+	if lastGameID != nil {
+		lid := *lastGameID
+		gm.LastGameId = &lid
+	}
 	out := &pb.Event{
-		Type: pb.EventType_TYPE_MATCHED,
+		Type:      pb.EventType_TYPE_MATCHED,
+		Receivers: topics,
 		Event: &pb.Event_GameMatched{
-			GameMatched: &pb.GameMatched{
-				ConfirmationTimeout: q.matchConfirmationTimeout,
-				Players:             topics,
-				MatchId:             matchID,
-			},
+			GameMatched: gm,
 		},
 	}
-	if err := pubsub.Publish(q.ctx, q.publisher, topic, out); err != nil {
-		log.Errorw("publish match pending failed", "topic", topic, "err", err)
+	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
+		log.Errorw("publish match pending failed", "topic", pubsub.TopicLobby, "err", err)
 	}
 }
 
-func (q *Queue) publishGameContinuable(forPlayer types.PlayerAddress, matchID int64, lastGameID uint, players []types.PlayerAddress) {
+func (q *Queue) publishMatchCanceled(matchID int64, players []types.PlayerAddress, fromTimeout bool) {
 	topics := make([]*pb.PlayerAddress, 0, len(players))
 	for _, pl := range players {
 		topics = append(topics, pl.ToProto())
 	}
-	topic := (&forPlayer).String()
 	out := &pb.Event{
-		Type: pb.EventType_TYPE_GAME_CONTINUABLE,
-		Event: &pb.Event_GameContinuable{
-			GameContinuable: &pb.GameContinuable{
-				ConfirmationTimeout: q.matchConfirmationTimeout,
-				Players:             topics,
-				MatchId:             matchID,
-				LastGameId:          uint32(lastGameID),
-			},
-		},
-	}
-	if err := pubsub.Publish(q.ctx, q.publisher, topic, out); err != nil {
-		log.Errorw("publish game continuable failed", "topic", topic, "err", err)
-	}
-}
-
-func (q *Queue) publishMatchCanceled(forPlayer types.PlayerAddress, matchID int64, players []types.PlayerAddress, fromTimeout bool) {
-	topics := make([]*pb.PlayerAddress, 0, len(players))
-	for _, pl := range players {
-		topics = append(topics, pl.ToProto())
-	}
-	topic := (&forPlayer).String()
-	out := &pb.Event{
-		Type: pb.EventType_TYPE_MATCH_CANCELED,
+		Type:      pb.EventType_TYPE_MATCH_CANCELED,
+		Receivers: topics,
 		Event: &pb.Event_MatchCanceled{
 			MatchCanceled: &pb.MatchCanceled{
 				MatchId:     matchID,
@@ -143,8 +125,8 @@ func (q *Queue) publishMatchCanceled(forPlayer types.PlayerAddress, matchID int6
 			},
 		},
 	}
-	if err := pubsub.Publish(q.ctx, q.publisher, topic, out); err != nil {
-		log.Errorw("publish match canceled failed", "topic", topic, "err", err)
+	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
+		log.Errorw("publish match canceled failed", "topic", pubsub.TopicLobby, "err", err)
 	}
 }
 

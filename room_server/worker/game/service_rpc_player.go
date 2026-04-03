@@ -4,7 +4,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// --- rpc/server.PlayerRequestHandler (game + chain only; queue / GetGamePhase pre-game state is on LobbyService) ---
+// --- rpc/server.PlayerRequestHandler (game + chain only; queue / pre-game state is on LobbyService) ---
 
 func (s *Service) ConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	return s.gameManager.HandleConfirmBattle(req)

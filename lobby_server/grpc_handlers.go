@@ -53,18 +53,6 @@ func (s *GRPCServices) ExitQueue(ctx context.Context, req *proto.PlayerAddress) 
 	return &emptypb.Empty{}, s.queueSvc.HandleExitQueueEvent(req)
 }
 
-func (s *GRPCServices) IsPlayerInQueue(ctx context.Context, req *proto.PlayerAddress) (*proto.IsPlayerInQueueResponse, error) {
-	var addr types.PlayerAddress
-	addr.FromProto(req)
-	return &proto.IsPlayerInQueueResponse{IsInQueue: s.queueSvc.IsPlayerInQueue(addr)}, nil
-}
-
-func (s *GRPCServices) IsPlayerPendingMatch(ctx context.Context, req *proto.PlayerAddress) (*proto.IsPlayerPendingMatchResponse, error) {
-	var addr types.PlayerAddress
-	addr.FromProto(req)
-	return &proto.IsPlayerPendingMatchResponse{Pending: s.queueSvc.IsPlayerPendingMatch(addr)}, nil
-}
-
 func (s *GRPCServices) ConfirmMatch(ctx context.Context, req *proto.ConfirmMatchRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, s.queueSvc.HandleConfirmMatch(req)
 }
@@ -80,7 +68,7 @@ func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAdd
 		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}, nil
 	}
 	if s.queueSvc.IsPlayerPendingMatch(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_MATCHED}, nil
+		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}, nil
 	}
 	if s.roomWorker == nil {
 		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil

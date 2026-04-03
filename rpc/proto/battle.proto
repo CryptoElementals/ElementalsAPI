@@ -17,8 +17,8 @@ message PlayerCardStat {
     int32 CardID = 2;
     int32 HPBefore = 3;
     int32 HPAfter = 4;
-    string Description = 8;
-    ElementRelation ElementRelation = 9;
+    string Description = 5;
+    ElementRelation ElementRelation = 6;
 }
 
 message PlayerRoundStat {
@@ -42,7 +42,7 @@ message PlayerReward {
     int32 TokenChange = 3;
     int32 PointChange = 4;
     bool Offline = 5;
-    bool Surrendered =6;
+    bool Surrendered = 6;
     PlayerGameResultStatus PlayerGameResultStatus = 7;
 }
 
@@ -69,9 +69,7 @@ message GameResult {
     int32 Multiplier = 1;
     int64 WinnerPlayerId = 2;
     string WinnerTemporaryAddress = 3;
-    GameResultType GameResultType = 5;
-    BattleReward Reward = 6;
-    uint64 GameContinueTimeout = 7;
+    GameResultType GameResultType = 4;
 }
 
 enum RoundCompleteReason {

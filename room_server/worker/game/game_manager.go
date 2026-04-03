@@ -270,7 +270,7 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 	return gamePhase, nil
 }
 
-// SyncGamePhase publishes the current game phase to the player's PubSub topic.
+// SyncGamePhase publishes the current game phase on the shared room_events PubSub stream for this player (Event.Receivers).
 func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
 	gamePhase, err := r.GetGamePhase(address)
 	if err != nil {

@@ -72,7 +72,7 @@ func (c *GameContext) Subscribe(id ...string) error {
 	} else {
 		subId = c.myself.String()
 	}
-	err := c.rpcClient.PubSubClient.Subscribe(c.myself.String(), subId, c.evtChan, c.errChan)
+	err := c.rpcClient.PubSubClient.Subscribe(subId, c.myself.ToProto(), c.evtChan, c.errChan)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,11 @@ func (c *GameContext) Run() error {
 					log.Warnw("game matched event missing GameMatched data")
 					continue
 				}
-				log.Infow("game matched", "match id", matched.GetMatchId())
+				if matched.LastGameId != nil {
+					log.Infow("game matched (continue rematch)", "match id", matched.GetMatchId(), "last game id", matched.GetLastGameId())
+				} else {
+					log.Infow("game matched", "match id", matched.GetMatchId())
+				}
 				c.players = c.players[:0] // Reuse slice, more efficient than nil
 				for _, pp := range matched.Players {
 					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
@@ -109,24 +113,6 @@ func (c *GameContext) Run() error {
 				if matched.GetMatchId() != 0 {
 					if err := c.confirmMatch(matched.GetMatchId()); err != nil {
 						log.Errorw("failed to confirm match", "error", err)
-					}
-				}
-			case proto.EventType_TYPE_GAME_CONTINUABLE:
-				gc := evt.GetGameContinuable()
-				if gc == nil {
-					log.Warnw("game continuable event missing payload")
-					continue
-				}
-				log.Infow("game continuable", "match id", gc.GetMatchId(), "last game id", gc.GetLastGameId())
-				c.players = c.players[:0]
-				for _, pp := range gc.Players {
-					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
-				}
-				c.currentRound = 1
-				c.currentTurn = 1
-				if gc.GetMatchId() != 0 {
-					if err := c.confirmMatch(gc.GetMatchId()); err != nil {
-						log.Errorw("failed to confirm match after continuable", "error", err)
 					}
 				}
 			case proto.EventType_TYPE_PART_CONFIRMED:
@@ -253,6 +239,11 @@ func (c *GameContext) Run() error {
 					log.Errorw("failed to confirm battle for next turn", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 				} else {
 					log.Infow("battle confirmed", "round", c.currentRound, "turn", c.currentTurn)
+				}
+			case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
+				gsr := evt.GetGameSettlementResult()
+				if gsr != nil {
+					log.Infow("game settlement result", "game id", gsr.GetGameId(), "reward", types.ToJsonLoggable(gsr.GetReward()))
 				}
 			}
 		}

@@ -85,13 +85,13 @@ func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool,
 		if err := q.unlockToken(&p); err != nil {
 			log.Errorw("unlock token after abort pending match", "player", p.String(), "err", err)
 		}
-		if notifyMatchCanceled {
-			q.publishMatchCanceled(p, matchID, players, fromTimeout)
-		}
+	}
+	if notifyMatchCanceled {
+		q.publishMatchCanceled(matchID, players, fromTimeout)
 	}
 }
 
-// tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished game: lock tokens, insert continue game_match, publish TYPE_GAME_CONTINUABLE, schedule cancel timer. Caller must hold q.lock.
+// tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Caller must hold q.lock.
 func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game, bots Set[types.PlayerAddress]) {
 	if len(game.Players) != 2 {
 		return
@@ -119,7 +119,6 @@ func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game, bots Set[types.
 		if err := q.lockToken(&pl); err != nil {
 			for _, u := range locked {
 				_ = q.unlockToken(&u)
-				notifyContinueCanceled(q.ctx, q.publisher, u)
 			}
 			log.Errorw("continue rematch lock token failed", "game_id", game.ID, "player", pl.String(), "err", err)
 			return
@@ -130,7 +129,6 @@ func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game, bots Set[types.
 	if err != nil {
 		for _, u := range locked {
 			_ = q.unlockToken(&u)
-			notifyContinueCanceled(q.ctx, q.publisher, u)
 		}
 		log.Errorw("continue rematch create failed", "game_id", game.ID, "err", err)
 		return

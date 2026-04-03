@@ -152,26 +152,16 @@ func (c *GameContextHTTP) Run() error {
 					log.Warnw("game matched event missing GameMatched data", "player_id", c.playerID)
 					continue
 				}
-				log.Infow("game matched", "player_id", c.playerID, "match_id", matched.GetMatchId())
+				if matched.LastGameId != nil {
+					log.Infow("game matched (continue rematch)", "player_id", c.playerID, "match_id", matched.GetMatchId(), "last_game_id", matched.GetLastGameId())
+				} else {
+					log.Infow("game matched", "player_id", c.playerID, "match_id", matched.GetMatchId())
+				}
 				c.currentRound = 1
 				c.currentTurn = 1
 				if matched.GetMatchId() != 0 {
 					if err := c.confirmMatch(matched.GetMatchId()); err != nil {
 						log.Errorw("failed to confirm match", "player_id", c.playerID, "match_id", matched.GetMatchId(), "error", err)
-					}
-				}
-			case proto.EventType_TYPE_GAME_CONTINUABLE:
-				gc := evt.GetGameContinuable()
-				if gc == nil {
-					log.Warnw("game continuable event missing payload", "player_id", c.playerID)
-					continue
-				}
-				log.Infow("game continuable", "player_id", c.playerID, "match_id", gc.GetMatchId(), "last_game_id", gc.GetLastGameId())
-				c.currentRound = 1
-				c.currentTurn = 1
-				if gc.GetMatchId() != 0 {
-					if err := c.confirmMatch(gc.GetMatchId()); err != nil {
-						log.Errorw("failed to confirm match after continuable", "player_id", c.playerID, "match_id", gc.GetMatchId(), "error", err)
 					}
 				}
 			case proto.EventType_TYPE_PART_CONFIRMED:
@@ -288,6 +278,11 @@ func (c *GameContextHTTP) Run() error {
 					log.Errorw("failed to confirm battle for next turn", "player_id", c.playerID, "game_id", c.gameID, "round", c.currentRound, "turn", c.currentTurn, "error", err)
 				} else {
 					log.Infow("battle confirmed", "player_id", c.playerID, "game_id", c.gameID, "round", c.currentRound, "turn", c.currentTurn)
+				}
+			case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
+				gsr := evt.GetGameSettlementResult()
+				if gsr != nil {
+					log.Infow("game settlement result", "player_id", c.playerID, "game_id", gsr.GetGameId(), "reward", types.ToJsonLoggable(gsr.GetReward()))
 				}
 			}
 		}

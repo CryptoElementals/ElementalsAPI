@@ -31,8 +31,9 @@ var (
 	globalLobbyConn    *grpc.ClientConn
 	globalRpcClient    pb.RpcServiceClient
 	globalLobbyClient  pb.LobbyServiceClient
-	globalPubSubClient pb.PubSubServiceClient
-	globalMutex        sync.RWMutex
+	globalPubSubClient      pb.PubSubServiceClient
+	globalLobbyPubSubClient pb.PubSubServiceClient
+	globalMutex             sync.RWMutex
 	initialized        bool
 )
 
@@ -60,6 +61,7 @@ func dialGlobalLocked() error {
 	globalRpcClient = pb.NewRpcServiceClient(roomConn)
 	globalLobbyClient = pb.NewLobbyServiceClient(lobbyConn)
 	globalPubSubClient = pb.NewPubSubServiceClient(roomConn)
+	globalLobbyPubSubClient = pb.NewPubSubServiceClient(lobbyConn)
 	return nil
 }
 
@@ -153,6 +155,13 @@ func GetGlobalPubSubClient() pb.PubSubServiceClient {
 	return globalPubSubClient
 }
 
+// GetGlobalLobbyPubSubClient 获取 lobby PubSub 客户端
+func GetGlobalLobbyPubSubClient() pb.PubSubServiceClient {
+	globalMutex.RLock()
+	defer globalMutex.RUnlock()
+	return globalLobbyPubSubClient
+}
+
 // CloseGlobalClients 关闭全局连接
 func CloseGlobalClients() error {
 	globalMutex.Lock()
@@ -174,6 +183,7 @@ func CloseGlobalClients() error {
 	globalRpcClient = nil
 	globalLobbyClient = nil
 	globalPubSubClient = nil
+	globalLobbyPubSubClient = nil
 	initialized = false
 	return firstErr
 }

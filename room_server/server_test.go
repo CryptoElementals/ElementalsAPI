@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/CryptoElementals/common/log"
@@ -188,6 +189,17 @@ func toJsonLoggable(obj any) string {
 	return string(res)
 }
 
+func requireRoundGameOverFromDB(t *testing.T, gameID uint, round uint) {
+	t.Helper()
+	gameInfo, err := db.LoadGameByGameID(gameID)
+	require.NoError(t, err)
+	synth := conversion.RoundByNumber(gameInfo, uint32(round))
+	require.NotNil(t, synth)
+	rr := conversion.DbRoundToRoundResult(synth, gameInfo)
+	require.True(t, rr.IsGameOver)
+	require.NotNil(t, gameInfo.GameResult)
+}
+
 var timeoutMapByPlayer = map[types.PlayerAddress]map[proto.EventType]time.Duration{}
 
 func runClient(t *testing.T,
@@ -232,26 +244,20 @@ func runClient(t *testing.T,
 					if matched != nil && matched.GetMatchId() != 0 {
 						require.NoError(t, client.RpcClient.ConfirmMatch(ctx, addr, matched.GetMatchId()))
 					}
-				case proto.EventType_TYPE_GAME_CONTINUABLE:
-					t.Log("game continuable")
-					gc := evt.GetGameContinuable()
-					if gc != nil && gc.GetMatchId() != 0 {
-						require.NoError(t, client.RpcClient.ConfirmMatch(ctx, addr, gc.GetMatchId()))
-					}
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					t.Log("player part confirmed")
 					partConfimredChan <- round
 				case proto.EventType_TYPE_GAME_CREATED:
 					t.Log("game created")
-					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
-					require.NoError(t, err)
-					gameID = uint(phase.GameID)
+					gr := evt.GetGameReady()
+					require.NotNil(t, gr, "TYPE_GAME_CREATED must carry GameReady")
+					gameID = uint(gr.GetGameId())
 					require.NotZero(t, gameID, "game id must be available after TYPE_GAME_CREATED")
 					select {
 					case gameIDChan <- gameID:
 					default:
 					}
-					t.Log("game phase: ", toJsonLoggable(phase))
+					t.Log("game ready: ", toJsonLoggable(gr))
 					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1))
 					// ContractAddress removed - always uses RoomV2 contract address from config
 				case proto.EventType_TYPE_ROUND_READY:
@@ -264,7 +270,7 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_trasactions", addr.String(), round)),
-								GameId: uint32(1), // game_id is required
+								GameId: uint32(gameID),
 								Tx: &proto.Transaction_CommitmentOnChain{
 									CommitmentOnChain: &proto.TxCommitmentOnChain{
 										Address:     addr.ToProtoNoWallet(),
@@ -286,7 +292,7 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_cards", addr.String(), round)),
-								GameId: uint32(1), // game_id is required
+								GameId: uint32(gameID),
 								Tx: &proto.Transaction_CardOnChain{
 									CardOnChain: &proto.TxCardOnChain{
 										Address:     addr.ToProtoNoWallet(),
@@ -301,28 +307,28 @@ func runClient(t *testing.T,
 					}
 				case proto.EventType_TYPE_TURN_COMPLETE:
 					t.Log("turn complete")
-					// skip
-				case proto.EventType_TYPE_ROUND_COMPLETE:
-					t.Log("round complete")
-					battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
-					require.NoError(t, err)
-					t.Log("battle info: ", toJsonLoggable(battleInfo))
-					if !battleInfo.RoundResult.IsGameOver {
+					tc := evt.GetTurnCompleted()
+					if tc == nil {
+						break
+					}
+					if tc.GetIsGameComplete() {
+						t.Log("game complete")
+						close(partConfimredChan)
+						return
+					}
+					if tc.GetIsRoundComplete() && !tc.GetIsGameComplete() {
+						t.Log("round complete, advancing")
 						round++
 						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
 						t.Logf("confirm submitted, addr: %s, round %d, game: %d", addr.String(), round, gameID)
 					}
-				case proto.EventType_TYPE_GAME_COMPLETE:
-					t.Log("game complete")
-					close(partConfimredChan)
-					return
 				}
 			case err := <-chanErr:
 				require.NoError(t, err)
 			}
 		}
 	}()
-	require.NoError(t, client.PubSubClient.Subscribe(addr.String(), addr.String(), chanEvt, chanErr))
+	require.NoError(t, client.PubSubClient.Subscribe("test-sub-"+addr.String(), addr.ToProto(), chanEvt, chanErr))
 	time.Sleep(1 * time.Second)
 }
 
@@ -434,16 +440,11 @@ func TestServer_BattleFullLogic(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
-	require.NoError(t, err)
-	require.NotNil(t, battleInfo)
-	require.NotNil(t, battleInfo.RoundResult)
-	require.NotNil(t, battleInfo.GameResult)
-	require.True(t, battleInfo.RoundResult.IsGameOver)
+	requireRoundGameOverFromDB(t, gameID, round)
 	token, err := client.RpcClient.GetPlayerToken(ctx, addr1.Id)
 	require.NoError(t, err)
 	require.NotNil(t, token)
-	// After game end, players are PLAYER_MATCHED (pending continue rematch); JoinQueue must fail until they ConfirmMatch or the rematch times out.
+	// After game end, lobby may put humans in PLAYER_PENDING_QUEUE_MATCH (continue rematch pending ConfirmMatch); JoinQueue must fail until they ConfirmMatch or the rematch times out.
 	require.Error(t, client.RpcClient.JoinQueue(ctx, addr1))
 }
 
@@ -566,12 +567,8 @@ func TestServer_BattleTimeout(t *testing.T) {
 		}()
 
 	}
-	var checkBasicResult = func(battleInfo *proto.GetBattleInfoResponse, err error) {
-		require.NoError(t, err)
-		require.NotNil(t, battleInfo)
-		require.NotNil(t, battleInfo.RoundResult)
-		require.NotNil(t, battleInfo.GameResult)
-		require.True(t, battleInfo.RoundResult.IsGameOver)
+	var checkBasicResult = func() {
+		requireRoundGameOverFromDB(t, gameID, 1)
 	}
 	var runCase = func() {
 		doneChan := make(chan struct{})
@@ -582,9 +579,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 		case <-doneChan:
 		}
 		// should stop at round one
-		battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, 1)
-		checkBasicResult(battleInfo, err)
-
+		checkBasicResult()
 	}
 	var setupTimeout = func(addr *types.PlayerAddress, evtType proto.EventType, interval time.Duration) {
 		if timeoutMapByPlayer[*addr] == nil {
@@ -608,8 +603,8 @@ func TestServer_BattleTimeout(t *testing.T) {
 	runCase()
 	clear(timeoutMapByPlayer)
 
-	//test round confirm timeout
-	setupTimeout(addr1, proto.EventType_TYPE_ROUND_COMPLETE, 12*time.Second)
+	// test round confirm timeout (signaled via TYPE_TURN_COMPLETE + IsRoundComplete)
+	setupTimeout(addr1, proto.EventType_TYPE_TURN_COMPLETE, 12*time.Second)
 	runCase()
 	clear(timeoutMapByPlayer)
 
@@ -732,12 +727,7 @@ func TestServer_BattleContinue(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
-	require.NoError(t, err)
-	require.NotNil(t, battleInfo)
-	require.NotNil(t, battleInfo.RoundResult)
-	require.NotNil(t, battleInfo.GameResult)
-	require.True(t, battleInfo.RoundResult.IsGameOver)
+	requireRoundGameOverFromDB(t, gameID, round)
 	// continue game
 	doneChan = make(chan struct{})
 	setupBattle(doneChan, true)
@@ -746,10 +736,5 @@ func TestServer_BattleContinue(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err = client.RpcClient.GetBattleInfo(ctx, gameID, round)
-	require.NoError(t, err)
-	require.NotNil(t, battleInfo)
-	require.NotNil(t, battleInfo.RoundResult)
-	require.NotNil(t, battleInfo.GameResult)
-	require.True(t, battleInfo.RoundResult.IsGameOver)
+	requireRoundGameOverFromDB(t, gameID, round)
 }

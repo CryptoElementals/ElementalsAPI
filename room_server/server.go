@@ -70,8 +70,8 @@ func New(ctx context.Context,
 	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc = gameSvc
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
-	// game.Service implements chain RPC, player RPC, and GamePhaseHandler.
-	rpcServer := rpc.NewRpc(gameSvc, gameSvc, gameSvc)
+	// game.Service implements chain RPC and player RPC handlers.
+	rpcServer := rpc.NewRpc(gameSvc, gameSvc)
 	s.rpcServer = rpcServer
 	proto.RegisterPubSubServiceServer(server, s.pubsub)
 	proto.RegisterRpcServiceServer(server, s.rpcServer)

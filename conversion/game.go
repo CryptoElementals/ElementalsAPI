@@ -30,14 +30,12 @@ func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 	if result == nil {
 		return nil
 	}
-	gameResult := &proto.GameResult{
+	return &proto.GameResult{
 		Multiplier:             int32(result.Multiplier),
 		WinnerPlayerId:         result.WinnerPlayerId,
 		WinnerTemporaryAddress: result.WinnerTemporaryAddress,
 		GameResultType:         result.GameResultType,
-		Reward:                 DbBattleRewardToProtoBattleReward(result.BattleReward),
 	}
-	return gameResult
 }
 
 func DbBattleRewardToProtoBattleReward(battleReward *dao.BattleReward) *proto.BattleReward {

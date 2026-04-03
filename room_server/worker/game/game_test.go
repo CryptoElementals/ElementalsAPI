@@ -250,17 +250,17 @@ func TestGameStateMachine(t *testing.T) {
 	prepareCards(t)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
 	compareRound := func(svc *Service, roundNumber int, isLast bool) {
-		resp, err := svc.GetBattleInfo(context.Background(), &proto.GetBattleInfoRequest{GameID: 1, RoundNumber: uint32(roundNumber)})
+		rr, gr, err := svc.LoadBattleInfoFromDB(1, uint32(roundNumber))
 		require.NoError(t, err)
-		require.Equal(t, isLast, resp.RoundResult.IsGameOver)
+		require.Equal(t, isLast, rr.IsGameOver)
 		if isLast {
-			require.NotNil(t, resp.GameResult)
+			require.NotNil(t, gr)
 		}
-		respDb, err := svc.GetBattleInfo(context.Background(), &proto.GetBattleInfoRequest{GameID: 1, RoundNumber: uint32(roundNumber)})
+		rrDb, grDb, err := svc.LoadBattleInfoFromDB(1, uint32(roundNumber))
 		require.NoError(t, err)
 
-		require.EqualExportedValues(t, resp.RoundResult, respDb.RoundResult)
-		require.EqualExportedValues(t, resp.GameResult, respDb.GameResult)
+		require.EqualExportedValues(t, rr, rrDb)
+		require.EqualExportedValues(t, gr, grDb)
 	}
 	t.Run("1 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 1000)

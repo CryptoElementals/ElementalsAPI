@@ -101,40 +101,42 @@ message GetSubscriberCountResponse {
   int32 SubscriberCount = 2;
   bool Success = 3;
   string Error = 4;
-} 
+}
 
 message GameMatched {
   int64 ConfirmationTimeout = 1;
   repeated rpc.PlayerAddress Players = 2;
-  // Queue PVP: snowflake id for ConfirmMatch RPC. Zero for modes that only use this event as a lobby signal (e.g. tournament before GameReady).
+  // Queue PVP: snowflake for ConfirmMatch; 0 for lobby-only signals (e.g. tournament before GameReady).
   int64 MatchId = 3;
+  // Continue rematch after a finished game; unset for first-time queue matches.
+  optional uint32 LastGameId = 4;
 }
 
-// GameContinuable is sent when both players chose to continue after a game; same ConfirmMatch flow as TYPE_MATCHED once pending.
-message GameContinuable {
-  int64 ConfirmationTimeout = 1;
-  repeated rpc.PlayerAddress Players = 2;
-  int64 MatchId = 3;
-  uint32 LastGameId = 4;
-}
-
-// MatchCanceled is sent to both players when a pending game_match is cancelled (CancelMatch RPC or confirmation timeout).
 message MatchCanceled {
   int64 MatchId = 1;
   repeated rpc.PlayerAddress Players = 2;
   bool FromTimeout = 3;
 }
 
+message NotMatchable {
+  uint32 last_game_id = 1;
+}
+
+// Sent by the lobby after token/points settlement (BattleResultSettlement). Reward is not included on TurnCompleted.GameResult.
+message GameSettlementResult {
+  uint32 GameId = 1;
+  battle.BattleReward Reward = 2;
+}
+
 message GameReady {
   uint32 GameId = 1;
-  uint32 InitialHP = 4;
-  repeated rpc.PlayerAddress Players = 6;
-  // Set when the game was created from a queue game_match (same snowflake as TYPE_MATCHED / ConfirmMatch). Zero otherwise.
-  int64 MatchId = 7;
-  uint32 RegulationRounds = 8;
-  uint32 OvertimeRounds = 9;
-  uint32 RegulationTurnsPerRound = 10;
-  uint32 OvertimeTurnsPerRound = 11;
+  uint32 InitialHP = 2;
+  repeated rpc.PlayerAddress Players = 3;
+  int64 MatchId = 4;
+  uint32 RegulationRounds = 5;
+  uint32 OvertimeRounds = 6;
+  uint32 RegulationTurnsPerRound = 7;
+  uint32 OvertimeTurnsPerRound = 8;
 }
 
 message RoundReady {
@@ -146,7 +148,7 @@ message TurnReady {
   uint32 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
-	int64 CommitmentSubmissionTimeout = 4;
+  int64 CommitmentSubmissionTimeout = 4;
 }
 
 message CommitmentsOnChain {
@@ -173,23 +175,10 @@ message TurnCompleted {
   optional int64 GameContinueTimeout = 9;
 }
 
-// Deprecated: RoundCompleted and GameCompleted are no longer used.
-// Round and game completion are now indicated via TurnCompleted.IsRoundComplete and TurnCompleted.IsGameComplete flags.
-// Keeping these message definitions for backward compatibility, but they should not be used in new code.
-message RoundCompleted {
-  uint32 GameId = 1;
-  uint32 RoundNumber = 2;
-}
-
-message GameCompleted {
-  uint32 GameId = 1;
-  battle.GameResult GameResult = 2;
-}
-
 message GameStat {
   uint32 GameId = 1;
   string ContractAddress = 2;
-  repeated rpc.PlayerAddress Players = 3; 
+  repeated rpc.PlayerAddress Players = 3;
   uint32 CurrentRoundNum = 4;
   uint32 CurrentTurnNum = 5;
 }
@@ -202,28 +191,29 @@ enum EventType {
   TYPE_ROUND_READY = 4;
   TYPE_TURN_READY = 5;
   TYPE_COMMITMENTS_ON_CHAIN = 6;
-  TYPE_TURN_COMPLETE = 7; // Includes IsRoundComplete and IsGameComplete flags
-  TYPE_ROUND_COMPLETE = 8; // Deprecated: Use TYPE_TURN_COMPLETE with IsRoundComplete flag
-  TYPE_GAME_COMPLETE = 9; // Deprecated: Use TYPE_TURN_COMPLETE with IsGameComplete flag
-  TYPE_PLAYER_OFFLINE = 10;
-  TYPE_CONTINUE_CANCELED = 11;
-  TYPE_GAME_PHASE_SYNC = 12;
-  TYPE_GAME_CONTINUABLE = 13;
-  TYPE_MATCH_CANCELED = 14;
+  TYPE_TURN_COMPLETE = 7;
+  TYPE_PLAYER_OFFLINE = 8;
+  TYPE_GAME_PHASE_SYNC = 9;
+  TYPE_MATCH_CANCELED = 10;
+  TYPE_NOT_MATCHABLE = 11;
+  TYPE_GAME_SETTLEMENT_RESULT = 12;
 }
 
 message Event {
   EventType Type = 1;
+  // All players this event is intended for. Senders must set when publishing (same slice for each per-topic fan-out).
+  repeated rpc.PlayerAddress receivers = 13;
   oneof Event {
-    GameMatched GameMatched = 2; // TYPE_MATCHED
-    GameContinuable GameContinuable = 12; // TYPE_GAME_CONTINUABLE
-    MatchCanceled MatchCanceled = 13; // TYPE_MATCH_CANCELED
-    GameReady GameReady = 3; // TYPE_GAME_CREATED
-    RoundReady RoundReady = 4; // TYPE_ROUND_READY
-    CommitmentsOnChain CommitmentsOnChain = 5; // TYPE_COMMITMENTS_ON_CHAIN
-    TurnCompleted TurnCompleted = 6; // TYPE_TURN_COMPLETE (includes IsRoundComplete and IsGameComplete flags)
-    rpc.GamePhase GamePhase = 9; // TYPE_GAME_PHASE_SYNC
-    TurnReady TurnReady = 10; // TYPE_TURN_READY
-    google.protobuf.Empty _ = 11; // other events
+    GameMatched GameMatched = 2;
+    GameReady GameReady = 3;
+    RoundReady RoundReady = 4;
+    CommitmentsOnChain CommitmentsOnChain = 5;
+    TurnCompleted TurnCompleted = 6;
+    rpc.GamePhase GamePhase = 7;
+    TurnReady TurnReady = 8;
+    google.protobuf.Empty _ = 9;
+    MatchCanceled MatchCanceled = 10;
+    NotMatchable NotMatchable = 11;
+    GameSettlementResult GameSettlementResult = 12;
   }
 }

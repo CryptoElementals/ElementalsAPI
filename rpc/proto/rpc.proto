@@ -10,8 +10,6 @@ option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 service RpcService {
     // game related api (queue / match / status / token live on LobbyService)
-    rpc GetGamePhase(PlayerAddress) returns (GamePhase);
-    rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
     rpc SubmitPlayerCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
@@ -29,16 +27,12 @@ message TimeoutConfig {
 }
 
 message UnregisterBotsRequest {
-    repeated rpc.PlayerAddress PlayerAddresses =1;
+    repeated rpc.PlayerAddress PlayerAddresses = 1;
 }
 
 message SurrenderRequest {
     uint32 GameID = 1;
     PlayerAddress Address = 2;
-}
-
-message IsPlayerInQueueResponse {
-    bool IsInQueue = 1;
 }
 
 message GetPlayerStatusResponse {
@@ -66,8 +60,7 @@ enum PlayerStatus {
     PLAYER_IN_QUEUE = 1;
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
-    // Deprecated: no longer used; continue rematch uses PLAYER_MATCHED (pending game_match) instead.
-    PLAYER_WAITTING_CONTINUE = 4;
+    PLAYER_PENDING_QUEUE_MATCH = 4;
 }
 
 enum PlayerTurnStatus {
@@ -81,8 +74,8 @@ message GamePhasePlayer {
     PlayerAddress Address = 1;
     PlayerTurnStatus TurnStatus = 2;
     uint32 CurrentHP = 3;
-    optional bytes Commitment = 7;
-    optional uint32 Card = 8;
+    optional bytes Commitment = 4;
+    optional uint32 Card = 5;
 }
 
 message GamePhase {
@@ -92,16 +85,6 @@ message GamePhase {
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
     repeated GamePhasePlayer Players = 6;
-}
-
-message GetBattleInfoRequest {
-    uint32 GameID = 1;
-    uint32 RoundNumber = 2;
-}
-
-message GetBattleInfoResponse {
-    battle.RoundResult round_result = 1;
-    battle.GameResult game_result = 2;
 }
 
 message ConfirmBattleRequest {
@@ -142,10 +125,10 @@ message RoundSubmittedCard {
     uint32 SubmittedCardId = 1;
     uint32 PlayerHealthBefore = 2;
     uint32 PlayerHealthEnd = 3;
-    string Description = 6;            // battle description
-    battle.ElementRelation ElementRelation = 7;       // element relation type
-    bytes SubmittedCommitment = 9;
-    bytes Salt = 10;
+    string Description = 4;
+    battle.ElementRelation ElementRelation = 5;
+    bytes SubmittedCommitment = 6;
+    bytes Salt = 7;
 }
 
 message Round {

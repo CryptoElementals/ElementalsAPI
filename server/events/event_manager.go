@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
@@ -37,11 +38,12 @@ type EventHandler func(*proto.Message)
 
 // SSEClient 表示一个SSE客户端连接
 type SSEClient struct {
-	ID      string
-	Handler EventHandler
-	Topics  map[string]bool // 客户端订阅的主题集合
-	Active  bool
-	mu      sync.RWMutex
+	ID           string
+	Handler      EventHandler
+	Topics       map[string]bool // 客户端订阅的主题集合
+	Active       bool
+	ReceiverSelf *proto.PlayerAddress // 非空时仅转发 Receivers 包含该玩家的房间/大厅事件
+	mu           sync.RWMutex
 }
 
 // GlobalEventManager 全局事件管理器
@@ -51,7 +53,8 @@ type GlobalEventManager struct {
 	subscribedTopics map[string]context.CancelFunc // topic -> cancelFunc
 	topicStreams     map[string]chan struct{}      // topic -> reconnect signal
 	mu               sync.RWMutex
-	pubsubClient     proto.PubSubServiceClient
+	pubsubClient     proto.PubSubServiceClient // room PubSub
+	lobbyPubSub      proto.PubSubServiceClient // lobby PubSub
 	ctx              context.Context
 	cancel           context.CancelFunc
 	reconnectChan    chan string // 重连信号通道
@@ -82,10 +85,13 @@ func (em *GlobalEventManager) Initialize() error {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
-	// 获取全局PubSub客户端
 	em.pubsubClient = client.GetGlobalPubSubClient()
+	em.lobbyPubSub = client.GetGlobalLobbyPubSubClient()
 	if em.pubsubClient == nil {
 		return fmt.Errorf("gRPC PubSub客户端未初始化")
+	}
+	if em.lobbyPubSub == nil {
+		return fmt.Errorf("gRPC lobby PubSub客户端未初始化")
 	}
 
 	// 启动连接监控协程
@@ -174,7 +180,8 @@ func (em *GlobalEventManager) reconnectTopic(topic string) {
 
 	// 重新获取客户端并订阅
 	em.pubsubClient = client.GetGlobalPubSubClient()
-	if em.pubsubClient == nil {
+	em.lobbyPubSub = client.GetGlobalLobbyPubSubClient()
+	if em.pubsubClient == nil || em.lobbyPubSub == nil {
 		log.Errorf("重连时获取PubSub客户端失败，topic: %s", topic)
 		return
 	}
@@ -211,6 +218,24 @@ func (em *GlobalEventManager) RegisterSSEClient(clientID string, handler EventHa
 	em.clients[clientID] = client
 	log.Infof("注册SSE客户端: %s", clientID)
 	return client
+}
+
+// RegisterSSEPlayerClient 注册带玩家身份的 SSE 客户端，仅转发 Receivers 包含该玩家的事件。
+func (em *GlobalEventManager) RegisterSSEPlayerClient(clientID string, self *proto.PlayerAddress, handler EventHandler) *SSEClient {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	sseClient := &SSEClient{
+		ID:           clientID,
+		Handler:      handler,
+		Topics:       make(map[string]bool),
+		Active:       true,
+		ReceiverSelf: self,
+	}
+
+	em.clients[clientID] = sseClient
+	log.Infof("注册SSE客户端(玩家): %s", clientID)
+	return sseClient
 }
 
 // UnregisterSSEClient 取消注册SSE客户端
@@ -302,14 +327,18 @@ func (em *GlobalEventManager) UnsubscribeFromTopic(clientID, topic string) {
 	log.Infof("客户端 %s 取消订阅主题 %s", clientID, topic)
 }
 
-// subscribeToTopic 订阅RoomServer主题
+// subscribeToTopic 订阅 room 或 lobby 的共享流主题
 func (em *GlobalEventManager) subscribeToTopic(topic string) error {
+	pc, err := em.grpcPubSubForTopic(topic)
+	if err != nil {
+		return err
+	}
 	req := &proto.SubscribeRequest{
 		Topic:        topic,
 		SubscriberId: fmt.Sprintf("apiserver_global_%s", topic),
 	}
 
-	stream, err := em.pubsubClient.Subscribe(em.ctx, req)
+	stream, err := pc.Subscribe(em.ctx, req)
 	if err != nil {
 		return fmt.Errorf("订阅主题失败: %v", err)
 	}
@@ -321,8 +350,21 @@ func (em *GlobalEventManager) subscribeToTopic(topic string) error {
 	// 启动事件接收协程
 	go em.handleTopicEvents(ctx, topic, stream)
 
-	log.Infof("成功订阅RoomServer主题: %s", topic)
+	log.Infof("成功订阅PubSub主题: %s", topic)
 	return nil
+}
+
+func (em *GlobalEventManager) grpcPubSubForTopic(topic string) (proto.PubSubServiceClient, error) {
+	if topic == pubsub.TopicLobby {
+		if em.lobbyPubSub == nil {
+			return nil, fmt.Errorf("lobby PubSub 未初始化")
+		}
+		return em.lobbyPubSub, nil
+	}
+	if em.pubsubClient == nil {
+		return nil, fmt.Errorf("room PubSub 未初始化")
+	}
+	return em.pubsubClient, nil
 }
 
 // unsubscribeFromTopic 取消订阅RoomServer主题
@@ -415,6 +457,10 @@ func (em *GlobalEventManager) forwardToClient(clientID string, msg *proto.Messag
 	em.mu.RUnlock()
 
 	if !exists || !client.Active {
+		return
+	}
+
+	if client.ReceiverSelf != nil && !pubsub.EventTargetsReceiver(msg.GetEvent(), client.ReceiverSelf) {
 		return
 	}
 

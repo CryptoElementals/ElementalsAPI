@@ -20,16 +20,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LobbyService_JoinQueue_FullMethodName            = "/rpc.LobbyService/JoinQueue"
-	LobbyService_ExitQueue_FullMethodName            = "/rpc.LobbyService/ExitQueue"
-	LobbyService_IsPlayerInQueue_FullMethodName      = "/rpc.LobbyService/IsPlayerInQueue"
-	LobbyService_IsPlayerPendingMatch_FullMethodName = "/rpc.LobbyService/IsPlayerPendingMatch"
-	LobbyService_ConfirmMatch_FullMethodName         = "/rpc.LobbyService/ConfirmMatch"
-	LobbyService_CancelMatch_FullMethodName          = "/rpc.LobbyService/CancelMatch"
-	LobbyService_GetPlayerStatus_FullMethodName      = "/rpc.LobbyService/GetPlayerStatus"
-	LobbyService_GetPlayerToken_FullMethodName       = "/rpc.LobbyService/GetPlayerToken"
-	LobbyService_RegisterBots_FullMethodName         = "/rpc.LobbyService/RegisterBots"
-	LobbyService_UnregisterBots_FullMethodName       = "/rpc.LobbyService/UnregisterBots"
+	LobbyService_JoinQueue_FullMethodName       = "/rpc.LobbyService/JoinQueue"
+	LobbyService_ExitQueue_FullMethodName       = "/rpc.LobbyService/ExitQueue"
+	LobbyService_ConfirmMatch_FullMethodName    = "/rpc.LobbyService/ConfirmMatch"
+	LobbyService_CancelMatch_FullMethodName     = "/rpc.LobbyService/CancelMatch"
+	LobbyService_GetPlayerStatus_FullMethodName = "/rpc.LobbyService/GetPlayerStatus"
+	LobbyService_GetPlayerToken_FullMethodName  = "/rpc.LobbyService/GetPlayerToken"
+	LobbyService_RegisterBots_FullMethodName    = "/rpc.LobbyService/RegisterBots"
+	LobbyService_UnregisterBots_FullMethodName  = "/rpc.LobbyService/UnregisterBots"
 )
 
 // LobbyServiceClient is the client API for LobbyService service.
@@ -41,8 +39,6 @@ const (
 type LobbyServiceClient interface {
 	JoinQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error)
-	IsPlayerPendingMatch(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerPendingMatchResponse, error)
 	ConfirmMatch(ctx context.Context, in *ConfirmMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CancelMatch(ctx context.Context, in *CancelMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error)
@@ -74,26 +70,6 @@ func (c *lobbyServiceClient) ExitQueue(ctx context.Context, in *PlayerAddress, o
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, LobbyService_ExitQueue_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *lobbyServiceClient) IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IsPlayerInQueueResponse)
-	err := c.cc.Invoke(ctx, LobbyService_IsPlayerInQueue_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *lobbyServiceClient) IsPlayerPendingMatch(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerPendingMatchResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IsPlayerPendingMatchResponse)
-	err := c.cc.Invoke(ctx, LobbyService_IsPlayerPendingMatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -169,8 +145,6 @@ func (c *lobbyServiceClient) UnregisterBots(ctx context.Context, in *RegisterBot
 type LobbyServiceServer interface {
 	JoinQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
-	IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error)
-	IsPlayerPendingMatch(context.Context, *PlayerAddress) (*IsPlayerPendingMatchResponse, error)
 	ConfirmMatch(context.Context, *ConfirmMatchRequest) (*emptypb.Empty, error)
 	CancelMatch(context.Context, *CancelMatchRequest) (*emptypb.Empty, error)
 	GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error)
@@ -193,12 +167,6 @@ func (UnimplementedLobbyServiceServer) JoinQueue(context.Context, *PlayerAddress
 }
 func (UnimplementedLobbyServiceServer) ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExitQueue not implemented")
-}
-func (UnimplementedLobbyServiceServer) IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method IsPlayerInQueue not implemented")
-}
-func (UnimplementedLobbyServiceServer) IsPlayerPendingMatch(context.Context, *PlayerAddress) (*IsPlayerPendingMatchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method IsPlayerPendingMatch not implemented")
 }
 func (UnimplementedLobbyServiceServer) ConfirmMatch(context.Context, *ConfirmMatchRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmMatch not implemented")
@@ -271,42 +239,6 @@ func _LobbyService_ExitQueue_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LobbyServiceServer).ExitQueue(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _LobbyService_IsPlayerInQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LobbyServiceServer).IsPlayerInQueue(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LobbyService_IsPlayerInQueue_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LobbyServiceServer).IsPlayerInQueue(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _LobbyService_IsPlayerPendingMatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LobbyServiceServer).IsPlayerPendingMatch(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LobbyService_IsPlayerPendingMatch_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LobbyServiceServer).IsPlayerPendingMatch(ctx, req.(*PlayerAddress))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -433,14 +365,6 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExitQueue",
 			Handler:    _LobbyService_ExitQueue_Handler,
-		},
-		{
-			MethodName: "IsPlayerInQueue",
-			Handler:    _LobbyService_IsPlayerInQueue_Handler,
-		},
-		{
-			MethodName: "IsPlayerPendingMatch",
-			Handler:    _LobbyService_IsPlayerPendingMatch_Handler,
 		},
 		{
 			MethodName: "ConfirmMatch",

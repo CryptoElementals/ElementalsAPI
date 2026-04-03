@@ -9,8 +9,10 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
@@ -210,9 +212,11 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		return nil
 	}
 
+	q.publishGameSettlementResult(event.GameInfo)
+
 	if q.anyHumanPlayerBelowQueueThreshold(event.GameInfo, bots) {
-		log.Infow("sending continue cancel events due to insufficient tokens", "game_id", event.GameInfo.ID)
-		publishContinueCanceledForHumans(q.ctx, q.publisher, event.GameInfo, bots)
+		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", event.GameInfo.ID)
+		q.publishNotMatchableForHumans(event.GameInfo, uint32(event.GameInfo.ID), bots)
 	} else {
 		q.lock.Lock()
 		q.tryStartContinueRematchAfterGame(event.GameInfo, bots)
@@ -259,4 +263,58 @@ func (q *Queue) lockToken(address *types.PlayerAddress) error {
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	log.Infow("unlock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
 	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress)
+}
+
+func (q *Queue) publishGameSettlementResult(game *dao.Game) {
+	if game == nil || game.GameResult == nil || game.GameResult.BattleReward == nil {
+		return
+	}
+	protoReward := conversion.DbBattleRewardToProtoBattleReward(game.GameResult.BattleReward)
+	if protoReward == nil {
+		return
+	}
+	receivers := make([]*pb.PlayerAddress, 0, len(game.Players))
+	for _, p := range game.Players {
+		if p == nil {
+			continue
+		}
+		receivers = append(receivers, types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress).ToProto())
+	}
+	out := &pb.Event{
+		Type:      pb.EventType_TYPE_GAME_SETTLEMENT_RESULT,
+		Receivers: receivers,
+		Event: &pb.Event_GameSettlementResult{
+			GameSettlementResult: &pb.GameSettlementResult{
+				GameId: uint32(game.ID),
+				Reward: protoReward,
+			},
+		},
+	}
+	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
+		log.Errorw("publish game settlement result failed", "topic", pubsub.TopicLobby, "game_id", game.ID, "err", err)
+	}
+}
+
+func (q *Queue) publishNotMatchableForHumans(game *dao.Game, lastGameID uint32, bots Set[types.PlayerAddress]) {
+	receivers := make([]*pb.PlayerAddress, 0, len(game.Players))
+	for _, p := range game.Players {
+		if p == nil {
+			continue
+		}
+		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+		if bots.Contains(*addr) {
+			continue
+		}
+		receivers = append(receivers, addr.ToProto())
+	}
+	evt := &pb.Event{
+		Type:      pb.EventType_TYPE_NOT_MATCHABLE,
+		Receivers: receivers,
+		Event: &pb.Event_NotMatchable{
+			NotMatchable: &pb.NotMatchable{LastGameId: lastGameID},
+		},
+	}
+	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, evt); err != nil {
+		log.Errorw("publish not matchable failed", "topic", pubsub.TopicLobby, "last_game_id", lastGameID, "err", err)
+	}
 }

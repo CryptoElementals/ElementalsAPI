@@ -125,10 +125,10 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "IN_QUEUE"
 	case proto.PlayerStatus_PLAYER_MATCHED:
 		return "MATCHED"
+	case proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
+		return "PENDING_QUEUE_MATCH"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return "IN_GAME"
-	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
-		return "WAITTING_CONTINUE" // deprecated proto value; server should not return this for new flows
 	default:
 		return "UNKNOWN"
 	}

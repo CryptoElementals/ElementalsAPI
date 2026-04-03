@@ -79,17 +79,6 @@ func (c *RpcClient) ExitQueue(ctx context.Context, addr *types.PlayerAddress) er
 	return err
 }
 
-func (c *RpcClient) GetGamePhase(ctx context.Context, addr *types.PlayerAddress) (*proto.GamePhase, error) {
-	return c.room.GetGamePhase(ctx, addr.ToProto())
-}
-
-func (c *RpcClient) GetBattleInfo(ctx context.Context, gameID, roundNumber uint) (*proto.GetBattleInfoResponse, error) {
-	return c.room.GetBattleInfo(ctx, &proto.GetBattleInfoRequest{
-		GameID:      uint32(gameID),
-		RoundNumber: uint32(roundNumber),
-	})
-}
-
 func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress, gameID, roundNumber, turnNumber uint) error {
 	_, err := c.room.ConfirmBattle(ctx, &proto.ConfirmBattleRequest{
 		PlayerAddress: addr.ToProto(),
@@ -132,17 +121,6 @@ func (c *RpcClient) GetPlayerToken(ctx context.Context, playerId int64) (*proto.
 		return nil, err
 	}
 	return c.lobby.GetPlayerToken(ctx, &proto.GetPlayerTokenRequest{Id: playerId})
-}
-
-func (c *RpcClient) IsPlayerInQueue(ctx context.Context, addr types.PlayerAddress) (bool, error) {
-	if err := c.lobbyRequired(); err != nil {
-		return false, err
-	}
-	resp, err := c.lobby.IsPlayerInQueue(ctx, addr.ToProto())
-	if err != nil {
-		return false, err
-	}
-	return resp.IsInQueue, nil
 }
 
 func (c *RpcClient) GetPlayerStatus(ctx context.Context, addr *types.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {

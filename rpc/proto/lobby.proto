@@ -12,8 +12,6 @@ option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 service LobbyService {
   rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
   rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
-  rpc IsPlayerInQueue(PlayerAddress) returns (IsPlayerInQueueResponse);
-  rpc IsPlayerPendingMatch(PlayerAddress) returns (IsPlayerPendingMatchResponse);
   rpc ConfirmMatch(ConfirmMatchRequest) returns (google.protobuf.Empty);
   rpc CancelMatch(CancelMatchRequest) returns (google.protobuf.Empty);
   rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
@@ -21,10 +19,6 @@ service LobbyService {
   // Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
   rpc RegisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
   rpc UnregisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
-}
-
-message IsPlayerPendingMatchResponse {
-  bool Pending = 1;
 }
 
 message RegisterBotsForLobbyRequest {

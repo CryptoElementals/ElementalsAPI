@@ -542,6 +542,49 @@ func (s *sseScanner) readLine() (string, error) {
 	return line.String(), nil
 }
 
+// parseGameMatchedFromSSEMap builds GameMatched from SubscribeGameInfo SSE "Message" object (matched / continue rematch).
+func parseGameMatchedFromSSEMap(msg map[string]interface{}) *proto.GameMatched {
+	gm := &proto.GameMatched{}
+	if mid, ok := msg["MatchId"].(float64); ok {
+		gm.MatchId = int64(mid)
+	} else if mid, ok := msg["matchId"].(float64); ok {
+		gm.MatchId = int64(mid)
+	}
+	if lid, ok := msg["LastGameId"].(float64); ok {
+		v := uint32(lid)
+		gm.LastGameId = &v
+	} else if lid, ok := msg["lastGameId"].(float64); ok {
+		v := uint32(lid)
+		gm.LastGameId = &v
+	}
+	appendPlayers := func(players []interface{}) {
+		for _, p := range players {
+			playerMap, ok := p.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			player := &proto.PlayerAddress{}
+			if id, ok := playerMap["Id"].(float64); ok {
+				player.Id = int64(id)
+			} else if id, ok := playerMap["id"].(float64); ok {
+				player.Id = int64(id)
+			}
+			if tempAddr, ok := playerMap["TemporaryAddress"].(string); ok {
+				player.TemporaryAddress = tempAddr
+			} else if tempAddr, ok := playerMap["temporary_address"].(string); ok {
+				player.TemporaryAddress = tempAddr
+			}
+			gm.Players = append(gm.Players, player)
+		}
+	}
+	if players, ok := msg["Players"].([]interface{}); ok {
+		appendPlayers(players)
+	} else if players, ok := msg["players"].([]interface{}); ok {
+		appendPlayers(players)
+	}
+	return gm
+}
+
 // parseSSEEvent parses SSE event and converts it to proto.Event
 func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 	var sseEvent struct {
@@ -563,77 +606,10 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 
 	protoEvent := &proto.Event{}
 	switch eventType {
-	case "matched":
+	case "matched", "gameContinuable":
 		protoEvent.Type = proto.EventType_TYPE_MATCHED
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
-			gameMatched := &proto.GameMatched{}
-			if mid, ok := msg["MatchId"].(float64); ok {
-				gameMatched.MatchId = int64(mid)
-			} else if mid, ok := msg["matchId"].(float64); ok {
-				gameMatched.MatchId = int64(mid)
-			}
-			if players, ok := msg["Players"].([]interface{}); ok {
-				for _, p := range players {
-					if playerMap, ok := p.(map[string]interface{}); ok {
-						player := &proto.PlayerAddress{}
-						if id, ok := playerMap["Id"].(float64); ok {
-							player.Id = int64(id)
-						}
-						if tempAddr, ok := playerMap["TemporaryAddress"].(string); ok {
-							player.TemporaryAddress = tempAddr
-						}
-						gameMatched.Players = append(gameMatched.Players, player)
-					}
-				}
-			}
-			protoEvent.Event = &proto.Event_GameMatched{GameMatched: gameMatched}
-		}
-	case "gameContinuable":
-		protoEvent.Type = proto.EventType_TYPE_GAME_CONTINUABLE
-		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
-			gc := &proto.GameContinuable{}
-			if mid, ok := msg["MatchId"].(float64); ok {
-				gc.MatchId = int64(mid)
-			} else if mid, ok := msg["matchId"].(float64); ok {
-				gc.MatchId = int64(mid)
-			}
-			if lid, ok := msg["LastGameId"].(float64); ok {
-				gc.LastGameId = uint32(lid)
-			} else if lid, ok := msg["lastGameId"].(float64); ok {
-				gc.LastGameId = uint32(lid)
-			}
-			if players, ok := msg["Players"].([]interface{}); ok {
-				for _, p := range players {
-					if playerMap, ok := p.(map[string]interface{}); ok {
-						player := &proto.PlayerAddress{}
-						if id, ok := playerMap["Id"].(float64); ok {
-							player.Id = int64(id)
-						} else if id, ok := playerMap["id"].(float64); ok {
-							player.Id = int64(id)
-						}
-						if tempAddr, ok := playerMap["TemporaryAddress"].(string); ok {
-							player.TemporaryAddress = tempAddr
-						} else if tempAddr, ok := playerMap["temporary_address"].(string); ok {
-							player.TemporaryAddress = tempAddr
-						}
-						gc.Players = append(gc.Players, player)
-					}
-				}
-			} else if players, ok := msg["players"].([]interface{}); ok {
-				for _, p := range players {
-					if playerMap, ok := p.(map[string]interface{}); ok {
-						player := &proto.PlayerAddress{}
-						if id, ok := playerMap["id"].(float64); ok {
-							player.Id = int64(id)
-						}
-						if tempAddr, ok := playerMap["temporary_address"].(string); ok {
-							player.TemporaryAddress = tempAddr
-						}
-						gc.Players = append(gc.Players, player)
-					}
-				}
-			}
-			protoEvent.Event = &proto.Event_GameContinuable{GameContinuable: gc}
+			protoEvent.Event = &proto.Event_GameMatched{GameMatched: parseGameMatchedFromSSEMap(msg)}
 		}
 	case "partConfirmed":
 		protoEvent.Type = proto.EventType_TYPE_PART_CONFIRMED
@@ -709,6 +685,15 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 				turnCompleted.IsGameComplete = isGameComplete
 			}
 			protoEvent.Event = &proto.Event_TurnCompleted{TurnCompleted: turnCompleted}
+		}
+	case "gameSettlementResult":
+		protoEvent.Type = proto.EventType_TYPE_GAME_SETTLEMENT_RESULT
+		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
+			gsr := &proto.GameSettlementResult{}
+			if gameId, ok := msg["GameId"].(float64); ok {
+				gsr.GameId = uint32(gameId)
+			}
+			protoEvent.Event = &proto.Event_GameSettlementResult{GameSettlementResult: gsr}
 		}
 	default:
 		return nil
