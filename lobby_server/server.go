@@ -82,7 +82,6 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 
 	s.grpcServer = grpc.NewServer()
 	proto.RegisterLobbyServiceServer(s.grpcServer, s.grpcHandlers)
-	proto.RegisterLobbySettlementServiceServer(s.grpcServer, s.grpcHandlers)
 	proto.RegisterPubSubServiceServer(s.grpcServer, s.pubsub)
 
 	return s, nil
@@ -114,6 +113,7 @@ func (s *Service) Start() error {
 		return err
 	}
 	s.tournSvc.Start()
+	s.runRoomSettlementSubscriber()
 	return s.startListener()
 }
 

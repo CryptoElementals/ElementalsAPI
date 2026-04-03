@@ -27,9 +27,8 @@ type Service struct {
 	server     *grpc.Server
 	pubsub     *rpc.PubSub
 	chainSvc   *chain.Chain
-	gameSvc    *game.Service
-	lobbyConn  *grpc.ClientConn
-	rpcServer  *rpc.Rpc
+	gameSvc   *game.Service
+	rpcServer *rpc.Rpc
 }
 
 func New(ctx context.Context,
@@ -68,6 +67,7 @@ func New(ctx context.Context,
 		log.Fatalf("game_args template required (game-args-id=%d): %v", cfg.GameArgsID, err)
 	}
 	gameSvc := game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
+	gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, s.pubsub))
 	s.gameSvc = gameSvc
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	// game.Service implements chain RPC and player RPC handlers.
@@ -101,15 +101,6 @@ func (s *Service) Start() error {
 	}
 	log.Info("listener started")
 
-	log.Info("connecting to lobby server (background)")
-	go func() {
-		if err := s.connectLobby(s.ctx); err != nil {
-			log.Errorw("lobby connection failed", "err", err)
-			return
-		}
-		log.Info("lobby connection established")
-	}()
-
 	return nil
 }
 
@@ -118,10 +109,6 @@ func (s *Service) Stop() {
 	s.gameSvc.Stop()
 	log.Info("game service stopped")
 
-	if s.lobbyConn != nil {
-		_ = s.lobbyConn.Close()
-		s.lobbyConn = nil
-	}
 
 	log.Info("stopping pubsub service")
 	s.pubsub.Stop()

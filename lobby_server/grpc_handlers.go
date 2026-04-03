@@ -14,10 +14,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// GRPCServices implements LobbyService and LobbySettlementService.
+// GRPCServices implements LobbyService.
 type GRPCServices struct {
 	proto.UnimplementedLobbyServiceServer
-	proto.UnimplementedLobbySettlementServiceServer
 
 	queueSvc   *queue.Service
 	tournSvc   *turnament.TournamentQueueService
@@ -107,22 +106,23 @@ func (s *GRPCServices) UnregisterBots(ctx context.Context, req *proto.RegisterBo
 	return &emptypb.Empty{}, s.queueSvc.UnregisterBots(addrs...)
 }
 
-func (s *GRPCServices) NotifyGameCompleted(ctx context.Context, req *proto.NotifyGameCompletedRequest) (*emptypb.Empty, error) {
-	if req == nil {
-		return &emptypb.Empty{}, nil
+// HandleGameCompletedFromRoom runs queue and tournament settlement after the room publishes TYPE_GAME_COMPLETED (game id only; full row loaded here).
+func (s *GRPCServices) HandleGameCompletedFromRoom(gameID uint32) error {
+	if gameID == 0 {
+		return nil
 	}
-	g, err := db.LoadGameByGameID(uint(req.GameId))
+	g, err := db.LoadGameByGameID(uint(gameID))
 	if err != nil {
-		return nil, fmt.Errorf("load game %d: %w", req.GameId, err)
+		return fmt.Errorf("load game %d: %w", gameID, err)
 	}
-	ev := &types.GameCompletedEvent{GameID: uint(req.GameId), GameInfo: g}
+	ev := &types.GameCompletedEvent{GameID: uint(gameID), GameInfo: g}
 	if err := s.queueSvc.GameResultSettlement(ev); err != nil {
-		return nil, err
+		return err
 	}
 	if s.tournSvc != nil {
 		if err := s.tournSvc.GameResultSettlementHook(ev); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return &emptypb.Empty{}, nil
+	return nil
 }

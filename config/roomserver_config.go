@@ -11,15 +11,15 @@ var RSGConf = RoomServerConfig{}
 
 // RoomServerConfig represents the complete application configuration structure
 type RoomServerConfig struct {
-	LogCfg              log.Config      `mapstructure:"log"`
-	RedisCfg            redis.Config    `mapstructure:"redis"`
-	DbCfg               db.Config       `mapstructure:"database"`
-	ChainCfg            ChainConfig     `mapstructure:"chain"`
-	WalletPaths         []string        `mapstructure:"wallet-paths"`
-	ListenPort          int64           `mapstructure:"listen-port"`
-	BotWaitTime         int64           `mapstructure:"bot-wait-time"`
-	StatServiceEndpoint string          `mapstructure:"stat-service-endpoint"`
-	ShouldRecoverGames  bool            `mapstructure:"should-recover-games"`
+	LogCfg              log.Config   `mapstructure:"log"`
+	RedisCfg            redis.Config `mapstructure:"redis"`
+	DbCfg               db.Config    `mapstructure:"database"`
+	ChainCfg            ChainConfig  `mapstructure:"chain"`
+	WalletPaths         []string     `mapstructure:"wallet-paths"`
+	ListenPort          int64        `mapstructure:"listen-port"`
+	BotWaitTime         int64        `mapstructure:"bot-wait-time"`
+	StatServiceEndpoint string       `mapstructure:"stat-service-endpoint"`
+	ShouldRecoverGames  bool         `mapstructure:"should-recover-games"`
 	// pool batch size for on-chain submissions
 	PoolBatchSize int `mapstructure:"pool-batch-size"`
 
@@ -27,8 +27,6 @@ type RoomServerConfig struct {
 	MinTokenToJoinQueue int32 `mapstructure:"min-token-to-join-queue"`
 	// GameArgsID is the game_args row id used for new matches (must be non-zero; room server loads it at startup).
 	GameArgsID uint `mapstructure:"game-args-id"`
-	// LobbyServerAddress is the gRPC address (host:port) of ele-lobbyserver for queue hooks and game settlement.
-	LobbyServerAddress string `mapstructure:"lobby-server-address"`
 }
 
 func InitRSConfig(configPath string) error {

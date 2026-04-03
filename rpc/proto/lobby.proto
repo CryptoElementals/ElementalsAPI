@@ -24,12 +24,3 @@ service LobbyService {
 message RegisterBotsForLobbyRequest {
   repeated PlayerAddress Addresses = 1;
 }
-
-// LobbySettlementService: room notifies lobby when a game completes (queue + tournament settlement).
-service LobbySettlementService {
-  rpc NotifyGameCompleted(NotifyGameCompletedRequest) returns (google.protobuf.Empty);
-}
-
-message NotifyGameCompletedRequest {
-  uint32 GameId = 1;
-}

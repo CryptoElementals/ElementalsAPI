@@ -128,6 +128,11 @@ message GameSettlementResult {
   battle.BattleReward Reward = 2;
 }
 
+// Sent by the room on topic room_settlement when a game ends. Lobby subscribes and loads full state from DB.
+message GameCompletedNotice {
+  uint32 GameId = 1;
+}
+
 message GameReady {
   uint32 GameId = 1;
   uint32 InitialHP = 2;
@@ -197,11 +202,12 @@ enum EventType {
   TYPE_MATCH_CANCELED = 10;
   TYPE_NOT_MATCHABLE = 11;
   TYPE_GAME_SETTLEMENT_RESULT = 12;
+  TYPE_GAME_COMPLETED = 13;
 }
 
 message Event {
   EventType Type = 1;
-  // All players this event is intended for. Senders must set when publishing (same slice for each per-topic fan-out).
+  // Intended recipients for client-facing streams (room_events / lobby_events); subscribers filter on this. Leave unset for internal-only topics (e.g. room_settlement).
   repeated rpc.PlayerAddress receivers = 13;
   oneof Event {
     GameMatched GameMatched = 2;
@@ -215,5 +221,6 @@ message Event {
     MatchCanceled MatchCanceled = 10;
     NotMatchable NotMatchable = 11;
     GameSettlementResult GameSettlementResult = 12;
+    GameCompletedNotice GameCompletedNotice = 14;
   }
 }
