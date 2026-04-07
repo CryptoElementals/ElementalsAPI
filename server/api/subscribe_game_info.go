@@ -346,21 +346,22 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
-	case proto.EventType_TYPE_PLAYER_OFFLINE:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
-			Data: map[string]interface{}{
-				"EventType": "playerOffline",
-			},
-			Timestamp:   time.Now(),
-			RequestUUID: requestUUID,
-		}
 	case proto.EventType_TYPE_NOT_MATCHABLE:
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"EventType": "notMatchable",
 				"Message":   msg.Event.GetNotMatchable(),
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
+	case proto.EventType_TYPE_MATCH_CANCELED:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"EventType": "matchCanceled",
+				"Message":   msg.Event.GetMatchCanceled(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
