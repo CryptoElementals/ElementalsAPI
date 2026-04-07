@@ -42,7 +42,7 @@ type TournamentSchedule struct {
 
 	Enabled bool `gorm:"not null;default:true" json:"enabled"`
 
-	GameArgs *GameArgs `gorm:"foreignKey:GameArgsID" json:"game_args,omitempty"`
+	GameArgs *GameArgs `json:"game_args,omitempty"`
 }
 
 func (TournamentSchedule) TableName() string { return "tournament_schedules" }
@@ -84,7 +84,7 @@ type Tournament struct {
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 
-	Schedule *TournamentSchedule `gorm:"foreignKey:TournamentScheduleID" json:"schedule,omitempty"`
+	Schedule *TournamentSchedule `json:"schedule,omitempty"`
 	Entries  []*TournamentEntry  `json:"entries,omitempty"`
 	Matches  []*TournamentMatch  `json:"matches,omitempty"`
 }
@@ -124,7 +124,7 @@ type TournamentEntry struct {
 	// EliminatedRound is 0 while active or winner; set when eliminated (1 = first elimination round, ...).
 	EliminatedRound uint32 `gorm:"not null" json:"eliminated_round"`
 
-	Tournament *Tournament `gorm:"foreignKey:TournamentID" json:"tournament,omitempty"`
+	Tournament *Tournament `json:"tournament,omitempty"`
 }
 
 func (TournamentEntry) TableName() string { return "tournament_entries" }
@@ -146,10 +146,10 @@ type TournamentMatch struct {
 	// WinnerEntryID is set when the match is decided. On a tie, the entry with the smaller JoinSequence is promoted (application logic).
 	WinnerEntryID *uint `gorm:"index" json:"winner_entry_id,omitempty"`
 
-	EntryA *TournamentEntry `gorm:"foreignKey:EntryAID" json:"entry_a,omitempty"`
-	EntryB *TournamentEntry `gorm:"foreignKey:EntryBID" json:"entry_b,omitempty"`
-	Game   *Game            `gorm:"foreignKey:GameID" json:"game,omitempty"`
-	Winner *TournamentEntry `gorm:"foreignKey:WinnerEntryID" json:"winner,omitempty"`
+	EntryA *TournamentEntry `json:"entry_a,omitempty"`
+	EntryB *TournamentEntry `json:"entry_b,omitempty"`
+	Game   *Game            `json:"game,omitempty"`
+	Winner *TournamentEntry `json:"winner,omitempty"`
 }
 
 func (TournamentMatch) TableName() string { return "tournament_matches" }

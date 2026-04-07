@@ -62,7 +62,7 @@ type Game struct {
 	Turns      []*Turn           `json:"turns"`
 	GameResult *GameResult       `json:"game_result"`
 
-	GameArgs *GameArgs `gorm:"foreignKey:GameArgsID" json:"game_args,omitempty"`
+	GameArgs *GameArgs `json:"game_args,omitempty"`
 }
 
 type Turn struct {
