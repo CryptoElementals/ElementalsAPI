@@ -25,6 +25,7 @@ type GameArgs struct {
 	MaxTurnsPerExtraRound  int64 `validate:"gte=0" gorm:"not null;default:0" json:"max_turns_per_extra_round"`
 
 	InitialHP int64 `validate:"gt=0" gorm:"not null" json:"initial_hp"`
+	MaxHP     int64 `validate:"gte=0" gorm:"not null" json:"max_hp"`
 	// BaseStake is copied from the room template row into each match; lobby settlement uses this (not config).
 	BaseStake int64 `validate:"gt=0" gorm:"not null;default:1000" json:"base_stake"`
 

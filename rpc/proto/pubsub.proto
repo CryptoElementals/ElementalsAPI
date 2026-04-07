@@ -142,6 +142,7 @@ message GameReady {
   uint32 OvertimeRounds = 6;
   uint32 RegulationTurnsPerRound = 7;
   uint32 OvertimeTurnsPerRound = 8;
+  uint32 MaxHP = 9;
 }
 
 message RoundReady {

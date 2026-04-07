@@ -118,6 +118,7 @@ type GameReadyPlayerInfo struct {
 	AvatarURL string `json:"AvatarURL"`
 	IsMyself  bool   `json:"IsMyself"`
 	InitialHP int32  `json:"InitialHP"`
+	MaxHP     int32  `json:"MaxHP"`
 }
 
 func NewSubscribeGameInfoRequest(data *map[string]interface{}) (*SubscribeGameInfoRequest, error) {
@@ -507,6 +508,7 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 
 	players := gameReady.GetPlayers()
 	initialHP := gameReady.GetInitialHP()
+	maxHP := gameReady.GetMaxHP()
 	if len(players) == 0 {
 		return nil
 	}
@@ -526,6 +528,7 @@ func (task *SubscribeGameInfoTask) buildGameReadyPlayersInfo(gameReady *proto.Ga
 		info := GameReadyPlayerInfo{
 			PlayerID:  playerIDStr,
 			InitialHP: int32(initialHP),
+			MaxHP:     int32(maxHP),
 		}
 
 		userProfile, err := db.GetUserProfileByPlayerID(playerIDStr)

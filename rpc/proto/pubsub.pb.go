@@ -1091,6 +1091,7 @@ type GameReady struct {
 	OvertimeRounds          uint32           `protobuf:"varint,6,opt,name=OvertimeRounds,proto3" json:"OvertimeRounds,omitempty"`
 	RegulationTurnsPerRound uint32           `protobuf:"varint,7,opt,name=RegulationTurnsPerRound,proto3" json:"RegulationTurnsPerRound,omitempty"`
 	OvertimeTurnsPerRound   uint32           `protobuf:"varint,8,opt,name=OvertimeTurnsPerRound,proto3" json:"OvertimeTurnsPerRound,omitempty"`
+	MaxHP                   uint32           `protobuf:"varint,9,opt,name=MaxHP,proto3" json:"MaxHP,omitempty"`
 }
 
 func (x *GameReady) Reset() {
@@ -1177,6 +1178,13 @@ func (x *GameReady) GetRegulationTurnsPerRound() uint32 {
 func (x *GameReady) GetOvertimeTurnsPerRound() uint32 {
 	if x != nil {
 		return x.OvertimeTurnsPerRound
+	}
+	return 0
+}
+
+func (x *GameReady) GetMaxHP() uint32 {
+	if x != nil {
+		return x.MaxHP
 	}
 	return 0
 }

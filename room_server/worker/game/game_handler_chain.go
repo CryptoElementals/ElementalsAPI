@@ -33,6 +33,7 @@ func (g *Game) handleRoomCreated(blockTime int64) error {
 				GameReady: &proto.GameReady{
 					GameId:                  uint32(gi.ID),
 					InitialHP:               uint32(ga.InitialHP),
+					MaxHP:                   uint32(ga.MaxHP),
 					Players:                 players,
 					MatchId:                 gi.QueueMatchID,
 					RegulationRounds:        dao.RegulationRoundsForPub(gi),

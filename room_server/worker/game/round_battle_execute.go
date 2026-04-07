@@ -109,6 +109,10 @@ func (r *round) updatePlayerHPFromEffects(player *gamePlayer, hpDelta int) {
 	if player.currentHP < 0 {
 		player.currentHP = 0
 	}
+	maxHP := r.game.GameArgs.MaxHP
+	if player.currentHP > maxHP {
+		player.currentHP = maxHP
+	}
 }
 
 func (r *round) updateCardStats(card *dao.TurnSubmittedCard, beforeHP, afterHP int, relationType, description string) {
