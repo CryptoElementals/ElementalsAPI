@@ -37,7 +37,10 @@ const (
 	// 匹配与对战
 	JOIN_QUEUE_LABEL               = "JoinQueue"
 	EXIT_QUEUE_LABEL               = "ExitQueue"
+	CONFIRM_MATCH_LABEL            = "ConfirmMatch"
+	CANCEL_MATCH_LABEL             = "CancelMatch"
 	CONFIRM_BATTLE_LABEL           = "ConfirmBattle"
+	SYNC_GAME_PHASE_LABEL          = "SyncGamePhase"
 	REFUSE_CONTINUE_GAME_LABEL     = "RefuseContinueGame"
 	CONTINUE_GAME_LABEL            = "ContinueGame"
 	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"
