@@ -14,6 +14,7 @@ import (
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	lobbyserver "github.com/CryptoElementals/common/lobby_server"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -87,6 +88,11 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 	if config.GameParams.BaseStake == 0 {
 		config.GameParams.BaseStake = 1000
 	}
+	redisAddr := os.Getenv("ELEMENTALS_REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "127.0.0.1:6379"
+	}
+	require.NoError(t, redis.Init(&redis.Config{Address: redisAddr, Size: 8}))
 	svr, err := New(context.Background(), cfg, true)
 	if err != nil {
 		require.NoError(t, err)

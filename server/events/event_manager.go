@@ -3,7 +3,6 @@ package events
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/stream"
 )
 
 // EventType 定义事件类型
@@ -50,11 +50,10 @@ type SSEClient struct {
 type GlobalEventManager struct {
 	clients          map[string]*SSEClient         // clientID -> SSEClient
 	topicClients     map[string]map[string]bool    // topic -> clientID -> bool
-	subscribedTopics map[string]context.CancelFunc // topic -> cancelFunc
-	topicStreams     map[string]chan struct{}      // topic -> reconnect signal
+	subscribedTopics map[string]func()        // topic -> stop Redis stream reader
+	topicStreams     map[string]chan struct{} // topic -> reconnect signal
 	mu               sync.RWMutex
-	pubsubClient     proto.PubSubServiceClient // room PubSub
-	lobbyPubSub      proto.PubSubServiceClient // lobby PubSub
+	eventStream      stream.Stream
 	ctx              context.Context
 	cancel           context.CancelFunc
 	reconnectChan    chan string // 重连信号通道
@@ -71,7 +70,7 @@ func GetGlobalEventManager() *GlobalEventManager {
 		globalManager = &GlobalEventManager{
 			clients:          make(map[string]*SSEClient),
 			topicClients:     make(map[string]map[string]bool),
-			subscribedTopics: make(map[string]context.CancelFunc),
+			subscribedTopics: make(map[string]func()),
 			topicStreams:     make(map[string]chan struct{}),
 			reconnectChan:    make(chan string, 100), // 缓冲通道
 		}
@@ -85,13 +84,9 @@ func (em *GlobalEventManager) Initialize() error {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
-	em.pubsubClient = client.GetGlobalPubSubClient()
-	em.lobbyPubSub = client.GetGlobalLobbyPubSubClient()
-	if em.pubsubClient == nil {
-		return fmt.Errorf("gRPC PubSub客户端未初始化")
-	}
-	if em.lobbyPubSub == nil {
-		return fmt.Errorf("gRPC lobby PubSub客户端未初始化")
+	em.eventStream = client.GetGlobalEventStream()
+	if em.eventStream == nil {
+		return fmt.Errorf("事件流未初始化（请先 redis.Init 再 InitGlobalClients）")
 	}
 
 	// 启动连接监控协程
@@ -173,16 +168,14 @@ func (em *GlobalEventManager) reconnectTopic(topic string) {
 	log.Infof("开始重连topic: %s", topic)
 
 	// 取消旧的订阅
-	if cancel, exists := em.subscribedTopics[topic]; exists {
-		cancel()
+	if stop, exists := em.subscribedTopics[topic]; exists {
+		stop()
 		delete(em.subscribedTopics, topic)
 	}
 
-	// 重新获取客户端并订阅
-	em.pubsubClient = client.GetGlobalPubSubClient()
-	em.lobbyPubSub = client.GetGlobalLobbyPubSubClient()
-	if em.pubsubClient == nil || em.lobbyPubSub == nil {
-		log.Errorf("重连时获取PubSub客户端失败，topic: %s", topic)
+	em.eventStream = client.GetGlobalEventStream()
+	if em.eventStream == nil {
+		log.Errorf("重连时事件流不可用，topic: %s", topic)
 		return
 	}
 
@@ -327,98 +320,67 @@ func (em *GlobalEventManager) UnsubscribeFromTopic(clientID, topic string) {
 	log.Infof("客户端 %s 取消订阅主题 %s", clientID, topic)
 }
 
-// subscribeToTopic 订阅 room 或 lobby 的共享流主题
+// subscribeToTopic starts a Redis stream reader for topic ([pubsub.TopicRoom] or [pubsub.TopicLobby]).
 func (em *GlobalEventManager) subscribeToTopic(topic string) error {
-	pc, err := em.grpcPubSubForTopic(topic)
-	if err != nil {
-		return err
+	if em.eventStream == nil {
+		return fmt.Errorf("事件流未初始化")
 	}
-	req := &proto.SubscribeRequest{
-		Topic:        topic,
-		SubscriberId: fmt.Sprintf("apiserver_global_%s", topic),
-	}
-
-	stream, err := pc.Subscribe(em.ctx, req)
+	ctx, cancel := context.WithCancel(em.ctx)
+	sub := pubsub.NewStreamSubscriber(em.eventStream)
+	msgCh, stopReader, err := sub.Subscribe(ctx, topic, pubsub.SubscribeOptions{})
 	if err != nil {
+		cancel()
 		return fmt.Errorf("订阅主题失败: %v", err)
 	}
-
-	// 创建取消函数
-	ctx, cancel := context.WithCancel(em.ctx)
-	em.subscribedTopics[topic] = cancel
-
-	// 启动事件接收协程
-	go em.handleTopicEvents(ctx, topic, stream)
-
-	log.Infof("成功订阅PubSub主题: %s", topic)
-	return nil
-}
-
-func (em *GlobalEventManager) grpcPubSubForTopic(topic string) (proto.PubSubServiceClient, error) {
-	if topic == pubsub.TopicLobby {
-		if em.lobbyPubSub == nil {
-			return nil, fmt.Errorf("lobby PubSub 未初始化")
-		}
-		return em.lobbyPubSub, nil
-	}
-	if em.pubsubClient == nil {
-		return nil, fmt.Errorf("room PubSub 未初始化")
-	}
-	return em.pubsubClient, nil
-}
-
-// unsubscribeFromTopic 取消订阅RoomServer主题
-func (em *GlobalEventManager) unsubscribeFromTopic(topic string) {
-	if cancel, exists := em.subscribedTopics[topic]; exists {
-		cancel()
-		delete(em.subscribedTopics, topic)
-		log.Infof("取消订阅RoomServer主题: %s", topic)
-	}
-}
-
-// handleTopicEvents 处理主题事件
-func (em *GlobalEventManager) handleTopicEvents(ctx context.Context, topic string, stream proto.PubSubService_SubscribeClient) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Errorf("处理主题 %s 事件时发生panic: %v", topic, r)
-		}
-		// 清理订阅状态
-		em.mu.Lock()
-		if cancel, exists := em.subscribedTopics[topic]; exists {
+	var stopOnce sync.Once
+	stopAll := func() {
+		stopOnce.Do(func() {
+			stopReader()
 			cancel()
+		})
+	}
+	em.subscribedTopics[topic] = stopAll
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("处理主题 %s 事件时发生panic: %v", topic, r)
+			}
+			stopAll()
+			em.mu.Lock()
 			delete(em.subscribedTopics, topic)
-		}
-		em.mu.Unlock()
-
-		// 如果还有客户端订阅这个topic，记录断开日志
-		em.mu.RLock()
-		hasClients := len(em.topicClients[topic]) > 0
-		em.mu.RUnlock()
-
-		if hasClients {
-			log.Warnf("主题 %s 连接断开", topic)
+			em.mu.Unlock()
+			em.mu.RLock()
+			hasClients := len(em.topicClients[topic]) > 0
+			em.mu.RUnlock()
+			if hasClients {
+				log.Warnf("主题 %s 流读取结束", topic)
+			}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Infof("主题 %s 事件处理协程退出", topic)
+				return
+			case msg, ok := <-msgCh:
+				if !ok {
+					return
+				}
+				em.forwardEventToClients(topic, msg)
+			}
 		}
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Infof("主题 %s 事件处理协程退出", topic)
-			return
-		default:
-			msg, err := stream.Recv()
-			if err == io.EOF {
-				log.Warnf("主题 %s 接收到EOF，连接可能已关闭", topic)
-				return
-			}
-			if err != nil {
-				log.Errorf("接收主题 %s 消息失败: %v", topic, err)
-				return
-			}
+	log.Infof("成功订阅流主题: %s", topic)
+	return nil
+}
 
-			// 转发事件给所有订阅该主题的客户端
-			em.forwardEventToClients(topic, msg)
-		}
+// unsubscribeFromTopic stops the Redis reader for topic.
+func (em *GlobalEventManager) unsubscribeFromTopic(topic string) {
+	if stop, exists := em.subscribedTopics[topic]; exists {
+		stop()
+		delete(em.subscribedTopics, topic)
+		log.Infof("取消订阅流主题: %s", topic)
 	}
 }
 
@@ -478,9 +440,8 @@ func (em *GlobalEventManager) Shutdown() {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
-	// 取消所有订阅
-	for topic, cancel := range em.subscribedTopics {
-		cancel()
+	for topic, stop := range em.subscribedTopics {
+		stop()
 		log.Infof("取消订阅主题: %s", topic)
 	}
 

@@ -29,9 +29,9 @@ type PubSub struct {
 	ccl context.CancelFunc
 	mu  sync.RWMutex
 
-	topics        map[string]*Topic
-	subscribers   map[string]map[string]*Subscriber
-	botHooks      PubSubBotHooks
+	topics      map[string]*Topic
+	subscribers map[string]map[string]*Subscriber
+	botHooks    PubSubBotHooks
 }
 
 type Topic struct {

@@ -9,12 +9,14 @@ import (
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
+	"github.com/CryptoElementals/common/stream"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"google.golang.org/grpc"
@@ -24,9 +26,8 @@ type Service struct {
 	ctx       context.Context
 	cfg       *config.RoomServerConfig
 	mgr       *worker.WorkerManager
-	server    *grpc.Server
-	pubsub    *rpc.PubSub
-	chainSvc  *chain.Chain
+	server   *grpc.Server
+	chainSvc *chain.Chain
 	gameSvc   *game.Service
 	rpcServer *rpc.Rpc
 }
@@ -36,10 +37,9 @@ func New(ctx context.Context,
 	isDevelop ...bool) (*Service, error) {
 	_ = isDevelop
 	s := &Service{
-		ctx:    ctx,
-		cfg:    cfg,
-		mgr:    worker.NewWorkerManager(ctx),
-		pubsub: rpc.NewPubSub(),
+		ctx: ctx,
+		cfg: cfg,
+		mgr: worker.NewWorkerManager(ctx),
 	}
 	client, err := ethclient.DialContext(ctx, cfg.ChainCfg.HttpRpc)
 	if err != nil {
@@ -66,13 +66,17 @@ func New(ctx context.Context,
 	if err != nil {
 		log.Fatalf("game_args template required (game-args-id=%d): %v", cfg.GameArgsID, err)
 	}
-	s.gameSvc = game.NewService(ctx, s.mgr, s.pubsub, argsTemplate, chainSvc, cfg.PoolBatchSize)
-	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, s.pubsub))
+	st, err := stream.NewRedisStream()
+	if err != nil {
+		return nil, fmt.Errorf("redis stream: %w", err)
+	}
+	eventPub := pubsub.NewStreamPublisher(st)
+	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, argsTemplate, chainSvc, cfg.PoolBatchSize)
+	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	// game.Service implements chain RPC and player RPC handlers.
 	rpcServer := rpc.NewRpc(s.gameSvc, s.gameSvc)
 	s.rpcServer = rpcServer
-	proto.RegisterPubSubServiceServer(server, s.pubsub)
 	proto.RegisterRpcServiceServer(server, s.rpcServer)
 	proto.RegisterRoomWorkerServiceServer(server, newRoomWorkerService(s.gameSvc))
 	s.server = server
@@ -107,10 +111,6 @@ func (s *Service) Stop() {
 	log.Info("stopping game service")
 	s.gameSvc.Stop()
 	log.Info("game service stopped")
-	log.Info("stopping pubsub service")
-	s.pubsub.Stop()
-	log.Info("pubsub service stopped")
-
 	log.Info("stopping grpc server")
 	s.server.GracefulStop()
 	log.Info("grpc server stopped")

@@ -11,6 +11,7 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/stream"
 )
 
 func defaultGRPCDialOptions() []grpc.DialOption {
@@ -29,12 +30,11 @@ var (
 	globalLobbyAddr    string
 	globalConn         *grpc.ClientConn
 	globalLobbyConn    *grpc.ClientConn
-	globalRpcClient    pb.RpcServiceClient
-	globalLobbyClient  pb.LobbyServiceClient
-	globalPubSubClient      pb.PubSubServiceClient
-	globalLobbyPubSubClient pb.PubSubServiceClient
-	globalMutex             sync.RWMutex
-	initialized        bool
+	globalRpcClient   pb.RpcServiceClient
+	globalLobbyClient pb.LobbyServiceClient
+	globalEventStream stream.Stream
+	globalMutex       sync.RWMutex
+	initialized       bool
 )
 
 // dialGlobalLocked opens room and lobby connections. Caller must hold globalMutex (write lock).
@@ -60,12 +60,23 @@ func dialGlobalLocked() error {
 	globalLobbyConn = lobbyConn
 	globalRpcClient = pb.NewRpcServiceClient(roomConn)
 	globalLobbyClient = pb.NewLobbyServiceClient(lobbyConn)
-	globalPubSubClient = pb.NewPubSubServiceClient(roomConn)
-	globalLobbyPubSubClient = pb.NewPubSubServiceClient(lobbyConn)
+	if globalEventStream == nil {
+		st, err := stream.NewRedisStream()
+		if err != nil {
+			_ = roomConn.Close()
+			_ = lobbyConn.Close()
+			globalConn = nil
+			globalLobbyConn = nil
+			globalRpcClient = nil
+			globalLobbyClient = nil
+			return fmt.Errorf("redis stream (init redis before gRPC clients): %w", err)
+		}
+		globalEventStream = st
+	}
 	return nil
 }
 
-// InitGlobalClients connects to room (Rpc + PubSub) and lobby (LobbyService).
+// InitGlobalClients connects to room (Rpc) and lobby (LobbyService). Requires [redis.Init] first for event streams.
 func InitGlobalClients(roomAddress, lobbyAddress string) error {
 	globalMutex.Lock()
 	defer globalMutex.Unlock()
@@ -148,18 +159,11 @@ func GetGlobalLobbyClient() pb.LobbyServiceClient {
 	return globalLobbyClient
 }
 
-// GetGlobalPubSubClient 获取 room PubSub 客户端
-func GetGlobalPubSubClient() pb.PubSubServiceClient {
+// GetGlobalEventStream returns the shared Redis-backed stream used for game/lobby events (after InitGlobalClients).
+func GetGlobalEventStream() stream.Stream {
 	globalMutex.RLock()
 	defer globalMutex.RUnlock()
-	return globalPubSubClient
-}
-
-// GetGlobalLobbyPubSubClient 获取 lobby PubSub 客户端
-func GetGlobalLobbyPubSubClient() pb.PubSubServiceClient {
-	globalMutex.RLock()
-	defer globalMutex.RUnlock()
-	return globalLobbyPubSubClient
+	return globalEventStream
 }
 
 // CloseGlobalClients 关闭全局连接
@@ -182,13 +186,12 @@ func CloseGlobalClients() error {
 	}
 	globalRpcClient = nil
 	globalLobbyClient = nil
-	globalPubSubClient = nil
-	globalLobbyPubSubClient = nil
+	globalEventStream = nil
 	initialized = false
 	return firstErr
 }
 
-// Client 统一的客户端接口，组合了 RPC 和 PubSub 客户端
+// Client combines room/lobby gRPC with Redis stream event subscription.
 type Client struct {
 	roomConn  *grpc.ClientConn
 	lobbyConn *grpc.ClientConn
@@ -196,7 +199,7 @@ type Client struct {
 	*RpcClient
 }
 
-// NewClient 连接 room 与 lobby（RPC + 双 PubSub）。
+// NewClient connects room and lobby over gRPC and uses Redis streams for PubSub-shaped APIs. Requires redis.Init.
 func NewClient(roomAddr, lobbyAddr string) (*Client, error) {
 	opts := defaultGRPCDialOptions()
 	roomConn, err := grpc.NewClient(roomAddr, opts...)
@@ -208,11 +211,17 @@ func NewClient(roomAddr, lobbyAddr string) (*Client, error) {
 		_ = roomConn.Close()
 		return nil, err
 	}
+	st, err := stream.NewRedisStream()
+	if err != nil {
+		_ = roomConn.Close()
+		_ = lobbyConn.Close()
+		return nil, fmt.Errorf("redis stream: %w", err)
+	}
 	lobbySvc := pb.NewLobbyServiceClient(lobbyConn)
 	return &Client{
 		roomConn:     roomConn,
 		lobbyConn:    lobbyConn,
-		PubSubClient: NewPubSubClientDual(pb.NewPubSubServiceClient(roomConn), pb.NewPubSubServiceClient(lobbyConn)),
+		PubSubClient: NewPubSubClient(st),
 		RpcClient:    NewRpcClient(roomConn, lobbyConn, lobbySvc),
 	}, nil
 }

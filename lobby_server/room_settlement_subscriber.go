@@ -2,7 +2,6 @@ package lobbyserver
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
@@ -10,14 +9,14 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-const roomSettlementSubscriberID = "lobby_room_settlement"
-
-// runRoomSettlementSubscriber subscribes to the room host Pub/Sub topic [pubsub.TopicRoomSettlement] and runs settlement when a game completes.
+// runRoomSettlementSubscriber reads [pubsub.TopicRoomSettlement] from Redis (same cluster as room server).
 func (s *Service) runRoomSettlementSubscriber() {
-	pc := proto.NewPubSubServiceClient(s.roomConn)
 	go func() {
 		for {
-			err := s.readRoomSettlementStream(s.ctx, pc)
+			if s.ctx.Err() != nil {
+				return
+			}
+			err := s.readRoomSettlementStream(s.ctx)
 			if s.ctx.Err() != nil {
 				return
 			}
@@ -33,33 +32,37 @@ func (s *Service) runRoomSettlementSubscriber() {
 	}()
 }
 
-func (s *Service) readRoomSettlementStream(ctx context.Context, pc proto.PubSubServiceClient) error {
-	stream, err := pc.Subscribe(ctx, &proto.SubscribeRequest{
-		Topic:        pubsub.TopicRoomSettlement,
-		SubscriberId: roomSettlementSubscriberID,
-	})
+func (s *Service) readRoomSettlementStream(ctx context.Context) error {
+	if s.eventStream == nil {
+		return nil
+	}
+	sub := pubsub.NewStreamSubscriber(s.eventStream)
+	msgCh, stop, err := sub.Subscribe(ctx, pubsub.TopicRoomSettlement, pubsub.SubscribeOptions{})
 	if err != nil {
 		return err
 	}
+	defer stop()
+
 	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		ev := msg.GetEvent()
-		if ev == nil || ev.GetType() != proto.EventType_TYPE_GAME_COMPLETED {
-			continue
-		}
-		notice := ev.GetGameCompletedNotice()
-		if notice == nil {
-			continue
-		}
-		gameID := notice.GetGameId()
-		if err := s.grpcHandlers.HandleGameCompletedFromRoom(gameID); err != nil {
-			log.Errorw("lobby: game completed settlement failed", "game_id", gameID, "err", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case msg, ok := <-msgCh:
+			if !ok {
+				return nil
+			}
+			ev := msg.GetEvent()
+			if ev == nil || ev.GetType() != proto.EventType_TYPE_GAME_COMPLETED {
+				continue
+			}
+			notice := ev.GetGameCompletedNotice()
+			if notice == nil {
+				continue
+			}
+			gameID := notice.GetGameId()
+			if err := s.grpcHandlers.HandleGameCompletedFromRoom(gameID); err != nil {
+				log.Errorw("lobby: game completed settlement failed", "game_id", gameID, "err", err)
+			}
 		}
 	}
 }

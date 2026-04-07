@@ -3,102 +3,114 @@ package client
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
-
-	"google.golang.org/grpc"
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/redis"
+	"github.com/CryptoElementals/common/stream"
 )
 
 type PubSubClient struct {
-	room  pb.PubSubServiceClient
-	lobby pb.PubSubServiceClient
+	room  stream.Stream
+	lobby stream.Stream
 	mu    sync.RWMutex
-	subs  map[string]context.CancelFunc
+	subs  map[string]func()
 }
 
-// NewPubSubClient subscribes only to room PubSub (lobby events will not be delivered).
-func NewPubSubClient(conn *grpc.ClientConn) *PubSubClient {
-	return NewPubSubClientDual(pb.NewPubSubServiceClient(conn), nil)
+// NewPubSubClient uses one Redis stream backend for both room and lobby topic keys.
+func NewPubSubClient(st stream.Stream) *PubSubClient {
+	return NewPubSubClientDual(st, st)
 }
 
-// NewPubSubClientDual subscribes to shared room and lobby topics ([pubsub.TopicRoom], [pubsub.TopicLobby]) and filters by Receivers.
-func NewPubSubClientDual(room, lobby pb.PubSubServiceClient) *PubSubClient {
+// NewPubSubClientDual allows separate stream handles (typically the same [stream.RedisStream] instance twice).
+func NewPubSubClientDual(room, lobby stream.Stream) *PubSubClient {
 	return &PubSubClient{
 		room:  room,
 		lobby: lobby,
-		subs:  make(map[string]context.CancelFunc),
+		subs:  make(map[string]func()),
 	}
 }
 
 func (c *PubSubClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, cancel := range c.subs {
-		cancel()
+	for _, stop := range c.subs {
+		stop()
 	}
+	c.subs = make(map[string]func())
 	return nil
 }
 
 func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[string]string) error {
+	if c.room == nil {
+		return fmt.Errorf("stream is nil")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	pub := pubsub.NewStreamPublisher(c.room)
 	req := &pb.PublishRequest{Topic: topic, Event: event, Metadata: metadata}
-	resp, err := c.room.Publish(ctx, req)
+	resp, err := pub.Publish(ctx, req)
 	if err != nil {
-		return fmt.Errorf("failed to publish: %v", err)
+		return fmt.Errorf("failed to publish: %w", err)
 	}
 	log.Debugw("pubsub published", "message_id", resp.MessageId, "topic", topic, "subscriber_count", resp.SubscriberCount)
 	return nil
 }
 
-// Subscribe opens one stream on [pubsub.TopicRoom] (room gRPC) and one on [pubsub.TopicLobby] when lobby is configured.
-// Events are delivered only when [pubsub.EventTargetsReceiver] accepts them for self.
+// Subscribe listens on TopicRoom and TopicLobby via Redis streams, filtering by Receivers.
 func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, evtChan chan *pb.Event, errChan chan error) error {
-	start := func(client pb.PubSubServiceClient, label string, streamTopic string) error {
-		if client == nil {
+	start := func(st stream.Stream, label string, streamTopic string) error {
+		if st == nil {
 			return nil
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		key := streamTopic + "|" + subscriberID + "|" + label
-		c.mu.Lock()
-		c.subs[key] = cancel
-		c.mu.Unlock()
-		req := &pb.SubscribeRequest{Topic: streamTopic, SubscriberId: subscriberID + "-" + label}
-		stream, err := client.Subscribe(ctx, req)
+
+		sub := pubsub.NewStreamSubscriber(st)
+		msgCh, stopReader, err := sub.Subscribe(ctx, streamTopic, pubsub.SubscribeOptions{})
 		if err != nil {
 			cancel()
-			c.mu.Lock()
-			delete(c.subs, key)
-			c.mu.Unlock()
 			return fmt.Errorf("subscribe %s: %w", label, err)
 		}
+
+		var once sync.Once
+		stopAll := func() {
+			once.Do(func() {
+				stopReader()
+				cancel()
+				c.mu.Lock()
+				delete(c.subs, key)
+				c.mu.Unlock()
+			})
+		}
+
+		c.mu.Lock()
+		c.subs[key] = stopAll
+		c.mu.Unlock()
+
 		log.Infow("pubsub subscribed", "topic", streamTopic, "subscriber_id", subscriberID, "stream", label)
 		go func() {
+			defer stopAll()
 			for {
-				msg, err := stream.Recv()
-				if err == io.EOF || ctx.Err() != nil {
-					return
-				}
-				if err != nil {
-					select {
-					case errChan <- err:
-					default:
-					}
-					return
-				}
-				ev := msg.GetEvent()
-				if !pubsub.EventTargetsReceiver(ev, self) {
-					continue
-				}
 				select {
 				case <-ctx.Done():
 					return
-				case evtChan <- ev:
+				case msg, ok := <-msgCh:
+					if !ok {
+						return
+					}
+					ev := msg.GetEvent()
+					if !pubsub.EventTargetsReceiver(ev, self) {
+						continue
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case evtChan <- ev:
+					}
 				}
 			}
 		}()
@@ -115,62 +127,57 @@ func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, ev
 	return nil
 }
 
-// Unsubscribe stops room and lobby streams for subscriberID.
+// Unsubscribe stops room and lobby readers for subscriberID.
 func (c *PubSubClient) Unsubscribe(subscriberID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	type pair struct {
-		label string
-		topic string
-		cli   pb.PubSubServiceClient
-	}
-	pairs := []pair{{"room", pubsub.TopicRoom, c.room}}
-	if c.lobby != nil {
-		pairs = append(pairs, pair{"lobby", pubsub.TopicLobby, c.lobby})
-	}
+	pairs := [][2]string{{"room", pubsub.TopicRoom}, {"lobby", pubsub.TopicLobby}}
 	for _, p := range pairs {
-		if p.cli == nil {
-			continue
-		}
-		key := p.topic + "|" + subscriberID + "|" + p.label
+		label, topic := p[0], p[1]
+		key := topic + "|" + subscriberID + "|" + label
 		c.mu.Lock()
-		if cc, ok := c.subs[key]; ok {
-			cc()
-			delete(c.subs, key)
+		if stop, ok := c.subs[key]; ok {
+			stop()
 		}
 		c.mu.Unlock()
-		req := &pb.UnsubscribeRequest{Topic: p.topic, SubscriberId: subscriberID + "-" + p.label}
-		_, _ = p.cli.Unsubscribe(ctx, req)
 	}
 	return nil
 }
 
+// ListTopics logs XLEN for known stream keys.
 func (c *PubSubClient) ListTopics(pattern string) error {
+	_ = pattern
+	if c.room == nil {
+		return fmt.Errorf("stream is nil")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req := &pb.ListTopicsRequest{Pattern: pattern}
-	resp, err := c.room.ListTopics(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to list topics: %v", err)
-	}
-	for _, t := range resp.Topics {
-		log.Debugw("pubsub topic", "name", t.Name, "subscribers", t.SubscriberCount, "messages", t.MessageCount, "last_message_time", t.LastMessageTime)
+	for _, name := range []string{pubsub.TopicRoom, pubsub.TopicLobby, pubsub.TopicRoomSettlement} {
+		n, err := c.room.Len(ctx, name)
+		if err != nil {
+			log.Debugw("pubsub stream len", "topic", name, "err", err)
+			continue
+		}
+		log.Debugw("pubsub stream len", "topic", name, "messages", n)
 	}
 	return nil
 }
 
+// GetSubscriberCount reports Redis stream length for the topic key.
 func (c *PubSubClient) GetSubscriberCount(topic string) error {
+	if c.room == nil {
+		return fmt.Errorf("stream is nil")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req := &pb.GetSubscriberCountRequest{Topic: topic}
-	resp, err := c.room.GetSubscriberCount(ctx, req)
+	n, err := c.room.Len(ctx, topic)
 	if err != nil {
-		return fmt.Errorf("failed to get subscriber count: %v", err)
+		log.Warnw("pubsub stream len failed", "topic", topic, "err", err)
+		return err
 	}
-	if resp.Success {
-		log.Debugw("pubsub subscriber count", "topic", topic, "count", resp.SubscriberCount)
-	} else {
-		log.Warnw("pubsub subscriber count failed", "topic", topic, "error", resp.Error)
-	}
+	log.Debugw("pubsub stream len", "topic", topic, "messages", n)
 	return nil
+}
+
+// CheckRedisPing is a lightweight health probe for the stream backend.
+func CheckRedisPing() error {
+	return redis.Ping()
 }

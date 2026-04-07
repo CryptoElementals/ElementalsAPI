@@ -13,7 +13,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// Publisher publishes game events to clients (e.g. gRPC PubSub). Must be non-nil for production.
+// Publisher publishes game events (e.g. [pubsub.StreamPublisher] on Redis). Must be non-nil for production.
 type Publisher = pubsub.Publisher
 
 type ContractClient interface {

@@ -33,10 +33,8 @@ var runCmd = &cobra.Command{
 		if err := db.Init(&config.LSGConf.DbCfg); err != nil {
 			log.Fatalf("init db failed: %v", err)
 		}
-		if !config.LSGConf.IsDevelop {
-			if err := redis.Init(&config.LSGConf.RedisCfg); err != nil {
-				log.Fatalf("init redis failed: %v", err)
-			}
+		if err := redis.Init(&config.LSGConf.RedisCfg); err != nil {
+			log.Fatalf("init redis failed (required for event streams): %v", err)
 		}
 		svr, err := lobbyserver.New(context.Background(), &config.LSGConf)
 		if err != nil {

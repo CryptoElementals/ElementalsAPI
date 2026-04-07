@@ -13,29 +13,29 @@ import (
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	"github.com/CryptoElementals/common/lobby_server/worker/turnament"
-	rpcserver "github.com/CryptoElementals/common/rpc/server"
+	"github.com/CryptoElementals/common/pubsub"
+	"github.com/CryptoElementals/common/stream"
 	"github.com/CryptoElementals/common/timer"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Service is the lobby process: queue, tournament worker, PubSub, and gRPC to room.
+// Service is the lobby process: queue, tournament worker, gRPC to room, and Redis event streams.
 type Service struct {
 	ctx          context.Context
 	cfg          *config.LobbyServerConfig
 	grpcServer   *grpc.Server
-	pubsub       *rpcserver.PubSub
 	queueSvc     *queue.Service
 	tournSvc     *turnament.TournamentQueueService
 	grpcHandlers *GRPCServices
 	roomConn     *grpc.ClientConn
+	eventStream  stream.Stream
 }
 
 // New constructs a lobby server. Call Start after DB/redis are initialized.
 func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	s := &Service{ctx: ctx, cfg: cfg}
-	s.pubsub = rpcserver.NewPubSub()
 
 	var c cache.Cache
 	var err error
@@ -68,7 +68,14 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	rw := proto.NewRoomWorkerServiceClient(conn)
 	gc := &roomclient.GameCreator{Client: rw}
 
-	s.queueSvc = queue.NewService(ctx, s.pubsub, c, gc,
+	st, err := stream.NewRedisStream()
+	if err != nil {
+		return nil, fmt.Errorf("redis stream: %w", err)
+	}
+	eventPub := pubsub.NewStreamPublisher(st)
+	s.eventStream = st
+
+	s.queueSvc = queue.NewService(ctx, eventPub, c, gc,
 		cfg.MinTokenToJoinQueue,
 		argsTemplate.ConfirmationTimeout,
 		argsTemplate.GameContinueTimeout,
@@ -78,11 +85,9 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	)
 	s.tournSvc = turnament.NewTournamentQueueService(ctx, gc, cfg.MinTokenToJoinQueue)
 	s.grpcHandlers = NewGRPCServices(s.queueSvc, s.tournSvc, rw)
-	s.pubsub.SetBotHooks(&lobbyPubSubBots{q: s.queueSvc})
 
 	s.grpcServer = grpc.NewServer()
 	proto.RegisterLobbyServiceServer(s.grpcServer, s.grpcHandlers)
-	proto.RegisterPubSubServiceServer(s.grpcServer, s.pubsub)
 
 	return s, nil
 }
@@ -135,7 +140,6 @@ func (s *Service) Stop() {
 	s.tournSvc.Stop()
 	s.queueSvc.Stop()
 	timer.StopTimer(timer.ScopeLobby)
-	s.pubsub.Stop()
 	s.grpcServer.GracefulStop()
 	if s.roomConn != nil {
 		_ = s.roomConn.Close()
