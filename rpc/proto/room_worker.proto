@@ -2,25 +2,6 @@ syntax = "proto3";
 
 package rpc;
 
-import "rpc/proto/rpc.proto";
-import "google/protobuf/empty.proto";
-
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
-
-// RoomWorkerService is served by the room server; lobby calls it to create games and trigger room-side phase sync.
-service RoomWorkerService {
-  rpc CreateGameAndRun(CreateGameAndRunRequest) returns (CreateGameAndRunResponse);
-  rpc SyncGamePhase(PlayerAddress) returns (google.protobuf.Empty);
-}
-
-message CreateGameAndRunRequest {
-  repeated PlayerAddress players = 1;
-  uint32 game_type = 2;
-  // Queue PVP: snowflake game_match id after ConfirmMatch; 0 for tournament / no lobby match row.
-  int64 completed_match_id = 3;
-}
-
-message CreateGameAndRunResponse {
-  uint32 game_id = 1;
-}
+// Deprecated: room worker RPCs were merged into RoomService in rpc.proto.
 

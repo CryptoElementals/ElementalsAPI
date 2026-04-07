@@ -20,10 +20,10 @@ type GRPCServices struct {
 
 	queueSvc   *queue.Service
 	tournSvc   *turnament.TournamentQueueService
-	roomWorker proto.RoomWorkerServiceClient
+	roomWorker proto.RoomServiceClient
 }
 
-func NewGRPCServices(q *queue.Service, t *turnament.TournamentQueueService, rw proto.RoomWorkerServiceClient) *GRPCServices {
+func NewGRPCServices(q *queue.Service, t *turnament.TournamentQueueService, rw proto.RoomServiceClient) *GRPCServices {
 	return &GRPCServices{queueSvc: q, tournSvc: t, roomWorker: rw}
 }
 

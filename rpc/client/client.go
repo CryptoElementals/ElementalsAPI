@@ -30,7 +30,7 @@ var (
 	globalLobbyAddr    string
 	globalConn         *grpc.ClientConn
 	globalLobbyConn    *grpc.ClientConn
-	globalRpcClient   pb.RpcServiceClient
+	globalRpcClient   pb.RoomServiceClient
 	globalLobbyClient pb.LobbyServiceClient
 	globalEventStream stream.Stream
 	globalMutex       sync.RWMutex
@@ -58,7 +58,7 @@ func dialGlobalLocked() error {
 	}
 	globalConn = roomConn
 	globalLobbyConn = lobbyConn
-	globalRpcClient = pb.NewRpcServiceClient(roomConn)
+	globalRpcClient = pb.NewRoomServiceClient(roomConn)
 	globalLobbyClient = pb.NewLobbyServiceClient(lobbyConn)
 	if globalEventStream == nil {
 		st, err := stream.NewRedisStream()
@@ -145,8 +145,8 @@ func startHealthCheck() {
 	}
 }
 
-// GetGlobalRpcClient 获取 room RpcService 客户端
-func GetGlobalRpcClient() pb.RpcServiceClient {
+// GetGlobalRpcClient 获取 room RoomService 客户端
+func GetGlobalRpcClient() pb.RoomServiceClient {
 	globalMutex.RLock()
 	defer globalMutex.RUnlock()
 	return globalRpcClient

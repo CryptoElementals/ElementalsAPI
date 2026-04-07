@@ -74,11 +74,10 @@ func New(ctx context.Context,
 	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, argsTemplate, chainSvc, cfg.PoolBatchSize)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
-	// game.Service implements chain RPC and player RPC handlers.
-	rpcServer := rpc.NewRpc(s.gameSvc, s.gameSvc)
+	// game.Service implements chain/player/game handlers.
+	rpcServer := rpc.NewRpc(s.gameSvc)
 	s.rpcServer = rpcServer
-	proto.RegisterRpcServiceServer(server, s.rpcServer)
-	proto.RegisterRoomWorkerServiceServer(server, newRoomWorkerService(s.gameSvc))
+	proto.RegisterRoomServiceServer(server, s.rpcServer)
 	s.server = server
 	return s, nil
 }

@@ -65,7 +65,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 		return nil, err
 	}
 	s.roomConn = conn
-	rw := proto.NewRoomWorkerServiceClient(conn)
+	rw := proto.NewRoomServiceClient(conn)
 	gc := &roomclient.GameCreator{Client: rw}
 
 	st, err := stream.NewRedisStream()

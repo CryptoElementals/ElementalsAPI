@@ -11,6 +11,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // Publisher publishes game events (e.g. [pubsub.StreamPublisher] on Redis). Must be non-nil for production.
@@ -114,4 +115,29 @@ func (s *Service) CreateGameAndRun(players []types.PlayerAddress, gameType uint,
 
 func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
 	return s.gameManager.SyncGamePhase(address)
+}
+
+func (s *Service) CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGameAndRunRequest) (*proto.CreateGameAndRunResponse, error) {
+	_ = ctx
+	players := make([]types.PlayerAddress, 0, len(req.GetPlayers()))
+	for _, p := range req.GetPlayers() {
+		var a types.PlayerAddress
+		a.FromProto(p)
+		players = append(players, a)
+	}
+	gid, err := s.gameManager.CreateGameAndRun(players, uint(req.GetGameType()), req.GetCompletedMatchId())
+	if err != nil {
+		return nil, err
+	}
+	return &proto.CreateGameAndRunResponse{GameId: uint32(gid)}, nil
+}
+
+func (s *Service) SyncGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
+	_ = ctx
+	var addr types.PlayerAddress
+	addr.FromProto(req)
+	if err := s.gameManager.SyncGamePhase(addr); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }

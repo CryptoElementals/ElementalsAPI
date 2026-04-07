@@ -9,9 +9,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// GameCreator implements queue.GameCreator and turnament.GameCreator via RoomWorkerService.
+// GameCreator implements queue.GameCreator and turnament.GameCreator via RoomService.
 type GameCreator struct {
-	Client proto.RoomWorkerServiceClient
+	Client proto.RoomServiceClient
 }
 
 func (c *GameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {

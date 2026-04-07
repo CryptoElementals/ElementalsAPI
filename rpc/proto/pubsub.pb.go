@@ -1629,7 +1629,7 @@ type Event struct {
 	unknownFields protoimpl.UnknownFields
 
 	Type EventType `protobuf:"varint,1,opt,name=Type,proto3,enum=pubsub.EventType" json:"Type,omitempty"`
-	// All players this event is intended for. Senders must set when publishing (same slice for each per-topic fan-out).
+	// Intended recipients for client-facing streams (room_events / lobby_events); subscribers filter on this. Leave unset for internal-only topics (e.g. room_settlement).
 	Receivers []*PlayerAddress `protobuf:"bytes,13,rep,name=receivers,proto3" json:"receivers,omitempty"`
 	// Types that are assignable to Event:
 	//

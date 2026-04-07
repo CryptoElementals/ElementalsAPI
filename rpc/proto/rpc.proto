@@ -8,7 +8,9 @@ import "rpc/proto/battle.proto";
 
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
-service RpcService {
+// RoomService is served by the room server.
+// It merges game/player/chain RPCs and room-worker RPCs.
+service RoomService {
     // game related api (queue / match / status / token live on LobbyService)
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
@@ -17,6 +19,10 @@ service RpcService {
 
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
+
+    // lobby -> room worker api
+    rpc CreateGameAndRun(CreateGameAndRunRequest) returns (CreateGameAndRunResponse);
+    rpc SyncGamePhase(PlayerAddress) returns (google.protobuf.Empty);
 }
 
 message TimeoutConfig {
@@ -218,4 +224,15 @@ message SubmitPlayerCardRequest {
     uint32 Card = 5;
     uint32 TurnNumber = 6;
     bytes Signature = 7;
+}
+
+message CreateGameAndRunRequest {
+  repeated PlayerAddress players = 1;
+  uint32 game_type = 2;
+  // Queue PVP: snowflake game_match id after ConfirmMatch; 0 for tournament / no lobby match row.
+  int64 completed_match_id = 3;
+}
+
+message CreateGameAndRunResponse {
+  uint32 game_id = 1;
 }

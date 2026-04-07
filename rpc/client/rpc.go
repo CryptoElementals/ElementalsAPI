@@ -9,7 +9,7 @@ import (
 )
 
 type RpcClient struct {
-	room      proto.RpcServiceClient
+	room      proto.RoomServiceClient
 	lobby     proto.LobbyServiceClient
 	conn      *grpc.ClientConn
 	lobbyConn *grpc.ClientConn
@@ -17,7 +17,7 @@ type RpcClient struct {
 
 func NewRpcClient(roomConn, lobbyConn *grpc.ClientConn, lobby proto.LobbyServiceClient) *RpcClient {
 	return &RpcClient{
-		room:      proto.NewRpcServiceClient(roomConn),
+		room:      proto.NewRoomServiceClient(roomConn),
 		lobby:     lobby,
 		conn:      roomConn,
 		lobbyConn: lobbyConn,
@@ -31,7 +31,7 @@ func NewRpcClientRoomOnly(roomAddr string) (*RpcClient, error) {
 		return nil, err
 	}
 	return &RpcClient{
-		room:      proto.NewRpcServiceClient(conn),
+		room:      proto.NewRoomServiceClient(conn),
 		lobby:     nil,
 		conn:      conn,
 		lobbyConn: nil,

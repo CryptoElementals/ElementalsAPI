@@ -8,49 +8,51 @@ import (
 )
 
 type Rpc struct {
-	proto.UnimplementedRpcServiceServer
-	chainHandler  ChainRequestHandler
-	playerHandler PlayerRequestHandler
+	proto.UnimplementedRoomServiceServer
+	gameHandler GameProcessHandler
 }
 
-func NewRpc(
-	chainHandler ChainRequestHandler,
-	playerHandler PlayerRequestHandler,
-) *Rpc {
+func NewRpc(gameHandler GameProcessHandler) *Rpc {
 	return &Rpc{
-		chainHandler:  chainHandler,
-		playerHandler: playerHandler,
+		gameHandler:   gameHandler,
 	}
 }
 
 func (s *Rpc) ConfirmBattle(ctx context.Context, req *proto.ConfirmBattleRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.playerHandler.ConfirmBattle(req)
+	return &emptypb.Empty{}, s.gameHandler.ConfirmBattle(req)
 }
 
 func (s *Rpc) SubmitTransactions(ctx context.Context, req *proto.TransactionBatch) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.chainHandler.SubmitTransactions(req)
+	return &emptypb.Empty{}, s.gameHandler.SubmitTransactions(req)
 }
 
 func (s *Rpc) Surrender(ctx context.Context, req *proto.SurrenderRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.playerHandler.Surrender(req)
+	return &emptypb.Empty{}, s.gameHandler.Surrender(req)
 }
 
 func (s *Rpc) SubmitPlayerCommitment(ctx context.Context, req *proto.SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCommitment(req)
+	return &emptypb.Empty{}, s.gameHandler.SubmitPlayerCommitment(req)
 }
 
 func (s *Rpc) SubmitPlayerCard(ctx context.Context, req *proto.SubmitPlayerCardRequest) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, s.playerHandler.SubmitPlayerCard(req)
+	return &emptypb.Empty{}, s.gameHandler.SubmitPlayerCard(req)
 }
 
-type ChainRequestHandler interface {
+func (s *Rpc) CreateGameAndRun(ctx context.Context, req *proto.CreateGameAndRunRequest) (*proto.CreateGameAndRunResponse, error) {
+	return s.gameHandler.CreateGameAndRunRPC(ctx, req)
+}
+
+func (s *Rpc) SyncGamePhase(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
+	return s.gameHandler.SyncGamePhaseRPC(ctx, req)
+}
+
+type GameProcessHandler interface {
 	SubmitTransactions(req *proto.TransactionBatch) error
-}
-
-type PlayerRequestHandler interface {
 	ConfirmBattle(req *proto.ConfirmBattleRequest) error
 	Surrender(req *proto.SurrenderRequest) error
 
 	SubmitPlayerCommitment(req *proto.SubmitPlayerCommitmentRequest) error
 	SubmitPlayerCard(req *proto.SubmitPlayerCardRequest) error
+	CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGameAndRunRequest) (*proto.CreateGameAndRunResponse, error)
+	SyncGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error)
 }
