@@ -36,14 +36,8 @@ func (s *GRPCServices) JoinQueue(ctx context.Context, req *proto.PlayerAddress) 
 	if s.queueSvc.IsPlayerPendingMatch(addr) {
 		return nil, status.Error(codes.FailedPrecondition, "player pending match confirmation")
 	}
-	if s.roomWorker != nil {
-		gs, err := s.roomWorker.GetPlayerGameStatus(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		if gs != nil && gs.Status != proto.PlayerStatus_PLAYER_UNKNOWN {
-			return nil, status.Errorf(codes.FailedPrecondition, "player cannot join queue, status: %s", gs.Status.String())
-		}
+	if s.queueSvc.IsPlayerInGame(addr) {
+		return nil, status.Error(codes.FailedPrecondition, "player already in game")
 	}
 	return &emptypb.Empty{}, s.queueSvc.HandleJoinQueueEvent(req)
 }
@@ -69,17 +63,10 @@ func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAdd
 	if s.queueSvc.IsPlayerPendingMatch(addr) {
 		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}, nil
 	}
-	if s.roomWorker == nil {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
+	if s.queueSvc.IsPlayerInGame(addr) {
+		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}, nil
 	}
-	gs, err := s.roomWorker.GetPlayerGameStatus(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if gs == nil {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
-	}
-	return &proto.GetPlayerStatusResponse{Status: gs.Status}, nil
+	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
 }
 
 func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {

@@ -253,6 +253,7 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 	q.lock.Lock()
 	for _, p := range players {
 		delete(q.pendingMatchByPlayer, p)
+		q.markPlayerInGameLocked(p)
 	}
 	q.lock.Unlock()
 	for _, p := range players {

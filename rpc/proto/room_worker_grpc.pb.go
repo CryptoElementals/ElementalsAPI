@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -19,18 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RoomWorkerService_CreateGameAndRun_FullMethodName    = "/rpc.RoomWorkerService/CreateGameAndRun"
-	RoomWorkerService_GetPlayerGameStatus_FullMethodName = "/rpc.RoomWorkerService/GetPlayerGameStatus"
+	RoomWorkerService_CreateGameAndRun_FullMethodName = "/rpc.RoomWorkerService/CreateGameAndRun"
+	RoomWorkerService_SyncGamePhase_FullMethodName    = "/rpc.RoomWorkerService/SyncGamePhase"
 )
 
 // RoomWorkerServiceClient is the client API for RoomWorkerService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// RoomWorkerService is served by the room server; lobby calls it to create games and read in-game status.
+// RoomWorkerService is served by the room server; lobby calls it to create games and trigger room-side phase sync.
 type RoomWorkerServiceClient interface {
 	CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error)
-	GetPlayerGameStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerGameStatusResponse, error)
+	SyncGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type roomWorkerServiceClient struct {
@@ -51,10 +52,10 @@ func (c *roomWorkerServiceClient) CreateGameAndRun(ctx context.Context, in *Crea
 	return out, nil
 }
 
-func (c *roomWorkerServiceClient) GetPlayerGameStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerGameStatusResponse, error) {
+func (c *roomWorkerServiceClient) SyncGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetPlayerGameStatusResponse)
-	err := c.cc.Invoke(ctx, RoomWorkerService_GetPlayerGameStatus_FullMethodName, in, out, cOpts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RoomWorkerService_SyncGamePhase_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,10 +66,10 @@ func (c *roomWorkerServiceClient) GetPlayerGameStatus(ctx context.Context, in *P
 // All implementations must embed UnimplementedRoomWorkerServiceServer
 // for forward compatibility.
 //
-// RoomWorkerService is served by the room server; lobby calls it to create games and read in-game status.
+// RoomWorkerService is served by the room server; lobby calls it to create games and trigger room-side phase sync.
 type RoomWorkerServiceServer interface {
 	CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error)
-	GetPlayerGameStatus(context.Context, *PlayerAddress) (*GetPlayerGameStatusResponse, error)
+	SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRoomWorkerServiceServer()
 }
 
@@ -82,8 +83,8 @@ type UnimplementedRoomWorkerServiceServer struct{}
 func (UnimplementedRoomWorkerServiceServer) CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateGameAndRun not implemented")
 }
-func (UnimplementedRoomWorkerServiceServer) GetPlayerGameStatus(context.Context, *PlayerAddress) (*GetPlayerGameStatusResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerGameStatus not implemented")
+func (UnimplementedRoomWorkerServiceServer) SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncGamePhase not implemented")
 }
 func (UnimplementedRoomWorkerServiceServer) mustEmbedUnimplementedRoomWorkerServiceServer() {}
 func (UnimplementedRoomWorkerServiceServer) testEmbeddedByValue()                           {}
@@ -124,20 +125,20 @@ func _RoomWorkerService_CreateGameAndRun_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RoomWorkerService_GetPlayerGameStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RoomWorkerService_SyncGamePhase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PlayerAddress)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RoomWorkerServiceServer).GetPlayerGameStatus(ctx, in)
+		return srv.(RoomWorkerServiceServer).SyncGamePhase(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RoomWorkerService_GetPlayerGameStatus_FullMethodName,
+		FullMethod: RoomWorkerService_SyncGamePhase_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RoomWorkerServiceServer).GetPlayerGameStatus(ctx, req.(*PlayerAddress))
+		return srv.(RoomWorkerServiceServer).SyncGamePhase(ctx, req.(*PlayerAddress))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -154,8 +155,8 @@ var RoomWorkerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RoomWorkerService_CreateGameAndRun_Handler,
 		},
 		{
-			MethodName: "GetPlayerGameStatus",
-			Handler:    _RoomWorkerService_GetPlayerGameStatus_Handler,
+			MethodName: "SyncGamePhase",
+			Handler:    _RoomWorkerService_SyncGamePhase_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

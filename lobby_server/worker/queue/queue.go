@@ -31,6 +31,7 @@ type Queue struct {
 	lock                 sync.RWMutex
 	queue                map[types.PlayerAddress]time.Time
 	pendingMatchByPlayer map[types.PlayerAddress]int64
+	inGameByPlayer       map[types.PlayerAddress]bool
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
 	continueRematchCancelTimeoutSec    int64
 	continueRematchCancelRedundancySec int64
@@ -71,6 +72,7 @@ func NewQueue(
 		ctx:                                ctx,
 		queue:                              make(map[types.PlayerAddress]time.Time),
 		pendingMatchByPlayer:               make(map[types.PlayerAddress]int64),
+		inGameByPlayer:                     make(map[types.PlayerAddress]bool),
 		publisher:                          pub,
 		lockedTokenCache:                   tokenCache,
 		queueCache:                         queueCache,
@@ -197,6 +199,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	q.lock.Lock()
 	for _, p := range event.GameInfo.Players {
 		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+		q.markPlayerOutOfGameLocked(*addr)
 		isBot := q.botMgr.releaseInGameBot(*addr)
 		if isBot {
 			bots.Add(*addr)
@@ -253,6 +256,23 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	defer q.lock.RUnlock()
 	_, ok := q.queue[address]
 	return ok
+}
+
+func (q *Queue) isPlayerInGame(address types.PlayerAddress) bool {
+	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
+	q.lock.RLock()
+	defer q.lock.RUnlock()
+	return q.inGameByPlayer[address]
+}
+
+func (q *Queue) markPlayerInGameLocked(address types.PlayerAddress) {
+	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
+	q.inGameByPlayer[address] = true
+}
+
+func (q *Queue) markPlayerOutOfGameLocked(address types.PlayerAddress) {
+	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
+	delete(q.inGameByPlayer, address)
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {

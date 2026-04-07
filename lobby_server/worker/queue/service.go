@@ -46,6 +46,10 @@ func (s *Service) IsPlayerInQueue(address types.PlayerAddress) bool {
 	return s.queue.isPlayerInQueue(address)
 }
 
+func (s *Service) IsPlayerInGame(address types.PlayerAddress) bool {
+	return s.queue.isPlayerInGame(address)
+}
+
 func (s *Service) HandleJoinQueueEvent(player *proto.PlayerAddress) error {
 	return s.queue.HandleJoinQueueEvent(player)
 }

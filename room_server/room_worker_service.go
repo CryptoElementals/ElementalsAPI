@@ -6,6 +6,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type roomWorkerService struct {
@@ -31,9 +32,11 @@ func (s *roomWorkerService) CreateGameAndRun(ctx context.Context, req *proto.Cre
 	return &proto.CreateGameAndRunResponse{GameId: uint32(gid)}, nil
 }
 
-func (s *roomWorkerService) GetPlayerGameStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerGameStatusResponse, error) {
+func (s *roomWorkerService) SyncGamePhase(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
 	var addr types.PlayerAddress
 	addr.FromProto(req)
-	st := s.game.GetPlayerGameInfo(addr)
-	return &proto.GetPlayerGameStatusResponse{Status: st}, nil
+	if err := s.game.SyncGamePhase(addr); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
