@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -190,6 +191,59 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	subscriberID := event_v2.SubscriberID{Address: self, ClientID: clientID}
 	msgCh, errCh := eventBus.RegisterSubscriber(subscriberID)
 	defer eventBus.UnregisterSubscriber(subscriberID)
+
+	// After stream subscribe, sync game phase only when lobby says player is currently in-game.
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
+		err := fmt.Errorf("gRPC lobby client not initialized")
+		log.Errorf("failed to get lobby client: %v", err)
+		errorEvent := events.Event{
+			Type:        events.EventTypeError,
+			Data:        map[string]interface{}{"error": err.Error()},
+			Timestamp:   time.Now(),
+			RequestUUID: task.Request.RequestUUID,
+		}
+		_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+		return nil, err
+	}
+	statusResp, err := lobbyClient.GetPlayerStatus(context.Background(), self)
+	if err != nil {
+		log.Errorf("failed to get player status from lobby: %v", err)
+		errorEvent := events.Event{
+			Type:        events.EventTypeError,
+			Data:        map[string]interface{}{"error": fmt.Sprintf("Lobby GetPlayerStatus failed: %v", err)},
+			Timestamp:   time.Now(),
+			RequestUUID: task.Request.RequestUUID,
+		}
+		_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+		return nil, err
+	}
+	if statusResp != nil && statusResp.GetStatus() == proto.PlayerStatus_PLAYER_IN_GAME {
+		rpcClient := client.GetGlobalRpcClient()
+		if rpcClient == nil {
+			err := fmt.Errorf("gRPC room client not initialized")
+			log.Errorf("failed to get room rpc client: %v", err)
+			errorEvent := events.Event{
+				Type:        events.EventTypeError,
+				Data:        map[string]interface{}{"error": err.Error()},
+				Timestamp:   time.Now(),
+				RequestUUID: task.Request.RequestUUID,
+			}
+			_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+			return nil, err
+		}
+		if _, err := rpcClient.SyncGamePhase(context.Background(), self); err != nil {
+			log.Errorf("RoomServer SyncGamePhase failed: %v", err)
+			errorEvent := events.Event{
+				Type:        events.EventTypeError,
+				Data:        map[string]interface{}{"error": fmt.Sprintf("RoomServer SyncGamePhase failed: %v", err)},
+				Timestamp:   time.Now(),
+				RequestUUID: task.Request.RequestUUID,
+			}
+			_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+			return nil, err
+		}
+	}
 
 	connectedEvent := events.Event{
 		Type: events.EventTypeNotification,

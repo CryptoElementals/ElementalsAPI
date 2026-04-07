@@ -100,4 +100,3 @@ func (task *SyncGamePhaseTask) Run(c *gin.Context) (Response, error) {
 	task.Response.BaseResponse.Message = "Successfully synced game phase"
 	return task.Response, nil
 }
-
