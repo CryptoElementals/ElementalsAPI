@@ -14,7 +14,9 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/server/event_v2"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
@@ -43,6 +45,28 @@ type SubscribeGameInfoTask struct {
 	Response *SubscribeGameInfoResponse
 	mu       sync.Mutex
 	stopChan chan struct{}
+}
+
+var (
+	subscribeGameInfoEventBusOnce sync.Once
+	subscribeGameInfoEventBus     event_v2.EventBus
+	subscribeGameInfoEventBusErr  error
+)
+
+func getSubscribeGameInfoEventBus() (event_v2.EventBus, error) {
+	subscribeGameInfoEventBusOnce.Do(func() {
+		eventStream := client.GetGlobalEventStream()
+		if eventStream == nil {
+			subscribeGameInfoEventBusErr = fmt.Errorf("event stream is nil")
+			return
+		}
+		subscribeGameInfoEventBus = event_v2.NewEventBus(
+			pubsub.NewStreamSubscriber(eventStream),
+			pubsub.TopicRoom,
+			pubsub.TopicLobby,
+		)
+	})
+	return subscribeGameInfoEventBus, subscribeGameInfoEventBusErr
 }
 
 type TurnCompletedDTO struct {
@@ -149,45 +173,23 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 
 	temp_address := strings.ToLower(task.Request.TempAddress)
 
-	eventManager := events.GetGlobalEventManager()
-
-	clientID := fmt.Sprintf("%s_%d_%s", task.Request.RequestUUID, playerID, temp_address)
+	clientID := task.Request.RequestUUID
 	self := &proto.PlayerAddress{Id: playerID, TemporaryAddress: temp_address}
-	eventHandler := func(msg *proto.Message) {
-		sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
-		if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
-			log.Errorf("failed to send SSE event: %v", err)
-		}
-	}
-
-	eventManager.RegisterSSEPlayerClient(clientID, self, eventHandler)
-	defer eventManager.UnregisterSSEClient(clientID)
-
-	if err := eventManager.SubscribeToTopic(clientID, pubsub.TopicRoom); err != nil {
-		log.Errorf("failed to subscribe to room topic: %v", err)
+	eventBus, err := getSubscribeGameInfoEventBus()
+	if err != nil {
+		log.Errorf("failed to initialize event_v2 bus: %v", err)
 		errorEvent := events.Event{
 			Type:        events.EventTypeError,
-			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to subscribe to room topic: %v", err)},
+			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to initialize event bus: %v", err)},
 			Timestamp:   time.Now(),
 			RequestUUID: task.Request.RequestUUID,
 		}
 		sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
-	defer eventManager.UnsubscribeFromTopic(clientID, pubsub.TopicRoom)
-
-	if err := eventManager.SubscribeToTopic(clientID, pubsub.TopicLobby); err != nil {
-		log.Errorf("failed to subscribe to lobby topic: %v", err)
-		errorEvent := events.Event{
-			Type:        events.EventTypeError,
-			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to subscribe to lobby topic: %v", err)},
-			Timestamp:   time.Now(),
-			RequestUUID: task.Request.RequestUUID,
-		}
-		sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
-		return nil, err
-	}
-	defer eventManager.UnsubscribeFromTopic(clientID, pubsub.TopicLobby)
+	subscriberID := event_v2.SubscriberID{Address: self, ClientID: clientID}
+	msgCh, errCh := eventBus.RegisterSubscriber(subscriberID)
+	defer eventBus.UnregisterSubscriber(subscriberID)
 
 	connectedEvent := events.Event{
 		Type: events.EventTypeNotification,
@@ -226,6 +228,31 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 			if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), heartbeatEvent); err != nil {
 				log.Errorf("failed to send heartbeat: %v", err)
 			}
+		case msg, ok := <-msgCh:
+			if !ok {
+				log.Infof("event stream closed - RequestUUID: %s", task.Request.RequestUUID)
+				return task.Response, nil
+			}
+			sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
+			if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
+				log.Errorf("failed to send SSE event: %v", err)
+			}
+		case err, ok := <-errCh:
+			if !ok {
+				return task.Response, nil
+			}
+			if err == nil {
+				continue
+			}
+			log.Errorf("event bus subscriber error: %v", err)
+			errorEvent := events.Event{
+				Type:        events.EventTypeError,
+				Data:        map[string]interface{}{"error": fmt.Sprintf("event bus subscriber error: %v", err)},
+				Timestamp:   time.Now(),
+				RequestUUID: task.Request.RequestUUID,
+			}
+			_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+			return nil, err
 		}
 	}
 }

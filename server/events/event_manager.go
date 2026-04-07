@@ -48,10 +48,10 @@ type SSEClient struct {
 
 // GlobalEventManager 全局事件管理器
 type GlobalEventManager struct {
-	clients          map[string]*SSEClient         // clientID -> SSEClient
-	topicClients     map[string]map[string]bool    // topic -> clientID -> bool
-	subscribedTopics map[string]func()        // topic -> stop Redis stream reader
-	topicStreams     map[string]chan struct{} // topic -> reconnect signal
+	clients          map[string]*SSEClient      // clientID -> SSEClient
+	topicClients     map[string]map[string]bool // topic -> clientID -> bool
+	subscribedTopics map[string]func()          // topic -> stop Redis stream reader
+	topicStreams     map[string]chan struct{}   // topic -> reconnect signal
 	mu               sync.RWMutex
 	eventStream      stream.Stream
 	ctx              context.Context
