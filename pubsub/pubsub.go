@@ -18,6 +18,11 @@ func Publish(ctx context.Context, pub Publisher, topic string, evt *proto.Event)
 	if pub == nil || evt == nil {
 		return nil
 	}
+	if topic == TopicRoom || topic == TopicLobby {
+		if evt.MessageId == "" {
+			evt.MessageId = BuildEventMessageID(evt)
+		}
+	}
 	_, err := pub.Publish(ctx, &proto.PublishRequest{Topic: topic, Event: evt})
 	return err
 }

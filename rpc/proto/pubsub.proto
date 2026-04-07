@@ -208,6 +208,7 @@ enum EventType {
 
 message Event {
   EventType Type = 1;
+  string MessageId = 15;
   // Intended recipients for client-facing streams (room_events / lobby_events); subscribers filter on this. Leave unset for internal-only topics (e.g. room_settlement).
   repeated rpc.PlayerAddress receivers = 13;
   oneof Event {
