@@ -120,6 +120,7 @@ func NewGameManager(ctx context.Context,
 	argsTemplate *dao.GameArgs,
 	chainSvc ContractClient,
 	poolBatchSize int,
+	poolProcessingInterval int,
 ) *GameManager {
 	// argsTemplate is always a DB-loaded row with non-zero id (room server guarantees this).
 	m := &GameManager{
@@ -130,7 +131,7 @@ func NewGameManager(ctx context.Context,
 		chainSvc:      chainSvc,
 		argsTemplate:  argsTemplate,
 	}
-	m.txPool = newTxPool(chainSvc, poolBatchSize)
+	m.txPool = newTxPool(chainSvc, poolBatchSize, poolProcessingInterval)
 	return m
 }
 

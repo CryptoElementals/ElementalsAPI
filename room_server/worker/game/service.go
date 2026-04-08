@@ -51,8 +51,9 @@ func NewService(
 	argsTemplate *dao.GameArgs,
 	chainSvc ContractClient,
 	poolBatchSize int,
+	poolProcessingInterval int,
 ) *Service {
-	mgr := NewGameManager(ctx, workerManager, pub, argsTemplate, chainSvc, poolBatchSize)
+	mgr := NewGameManager(ctx, workerManager, pub, argsTemplate, chainSvc, poolBatchSize, poolProcessingInterval)
 	return &Service{
 		ctx:              ctx,
 		gameManager:      mgr,

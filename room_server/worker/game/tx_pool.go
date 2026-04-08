@@ -15,6 +15,7 @@ import (
 )
 
 const defaultPoolBatchSize = 10
+const defaultPoolProcessingInterval = time.Second
 
 // eventKey uniquely identifies an event by game ID, address, round number, and index
 type eventKey struct {
@@ -48,6 +49,7 @@ type txPool struct {
 	// Dependencies
 	chainSvc  ContractClient
 	batchSize int
+	tickerDur time.Duration
 }
 
 type gameTxInfo struct {
@@ -60,9 +62,13 @@ type gameTxPlayerInfo struct {
 }
 
 // newTxPool creates a new transaction pool
-func newTxPool(chainSvc ContractClient, batchSize int) *txPool {
+func newTxPool(chainSvc ContractClient, batchSize int, processingIntervalSec int) *txPool {
 	if batchSize <= 0 {
 		batchSize = defaultPoolBatchSize
+	}
+	tickerDur := time.Duration(processingIntervalSec) * time.Second
+	if tickerDur <= 0 {
+		tickerDur = defaultPoolProcessingInterval
 	}
 	return &txPool{
 		commitmentPool:   make(map[eventKey]*proto.SubmitPlayerCommitmentRequest),
@@ -72,6 +78,7 @@ func newTxPool(chainSvc ContractClient, batchSize int) *txPool {
 		gameTxInfos:      make(map[int64]*gameTxInfo),
 		chainSvc:         chainSvc,
 		batchSize:        batchSize,
+		tickerDur:        tickerDur,
 	}
 }
 
@@ -218,9 +225,9 @@ func (p *txPool) AddSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 }
 
 // processPools periodically processes events in the pools and sends them to chain manager.
-// Tick interval is fixed at 1s (previously configurable via GameArgs).
+// Tick interval is configurable via room server config.
 func (p *txPool) processPools(ctx context.Context) {
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(p.tickerDur)
 	defer ticker.Stop()
 
 	for {

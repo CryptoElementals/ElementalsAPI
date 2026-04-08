@@ -71,9 +71,8 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		},
 		WalletPaths: []string{tempFile},
 
-		ListenPort:          30011,
-		MinTokenToJoinQueue: 1000,
-		GameArgsID:          ga.ID,
+		ListenPort: 30011,
+		GameArgsID: ga.ID,
 	}
 	config.InitializeGameParams(&config.GameParamConfig{
 		SystemFeeRate:   0.016,
@@ -106,7 +105,7 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		DbCfg:               cfg.DbCfg,
 		ListenPort:          30012,
 		RoomServerAddress:   "127.0.0.1:30011",
-		MinTokenToJoinQueue: cfg.MinTokenToJoinQueue,
+		MinTokenToJoinQueue: 1000,
 		GameArgsID:          ga.ID,
 		BotWaitTime:         0,
 		StatServiceEndpoint: "",

@@ -71,7 +71,7 @@ func New(ctx context.Context,
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
 	eventPub := pubsub.NewStreamPublisher(st)
-	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, argsTemplate, chainSvc, cfg.PoolBatchSize)
+	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, argsTemplate, chainSvc, cfg.PoolBatchSize, cfg.PoolProcessingInterval)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	// game.Service implements chain/player/game handlers.
