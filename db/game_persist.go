@@ -19,7 +19,7 @@ type GameFieldsUpdate struct {
 }
 
 // UpdateGameFieldsTx updates whitelisted columns on games.
-func UpdateGameFieldsTx(tx *gorm.DB, gameID uint, u GameFieldsUpdate) error {
+func UpdateGameFieldsTx(tx *gorm.DB, gameID int64, u GameFieldsUpdate) error {
 	updates := map[string]interface{}{}
 	if u.Status != nil {
 		updates["status"] = *u.Status
@@ -101,7 +101,7 @@ func SavePlayerTurnInfoTx(tx *gorm.DB, pti *dao.PlayerTurnInfo) error {
 
 // SaveGameResultTreeTx inserts or updates game_results and nested battle_rewards / player_rewards.
 // For insert (result.ID == 0), builds the tree explicitly to avoid broad association side effects.
-func SaveGameResultTreeTx(tx *gorm.DB, gameID uint, result *dao.GameResult) error {
+func SaveGameResultTreeTx(tx *gorm.DB, gameID int64, result *dao.GameResult) error {
 	result.GameID = gameID
 	if result.ID != 0 {
 		return tx.Session(&gorm.Session{FullSaveAssociations: true}).Save(result).Error
@@ -145,7 +145,7 @@ func InsertNewGameGraphCommit(game *dao.Game) error {
 }
 
 // UpdateGameFieldsCommit runs UpdateGameFieldsTx in a transaction.
-func UpdateGameFieldsCommit(gameID uint, u GameFieldsUpdate) error {
+func UpdateGameFieldsCommit(gameID int64, u GameFieldsUpdate) error {
 	return GamePersistTx(func(tx *gorm.DB) error {
 		return UpdateGameFieldsTx(tx, gameID, u)
 	})
@@ -166,7 +166,7 @@ func SavePlayerTurnInfoCommit(pti *dao.PlayerTurnInfo) error {
 }
 
 // SaveGameResultTreeCommit runs SaveGameResultTreeTx in a transaction.
-func SaveGameResultTreeCommit(gameID uint, result *dao.GameResult) error {
+func SaveGameResultTreeCommit(gameID int64, result *dao.GameResult) error {
 	return GamePersistTx(func(tx *gorm.DB) error {
 		return SaveGameResultTreeTx(tx, gameID, result)
 	})

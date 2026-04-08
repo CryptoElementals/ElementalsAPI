@@ -51,7 +51,7 @@ type Queue struct {
 }
 
 type GameCreator interface {
-	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error)
+	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error)
 }
 
 func NewQueue(
@@ -219,7 +219,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 
 	if q.anyHumanPlayerBelowQueueThreshold(event.GameInfo, bots) {
 		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", event.GameInfo.ID)
-		q.publishNotMatchableForHumans(event.GameInfo, uint32(event.GameInfo.ID), bots)
+		q.publishNotMatchableForHumans(event.GameInfo, event.GameInfo.ID, bots)
 	} else {
 		q.lock.Lock()
 		q.tryStartContinueRematchAfterGame(event.GameInfo, bots)
@@ -305,7 +305,7 @@ func (q *Queue) publishGameSettlementResult(game *dao.Game) {
 		Receivers: receivers,
 		Event: &pb.Event_GameSettlementResult{
 			GameSettlementResult: &pb.GameSettlementResult{
-				GameId: uint32(game.ID),
+				GameId: game.ID,
 				Reward: protoReward,
 			},
 		},
@@ -315,7 +315,7 @@ func (q *Queue) publishGameSettlementResult(game *dao.Game) {
 	}
 }
 
-func (q *Queue) publishNotMatchableForHumans(game *dao.Game, lastGameID uint32, bots Set[types.PlayerAddress]) {
+func (q *Queue) publishNotMatchableForHumans(game *dao.Game, lastGameID int64, bots Set[types.PlayerAddress]) {
 	receivers := make([]*pb.PlayerAddress, 0, len(game.Players))
 	for _, p := range game.Players {
 		if p == nil {

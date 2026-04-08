@@ -73,7 +73,7 @@ func getSubscribeGameInfoEventBus() (event_v2.EventBus, error) {
 type TurnCompletedDTO struct {
 	ConfirmationTimeout int64                        `json:"ConfirmationTimeout"`
 	GameContinueTimeout int64                        `json:"GameContinueTimeout"`
-	GameId              uint32                       `json:"GameId"`
+	GameId              int64                        `json:"GameId"`
 	RoundNum            uint32                       `json:"RoundNum"`
 	TurnNum             uint32                       `json:"TurnNum"`
 	IsRoundComplete     bool                         `json:"IsRoundComplete"`

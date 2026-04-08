@@ -3,7 +3,7 @@ package types
 import dao "github.com/CryptoElementals/common/models"
 
 type RequireGameCreationEvent struct {
-	GameID         uint
+	GameID         int64
 	InitialHP      int64
 	RoundTimeout   int64
 	MaxRoundNumber int64
@@ -11,7 +11,7 @@ type RequireGameCreationEvent struct {
 }
 
 type RequireSetupNewTurnEvent struct {
-	GameID      uint
+	GameID      int64
 	RoundNumber uint32
 	TurnNumber  uint32
 }
@@ -23,7 +23,7 @@ type RoomContractTask struct {
 
 // GameCreatedEvent is used by in-process worker tests / harnesses (not for PubSub TYPE_MATCHED).
 type GameCreatedEvent struct {
-	GameID              uint
+	GameID              int64
 	Players             []PlayerAddress
 	IsContinueGame      bool
 	ConfirmationTimeout int64
@@ -31,7 +31,7 @@ type GameCreatedEvent struct {
 }
 
 type GameCompletedEvent struct {
-	GameID   uint
+	GameID   int64
 	GameInfo *dao.Game
 }
 

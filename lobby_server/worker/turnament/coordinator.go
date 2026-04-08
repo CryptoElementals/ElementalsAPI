@@ -21,7 +21,7 @@ const tickInterval = 2 * time.Second
 
 // GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
-	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error)
+	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error)
 }
 
 type coordinator struct {
@@ -361,8 +361,7 @@ func (tc *coordinator) startMatchGame(m *dao.TournamentMatch) error {
 	if err != nil {
 		return err
 	}
-	gidU := uint(gid)
-	cur.GameID = &gidU
+	cur.GameID = &gid
 	if err := db.TournamentSaveMatch(db.Get(), &cur); err != nil {
 		return err
 	}

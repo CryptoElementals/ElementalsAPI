@@ -56,7 +56,7 @@ func (q *Queue) createPvpMatchFromQueue(players []types.PlayerAddress) error {
 }
 
 // createContinueRematchMatch inserts game_match (with last_game_id), registers pending confirmations, and publishes TYPE_MATCHED (GameMatched with LastGameId) per player. Caller must hold q.lock.
-func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGameID uint) (int64, error) {
+func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGameID int64) (int64, error) {
 	if len(players) != 2 {
 		return 0, fmt.Errorf("continue rematch requires 2 players, got %d", len(players))
 	}
@@ -77,13 +77,13 @@ func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGa
 	q.pendingMatchByPlayer[p1] = matchID
 	q.pendingMatchByPlayer[p2] = matchID
 	pair := []types.PlayerAddress{p1, p2}
-	lg := uint32(lastGameID)
+	lg := lastGameID
 	q.publishMatchPending(matchID, pair, &lg)
 	log.Infow("continue rematch pending confirmations", "match_id", matchID, "last_game_id", lastGameID, "p1", p1.String(), "p2", p2.String())
 	return matchID, nil
 }
 
-func (q *Queue) publishMatchPending(matchID int64, players []types.PlayerAddress, lastGameID *uint32) {
+func (q *Queue) publishMatchPending(matchID int64, players []types.PlayerAddress, lastGameID *int64) {
 	topics := make([]*pb.PlayerAddress, 0, len(players))
 	for _, pl := range players {
 		topics = append(topics, pl.ToProto())

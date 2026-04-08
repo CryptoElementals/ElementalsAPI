@@ -74,7 +74,7 @@ func setupTestDB(t *testing.T) {
 }
 
 // createRound 创建 Round 记录（使用原始 SQL 避免 GORM 解析嵌套结构）
-func createRound(t *testing.T, gameID uint, roundNumber uint32) uint {
+func createRound(t *testing.T, gameID int64, roundNumber uint32) uint {
 	t.Helper()
 	var roundID uint
 	result := Get().Exec(`

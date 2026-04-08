@@ -22,7 +22,7 @@ type GameContextHTTP struct {
 	wallet       *wallet.Wallet
 	cardProvider CardProvider
 
-	gameID       uint
+	gameID       int64
 	currentRound uint32
 	currentTurn  uint32
 	card         uint32
@@ -172,7 +172,7 @@ func (c *GameContextHTTP) Run() error {
 					log.Warnw("game created event missing GameReady data", "player_id", c.playerID)
 					continue
 				}
-				c.gameID = uint(gr.GetGameId())
+				c.gameID = gr.GetGameId()
 				log.Infow("game created", "player_id", c.playerID, "game_id", c.gameID)
 				if err := c.confirmBattle(); err != nil {
 					log.Errorw("failed to confirm battle after game created", "player_id", c.playerID, "game_id", c.gameID, "error", err)

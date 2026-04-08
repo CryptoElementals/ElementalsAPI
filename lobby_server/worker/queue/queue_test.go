@@ -74,7 +74,7 @@ func TestJoinExitQueue(t *testing.T) {
 func TestGameMatched(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	gameCreator := tt.NewMockGameCreator(ctrl)
-	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint(1), nil).Times(1)
+	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
 	globalTestQueueService = NewService(context.Background(), noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
@@ -126,5 +126,5 @@ func TestGameMatched(t *testing.T) {
 	require.NoError(t, db.Get().First(&gm, "id = ?", gm.ID).Error)
 	require.Equal(t, dao.GameMatchStatusGameCreated, gm.Status)
 	require.NotNil(t, gm.GameID)
-	require.Equal(t, uint(1), *gm.GameID)
+	require.Equal(t, int64(1), *gm.GameID)
 }

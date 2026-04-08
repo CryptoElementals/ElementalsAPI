@@ -7,8 +7,8 @@ import (
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/pubsub"
+	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -27,7 +27,7 @@ type TxPoolEnqueuer interface {
 	AddSetTurnReady(evt *types.RequireSetupNewTurnEvent)
 	AddCommitment(evt *proto.SubmitPlayerCommitmentRequest) error
 	AddCard(evt *proto.SubmitPlayerCardRequest) error
-	ClearGameInfo(gameID uint)
+	ClearGameInfo(gameID int64)
 }
 
 type GameResultSettler interface {
@@ -76,8 +76,8 @@ func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.Ga
 	return s.gameManager.GetActiveGame(playerAddress)
 }
 
-func (s *Service) LoadBattleInfoFromDB(gameID uint32, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
-	gameInfo, err := db.LoadGameByGameID(uint(gameID))
+func (s *Service) LoadBattleInfoFromDB(gameID int64, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
+	gameInfo, err := db.LoadGameByGameID(gameID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -109,7 +109,7 @@ func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.Pla
 	return proto.PlayerStatus_PLAYER_IN_GAME
 }
 
-func (s *Service) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+func (s *Service) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
 	return s.gameManager.CreateGameAndRun(players, gameType, completedMatchID)
 }
 
@@ -129,7 +129,7 @@ func (s *Service) CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGame
 	if err != nil {
 		return nil, err
 	}
-	return &proto.CreateGameAndRunResponse{GameId: uint32(gid)}, nil
+	return &proto.CreateGameAndRunResponse{GameId: gid}, nil
 }
 
 func (s *Service) SyncGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {

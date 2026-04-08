@@ -37,5 +37,5 @@ func init() {
 	gameGetCmd.Flags().StringVarP(&user, "user", "u", "", "user of mysql")
 	gameGetCmd.Flags().StringVarP(&password, "password", "p", "", "password of mysql")
 	gameGetCmd.Flags().StringVarP(&dbName, "db-name", "d", "", "db name of mysql")
-	gameGetCmd.Flags().UintVarP(&gameID, "game-id", "i", 0, "game id")
+	gameGetCmd.Flags().Int64VarP(&gameID, "game-id", "i", 0, "game id")
 }

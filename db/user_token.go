@@ -98,7 +98,7 @@ func LockUserToken(ctx context.Context, playerId int64, tempAddress string, toke
 	})
 }
 
-func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddresses []string, tokenAmount int32, gameID uint) (err error) {
+func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddresses []string, tokenAmount int32, gameID int64) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		for i := range playerIds {
 			playerId := playerIds[i]
@@ -187,7 +187,7 @@ func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (e
 	})
 }
 
-func UnlockUserTokenByGameID(ctx context.Context, gameID uint) error {
+func UnlockUserTokenByGameID(ctx context.Context, gameID int64) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		cnt, err := gorm.G[dao.LockedUserToken](tx).Where("game_id = ?", gameID).Delete(ctx)
 		if err != nil {
@@ -301,7 +301,7 @@ func DeleteAllLockedUserTokens() (rowsAffected int64, err error) {
 	return res.RowsAffected, res.Error
 }
 
-func SetLockedTokenGameID(ctx context.Context, playerId int64, temporaryAddress string, gameID uint) error {
+func SetLockedTokenGameID(ctx context.Context, playerId int64, temporaryAddress string, gameID int64) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}
 		err := tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error

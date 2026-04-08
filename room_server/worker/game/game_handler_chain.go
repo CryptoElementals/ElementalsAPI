@@ -31,7 +31,7 @@ func (g *Game) handleRoomCreated(blockTime int64) error {
 			Type: proto.EventType_TYPE_GAME_CREATED,
 			Event: &proto.Event_GameReady{
 				GameReady: &proto.GameReady{
-					GameId:                  uint32(gi.ID),
+					GameId:                  gi.ID,
 					InitialHP:               uint32(ga.InitialHP),
 					MaxHP:                   uint32(ga.MaxHP),
 					Players:                 players,
@@ -47,7 +47,7 @@ func (g *Game) handleRoomCreated(blockTime int64) error {
 			Type: proto.EventType_TYPE_ROUND_READY,
 			Event: &proto.Event_RoundReady{
 				RoundReady: &proto.RoundReady{
-					GameId:   uint32(g.gameInfo.ID),
+					GameId:   g.gameInfo.ID,
 					RoundNum: g.currentRound.roundNumber,
 				},
 			},
@@ -56,7 +56,7 @@ func (g *Game) handleRoomCreated(blockTime int64) error {
 			Type: proto.EventType_TYPE_TURN_READY,
 			Event: &proto.Event_TurnReady{
 				TurnReady: &proto.TurnReady{
-					GameId:                      uint32(g.gameInfo.ID),
+					GameId:                      g.gameInfo.ID,
 					RoundNum:                    g.currentRound.roundNumber,
 					TurnNum:                     1,
 					CommitmentSubmissionTimeout: ga.CommitmentSubmissionTimeout,
@@ -68,7 +68,7 @@ func (g *Game) handleRoomCreated(blockTime int64) error {
 	})
 }
 
-func (g *Game) handleNewTurnSetupOnChain(gameID uint, blockTime int64, tx *proto.TxGameTurnSetupReady) error {
+func (g *Game) handleNewTurnSetupOnChain(gameID int64, blockTime int64, tx *proto.TxGameTurnSetupReady) error {
 	if gameID != g.gameInfo.ID {
 		return errors.New("invalid game id")
 	}
@@ -97,7 +97,7 @@ func (g *Game) handleNewTurnSetupOnChain(gameID uint, blockTime int64, tx *proto
 				Type: proto.EventType_TYPE_ROUND_READY,
 				Event: &proto.Event_RoundReady{
 					RoundReady: &proto.RoundReady{
-						GameId:   uint32(g.gameInfo.ID),
+						GameId:   g.gameInfo.ID,
 						RoundNum: roundNum,
 					},
 				},
@@ -107,7 +107,7 @@ func (g *Game) handleNewTurnSetupOnChain(gameID uint, blockTime int64, tx *proto
 			Type: proto.EventType_TYPE_TURN_READY,
 			Event: &proto.Event_TurnReady{
 				TurnReady: &proto.TurnReady{
-					GameId:                      uint32(g.gameInfo.ID),
+					GameId:                      g.gameInfo.ID,
 					RoundNum:                    roundNum,
 					TurnNum:                     turnNum,
 					CommitmentSubmissionTimeout: commitTimeout,
@@ -150,7 +150,7 @@ func (g *Game) handleGameStateWaittingCommitments(tx *proto.TxCommitmentOnChain)
 				Type: proto.EventType_TYPE_COMMITMENTS_ON_CHAIN,
 				Event: &proto.Event_CommitmentsOnChain{
 					CommitmentsOnChain: &proto.CommitmentsOnChain{
-						GameId:                uint32(g.gameInfo.ID),
+						GameId:                g.gameInfo.ID,
 						RoundNum:              roundNum,
 						TurnNum:               turnNumber,
 						CardSubmissionTimeout: cardTimeout,

@@ -90,11 +90,11 @@ func openTournament(t *testing.T, scheduleID uint, scheduledStart time.Time) *da
 }
 
 type mockGameCreator struct {
-	nextGameID uint
-	onMatch    func([]types.PlayerAddress) (uint, error)
+	nextGameID int64
+	onMatch    func([]types.PlayerAddress) (int64, error)
 }
 
-func (m *mockGameCreator) CreateGameAndRun(players []types.PlayerAddress, _ uint, _ int64) (uint, error) {
+func (m *mockGameCreator) CreateGameAndRun(players []types.PlayerAddress, _ uint, _ int64) (int64, error) {
 	if m.onMatch != nil {
 		return m.onMatch(players)
 	}
@@ -351,7 +351,7 @@ func TestOnGameCompleted_FinalRound_MarksWinnerAndCompletes(t *testing.T) {
 	require.NoError(t, db.Get().Create(e2).Error)
 
 	g := &dao.Game{
-		GameArgsID: ga.ID,
+		GameArgsID: uint64(ga.ID),
 		Type:       types.GameTypeTournament,
 		Status:     proto.GameStatus_GAME_END,
 	}
@@ -409,7 +409,7 @@ func TestMockGameCreator_StartMatchFails_NoPanic(t *testing.T) {
 	}
 
 	fail := &mockGameCreator{
-		onMatch: func([]types.PlayerAddress) (uint, error) {
+		onMatch: func([]types.PlayerAddress) (int64, error) {
 			return 0, errors.New("chain unavailable")
 		},
 	}

@@ -20,7 +20,7 @@ func init() {
 // SubmitPlayerCardRequest 请求结构体
 type SubmitPlayerCardRequest struct {
 	BaseRequest
-	GameID      uint32 `mapstructure:"GameID" validate:"required"`
+	GameID      int64 `mapstructure:"GameID" validate:"required"`
 	RoundNumber uint32 `mapstructure:"RoundNumber" validate:"required"`
 	TurnNumber  uint32 `mapstructure:"TurnNumber" validate:"required"`
 	Card        uint32 `mapstructure:"Card" validate:"required"`

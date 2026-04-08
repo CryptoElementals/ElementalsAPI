@@ -14,9 +14,9 @@ import (
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	lobbyserver "github.com/CryptoElementals/common/lobby_server"
-	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -71,19 +71,19 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		},
 		WalletPaths: []string{tempFile},
 
-		ListenPort:           30011,
-		MinTokenToJoinQueue:  1000,
-		GameArgsID:           ga.ID,
+		ListenPort:          30011,
+		MinTokenToJoinQueue: 1000,
+		GameArgsID:          ga.ID,
 	}
 	config.InitializeGameParams(&config.GameParamConfig{
-		SystemFeeRate:     0.016,
-		WinnerPointRate:   0.012,
-		LoserPointRate:    0.004,
-		TieTokenRate:      0.008,
-		TiePointRate:      0.008,
-		BaseStake:         1000,
-		MaxRounds:         3,
-		InitialHP:         3000,
+		SystemFeeRate:   0.016,
+		WinnerPointRate: 0.012,
+		LoserPointRate:  0.004,
+		TieTokenRate:    0.008,
+		TiePointRate:    0.008,
+		BaseStake:       1000,
+		MaxRounds:       3,
+		InitialHP:       3000,
 	})
 	if config.GameParams.BaseStake == 0 {
 		config.GameParams.BaseStake = 1000
@@ -194,7 +194,7 @@ func toJsonLoggable(obj any) string {
 	return string(res)
 }
 
-func requireRoundGameOverFromDB(t *testing.T, gameID uint, round uint) {
+func requireRoundGameOverFromDB(t *testing.T, gameID int64, round uint) {
 	t.Helper()
 	gameInfo, err := db.LoadGameByGameID(gameID)
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func runClient(t *testing.T,
 	submittedCards []uint32,
 	txChan chan *proto.TransactionBatch,
 	partConfimredChan chan uint,
-	gameIDChan chan uint,
+	gameIDChan chan int64,
 ) {
 	chanEvt := make(chan *proto.Event)
 	chanErr := make(chan error)
@@ -223,7 +223,7 @@ func runClient(t *testing.T,
 	go func() {
 		defer fmt.Println("palyer quit", addr)
 		defer wg.Done()
-		gameID := uint(0)
+		gameID := int64(0)
 		round := uint(1)
 		for {
 			select {
@@ -256,7 +256,7 @@ func runClient(t *testing.T,
 					t.Log("game created")
 					gr := evt.GetGameReady()
 					require.NotNil(t, gr, "TYPE_GAME_CREATED must carry GameReady")
-					gameID = uint(gr.GetGameId())
+					gameID = gr.GetGameId()
 					require.NotZero(t, gameID, "game id must be available after TYPE_GAME_CREATED")
 					select {
 					case gameIDChan <- gameID:
@@ -275,7 +275,7 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_trasactions", addr.String(), round)),
-								GameId: uint32(gameID),
+								GameId: gameID,
 								Tx: &proto.Transaction_CommitmentOnChain{
 									CommitmentOnChain: &proto.TxCommitmentOnChain{
 										Address:     addr.ToProtoNoWallet(),
@@ -297,7 +297,7 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_cards", addr.String(), round)),
-								GameId: uint32(gameID),
+								GameId: gameID,
 								Tx: &proto.Transaction_CardOnChain{
 									CardOnChain: &proto.TxCardOnChain{
 										Address:     addr.ToProtoNoWallet(),
@@ -357,7 +357,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	}
 	chan1 := make(chan uint, 3)
 	chan2 := make(chan uint, 3)
-	gameIDChan := make(chan uint, 2)
+	gameIDChan := make(chan int64, 2)
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	doneChan := make(chan struct{})
@@ -413,7 +413,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 				Transactions: []*proto.Transaction{
 					{
 						TxHash: txHashBytes,
-						GameId: uint32(gameID),
+						GameId: gameID,
 						Tx: &proto.Transaction_GameCreated{
 							GameCreated: &proto.TxGameCreated{},
 						},
@@ -428,7 +428,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 				Transactions: []*proto.Transaction{
 					{
 						TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-						GameId: uint32(gameID),
+						GameId: gameID,
 						Tx: &proto.Transaction_GameTurnSetupReady{
 							GameTurnSetupReady: &proto.TxGameTurnSetupReady{
 								RoundNumber: uint32(round),
@@ -471,12 +471,12 @@ func TestServer_BattleTimeout(t *testing.T) {
 		TemporaryAddress: "tmp2",
 	}
 
-	var gameID uint
+	var gameID int64
 	var round uint
 	var setupBattle = func(doneChan chan struct{}, doContinue bool) {
 		chan1 := make(chan uint, 3)
 		chan2 := make(chan uint, 3)
-		gameIDChan := make(chan uint, 2)
+		gameIDChan := make(chan int64, 2)
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 
@@ -542,7 +542,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: txHashBytes,
-								GameId: uint32(gameID),
+								GameId: gameID,
 								Tx: &proto.Transaction_GameCreated{
 									GameCreated: &proto.TxGameCreated{},
 								},
@@ -557,7 +557,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-								GameId: uint32(gameID),
+								GameId: gameID,
 								Tx: &proto.Transaction_GameTurnSetupReady{
 									GameTurnSetupReady: &proto.TxGameTurnSetupReady{
 										RoundNumber: uint32(round),
@@ -635,12 +635,12 @@ func TestServer_BattleContinue(t *testing.T) {
 		TemporaryAddress: "tmp2",
 	}
 
-	var gameID uint
+	var gameID int64
 	var round uint
 	var setupBattle = func(doneChan chan struct{}, doContinue bool) {
 		chan1 := make(chan uint, 3)
 		chan2 := make(chan uint, 3)
-		gameIDChan := make(chan uint, 2)
+		gameIDChan := make(chan int64, 2)
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 
@@ -697,7 +697,7 @@ func TestServer_BattleContinue(t *testing.T) {
 					Transactions: []*proto.Transaction{
 						{
 							TxHash: txHashBytes,
-							GameId: uint32(gameID),
+							GameId: gameID,
 							Tx: &proto.Transaction_GameCreated{
 								GameCreated: &proto.TxGameCreated{},
 							},
@@ -712,7 +712,7 @@ func TestServer_BattleContinue(t *testing.T) {
 					Transactions: []*proto.Transaction{
 						{
 							TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-							GameId: uint32(gameID),
+							GameId: gameID,
 							Tx: &proto.Transaction_GameTurnSetupReady{
 								GameTurnSetupReady: &proto.TxGameTurnSetupReady{
 									RoundNumber: uint32(round),

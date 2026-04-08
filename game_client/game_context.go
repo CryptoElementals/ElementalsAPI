@@ -38,7 +38,7 @@ type GameContext struct {
 	errChan      chan error
 	cardProvider CardProvider // Interface to get card for each turn
 
-	gameID       uint
+	gameID       int64
 	players      []*types.PlayerAddress
 	currentRound uint32
 	currentTurn  uint32
@@ -123,7 +123,7 @@ func (c *GameContext) Run() error {
 					log.Warnw("game created event missing GameReady data")
 					continue
 				}
-				c.gameID = uint(gr.GetGameId())
+				c.gameID = gr.GetGameId()
 				log.Infow("game created", "game id", c.gameID)
 				if err := c.confirmBattle(); err != nil {
 					log.Errorw("failed to confirm battle after game created", "error", err)

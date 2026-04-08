@@ -11,7 +11,7 @@ import (
 )
 
 type timerEvent struct {
-	GameID            uint
+	GameID            int64
 	currentGameStatus proto.GameStatus
 	currentRound      uint32
 	currentTurnNumber uint32
@@ -24,7 +24,7 @@ func (e *timerEvent) EventType() string { return "game_timer" }
 
 func (e *timerEvent) Marshal() []byte {
 	data, _ := json.Marshal(struct {
-		GameID            uint             `json:"game_id"`
+		GameID            int64            `json:"game_id"`
 		CurrentGameStatus proto.GameStatus `json:"current_game_status"`
 		CurrentRound      uint32           `json:"current_round"`
 		CurrentTurnNumber uint32           `json:"current_turn_number"`
@@ -35,7 +35,7 @@ func (e *timerEvent) Marshal() []byte {
 
 func (e *timerEvent) Unmarshal(data []byte) error {
 	aux := struct {
-		GameID            uint             `json:"game_id"`
+		GameID            int64            `json:"game_id"`
 		CurrentGameStatus proto.GameStatus `json:"current_game_status"`
 		CurrentRound      uint32           `json:"current_round"`
 		CurrentTurnNumber uint32           `json:"current_turn_number"`

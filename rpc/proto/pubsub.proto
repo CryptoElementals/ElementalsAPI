@@ -109,7 +109,7 @@ message GameMatched {
   // Queue PVP: snowflake for ConfirmMatch; 0 for lobby-only signals (e.g. tournament before GameReady).
   int64 MatchId = 3;
   // Continue rematch after a finished game; unset for first-time queue matches.
-  optional uint32 LastGameId = 4;
+  optional int64 LastGameId = 4;
 }
 
 message MatchCanceled {
@@ -119,22 +119,22 @@ message MatchCanceled {
 }
 
 message NotMatchable {
-  uint32 last_game_id = 1;
+  int64 last_game_id = 1;
 }
 
 // Sent by the lobby after token/points settlement (BattleResultSettlement). Reward is not included on TurnCompleted.GameResult.
 message GameSettlementResult {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   battle.BattleReward Reward = 2;
 }
 
 // Sent by the room on topic room_settlement when a game ends. Lobby subscribes and loads full state from DB.
 message GameCompletedNotice {
-  uint32 GameId = 1;
+  int64 GameId = 1;
 }
 
 message GameReady {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   uint32 InitialHP = 2;
   repeated rpc.PlayerAddress Players = 3;
   int64 MatchId = 4;
@@ -146,19 +146,19 @@ message GameReady {
 }
 
 message RoundReady {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   uint32 RoundNum = 2;
 }
 
 message TurnReady {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
   int64 CommitmentSubmissionTimeout = 4;
 }
 
 message CommitmentsOnChain {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
   int64 CardSubmissionTimeout = 4;
@@ -170,7 +170,7 @@ message PlayerTurnInfo {
 }
 
 message TurnCompleted {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   uint32 RoundNum = 2;
   uint32 TurnNum = 3;
   bool IsRoundComplete = 4;
@@ -182,7 +182,7 @@ message TurnCompleted {
 }
 
 message GameStat {
-  uint32 GameId = 1;
+  int64 GameId = 1;
   string ContractAddress = 2;
   repeated rpc.PlayerAddress Players = 3;
   uint32 CurrentRoundNum = 4;

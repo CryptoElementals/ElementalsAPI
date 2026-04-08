@@ -126,7 +126,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress1.String(), &proto.ConfirmBattleRequest{
-			GameID:        uint32(gid),
+			GameID:        gid,
 			RoundNumber:   1,
 			TurnNumber:    1,
 			PlayerAddress: playerAddress1.ToProto(),
@@ -138,7 +138,7 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 		gid := evt.GameID
 		wid := fmt.Sprint(gid)
 		testWorkerManager.SendEvent(wid, types.NewEvent(playerAddress2.String(), &proto.ConfirmBattleRequest{
-			GameID:        uint32(gid),
+			GameID:        gid,
 			RoundNumber:   1,
 			TurnNumber:    1,
 			PlayerAddress: playerAddress2.ToProto(),

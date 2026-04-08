@@ -1,6 +1,11 @@
 package dao
 
-import "github.com/CryptoElementals/common/rpc/proto"
+import (
+	"time"
+
+	"github.com/CryptoElementals/common/rpc/proto"
+	"gorm.io/gorm"
+)
 
 // HPDiffPerMultiplierUnit maps raw HP spread to the integer multiplier (rewards, APIs).
 const HPDiffPerMultiplierUnit int64 = 1000
@@ -45,7 +50,11 @@ type GameArgs struct {
 func (GameArgs) TableName() string { return "game_args" }
 
 type Game struct {
-	BaseModel
+	ID        int64 `gorm:"primarykey"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+
 	GameArgsID uint `gorm:"not null;index" json:"game_args_id"`
 
 	RoomContract string `gorm:"index" json:"room_contract"` // 房间合约地址
@@ -67,7 +76,7 @@ type Game struct {
 
 type Turn struct {
 	BaseModel
-	GameID      uint   `gorm:"not null;uniqueIndex:uq_game_turn,priority:1" json:"game_id"`
+	GameID      int64 `gorm:"not null;uniqueIndex:uq_game_turn,priority:1" json:"game_id"`
 	RoundNumber uint32 `gorm:"not null;uniqueIndex:uq_game_turn,priority:2" json:"round_number"`
 	TurnNumber  uint32 `gorm:"not null;uniqueIndex:uq_game_turn,priority:3" json:"turn_number"`
 
@@ -102,7 +111,7 @@ type TurnSubmittedCard struct {
 
 type GamePlayerInfo struct {
 	BaseModel
-	GameID           uint   `gorm:"index" json:"game_id"`
+	GameID           int64 `gorm:"index" json:"game_id"`
 	PlayerId         int64  `gorm:"not null;index:address" json:"player_id"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
@@ -129,7 +138,7 @@ type BattleReward struct {
 
 type GameResult struct {
 	BaseModel
-	GameID                 uint `gorm:"index"`
+	GameID                 int64 `gorm:"index"`
 	Multiplier             int32
 	WinnerPlayerId         int64
 	WinnerTemporaryAddress string

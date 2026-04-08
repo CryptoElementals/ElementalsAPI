@@ -128,7 +128,7 @@ func CancelPendingGameMatch(ctx context.Context, matchID int64) error {
 }
 
 // CompleteClaimedGameMatch sets game_created and game_id from creating state.
-func CompleteClaimedGameMatch(ctx context.Context, matchID int64, gameID uint) error {
+func CompleteClaimedGameMatch(ctx context.Context, matchID int64, gameID int64) error {
 	res := Get().WithContext(ctx).Model(&dao.GameMatch{}).
 		Where("id = ? AND status = ?", matchID, dao.GameMatchStatusCreating).
 		Updates(map[string]interface{}{

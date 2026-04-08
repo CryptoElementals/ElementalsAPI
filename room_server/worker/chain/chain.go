@@ -104,7 +104,7 @@ func (c *Chain) Start() error {
 	return nil
 }
 
-func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string, blockNumber uint64, eventName string) {
+func (c *Chain) logTxCompletionIfTracked(hash string, gid int64, blockHash string, blockNumber uint64, eventName string) {
 	// If we have a recorded submission time for this tx, log the end-to-end latency
 	c.txTimesLock.Lock()
 	start, ok := c.txTimes[hash]
@@ -137,7 +137,7 @@ func (c *Chain) NotifyTxsCompleted(txs *proto.TransactionBatch) {
 	blockNumber := txs.BlockNumber
 	for _, protoTx := range txs.Transactions {
 		hash := strings.ToLower("0x" + hex.EncodeToString(protoTx.TxHash))
-		gid := uint(protoTx.GameId)
+		gid := protoTx.GameId
 		switch protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
 			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")

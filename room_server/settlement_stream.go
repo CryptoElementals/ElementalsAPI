@@ -26,7 +26,7 @@ func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameComplete
 	out := &proto.Event{
 		Type: proto.EventType_TYPE_GAME_COMPLETED,
 		Event: &proto.Event_GameCompletedNotice{
-			GameCompletedNotice: &proto.GameCompletedNotice{GameId: uint32(evt.GameID)},
+			GameCompletedNotice: &proto.GameCompletedNotice{GameId: evt.GameID},
 		},
 	}
 	return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlement, out)

@@ -11,7 +11,7 @@ func CreateGame(game *dao.Game) error {
 	return Get().Create(game).Error
 }
 
-func LoadGameByGameID(gameID uint) (*dao.Game, error) {
+func LoadGameByGameID(gameID int64) (*dao.Game, error) {
 	var game dao.Game
 	tx := Get().Where("id = ?", gameID)
 	err := preloadGameInfo(tx).First(&game).Error

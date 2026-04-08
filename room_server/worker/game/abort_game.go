@@ -86,7 +86,7 @@ func (g *Game) sendTurnCompletedEventForAbort() {
 	}
 
 	turnCompleted := &proto.TurnCompleted{
-		GameId:          uint32(g.gameInfo.ID),
+		GameId:          g.gameInfo.ID,
 		RoundNum:        roundNumber,
 		TurnNum:         turnNumber,
 		IsRoundComplete: true,

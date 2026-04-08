@@ -25,9 +25,9 @@ type GameMatch struct {
 	Player2ConfirmedAt *time.Time `json:"player2_confirmed_at"`
 	GameType           uint       `gorm:"not null" json:"game_type"`
 	// LastGameID is the finished game when this row is a continue rematch (0 for normal queue PVP).
-	LastGameID         uint       `gorm:"not null;default:0" json:"last_game_id"`
-	Status             string     `gorm:"not null;size:32;index" json:"status"`
-	GameID             *uint      `gorm:"index" json:"game_id"`
+	LastGameID         int64   `gorm:"not null;default:0" json:"last_game_id"`
+	Status             string  `gorm:"not null;size:32;index" json:"status"`
+	GameID             *int64  `gorm:"index" json:"game_id"`
 	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }

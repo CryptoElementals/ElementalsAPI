@@ -89,7 +89,7 @@ func TestFilterRoomEvent(t *testing.T) {
 }
 
 func TestChainContractInteraction(t *testing.T) {
-	gameID := uint32(123)
+	gameID := int64(123)
 	player1 := types.PlayerAddress{
 		Id:               123,
 		TemporaryAddress: "0x456",

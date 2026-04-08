@@ -79,10 +79,10 @@ func (c *RpcClient) ExitQueue(ctx context.Context, addr *types.PlayerAddress) er
 	return err
 }
 
-func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress, gameID, roundNumber, turnNumber uint) error {
+func (c *RpcClient) ConfirmBattle(ctx context.Context, addr *types.PlayerAddress, gameID int64, roundNumber, turnNumber uint) error {
 	_, err := c.room.ConfirmBattle(ctx, &proto.ConfirmBattleRequest{
 		PlayerAddress: addr.ToProto(),
-		GameID:        uint32(gameID),
+		GameID:        gameID,
 		RoundNumber:   uint32(roundNumber),
 		TurnNumber:    uint32(turnNumber),
 	})
@@ -130,17 +130,17 @@ func (c *RpcClient) GetPlayerStatus(ctx context.Context, addr *types.PlayerAddre
 	return c.lobby.GetPlayerStatus(ctx, addr.ToProto())
 }
 
-func (c *RpcClient) Surrender(ctx context.Context, addr *types.PlayerAddress, gameID uint) error {
+func (c *RpcClient) Surrender(ctx context.Context, addr *types.PlayerAddress, gameID int64) error {
 	_, err := c.room.Surrender(ctx, &proto.SurrenderRequest{
-		GameID:  uint32(gameID),
+		GameID:  gameID,
 		Address: addr.ToProto(),
 	})
 	return err
 }
 
-func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, commitment []byte, turnNumber uint32, signature []byte, gameID uint) error {
+func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, commitment []byte, turnNumber uint32, signature []byte, gameID int64) error {
 	_, err := c.room.SubmitPlayerCommitment(ctx, &proto.SubmitPlayerCommitmentRequest{
-		GameID:      uint32(gameID),
+		GameID:      gameID,
 		Address:     addr.ToProto(),
 		RoundNumber: roundNumber,
 		Commitment:  commitment,
@@ -150,9 +150,9 @@ func (c *RpcClient) SubmitPlayerCommitment(ctx context.Context, addr *types.Play
 	return err
 }
 
-func (c *RpcClient) SubmitPlayerCard(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, salt []byte, card uint, turnNumber uint32, signature []byte, gameID uint) error {
+func (c *RpcClient) SubmitPlayerCard(ctx context.Context, addr *types.PlayerAddress, roundNumber uint32, salt []byte, card uint, turnNumber uint32, signature []byte, gameID int64) error {
 	_, err := c.room.SubmitPlayerCard(ctx, &proto.SubmitPlayerCardRequest{
-		GameID:      uint32(gameID),
+		GameID:      gameID,
 		Address:     addr.ToProto(),
 		RoundNumber: roundNumber,
 		Salt:        salt,

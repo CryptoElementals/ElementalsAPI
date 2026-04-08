@@ -11,5 +11,5 @@ var (
 	roomServerEndpoint  string
 	lobbyServerEndpoint string
 	tempWalletPath      string
-	gameID              uint
+	gameID              int64
 )

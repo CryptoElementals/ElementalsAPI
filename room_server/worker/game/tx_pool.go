@@ -18,7 +18,7 @@ const defaultPoolBatchSize = 10
 
 // eventKey uniquely identifies an event by game ID, address, round number, and index
 type eventKey struct {
-	gameID      uint
+	gameID      int64
 	address     string
 	roundNumber uint32
 	index       uint32
@@ -26,7 +26,7 @@ type eventKey struct {
 
 // setTurnKey uniquely identifies a set-turn-ready event
 type setTurnKey struct {
-	gameID      uint
+	gameID      int64
 	roundNumber uint32
 	turnNumber  uint32
 }
@@ -36,13 +36,13 @@ type txPool struct {
 	commitmentPool map[eventKey]*proto.SubmitPlayerCommitmentRequest
 	cardPool       map[eventKey]*proto.SubmitPlayerCardRequest
 	// Pools for create room and set turn ready (same ticker as above)
-	createRoomPool   map[uint]*types.RequireGameCreationEvent
+	createRoomPool   map[int64]*types.RequireGameCreationEvent
 	setTurnReadyPool map[setTurnKey]*types.RequireSetupNewTurnEvent
 	poolLock         sync.RWMutex
 
 	// Track max received turn indices per round per player per game
 	// Structure: gameID -> playerAddress -> roundNumber -> maxTurnIndex
-	gameTxInfos map[uint]*gameTxInfo
+	gameTxInfos map[int64]*gameTxInfo
 	txInfoLock  sync.RWMutex
 
 	// Dependencies
@@ -67,16 +67,16 @@ func newTxPool(chainSvc ContractClient, batchSize int) *txPool {
 	return &txPool{
 		commitmentPool:   make(map[eventKey]*proto.SubmitPlayerCommitmentRequest),
 		cardPool:         make(map[eventKey]*proto.SubmitPlayerCardRequest),
-		createRoomPool:   make(map[uint]*types.RequireGameCreationEvent),
+		createRoomPool:   make(map[int64]*types.RequireGameCreationEvent),
 		setTurnReadyPool: make(map[setTurnKey]*types.RequireSetupNewTurnEvent),
-		gameTxInfos:      make(map[uint]*gameTxInfo),
+		gameTxInfos:      make(map[int64]*gameTxInfo),
 		chainSvc:         chainSvc,
 		batchSize:        batchSize,
 	}
 }
 
 // makeEventKey creates an eventKey from game ID, address, round number, and index
-func makeEventKey(gameID uint, address types.PlayerAddress, roundNumber, index uint32) eventKey {
+func makeEventKey(gameID int64, address types.PlayerAddress, roundNumber, index uint32) eventKey {
 	return eventKey{
 		gameID:      gameID,
 		address:     address.TemporaryAddress,
@@ -86,7 +86,7 @@ func makeEventKey(gameID uint, address types.PlayerAddress, roundNumber, index u
 }
 
 // getOrCreatePlayerInfo gets or creates player transaction info
-func (p *txPool) getOrCreatePlayerInfo(gameID uint, address types.PlayerAddress) *gameTxPlayerInfo {
+func (p *txPool) getOrCreatePlayerInfo(gameID int64, address types.PlayerAddress) *gameTxPlayerInfo {
 	gameInfo, exists := p.gameTxInfos[gameID]
 	if !exists {
 		gameInfo = &gameTxInfo{
@@ -113,7 +113,7 @@ func (p *txPool) addCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
 	}
 	var addr types.PlayerAddress
 	addr.FromProto(evt.Address)
-	gameID := uint(evt.GetGameID())
+	gameID := evt.GetGameID()
 
 	p.txInfoLock.Lock()
 	playerInfo := p.getOrCreatePlayerInfo(gameID, addr)
@@ -151,7 +151,7 @@ func (p *txPool) addCard(evt *proto.SubmitPlayerCardRequest) error {
 	}
 	var addr types.PlayerAddress
 	addr.FromProto(evt.Address)
-	gameID := uint(evt.GetGameID())
+	gameID := evt.GetGameID()
 
 	p.txInfoLock.Lock()
 	playerInfo := p.getOrCreatePlayerInfo(gameID, addr)
@@ -353,7 +353,7 @@ func (p *txPool) processCardPool() []types.RoomContractTask {
 }
 
 // clearGameInfo clears transaction info for a completed game
-func (p *txPool) clearGameInfo(gameID uint) {
+func (p *txPool) clearGameInfo(gameID int64) {
 	p.txInfoLock.Lock()
 	defer p.txInfoLock.Unlock()
 	delete(p.gameTxInfos, gameID)
@@ -361,7 +361,7 @@ func (p *txPool) clearGameInfo(gameID uint) {
 }
 
 // ClearGameInfo implements TxPoolEnqueuer.
-func (p *txPool) ClearGameInfo(gameID uint) {
+func (p *txPool) ClearGameInfo(gameID int64) {
 	p.clearGameInfo(gameID)
 }
 
@@ -384,7 +384,7 @@ func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) []t
 		totalRound := big.NewInt(evt.MaxRoundNumber)
 		totalCardIndex := big.NewInt(3) // 3 cards per round
 		initialHP := big.NewInt(evt.InitialHP)
-		gameID := big.NewInt(int64(evt.GameID))
+		gameID := new(big.Int).SetInt64(evt.GameID)
 
 		payload, err := chain.EncodeCreateRoomTask(
 			player1ID,
@@ -410,7 +410,7 @@ func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) []t
 func encodeSetTurnReadyEventsToTasks(events []*types.RequireSetupNewTurnEvent) []types.RoomContractTask {
 	tasks := make([]types.RoomContractTask, 0, len(events))
 	for _, evt := range events {
-		gameID := big.NewInt(int64(evt.GameID))
+		gameID := new(big.Int).SetInt64(evt.GameID)
 		payload, err := chain.EncodeStartNewTurnTask(gameID)
 		if err != nil {
 			log.Errorw("failed to encode set turn ready task", "error", err, "game_id", evt.GameID)
@@ -432,7 +432,7 @@ func encodeCommitmentEventsToTasks(events []*proto.SubmitPlayerCommitmentRequest
 		var commitmentHash [32]byte
 		copy(commitmentHash[:], evt.Commitment)
 
-		gameID := big.NewInt(int64(evt.GetGameID()))
+		gameID := new(big.Int).SetInt64(evt.GetGameID())
 		cardIndex := big.NewInt(int64(evt.TurnNumber))
 		round := big.NewInt(int64(evt.RoundNumber))
 
@@ -456,7 +456,7 @@ func encodeCommitmentEventsToTasks(events []*proto.SubmitPlayerCommitmentRequest
 func encodeCardEventsToTasks(events []*proto.SubmitPlayerCardRequest) []types.RoomContractTask {
 	tasks := make([]types.RoomContractTask, 0, len(events))
 	for _, evt := range events {
-		gameID := big.NewInt(int64(evt.GetGameID()))
+		gameID := new(big.Int).SetInt64(evt.GetGameID())
 		card := big.NewInt(int64(evt.Card))
 		cardIndex := big.NewInt(int64(evt.TurnNumber))
 		round := big.NewInt(int64(evt.RoundNumber))

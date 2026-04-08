@@ -21,7 +21,7 @@ type GameManager struct {
 	ctx               context.Context
 	lock              sync.RWMutex
 	gameLocksGuard    sync.Mutex
-	gameLocks         map[uint]*sync.Mutex
+	gameLocks         map[int64]*sync.Mutex
 	workerManager     *worker.WorkerManager
 	publisher         Publisher
 	chainSvc          ContractClient
@@ -34,7 +34,7 @@ type GameManager struct {
 	txPool *txPool
 }
 
-func (r *GameManager) getGameLock(gameID uint) *sync.Mutex {
+func (r *GameManager) getGameLock(gameID int64) *sync.Mutex {
 	r.gameLocksGuard.Lock()
 	defer r.gameLocksGuard.Unlock()
 	lock, ok := r.gameLocks[gameID]
@@ -45,7 +45,7 @@ func (r *GameManager) getGameLock(gameID uint) *sync.Mutex {
 	return lock
 }
 
-func (r *GameManager) withGameLock(gameID uint, fn func() error) error {
+func (r *GameManager) withGameLock(gameID int64, fn func() error) error {
 	lock := r.getGameLock(gameID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -54,7 +54,7 @@ func (r *GameManager) withGameLock(gameID uint, fn func() error) error {
 
 // withGameMutation runs handler inside a DB transaction with a row lock on games.id, then runs
 // queued after-commit hooks (settlement, etc.). Process-local withGameLock still reduces contention.
-func (r *GameManager) withGameMutation(gameID uint, handler func(g *Game) error) error {
+func (r *GameManager) withGameMutation(gameID int64, handler func(g *Game) error) error {
 	var afterCommit []func() error
 	err := db.WithGameMutationTx(gameID, func(tx *gorm.DB, gameInfo *dao.Game) error {
 		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
@@ -80,7 +80,7 @@ func (r *GameManager) withGameMutation(gameID uint, handler func(g *Game) error)
 	return firstErr
 }
 
-func (r *GameManager) executeOnGame(gameID uint, handler func(g *Game) error) error {
+func (r *GameManager) executeOnGame(gameID int64, handler func(g *Game) error) error {
 	if gameID == 0 {
 		return fmt.Errorf("executeOnGame: missing game id")
 	}
@@ -89,11 +89,11 @@ func (r *GameManager) executeOnGame(gameID uint, handler func(g *Game) error) er
 	})
 }
 func (r *GameManager) HandleConfirmBattle(req *proto.ConfirmBattleRequest) error {
-	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleConfirmBattle(req) })
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleConfirmBattle(req) })
 }
 
 func (r *GameManager) HandleSurrender(req *proto.SurrenderRequest) error {
-	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleSurrender(req) })
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleSurrender(req) })
 }
 
 func (r *GameManager) HandleTimerEvent(ctx context.Context, evt *timerEvent) error {
@@ -104,14 +104,14 @@ func (r *GameManager) HandleSubmitPlayerCommitment(req *proto.SubmitPlayerCommit
 	if err := validateSubmitPlayerCommitmentRequest(req); err != nil {
 		return err
 	}
-	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleSubmitPlayerCommitment(req) })
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleSubmitPlayerCommitment(req) })
 }
 
 func (r *GameManager) HandleSubmitPlayerCard(req *proto.SubmitPlayerCardRequest) error {
 	if err := validateSubmitPlayerCardRequest(req); err != nil {
 		return err
 	}
-	return r.executeOnGame(uint(req.GameID), func(g *Game) error { return g.handleSubmitPlayerCard(req) })
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleSubmitPlayerCard(req) })
 }
 
 func NewGameManager(ctx context.Context,
@@ -124,7 +124,7 @@ func NewGameManager(ctx context.Context,
 	// argsTemplate is always a DB-loaded row with non-zero id (room server guarantees this).
 	m := &GameManager{
 		ctx:           ctx,
-		gameLocks:     make(map[uint]*sync.Mutex),
+		gameLocks:     make(map[int64]*sync.Mutex),
 		workerManager: workerManagerService,
 		publisher:     pub,
 		chainSvc:      chainSvc,
@@ -176,7 +176,7 @@ func (r *GameManager) Stop() {
 
 // createGameAndNotify persists the new game graph, bootstraps first turn / chain flow (same for queue PVP, continue, tournament),
 // then returns the game id. completedMatchID is queue PVP only (non-zero → games.queue_match_id for GameReady.MatchId).
-func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
@@ -208,7 +208,7 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 }
 
 // CreateGameAndRun persists a new game (queue PVP, continue, or tournament), bootstraps chain for turn 1, then notifies.
-func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if r.stopped {
@@ -290,7 +290,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 	defer r.chainSvc.NotifyTxsCompleted(txs)
 	blockTime := int64(txs.Timestamp)
 	for _, protoTx := range txs.Transactions {
-		gameID := uint(protoTx.GameId)
+		gameID := protoTx.GameId
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
 			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(blockTime) }); err != nil {

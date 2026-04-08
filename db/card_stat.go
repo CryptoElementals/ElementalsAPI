@@ -216,7 +216,7 @@ func UpdateCardStatByPlayerIDs(playerIDs []int64) ([]*dao.CardStat, error) {
 
 			type turnRow struct {
 				ID          uint   `gorm:"column:id"`
-				GameID      uint   `gorm:"column:game_id"`
+				GameID      int64  `gorm:"column:game_id"`
 				RoundNumber uint32 `gorm:"column:round_number"`
 			}
 			var turnRows []turnRow

@@ -84,15 +84,15 @@ func (s *GRPCServices) UnregisterBots(ctx context.Context, req *proto.RegisterBo
 }
 
 // HandleGameCompletedFromRoom runs queue and tournament settlement after the room publishes TYPE_GAME_COMPLETED (game id only; full row loaded here).
-func (s *GRPCServices) HandleGameCompletedFromRoom(gameID uint32) error {
+func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	if gameID == 0 {
 		return nil
 	}
-	g, err := db.LoadGameByGameID(uint(gameID))
+	g, err := db.LoadGameByGameID(gameID)
 	if err != nil {
 		return fmt.Errorf("load game %d: %w", gameID, err)
 	}
-	ev := &types.GameCompletedEvent{GameID: uint(gameID), GameInfo: g}
+	ev := &types.GameCompletedEvent{GameID: gameID, GameInfo: g}
 	if err := s.queueSvc.GameResultSettlement(ev); err != nil {
 		return err
 	}

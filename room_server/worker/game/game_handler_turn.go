@@ -260,7 +260,7 @@ func (g *Game) buildTurnCompletedEvent(roundNumber uint32, turnNumber uint32, is
 	}
 
 	turnCompleted := &proto.TurnCompleted{
-		GameId:          uint32(g.gameInfo.ID),
+		GameId:          g.gameInfo.ID,
 		RoundNum:        roundNumber,
 		TurnNum:         turnNumber,
 		IsRoundComplete: isRoundComplete,

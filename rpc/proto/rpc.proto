@@ -37,7 +37,7 @@ message UnregisterBotsRequest {
 }
 
 message SurrenderRequest {
-    uint32 GameID = 1;
+    int64 GameID = 1;
     PlayerAddress Address = 2;
 }
 
@@ -86,7 +86,7 @@ message GamePhasePlayer {
 
 message GamePhase {
     GameType GameType = 1;
-    uint32 GameID = 2;
+    int64 GameID = 2;
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
@@ -95,7 +95,7 @@ message GamePhase {
 
 message ConfirmBattleRequest {
     PlayerAddress PlayerAddress = 1;
-    uint32 GameID = 2;
+    int64 GameID = 2;
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
 }
@@ -157,7 +157,7 @@ enum GameType {
 }
 
 message GameInfo {
-    uint32 game_id = 1;
+    int64 game_id = 1;
     GameType game_type = 2;
     GameStatus status = 3;
     int32 initial_hp = 4;
@@ -168,7 +168,7 @@ message GameInfo {
 
 message Transaction {
     bytes tx_hash = 1;
-    uint32 game_id = 2;
+    int64 game_id = 2;
     oneof tx {
         TxGameCreated game_created = 3;
         TxGameTurnSetupReady game_turn_setup_ready = 4;
@@ -208,7 +208,7 @@ message TxCardOnChain {
 }
 
 message SubmitPlayerCommitmentRequest {
-    uint32 GameID = 1;
+    int64 GameID = 1;
     PlayerAddress Address = 2;
     uint32 RoundNumber = 3;
     bytes Commitment = 4;
@@ -217,7 +217,7 @@ message SubmitPlayerCommitmentRequest {
 }
 
 message SubmitPlayerCardRequest {
-    uint32 GameID = 1;
+    int64 GameID = 1;
     PlayerAddress Address = 2;
     uint32 RoundNumber = 3;
     bytes Salt = 4;
@@ -234,5 +234,5 @@ message CreateGameAndRunRequest {
 }
 
 message CreateGameAndRunResponse {
-  uint32 game_id = 1;
+  int64 game_id = 1;
 }

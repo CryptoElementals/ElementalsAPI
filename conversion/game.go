@@ -11,7 +11,7 @@ func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
 		return nil
 	}
 	gameInfo := &proto.GameInfo{
-		GameId:    uint32(info.ID),
+		GameId:    info.ID,
 		GameType:  proto.GameType(info.Type),
 		Status:    proto.GameStatus(info.Status),
 		InitialHp: int32(info.GameArgs.InitialHP),
@@ -251,7 +251,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 
 	gamePhase := &proto.GamePhase{
 		GameType:    proto.GameType(game.Type),
-		GameID:      uint32(game.ID),
+		GameID:      game.ID,
 		RoundNumber: uint32(currentRound.RoundNumber),
 		TurnNumber:  turnNumber,
 		TurnStartAt: turnStartAt,

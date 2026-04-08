@@ -26,7 +26,7 @@ func BuildEventMessageID(evt *proto.Event) string {
 	}
 
 	primaryID := int64(0)
-	gameID := uint32(0)
+	gameID := int64(0)
 	rr := uint32(0)
 	tt := uint32(0)
 
@@ -37,39 +37,39 @@ func BuildEventMessageID(evt *proto.Event) string {
 		primaryID = evt.GetMatchCanceled().GetMatchId()
 	case proto.EventType_TYPE_ROUND_READY:
 		gameID = evt.GetRoundReady().GetGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = evt.GetRoundReady().GetRoundNum()
 	case proto.EventType_TYPE_TURN_READY:
 		gameID = evt.GetTurnReady().GetGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = evt.GetTurnReady().GetRoundNum()
 		tt = evt.GetTurnReady().GetTurnNum()
 	case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
 		gameID = evt.GetCommitmentsOnChain().GetGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = evt.GetCommitmentsOnChain().GetRoundNum()
 		tt = evt.GetCommitmentsOnChain().GetTurnNum()
 	case proto.EventType_TYPE_TURN_COMPLETE:
 		gameID = evt.GetTurnCompleted().GetGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = evt.GetTurnCompleted().GetRoundNum()
 		tt = evt.GetTurnCompleted().GetTurnNum()
 	case proto.EventType_TYPE_GAME_CREATED:
 		gameID = evt.GetGameReady().GetGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 	case proto.EventType_TYPE_GAME_PHASE_SYNC:
 		gameID = evt.GetGamePhase().GetGameID()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = evt.GetGamePhase().GetRoundNumber()
 		tt = evt.GetGamePhase().GetTurnNumber()
 	case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
 		gameID = evt.GetGameSettlementResult().GetGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = 99
 		tt = 99
 	case proto.EventType_TYPE_NOT_MATCHABLE:
 		gameID = evt.GetNotMatchable().GetLastGameId()
-		primaryID = int64(gameID)
+		primaryID = gameID
 		rr = 99
 		tt = 99
 	}

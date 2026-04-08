@@ -119,7 +119,7 @@ func TournamentListMatchesForRound(tx *gorm.DB, tournamentID uint, roundNumber u
 }
 
 // TournamentGetMatchByGameID finds a bracket match linked to a game.
-func TournamentGetMatchByGameID(gameID uint) (*dao.TournamentMatch, error) {
+func TournamentGetMatchByGameID(gameID int64) (*dao.TournamentMatch, error) {
 	var m dao.TournamentMatch
 	err := Get().Where("game_id = ?", gameID).First(&m).Error
 	if err != nil {

@@ -35,10 +35,10 @@ func (m *MockGameCreator) EXPECT() *MockGameCreatorMockRecorder {
 }
 
 // CreateGameAndRun mocks base method.
-func (m *MockGameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (uint, error) {
+func (m *MockGameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateGameAndRun", players, gameType, completedMatchID)
-	ret0, _ := ret[0].(uint)
+	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
