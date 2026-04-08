@@ -25,8 +25,10 @@ var (
 
 	roomServerEndpoint  string
 	lobbyServerEndpoint string
+	apiServerEndpoint   string
 	tempWalletPath      string
 	gameID              int64
+	gameClientMode      string
 )
 
 // gameCmd represents the game command
@@ -51,12 +53,12 @@ func init() {
 	rootCmd.AddCommand(gameCmd)
 	gameCmd.AddCommand(gameRunCmd)
 
+	gameRunCmd.Flags().StringVarP(&gameClientMode, "client-mode", "m", "grpc", "game client mode: grpc or http")
 	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
 	gameRunCmd.Flags().StringVarP(&lobbyServerEndpoint, "lobby-server-endpoint", "l", "", "lobby server endpoint")
+	gameRunCmd.Flags().StringVarP(&apiServerEndpoint, "api-server-endpoint", "a", "", "api server endpoint (required when --client-mode=http)")
 	gameRunCmd.Flags().Int64VarP(&playerId, "player-id", "p", 0, "player ID")
 	gameRunCmd.Flags().StringVarP(&tempWalletPath, "temp-wallet-path", "t", "", "temp wallet path")
-	gameRunCmd.MarkFlagRequired("room-server-endpoint")
-	gameRunCmd.MarkFlagRequired("lobby-server-endpoint")
 	gameRunCmd.MarkFlagRequired("player-id")
 	gameRunCmd.MarkFlagRequired("temp-wallet-path")
 }
@@ -89,13 +91,12 @@ func (p *InteractiveCardProvider) GetCard(round uint32, turn uint32) (uint32, er
 }
 
 func startGame() error {
-	client, err := rpc.NewClient(roomServerEndpoint, lobbyServerEndpoint)
+	err := log.InitGlobalLogger(&log.Config{
+		Development: true,
+	})
 	if err != nil {
 		return err
 	}
-	log.InitGlobalLogger(&log.Config{
-		Development: true,
-	})
 	var wTemp *wallet.Wallet
 	wTemp, err = wallet.LoadWallet(tempWalletPath)
 	if err != nil {
@@ -106,17 +107,50 @@ func startGame() error {
 	// Set up interactive card provider
 	scanner := bufio.NewScanner(os.Stdin)
 	cardProvider := NewInteractiveCardProvider(scanner)
-	gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, client, cardProvider)
-	if err != nil {
-		return err
+	switch strings.ToLower(strings.TrimSpace(gameClientMode)) {
+	case "grpc":
+		if roomServerEndpoint == "" || lobbyServerEndpoint == "" {
+			return fmt.Errorf("room-server-endpoint and lobby-server-endpoint are required when --client-mode=grpc")
+		}
+		client, err := rpc.NewClient(roomServerEndpoint, lobbyServerEndpoint)
+		if err != nil {
+			return err
+		}
+		gameContext, err := gameclient.NewGameContext(context.Background(), playerId, wTemp, client, cardProvider)
+		if err != nil {
+			return err
+		}
+		err = gameContext.Subscribe()
+		if err != nil {
+			return err
+		}
+		err = gameContext.JoinQueue()
+		if err != nil {
+			return err
+		}
+		return gameContext.Run()
+	case "http":
+		if apiServerEndpoint == "" {
+			return fmt.Errorf("api-server-endpoint is required when --client-mode=http")
+		}
+		gameContext, err := gameclient.NewGameContextHTTP(context.Background(), apiServerEndpoint, playerId, wTemp, cardProvider)
+		if err != nil {
+			return err
+		}
+		err = gameContext.SignIn()
+		if err != nil {
+			return err
+		}
+		err = gameContext.Subscribe()
+		if err != nil {
+			return err
+		}
+		err = gameContext.JoinQueue()
+		if err != nil {
+			return err
+		}
+		return gameContext.Run()
+	default:
+		return fmt.Errorf("unsupported client-mode %q, must be one of: grpc, http", gameClientMode)
 	}
-	err = gameContext.Subscribe()
-	if err != nil {
-		return err
-	}
-	err = gameContext.JoinQueue()
-	if err != nil {
-		return err
-	}
-	return gameContext.Run()
 }
