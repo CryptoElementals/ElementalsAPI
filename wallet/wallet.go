@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -65,6 +66,15 @@ func NewWalletFromPrivKey(privateKey *ecdsa.PrivateKey) *Wallet {
 	address := crypto.PubkeyToAddress(*publicKeyECDSA)
 	wallet.address = address
 	return wallet
+}
+
+func NewWalletFromPrivKeyHex(privateKeyHex string) (*Wallet, error) {
+	privateKeyHex = strings.TrimPrefix(privateKeyHex, "0x")
+	privateKey, err := crypto.HexToECDSA(privateKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	return NewWalletFromPrivKey(privateKey), nil
 }
 
 func LoadWallet(priKeyPath string) (*Wallet, error) {

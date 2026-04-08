@@ -154,6 +154,12 @@ func (c *GameContextHTTP) Run() error {
 				}
 				if matched.LastGameId != nil {
 					log.Infow("game matched (continue rematch)", "player_id", c.playerID, "match_id", matched.GetMatchId(), "last_game_id", matched.GetLastGameId())
+					if matched.GetMatchId() != 0 {
+						if err := c.cancelMatch(matched.GetMatchId()); err != nil {
+							log.Errorw("failed to cancel unexpected continue rematch", "player_id", c.playerID, "match_id", matched.GetMatchId(), "error", err)
+						}
+					}
+					continue
 				} else {
 					log.Infow("game matched", "player_id", c.playerID, "match_id", matched.GetMatchId())
 				}
@@ -311,6 +317,10 @@ func (c *GameContextHTTP) confirmBattle() error {
 
 func (c *GameContextHTTP) confirmMatch(matchID int64) error {
 	return c.apiClient.ConfirmMatch(matchID, c.address, c.playerID)
+}
+
+func (c *GameContextHTTP) cancelMatch(matchID int64) error {
+	return c.apiClient.CancelMatch(matchID, c.address, c.playerID)
 }
 
 // prepareNewCard generates a new salt and calculates the commitment for the given card
