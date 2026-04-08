@@ -3,11 +3,14 @@ package botserver
 import (
 	"context"
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"time"
 
 	gameclient "github.com/CryptoElementals/common/game_client"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -138,11 +141,34 @@ func (b *Bot) formatBotID() string {
 }
 
 func (b *Bot) run() error {
-	err := b.runGameContext()
-	if err != nil {
-		return err
+	backoff := 500 * time.Millisecond
+	const maxBackoff = 5 * time.Second
+	for {
+		err := b.runGameContext()
+		if err == nil {
+			if b.ctx.Err() != nil {
+				return nil
+			}
+			backoff = 500 * time.Millisecond
+			continue
+		}
+		if b.ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			return nil
+		}
+		log.Errorw("bot_stream_subscribe_failed", "err", err, "addr", b.addr.String(), "retry_in", backoff.String())
+		select {
+		case <-b.ctx.Done():
+			return nil
+		case <-time.After(backoff):
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+		log.Infow("bot_stream_subscribe_retrying", "addr", b.addr.String())
 	}
-	return nil
 }
 
 func (b *Bot) runGameContext() error {

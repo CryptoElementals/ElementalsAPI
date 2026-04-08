@@ -24,7 +24,9 @@ func NewBotServer(cfg *config.BotConfig) *BotServer {
 }
 
 func (s *BotServer) Start() {
-	s.svc.runBots()
+	if err := s.svc.Start(); err != nil {
+		log.Fatalw("cannot start bot server", "err", err)
+	}
 }
 
 func (s *BotServer) Stop() {

@@ -101,6 +101,14 @@ func (c *GameContext) Run() error {
 				}
 				if matched.LastGameId != nil {
 					log.Infow("game matched (continue rematch)", "match id", matched.GetMatchId(), "last game id", matched.GetLastGameId())
+					if matched.GetMatchId() != 0 {
+						if err := c.cancelMatch(matched.GetMatchId()); err != nil {
+							log.Errorw("failed to cancel unexpected continue rematch", "match id", matched.GetMatchId(), "error", err)
+						} else {
+							log.Infow("continue rematch canceled for bot", "match id", matched.GetMatchId())
+						}
+					}
+					continue
 				} else {
 					log.Infow("game matched", "match id", matched.GetMatchId())
 				}
@@ -278,6 +286,10 @@ func (c *GameContext) confirmMatch(matchID int64) error {
 	return c.rpcClient.RpcClient.ConfirmMatch(c.ctx, c.myself, matchID)
 }
 
+func (c *GameContext) cancelMatch(matchID int64) error {
+	return c.rpcClient.RpcClient.CancelMatch(c.ctx, c.myself, matchID)
+}
+
 // PrepareNewCard generates a new salt and calculates the commitment for the given card
 func (c *GameContext) prepareNewCard(card uint32) error {
 	// Generate random bytes for salt
@@ -397,4 +409,3 @@ func (c *GameContext) submitCard(card uint32, salt string) error {
 	log.Infow("card submitted successfully", "round", c.currentRound, "turn", c.currentTurn)
 	return nil
 }
-

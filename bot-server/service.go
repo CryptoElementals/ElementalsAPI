@@ -2,7 +2,9 @@ package botserver
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
@@ -13,13 +15,16 @@ import (
 )
 
 type Service struct {
-	ctx          context.Context
-	ccl          context.CancelFunc
-	bots         []*Bot
-	addresses    []*types.PlayerAddress
-	chainClient  *ethclient.Client
-	rpcClient    *rpc.Client
-	wg           sync.WaitGroup
+	ctx         context.Context
+	ccl         context.CancelFunc
+	bots        []*Bot
+	addresses   []*types.PlayerAddress
+	chainClient *ethclient.Client
+	rpcClient   *rpc.Client
+	wg          sync.WaitGroup
+	mu          sync.Mutex
+	started     bool
+	registered  bool
 }
 
 func parseWallet(path config.WalletInfo) (*playerWallet, error) {
@@ -69,13 +74,27 @@ func NewService(
 		ctx:         ctx,
 		ccl:         ccl,
 		chainClient: chainClient,
-		rpcClient:    rpcClient,
-		bots:         bots,
-		addresses:    addresses,
+		rpcClient:   rpcClient,
+		bots:        bots,
+		addresses:   addresses,
 	}, nil
 }
 
 func (s *Service) Start() error {
+	s.mu.Lock()
+	if s.started {
+		s.mu.Unlock()
+		return nil
+	}
+	if err := s.rpcClient.RpcClient.RegisterBots(s.ctx, s.addresses...); err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("register bots: %w", err)
+	}
+	s.registered = true
+	s.started = true
+	s.mu.Unlock()
+
+	log.Infow("bot_register_success", "count", len(s.addresses))
 	s.runBots()
 	return nil
 }
@@ -95,6 +114,25 @@ func (s *Service) runBots() {
 }
 
 func (s *Service) Stop() {
+	s.mu.Lock()
+	if !s.started {
+		s.mu.Unlock()
+		return
+	}
+	s.started = false
+	registered := s.registered
+	s.registered = false
+	s.mu.Unlock()
+
 	s.ccl()
 	s.wg.Wait()
+	if registered {
+		unregisterCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.rpcClient.RpcClient.UnregisterBots(unregisterCtx, s.addresses...); err != nil {
+			log.Errorw("bot_unregister_failed", "err", err, "count", len(s.addresses))
+		} else {
+			log.Infow("bot_unregister_success", "count", len(s.addresses))
+		}
+	}
 }

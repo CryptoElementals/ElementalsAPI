@@ -123,6 +123,40 @@ func (c *RpcClient) GetPlayerToken(ctx context.Context, playerId int64) (*proto.
 	return c.lobby.GetPlayerToken(ctx, &proto.GetPlayerTokenRequest{Id: playerId})
 }
 
+func (c *RpcClient) RegisterBots(ctx context.Context, addrs ...*types.PlayerAddress) error {
+	if err := c.lobbyRequired(); err != nil {
+		return err
+	}
+	protoAddrs := make([]*proto.PlayerAddress, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr == nil {
+			continue
+		}
+		protoAddrs = append(protoAddrs, addr.ToProto())
+	}
+	_, err := c.lobby.RegisterBots(ctx, &proto.RegisterBotsForLobbyRequest{
+		Addresses: protoAddrs,
+	})
+	return err
+}
+
+func (c *RpcClient) UnregisterBots(ctx context.Context, addrs ...*types.PlayerAddress) error {
+	if err := c.lobbyRequired(); err != nil {
+		return err
+	}
+	protoAddrs := make([]*proto.PlayerAddress, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr == nil {
+			continue
+		}
+		protoAddrs = append(protoAddrs, addr.ToProto())
+	}
+	_, err := c.lobby.UnregisterBots(ctx, &proto.RegisterBotsForLobbyRequest{
+		Addresses: protoAddrs,
+	})
+	return err
+}
+
 func (c *RpcClient) GetPlayerStatus(ctx context.Context, addr *types.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
 	if err := c.lobbyRequired(); err != nil {
 		return nil, err
