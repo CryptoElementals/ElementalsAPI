@@ -27,51 +27,15 @@ sequenceDiagram
     end
 
     Lobby->>DB: LockUserToken(id, tempAddr, minToken)
-    alt Token 不足或已锁定
+    alt Token 不足或已锁定, 检查locked_user_tokens表/tournament_participant表
         DB-->>Lobby: error
         Lobby-->>API: error
     end
 
-    Lobby->>Lobby: 从continue队列移除
-
-    loop 遍历队列中其他玩家
-        alt 可匹配 (不同id 且 不同 tempAddr)
-            Lobby->>DB: 放入Match表里/SetLockedTokenMatchID 
-            rect rgb(240, 248, 255)
-                Note over Lobby,Redis: 须原子完成（同锁/同事务；失败则整体回滚）
-                Lobby->>Redis: MatchedEvent(含MatchID)
-                Lobby->>Redis: 从queue 移除双方
-                Lobby->>Redis: queueCache.Delete
-            end
-        end
-    end
-
-    alt 未匹配
-        Lobby->>Redis: queue[addr] = now
-        Lobby->>Redis: queueCache.Set(addr, "v")
-    end
+    Lobby->>DB: 插入tournament_participant记录
 
     Lobby-->>API: ok
     API-->>Client: JoinQueueResponse
-```
-
-## 时序图：PVP ExitQueue
-已经JoinQueue,等待匹配对手的过程中,可以ExitQueue。
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'lineColor':'#333','primaryBorderColor':'#333','primaryTextColor':'#333','secondaryBorderColor':'#333','tertiaryBorderColor':'#333'}}}%%
-sequenceDiagram
-    participant Client
-    participant API
-    participant Lobby
-    participant DB
-    participant Redis
-
-    Client->>API: ExitQueue
-    API->>Lobby: ExitQueue
-    Lobby->>Redis: 从Queue删除
-    Lobby->>DB:UnlockToken
-    Lobby->>API: Response
-    API->>Client: Response
 ```
 
 ## 时序图：PVP StartBattle
