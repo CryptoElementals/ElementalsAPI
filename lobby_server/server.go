@@ -9,14 +9,15 @@ import (
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	"github.com/CryptoElementals/common/lobby_server/worker/turnament"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
+	"github.com/CryptoElementals/common/rpc/middleware"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/stream"
 	"github.com/CryptoElementals/common/timer"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -86,7 +87,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	s.tournSvc = turnament.NewTournamentQueueService(ctx, gc, cfg.MinTokenToJoinQueue)
 	s.grpcHandlers = NewGRPCServices(s.queueSvc, s.tournSvc, rw)
 
-	s.grpcServer = grpc.NewServer()
+	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	proto.RegisterLobbyServiceServer(s.grpcServer, s.grpcHandlers)
 
 	return s, nil

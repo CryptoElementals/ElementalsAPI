@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
@@ -12,7 +11,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
-	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/middleware"
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/stream"
@@ -25,8 +24,8 @@ type Service struct {
 	ctx       context.Context
 	cfg       *config.RoomServerConfig
 	mgr       *worker.WorkerManager
-	server   *grpc.Server
-	chainSvc *chain.Chain
+	server    *grpc.Server
+	chainSvc  *chain.Chain
 	gameSvc   *game.Service
 	rpcServer *rpc.Rpc
 }
@@ -68,7 +67,7 @@ func New(ctx context.Context,
 	eventPub := pubsub.NewStreamPublisher(st)
 	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, cfg.GameArgsID, chainSvc, cfg.PoolBatchSize, cfg.PoolProcessingInterval)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
-	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
+	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	// game.Service implements chain/player/game handlers.
 	rpcServer := rpc.NewRpc(s.gameSvc)
 	s.rpcServer = rpcServer
@@ -122,19 +121,4 @@ func (s *Service) startListener() error {
 	}()
 
 	return nil
-}
-
-func UnaryServerInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	start := time.Now()
-
-	resp, err := handler(ctx, req)
-
-	duration := time.Since(start)
-	if err != nil {
-		log.Errorw("rpc called", "method", info.FullMethod, "req", types.ToJsonLoggable(req), "err", err, "duration", duration.Seconds())
-	} else {
-		log.Debugw("rpc called", "method", info.FullMethod, "req", types.ToJsonLoggable(req), "resp", types.ToJsonLoggable(resp), "duration", duration.Seconds())
-	}
-
-	return resp, err
 }
