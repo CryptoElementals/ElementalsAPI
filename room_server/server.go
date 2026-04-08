@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/config"
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker"
@@ -62,16 +61,12 @@ func New(ctx context.Context,
 		return nil, err
 	}
 	s.chainSvc = chainSvc
-	argsTemplate, err := db.LoadRoomServerGameArgs(cfg.GameArgsID)
-	if err != nil {
-		log.Fatalf("game_args template required (game-args-id=%d): %v", cfg.GameArgsID, err)
-	}
 	st, err := stream.NewRedisStream()
 	if err != nil {
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
 	eventPub := pubsub.NewStreamPublisher(st)
-	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, argsTemplate, chainSvc, cfg.PoolBatchSize, cfg.PoolProcessingInterval)
+	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, cfg.GameArgsID, chainSvc, cfg.PoolBatchSize, cfg.PoolProcessingInterval)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(UnaryServerInterceptor))
 	// game.Service implements chain/player/game handlers.

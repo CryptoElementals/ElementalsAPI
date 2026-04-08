@@ -6,7 +6,6 @@ import (
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -35,9 +34,8 @@ type GameResultSettler interface {
 }
 
 type Service struct {
-	ctx              context.Context
-	gameManager      *GameManager
-	gameArgsTemplate *dao.GameArgs
+	ctx         context.Context
+	gameManager *GameManager
 }
 
 func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
@@ -48,16 +46,15 @@ func NewService(
 	ctx context.Context,
 	workerManager *worker.WorkerManager,
 	pub Publisher,
-	argsTemplate *dao.GameArgs,
+	gameArgsTemplateID uint,
 	chainSvc ContractClient,
 	poolBatchSize int,
 	poolProcessingInterval int,
 ) *Service {
-	mgr := NewGameManager(ctx, workerManager, pub, argsTemplate, chainSvc, poolBatchSize, poolProcessingInterval)
+	mgr := NewGameManager(ctx, workerManager, pub, gameArgsTemplateID, chainSvc, poolBatchSize, poolProcessingInterval)
 	return &Service{
-		ctx:              ctx,
-		gameManager:      mgr,
-		gameArgsTemplate: argsTemplate,
+		ctx:         ctx,
+		gameManager: mgr,
 	}
 }
 

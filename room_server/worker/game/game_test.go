@@ -197,7 +197,7 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	ga := newTestGameArgsRow(t, 3000)
 	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0, 0)
+	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
 	registerGameManagerWorker(gameManager)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
@@ -264,7 +264,7 @@ func TestGameStateMachine(t *testing.T) {
 	}
 	t.Run("1 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 1000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0, 0)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -274,7 +274,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 	t.Run("2 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 3000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0, 0)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -285,7 +285,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 	t.Run("3 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 10000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga, contractClient, 0, 0)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

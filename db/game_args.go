@@ -18,3 +18,18 @@ func LoadRoomServerGameArgs(templateID uint) (*dao.GameArgs, error) {
 	dao.MustValidateGameArgs(&out)
 	return &out, nil
 }
+
+// LoadAllGameArgs loads all game_args rows and returns heap copies keyed by id.
+func LoadAllGameArgs() (map[uint]*dao.GameArgs, error) {
+	var rows []dao.GameArgs
+	if err := Get().Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("load all game_args: %w", err)
+	}
+	out := make(map[uint]*dao.GameArgs, len(rows))
+	for i := range rows {
+		rowCopy := rows[i]
+		dao.MustValidateGameArgs(&rowCopy)
+		out[rowCopy.ID] = &rowCopy
+	}
+	return out, nil
+}

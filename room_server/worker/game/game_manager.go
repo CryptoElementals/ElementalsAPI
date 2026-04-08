@@ -26,8 +26,10 @@ type GameManager struct {
 	publisher         Publisher
 	chainSvc          ContractClient
 	gameResultSettler GameResultSettler
-	// argsTemplate is the DB-backed game_args row (read-only, non-zero id); NewGame clones it per match.
-	argsTemplate *dao.GameArgs
+	// argsTemplateID is the default game_args id for new matches.
+	argsTemplateID uint
+	gameArgsMu   sync.RWMutex
+	gameArgsByID map[uint]*dao.GameArgs
 	stopped      bool
 
 	// Event pools for commitment and card submissions
@@ -57,6 +59,11 @@ func (r *GameManager) withGameLock(gameID int64, fn func() error) error {
 func (r *GameManager) withGameMutation(gameID int64, handler func(g *Game) error) error {
 	var afterCommit []func() error
 	err := db.WithGameMutationTx(gameID, func(tx *gorm.DB, gameInfo *dao.Game) error {
+		gameArgs, err := r.getGameArgsForID(gameInfo.GameArgsID)
+		if err != nil {
+			return err
+		}
+		gameInfo.GameArgs = gameArgs
 		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
 		g.mutateTx = tx
 		g.queueAfterTxCommit = func(fn func() error) {
@@ -117,32 +124,74 @@ func (r *GameManager) HandleSubmitPlayerCard(req *proto.SubmitPlayerCardRequest)
 func NewGameManager(ctx context.Context,
 	workerManagerService *worker.WorkerManager,
 	pub Publisher,
-	argsTemplate *dao.GameArgs,
+	argsTemplateID uint,
 	chainSvc ContractClient,
 	poolBatchSize int,
 	poolProcessingInterval int,
 ) *GameManager {
-	// argsTemplate is always a DB-loaded row with non-zero id (room server guarantees this).
 	m := &GameManager{
-		ctx:           ctx,
-		gameLocks:     make(map[int64]*sync.Mutex),
-		workerManager: workerManagerService,
-		publisher:     pub,
-		chainSvc:      chainSvc,
-		argsTemplate:  argsTemplate,
+		ctx:            ctx,
+		gameLocks:      make(map[int64]*sync.Mutex),
+		workerManager:  workerManagerService,
+		publisher:      pub,
+		chainSvc:       chainSvc,
+		argsTemplateID: argsTemplateID,
+		gameArgsByID:   make(map[uint]*dao.GameArgs),
 	}
 	m.txPool = newTxPool(chainSvc, poolBatchSize, poolProcessingInterval)
 	return m
 }
 
-func (r *GameManager) cloneGameArgs() *dao.GameArgs {
-	ga := *r.argsTemplate
+func (r *GameManager) cloneGameArgs() (*dao.GameArgs, error) {
+	return r.getGameArgsForID(r.argsTemplateID)
+}
+
+func cloneDaoGameArgs(src *dao.GameArgs) *dao.GameArgs {
+	ga := *src
 	return &ga
 }
 
+func (r *GameManager) preloadGameArgsCache() error {
+	all, err := db.LoadAllGameArgs()
+	if err != nil {
+		return err
+	}
+	r.gameArgsMu.Lock()
+	r.gameArgsByID = all
+	r.gameArgsMu.Unlock()
+	return nil
+}
+
+func (r *GameManager) getGameArgsForID(gameArgsID uint) (*dao.GameArgs, error) {
+	if gameArgsID == 0 {
+		return nil, fmt.Errorf("game args id is required")
+	}
+	r.gameArgsMu.RLock()
+	cached, ok := r.gameArgsByID[gameArgsID]
+	r.gameArgsMu.RUnlock()
+	if ok && cached != nil {
+		return cloneDaoGameArgs(cached), nil
+	}
+	loaded, err := db.LoadRoomServerGameArgs(gameArgsID)
+	if err != nil {
+		return nil, err
+	}
+	r.gameArgsMu.Lock()
+	r.gameArgsByID[gameArgsID] = loaded
+	r.gameArgsMu.Unlock()
+	return cloneDaoGameArgs(loaded), nil
+}
+
 func (r *GameManager) Start() error {
+	if r.argsTemplateID == 0 {
+		return fmt.Errorf("game args template id is required")
+	}
 	timer.InitTimer(timer.ScopeRoom)
 	r.registerTimerFunction()
+
+	if err := r.preloadGameArgsCache(); err != nil {
+		return err
+	}
 
 	// Start background goroutine for pool processing
 	go r.txPool.processPools(r.ctx)
@@ -184,7 +233,11 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	if gameType == 0 {
 		gameType = types.GameTypePVP
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, r.cloneGameArgs())
+	gameArgs, err := r.cloneGameArgs()
+	if err != nil {
+		return 0, err
+	}
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, gameArgs)
 	game.gameInfo.ID = completedMatchID
 	game.gameInfo.QueueMatchID = completedMatchID
 	if gameType == types.GameTypeTournament {
