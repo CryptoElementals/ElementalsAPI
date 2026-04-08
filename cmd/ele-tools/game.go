@@ -1,6 +1,3 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package main
 
 import (
@@ -16,6 +13,20 @@ import (
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/spf13/cobra"
+)
+
+var (
+	playerId int64
+
+	endpoint string
+	user     string
+	password string
+	dbName   string
+
+	roomServerEndpoint  string
+	lobbyServerEndpoint string
+	tempWalletPath      string
+	gameID              int64
 )
 
 // gameCmd represents the game command
