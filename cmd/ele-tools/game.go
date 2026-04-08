@@ -141,6 +141,21 @@ func startGame() error {
 		if err != nil {
 			return err
 		}
+		httpAPIClient := gameContext.GetApiClient()
+		httpPlayerID := gameContext.GetPlayerID()
+		collected, err := httpAPIClient.HasCollectedDailyReward(httpPlayerID)
+		if err != nil {
+			return fmt.Errorf("failed to check daily reward status: %w", err)
+		}
+		if !collected {
+			err = httpAPIClient.CollectDailyReward(httpPlayerID)
+			if err != nil {
+				return fmt.Errorf("failed to collect daily reward: %w", err)
+			}
+			log.Infow("daily reward collected", "player_id", httpPlayerID)
+		} else {
+			log.Infow("daily reward already collected", "player_id", httpPlayerID)
+		}
 		err = gameContext.Subscribe()
 		if err != nil {
 			return err
