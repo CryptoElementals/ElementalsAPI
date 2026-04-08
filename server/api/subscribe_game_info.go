@@ -313,12 +313,14 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 }
 
 func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
+	messageID := msg.Event.GetMessageId()
 	switch msg.Event.Type {
 	case proto.EventType_TYPE_MATCHED:
 		gameMatched := msg.Event.GetGameMatched()
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "matched",
 				"Message":   gameMatched,
 				"Players":   task.buildMatchedPlayersInfo(gameMatched),
@@ -330,6 +332,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "partConfirmed",
 			},
 			Timestamp:   time.Now(),
@@ -340,6 +343,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "gameCreated",
 				"Message":   gameReady,
 				"Players":   task.buildGameReadyPlayersInfo(gameReady),
@@ -351,6 +355,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "roundReady",
 				"Message":   msg.Event.GetRoundReady(),
 			},
@@ -361,6 +366,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "turnReady",
 				"Message":   msg.Event.GetTurnReady(),
 			},
@@ -371,6 +377,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "commitmentsOnChain",
 				"Message":   msg.Event.GetCommitmentsOnChain(),
 			},
@@ -383,6 +390,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "turnComplete",
 				"Message":   turnCompletedDTO,
 			},
@@ -394,6 +402,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "gamePhaseSync",
 				"Message":   gamePhase,
 				"Players":   task.buildGamePhasePlayersInfo(gamePhase),
@@ -405,6 +414,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "notMatchable",
 				"Message":   msg.Event.GetNotMatchable(),
 			},
@@ -415,6 +425,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "matchCanceled",
 				"Message":   msg.Event.GetMatchCanceled(),
 			},
@@ -425,6 +436,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "gameSettlementResult",
 				"Message":   msg.Event.GetGameSettlementResult(),
 			},
@@ -438,6 +450,7 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		return events.Event{
 			Type: events.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
+				"MessageID": messageID,
 				"EventType": "unknown",
 				"RawData":   string(jsonData),
 			},
