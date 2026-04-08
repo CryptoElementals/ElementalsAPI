@@ -8,30 +8,33 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
-	pb "github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/redis"
+	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/server/event_v2"
 	"github.com/CryptoElementals/common/stream"
 )
 
 type PubSubClient struct {
-	room  stream.Stream
-	lobby stream.Stream
-	mu    sync.RWMutex
-	subs  map[string]func()
+	stream   stream.Stream
+	eventBus event_v2.EventBus
+	mu       sync.RWMutex
+	subs     map[string]func()
 }
 
 // NewPubSubClient uses one Redis stream backend for both room and lobby topic keys.
 func NewPubSubClient(st stream.Stream) *PubSubClient {
-	return NewPubSubClientDual(st, st)
-}
-
-// NewPubSubClientDual allows separate stream handles (typically the same [stream.RedisStream] instance twice).
-func NewPubSubClientDual(room, lobby stream.Stream) *PubSubClient {
-	return &PubSubClient{
-		room:  room,
-		lobby: lobby,
-		subs:  make(map[string]func()),
+	c := &PubSubClient{
+		stream: st,
+		subs:   make(map[string]func()),
 	}
+	if st != nil {
+		c.eventBus = event_v2.NewEventBus(
+			pubsub.NewStreamSubscriber(st),
+			pubsub.TopicRoom,
+			pubsub.TopicLobby,
+		)
+	}
+	return c
 }
 
 func (c *PubSubClient) Close() error {
@@ -45,12 +48,12 @@ func (c *PubSubClient) Close() error {
 }
 
 func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[string]string) error {
-	if c.room == nil {
+	if c.stream == nil {
 		return fmt.Errorf("stream is nil")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	pub := pubsub.NewStreamPublisher(c.room)
+	pub := pubsub.NewStreamPublisher(c.stream)
 	req := &pb.PublishRequest{Topic: topic, Event: event, Metadata: metadata}
 	resp, err := pub.Publish(ctx, req)
 	if err != nil {
@@ -62,96 +65,86 @@ func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[strin
 
 // Subscribe listens on TopicRoom and TopicLobby via Redis streams, filtering by Receivers.
 func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, evtChan chan *pb.Event, errChan chan error) error {
-	start := func(st stream.Stream, label string, streamTopic string) error {
-		if st == nil {
-			return nil
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		key := streamTopic + "|" + subscriberID + "|" + label
+	if c.eventBus == nil {
+		return fmt.Errorf("event bus is nil")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	key := subscriberID
+	busSubscriberID := event_v2.SubscriberID{
+		Address:  self,
+		ClientID: key,
+	}
+	msgCh, busErrCh := c.eventBus.RegisterSubscriber(busSubscriberID)
 
-		sub := pubsub.NewStreamSubscriber(st)
-		msgCh, stopReader, err := sub.Subscribe(ctx, streamTopic, pubsub.SubscribeOptions{})
-		if err != nil {
-			cancel()
-			return fmt.Errorf("subscribe %s: %w", label, err)
-		}
-
-		var once sync.Once
-		stopAll := func() {
-			once.Do(func() {
-				stopReader()
-				cancel()
-				c.mu.Lock()
-				delete(c.subs, key)
-				c.mu.Unlock()
-			})
-		}
-
+	cleanup := func() {
+		c.eventBus.UnregisterSubscriber(busSubscriberID)
+		cancel()
 		c.mu.Lock()
-		c.subs[key] = stopAll
+		delete(c.subs, key)
 		c.mu.Unlock()
+	}
+	c.mu.Lock()
+	c.subs[key] = cleanup
+	c.mu.Unlock()
 
-		log.Infow("pubsub subscribed", "topic", streamTopic, "subscriber_id", subscriberID, "stream", label)
-		go func() {
-			defer stopAll()
-			for {
+	log.Infow("pubsub subscribed", "topics", []string{pubsub.TopicRoom, pubsub.TopicLobby}, "subscriber_id", subscriberID)
+	go func() {
+		defer cleanup()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err, ok := <-busErrCh:
+				if !ok {
+					return
+				}
+				if err == nil {
+					continue
+				}
 				select {
 				case <-ctx.Done():
 					return
-				case msg, ok := <-msgCh:
-					if !ok {
-						return
-					}
-					ev := msg.GetEvent()
-					if !pubsub.EventTargetsReceiver(ev, self) {
-						continue
-					}
-					select {
-					case <-ctx.Done():
-						return
-					case evtChan <- ev:
-					}
+				case errChan <- err:
+				}
+			case msg, ok := <-msgCh:
+				if !ok {
+					return
+				}
+				if msg == nil || msg.GetEvent() == nil {
+					continue
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case evtChan <- msg.GetEvent():
 				}
 			}
-		}()
-		return nil
-	}
-	if err := start(c.room, "room", pubsub.TopicRoom); err != nil {
-		return err
-	}
-	if c.lobby != nil {
-		if err := start(c.lobby, "lobby", pubsub.TopicLobby); err != nil {
-			return err
 		}
-	}
+	}()
 	return nil
 }
 
 // Unsubscribe stops room and lobby readers for subscriberID.
 func (c *PubSubClient) Unsubscribe(subscriberID string) error {
-	pairs := [][2]string{{"room", pubsub.TopicRoom}, {"lobby", pubsub.TopicLobby}}
-	for _, p := range pairs {
-		label, topic := p[0], p[1]
-		key := topic + "|" + subscriberID + "|" + label
-		c.mu.Lock()
-		if stop, ok := c.subs[key]; ok {
-			stop()
-		}
-		c.mu.Unlock()
+	key := subscriberID
+	c.mu.Lock()
+	if stop, ok := c.subs[key]; ok {
+		stop()
 	}
+	c.mu.Unlock()
 	return nil
 }
 
 // ListTopics logs XLEN for known stream keys.
 func (c *PubSubClient) ListTopics(pattern string) error {
 	_ = pattern
-	if c.room == nil {
+	if c.stream == nil {
 		return fmt.Errorf("stream is nil")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for _, name := range []string{pubsub.TopicRoom, pubsub.TopicLobby, pubsub.TopicRoomSettlement} {
-		n, err := c.room.Len(ctx, name)
+		n, err := c.stream.Len(ctx, name)
 		if err != nil {
 			log.Debugw("pubsub stream len", "topic", name, "err", err)
 			continue
@@ -163,12 +156,12 @@ func (c *PubSubClient) ListTopics(pattern string) error {
 
 // GetSubscriberCount reports Redis stream length for the topic key.
 func (c *PubSubClient) GetSubscriberCount(topic string) error {
-	if c.room == nil {
+	if c.stream == nil {
 		return fmt.Errorf("stream is nil")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	n, err := c.room.Len(ctx, topic)
+	n, err := c.stream.Len(ctx, topic)
 	if err != nil {
 		log.Warnw("pubsub stream len failed", "topic", topic, "err", err)
 		return err

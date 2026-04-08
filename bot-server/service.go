@@ -85,12 +85,12 @@ func NewService(
 
 	bots := make([]*Bot, 0, len(playerWallets))
 	addresses := make([]*types.PlayerAddress, 0, len(playerWallets))
+	ctx, ccl := context.WithCancel(ctx)
 	for _, p := range playerWallets {
 		b := NewBot(ctx, p, rpcClient, chainID, mode, cfg.ApiServerEndpoint)
 		bots = append(bots, b)
 		addresses = append(addresses, p.address())
 	}
-	ctx, ccl := context.WithCancel(ctx)
 	return &Service{
 		ctx:       ctx,
 		ccl:       ccl,
