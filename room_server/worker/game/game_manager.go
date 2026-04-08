@@ -175,7 +175,7 @@ func (r *GameManager) Stop() {
 }
 
 // createGameAndNotify persists the new game graph, bootstraps first turn / chain flow (same for queue PVP, continue, tournament),
-// then returns the game id. completedMatchID is queue PVP only (non-zero → games.queue_match_id for GameReady.MatchId).
+// then returns the game id. completedMatchID is queue PVP only; when non-zero we also use it as games.id.
 func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
@@ -184,9 +184,8 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 		gameType = types.GameTypePVP
 	}
 	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, r.cloneGameArgs())
-	if completedMatchID != 0 {
-		game.gameInfo.QueueMatchID = completedMatchID
-	}
+	game.gameInfo.ID = completedMatchID
+	game.gameInfo.QueueMatchID = completedMatchID
 	if gameType == types.GameTypeTournament {
 		rr := uint32(game.gameInfo.GameArgs.MaxNormalRounds)
 		if rr == 0 {
