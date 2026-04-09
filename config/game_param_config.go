@@ -1,7 +1,6 @@
 package config
 
 type GameParamConfig struct {
-	InitialMultiplier int     `mapstructure:"initial-multiplier"`
 	SystemFeeRate     float64 `mapstructure:"system-fee-rate"`     // 系统抽水比例，例如 0.016 表示 1.6%
 	WinnerPointRate   float64 `mapstructure:"winner-point-rate"`   // 获胜者积分倍率
 	LoserPointRate    float64 `mapstructure:"loser-point-rate"`    // 失败者积分倍率
@@ -30,8 +29,8 @@ type GameParamConfig struct {
 	CommitmentSubmissionTimeoutRedundancy int64 `mapstructure:"commitment-submission-timeout-redundancy"` // Redundancy for commitment submission
 	CardSubmissionTimeoutRedundancy       int64 `mapstructure:"card-submission-timeout-redundancy"`       // Redundancy for card submission
 	GameContinueTimeoutRedundancy         int64 `mapstructure:"game-continue-timeout-redundancy"`         // Redundancy for game continue
-	// pool processing interval in seconds
-	PoolProcessingInterval int64 `mapstructure:"pool-processing-interval"`
+
+	MaxTurnsPerRound int64 `mapstructure:"max-turns-per-round"`
 }
 
 // 全局可读的游戏参数
@@ -42,9 +41,6 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	// 设置默认值
 	if gameParams.InitialHP == 0 {
 		gameParams.InitialHP = 6000
-	}
-	if gameParams.InitialMultiplier == 0 {
-		gameParams.InitialMultiplier = 1
 	}
 	if gameParams.SystemFeeRate == 0 {
 		gameParams.SystemFeeRate = 0.016
@@ -97,6 +93,9 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	}
 	if gameParams.GameContinueTimeout == 0 {
 		gameParams.GameContinueTimeout = 10
+	}
+	if gameParams.MaxTurnsPerRound == 0 {
+		gameParams.MaxTurnsPerRound = 3
 	}
 
 	// 赋值给全局变量

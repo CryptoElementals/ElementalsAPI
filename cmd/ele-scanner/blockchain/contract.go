@@ -83,7 +83,9 @@ func CreateRoomAndWaitReceiptAndParseEvent(
 	roundTimeout, maxRounds *big.Int,
 	timeout time.Duration,
 ) (*RoomCreatedTx, error) {
-	tx, err := roomManagerContract.CreateRoom(bindOpts, player1, player2, temp1, temp2, roundTimeout, maxRounds)
+	initialHP := big.NewInt(1000)
+	gameID := big.NewInt(0)
+	tx, err := roomManagerContract.CreateRoom(bindOpts, player1, player2, temp1, temp2, roundTimeout, maxRounds, initialHP, gameID)
 	if err != nil {
 		return nil, err
 	}
@@ -105,5 +107,5 @@ func CreateRoomAndWaitReceiptAndParseEvent(
 // RoomManagerContract is a placeholder for the abigen-generated contract binding
 // Replace this with your actual abigen binding import and type
 type RoomManagerContract interface {
-	CreateRoom(opts *bind.TransactOpts, player1, player2, temp1, temp2 common.Address, roundTimeout, maxRounds *big.Int) (*types.Transaction, error)
+	CreateRoom(opts *bind.TransactOpts, player1, player2, temp1, temp2 common.Address, roundTimeout, totalRound, initialHP, gameID *big.Int) (*types.Transaction, error)
 }

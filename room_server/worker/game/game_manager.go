@@ -6,352 +6,389 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
+	"gorm.io/gorm"
 )
 
 type GameManager struct {
 	ctx               context.Context
 	lock              sync.RWMutex
-	gamesMap          map[uint]*Game
-	playerToGameMap   map[types.PlayerAddress]*Game
+	gameLocksGuard    sync.Mutex
+	gameLocks         map[int64]*sync.Mutex
 	workerManager     *worker.WorkerManager
+	publisher         Publisher
 	chainSvc          ContractClient
 	gameResultSettler GameResultSettler
-	args              dao.GameArgs
-	noRecover         bool
-	stopped           bool
-	wg                sync.WaitGroup
+	// argsTemplateID is the default game_args id for new matches.
+	argsTemplateID uint
+	gameArgsMu   sync.RWMutex
+	gameArgsByID map[uint]*dao.GameArgs
+	stopped      bool
 
 	// Event pools for commitment and card submissions
 	txPool *txPool
 }
 
-func NewGameManager(ctx context.Context,
-	workerManagerService *worker.WorkerManager,
-	gameArgs dao.GameArgs,
-	chainSvc ContractClient,
-	noRecover bool,
-	poolBatchSize int,
-) *GameManager {
-	m := &GameManager{
-		ctx:             ctx,
-		gamesMap:        make(map[uint]*Game),
-		playerToGameMap: make(map[types.PlayerAddress]*Game),
-		workerManager:   workerManagerService,
-		chainSvc:        chainSvc,
-		args:            gameArgs,
-		noRecover:       noRecover,
+func (r *GameManager) getGameLock(gameID int64) *sync.Mutex {
+	r.gameLocksGuard.Lock()
+	defer r.gameLocksGuard.Unlock()
+	lock, ok := r.gameLocks[gameID]
+	if !ok {
+		lock = &sync.Mutex{}
+		r.gameLocks[gameID] = lock
 	}
-	// Set default pool processing interval if not set
-	if m.args.PoolProcessingInterval <= 0 {
-		m.args.PoolProcessingInterval = 5 // Default 5 seconds
-	}
-	m.txPool = newTxPool(chainSvc, poolBatchSize)
-	return m
+	return lock
 }
 
-func (r *GameManager) Start() error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	err := r.recoverGames()
+func (r *GameManager) withGameLock(gameID int64, fn func() error) error {
+	lock := r.getGameLock(gameID)
+	lock.Lock()
+	defer lock.Unlock()
+	return fn()
+}
+
+// withGameMutation runs handler inside a DB transaction with a row lock on games.id, then runs
+// queued after-commit hooks (settlement, etc.). Process-local withGameLock still reduces contention.
+func (r *GameManager) withGameMutation(gameID int64, handler func(g *Game) error) error {
+	var afterCommit []func() error
+	err := db.WithGameMutationTx(gameID, func(tx *gorm.DB, gameInfo *dao.Game) error {
+		gameArgs, err := r.getGameArgsForID(gameInfo.GameArgsID)
+		if err != nil {
+			return err
+		}
+		gameInfo.GameArgs = gameArgs
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
+		g.mutateTx = tx
+		g.queueAfterTxCommit = func(fn func() error) {
+			afterCommit = append(afterCommit, fn)
+		}
+		defer func() {
+			g.mutateTx = nil
+			g.queueAfterTxCommit = nil
+		}()
+		return handler(g)
+	})
 	if err != nil {
 		return err
 	}
+	var firstErr error
+	for _, fn := range afterCommit {
+		if fnErr := fn(); fnErr != nil && firstErr == nil {
+			firstErr = fnErr
+		}
+	}
+	return firstErr
+}
+
+func (r *GameManager) executeOnGame(gameID int64, handler func(g *Game) error) error {
+	if gameID == 0 {
+		return fmt.Errorf("executeOnGame: missing game id")
+	}
+	return r.withGameLock(gameID, func() error {
+		return r.withGameMutation(gameID, handler)
+	})
+}
+func (r *GameManager) HandleConfirmBattle(req *proto.ConfirmBattleRequest) error {
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleConfirmBattle(req) })
+}
+
+func (r *GameManager) HandleSurrender(req *proto.SurrenderRequest) error {
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleSurrender(req) })
+}
+
+func (r *GameManager) HandleTimerEvent(ctx context.Context, evt *timerEvent) error {
+	return r.executeOnGame(evt.GameID, func(g *Game) error { g.handleTimerEvent(evt); return nil })
+}
+
+func (r *GameManager) HandleSubmitPlayerCommitment(req *proto.SubmitPlayerCommitmentRequest) error {
+	if err := validateSubmitPlayerCommitmentRequest(req); err != nil {
+		return err
+	}
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleSubmitPlayerCommitment(req) })
+}
+
+func (r *GameManager) HandleSubmitPlayerCard(req *proto.SubmitPlayerCardRequest) error {
+	if err := validateSubmitPlayerCardRequest(req); err != nil {
+		return err
+	}
+	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleSubmitPlayerCard(req) })
+}
+
+func NewGameManager(ctx context.Context,
+	workerManagerService *worker.WorkerManager,
+	pub Publisher,
+	argsTemplateID uint,
+	chainSvc ContractClient,
+	poolBatchSize int,
+	poolProcessingInterval int,
+) *GameManager {
+	m := &GameManager{
+		ctx:            ctx,
+		gameLocks:      make(map[int64]*sync.Mutex),
+		workerManager:  workerManagerService,
+		publisher:      pub,
+		chainSvc:       chainSvc,
+		argsTemplateID: argsTemplateID,
+		gameArgsByID:   make(map[uint]*dao.GameArgs),
+	}
+	m.txPool = newTxPool(chainSvc, poolBatchSize, poolProcessingInterval)
+	return m
+}
+
+func (r *GameManager) cloneGameArgs() (*dao.GameArgs, error) {
+	return r.getGameArgsForID(r.argsTemplateID)
+}
+
+func cloneDaoGameArgs(src *dao.GameArgs) *dao.GameArgs {
+	ga := *src
+	return &ga
+}
+
+func (r *GameManager) preloadGameArgsCache() error {
+	all, err := db.LoadAllGameArgs()
+	if err != nil {
+		return err
+	}
+	r.gameArgsMu.Lock()
+	r.gameArgsByID = all
+	r.gameArgsMu.Unlock()
+	return nil
+}
+
+func (r *GameManager) getGameArgsForID(gameArgsID uint) (*dao.GameArgs, error) {
+	if gameArgsID == 0 {
+		return nil, fmt.Errorf("game args id is required")
+	}
+	r.gameArgsMu.RLock()
+	cached, ok := r.gameArgsByID[gameArgsID]
+	r.gameArgsMu.RUnlock()
+	if ok && cached != nil {
+		return cloneDaoGameArgs(cached), nil
+	}
+	loaded, err := db.LoadRoomServerGameArgs(gameArgsID)
+	if err != nil {
+		return nil, err
+	}
+	r.gameArgsMu.Lock()
+	r.gameArgsByID[gameArgsID] = loaded
+	r.gameArgsMu.Unlock()
+	return cloneDaoGameArgs(loaded), nil
+}
+
+func (r *GameManager) Start() error {
+	if r.argsTemplateID == 0 {
+		return fmt.Errorf("game args template id is required")
+	}
+	timer.InitTimer(timer.ScopeRoom)
+	r.registerTimerFunction()
+
+	if err := r.preloadGameArgsCache(); err != nil {
+		return err
+	}
+
 	// Start background goroutine for pool processing
-	r.wg.Add(1)
-	go r.txPool.processPools(r.ctx, &r.wg, r.args)
+	go r.txPool.processPools(r.ctx)
+
+	// On startup, abort any games that were left active (non-ended/non-aborted).
+	// This matches the "stateless" model: we do not attempt to recover/resume games after restart.
+	games, err := db.GetAllActiveGames()
+	if err != nil {
+		return err
+	}
+	for _, gameInfo := range games {
+		if gameInfo == nil {
+			continue
+		}
+		if err := r.withGameMutation(gameInfo.ID, func(g *Game) error {
+			return g.handleGameAbortInternalError()
+		}); err != nil {
+			log.Errorw("startup abort active game failed", "game id", gameInfo.ID, "err", err)
+		}
+	}
 	return nil
 }
 
 func (r *GameManager) Stop() {
 	r.lock.Lock()
 	log.Info("closing game manager")
-	for _, game := range r.gamesMap {
-		log.Infow("current running game", "game id", game.gameInfo.ID, "status", game.gameInfo.Status, "turn", game.currentRound.turnStatus)
-	}
 	r.stopped = true
 	r.lock.Unlock()
-	// wait until all games done
-	r.wg.Wait()
+	timer.StopTimer(timer.ScopeRoom)
 	log.Info("game manager closed")
 }
 
-func (r *GameManager) HandleGameContinueEvent(evt *types.GameContinueEvent) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	gameID, err := r.continueGame(evt.Players)
-	if err != nil {
-		return err
+// createGameAndNotify persists the new game graph, bootstraps first turn / chain flow (same for queue PVP, continue, tournament),
+// then returns the game id. completedMatchID is queue PVP only; when non-zero we also use it as games.id.
+func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
+	if err := r.validatePlayersNotInGame(players); err != nil {
+		return 0, err
 	}
-	// also notify players
-	for _, player := range evt.Players {
-		r.workerManager.SendEvent(player.String(), types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:              gameID,
-			Players:             evt.Players,
-			IsContinueGame:      true,
-			ConfirmationTimeout: r.args.ConfirmationTimeout,
-		}))
+	if gameType == 0 {
+		gameType = types.GameTypePVP
 	}
-	log.Infow("gameContinue: gameID %d", gameID, "players", types.ToJsonLoggable(evt.Players))
-	return nil
-}
-
-func (r *GameManager) HandleGameCompletedEvent(evt *types.GameCompletedEvent) error {
-	// Settlement and tx pool clear are done by the Game instance; we only remove the game from maps
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	delete(r.gamesMap, evt.GameID)
-	for _, player := range evt.GameInfo.Players {
-		if player == nil {
-			continue
-		}
-		delete(r.playerToGameMap, types.PlayerAddress{
-			Id:               player.PlayerId,
-			TemporaryAddress: player.TemporaryAddress,
-		})
-	}
-	return nil
-}
-
-func (r *GameManager) HandleGameMatchedEvent(evt *types.GameMatchedEvent) (uint, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	if r.stopped {
-		return 0, errors.New("server stopping, drop game matched event")
-	}
-	gameID, err := r.createGame(evt.Players)
+	gameArgs, err := r.cloneGameArgs()
 	if err != nil {
 		return 0, err
 	}
-	// also notify players
-	for _, player := range evt.Players {
-		evt := types.NewEvent(types.GAME_MANAGER_ID, &types.GameCreatedEvent{
-			GameID:              gameID,
-			Players:             evt.Players,
-			ConfirmationTimeout: r.args.ConfirmationTimeout,
-		})
-		r.workerManager.SendEvent(player.String(), evt)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, gameArgs)
+	game.gameInfo.ID = completedMatchID
+	game.gameInfo.QueueMatchID = completedMatchID
+	if gameType == types.GameTypeTournament {
+		rr := uint32(game.gameInfo.GameArgs.MaxNormalRounds)
+		if rr == 0 {
+			rr = 3
+		}
+		game.gameInfo.RegulationRounds = rr
+		game.gameInfo.OvertimeRoundsCap = dao.TournamentMaxOvertimeRounds
 	}
-	log.Infow("gameMatched", "game id", gameID, "players", types.ToJsonLoggable(evt.Players))
+	if err := game.persistInsertNewGameGraph(); err != nil {
+		return 0, err
+	}
+	gameID := game.gameInfo.ID
+	if err := r.executeOnGame(gameID, func(g *Game) error {
+		return g.bootstrapFirstTurnAfterQueueConfirmations()
+	}); err != nil {
+		return 0, err
+	}
+	return gameID, nil
+}
+
+// CreateGameAndRun persists a new game (queue PVP, continue, or tournament), bootstraps chain for turn 1, then notifies.
+func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.stopped {
+		return 0, errors.New("server stopping, drop queue match finalize")
+	}
+	gameID, err := r.createGameAndNotify(players, gameType, completedMatchID)
+	if err != nil {
+		return 0, err
+	}
+	log.Infow("queueMatchGameCreated", "game id", gameID, "match id", completedMatchID, "players", types.ToJsonLoggable(players))
 	return gameID, nil
 }
 
 func (r *GameManager) IsPlayerInGame(player types.PlayerAddress) bool {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	_, ok := r.playerToGameMap[player]
-	return ok
+	// DB is the source of truth; treat any active game as "in game".
+	_, err := db.GetActiveGameByPlayer(player.Id, player.TemporaryAddress)
+	return err == nil
 }
 
 func (r *GameManager) GetActiveGame(player types.PlayerAddress) *proto.GameInfo {
-	r.lock.RLock()
-	game, ok := r.playerToGameMap[player]
-	r.lock.RUnlock()
-	if !ok {
-		return nil
-	}
-
-	// Create and send request event
-	reqEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GetGameInfoRequest{}, true)
-	r.workerManager.SendEvent(game.WorkerID(), reqEvt)
-
-	// Wait for response
-	response, err := reqEvt.Await()
+	gameInfo, err := db.GetActiveGameByPlayer(player.Id, player.TemporaryAddress)
 	if err != nil {
-		log.Errorw("failed to get game info", "err", err, "game id", game.gameInfo.ID)
+		log.Errorw("GetActiveGame: failed to load game by player", "player", player.String(), "err", err)
 		return nil
 	}
-
-	// Type assert the response
-	gameInfo, ok := response.(*proto.GameInfo)
-	if !ok {
-		log.Errorw("invalid response type for game info", "game id", game.gameInfo.ID, "response type", fmt.Sprintf("%T", response))
-		return nil
-	}
-
-	return gameInfo
+	return conversion.DbGameInfoToProtoGameInfo(gameInfo)
 }
 
 func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
-	r.lock.RLock()
-	game, ok := r.playerToGameMap[address]
-	r.lock.RUnlock()
-	if !ok {
-		return nil, errors.New("player not in game")
-	}
-
-	// Create and send request event
-	reqEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GetGamePhaseRequest{}, true)
-	r.workerManager.SendEvent(game.WorkerID(), reqEvt)
-
-	// Wait for response
-	response, err := reqEvt.Await()
+	gameInfo, err := db.GetActiveGameByPlayer(address.Id, address.TemporaryAddress)
 	if err != nil {
-		log.Errorw("failed to get game phase", "err", err, "game id", game.gameInfo.ID)
-		return nil, err
+		return &proto.GamePhase{
+			GameType: proto.GameType_PVP,
+		}, nil
 	}
 
-	// Type assert the response
-	gamePhase, ok := response.(*proto.GamePhase)
-	if !ok {
-		log.Errorw("invalid response type for game phase", "game id", game.gameInfo.ID, "response type", fmt.Sprintf("%T", response))
-		return nil, fmt.Errorf("invalid response type for game phase")
+	// Rebuild runtime round state from DB
+	currentRound := buildRuntimeState(gameInfo)
+	if currentRound == nil || currentRound.game == nil {
+		return nil, errors.New("no round data for game")
 	}
 
+	roundView := conversion.RoundByNumber(gameInfo, currentRound.roundNumber)
+	if roundView == nil {
+		return nil, errors.New("no round data for game")
+	}
+
+	// Determine turnStartAt like in game_handler.go
+	turnNumber := currentRound.getCurrentTurnNumber()
+	turnStartAt := int64(0)
+	currentTurn := currentRound.getCurrentTurn()
+	if currentTurn != nil && currentTurn.TurnStartAt > 0 {
+		turnStartAt = currentTurn.TurnStartAt
+	} else {
+		turnStartAt = gameInfo.CreatedAt.Unix()
+	}
+
+	gamePhase := conversion.DbGameToProtoGamePhase(gameInfo, roundView, turnNumber, turnStartAt)
 	return gamePhase, nil
 }
 
-// SyncGamePhase sends the current game phase directly to the player worker via workerManager
+// SyncGamePhase publishes the current game phase on the shared room_events PubSub stream for this player (Event.Receivers).
 func (r *GameManager) SyncGamePhase(address types.PlayerAddress) error {
-	r.lock.RLock()
-	game, ok := r.playerToGameMap[address]
-	r.lock.RUnlock()
-	if !ok {
-		// Player not in game, send empty game phase
-		gamePhase := &proto.GamePhase{
+	gamePhase, err := r.GetGamePhase(address)
+	if err != nil {
+		// Player not in game: send empty phase
+		gamePhase = &proto.GamePhase{
 			GameType: proto.GameType_PVP,
 		}
-		syncEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GamePhaseSyncEvent{
-			GamePhase: gamePhase,
-		})
-		r.workerManager.SendEvent(address.String(), syncEvt)
+	}
+	return r.syncGamePhasePublish(address, gamePhase)
+}
+
+func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
+	if txs == nil {
 		return nil
 	}
+	log.Info("receive tx batch, block number: ", txs.BlockNumber)
+	defer r.chainSvc.NotifyTxsCompleted(txs)
+	blockTime := int64(txs.Timestamp)
+	for _, protoTx := range txs.Transactions {
+		gameID := protoTx.GameId
+		switch tx := protoTx.Tx.(type) {
+		case *proto.Transaction_GameCreated:
+			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(blockTime) }); err != nil {
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "game_created")
+			}
+		case *proto.Transaction_GameTurnSetupReady:
+			if tx == nil || tx.GameTurnSetupReady == nil {
+				continue
+			}
+			if err := r.executeOnGame(gameID, func(g *Game) error {
+				return g.handleNewTurnSetupOnChain(gameID, blockTime, tx.GameTurnSetupReady)
+			}); err != nil {
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "game_turn_setup_ready")
+			}
+		case *proto.Transaction_CommitmentOnChain:
+			if tx == nil || tx.CommitmentOnChain == nil {
+				continue
+			}
+			if err := r.executeOnGame(gameID, func(g *Game) error {
+				return g.handleGameStateWaittingCommitments(tx.CommitmentOnChain)
+			}); err != nil {
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "commitment_on_chain")
+			}
+		case *proto.Transaction_CardOnChain:
+			if tx == nil || tx.CardOnChain == nil {
+				continue
+			}
+			if err := r.executeOnGame(gameID, func(g *Game) error {
+				return g.handleGameStateCardSubmitted(tx.CardOnChain)
+			}); err != nil {
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "card_on_chain")
+			}
+		}
+	}
 
-	// Send SyncGamePhaseRequest to game worker, which will send game phase directly to player worker
-	reqEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.SyncGamePhaseRequest{
-		Receiver: &address,
-	}, false) // No AckChan needed since game worker sends directly to receiver
-	r.workerManager.SendEvent(game.WorkerID(), reqEvt)
+	log.Info("SubmitTransactions done")
 	return nil
-}
-
-func (r *GameManager) GetBattleInfo(gameID uint, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
-	r.lock.RLock()
-	game, ok := r.gamesMap[gameID]
-	r.lock.RUnlock()
-	if !ok {
-		return nil, nil, fmt.Errorf("game not found: %d", gameID)
-	}
-
-	// Create and send request event
-	reqEvt := types.NewEvent(types.GAME_MANAGER_ID, &types.GetBattleInfoRequest{
-		RoundNumber: roundNum,
-	}, true)
-	r.workerManager.SendEvent(game.WorkerID(), reqEvt)
-
-	// Wait for response
-	response, err := reqEvt.Await()
-	if err != nil {
-		log.Errorw("failed to get battle info", "err", err, "game id", gameID, "round num", roundNum)
-		return nil, nil, err
-	}
-
-	// Type assert the response
-	battleInfo, ok := response.(*types.GetBattleInfoResponse)
-	if !ok {
-		log.Errorw("invalid response type for battle info", "game id", gameID, "round num", roundNum, "response type", fmt.Sprintf("%T", response))
-		return nil, nil, fmt.Errorf("invalid response type for battle info")
-	}
-
-	if battleInfo.RoundResult == nil {
-		return nil, nil, errors.New("round not found")
-	}
-
-	return battleInfo.RoundResult, battleInfo.GameResult, nil
-}
-
-// registerGame registers a game in the game manager's maps
-func (r *GameManager) registerGame(game *Game, players []types.PlayerAddress) {
-	r.gamesMap[game.gameInfo.ID] = game
-	for _, player := range players {
-		r.playerToGameMap[player] = game
-	}
-	game.createSelf()
 }
 
 // validatePlayersNotInGame checks if any of the players are already in a game
 func (r *GameManager) validatePlayersNotInGame(players []types.PlayerAddress) error {
 	for _, player := range players {
-		if game, ok := r.playerToGameMap[player]; ok {
-			return fmt.Errorf("player %s already in game, game id: %d", player.String(), game.gameInfo.ID)
+		if existing, err := db.GetActiveGameByPlayer(player.Id, player.TemporaryAddress); err == nil && existing != nil {
+			return fmt.Errorf("player %s already in game, game id: %d", player.String(), existing.ID)
 		}
 	}
 	return nil
-}
-
-func (r *GameManager) continueGame(players []types.PlayerAddress) (uint, error) {
-	if err := r.validatePlayersNotInGame(players); err != nil {
-		return 0, err
-	}
-	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.txPool, r.gameResultSettler, r, &r.args)
-	if err := game.saveGame(); err != nil {
-		return 0, err
-	}
-	if err := game.pushStateToContractCreating(); err != nil {
-		return 0, err
-	}
-	r.registerGame(game, players)
-	return game.gameInfo.ID, nil
-}
-
-func (r *GameManager) createGame(players []types.PlayerAddress) (uint, error) {
-	if err := r.validatePlayersNotInGame(players); err != nil {
-		return 0, err
-	}
-	game := NewGame(r.ctx, &r.wg, players, r.workerManager, r.txPool, r.gameResultSettler, r, &r.args)
-	if err := game.saveGame(); err != nil {
-		return 0, err
-	}
-	r.registerGame(game, players)
-	return game.gameInfo.ID, nil
-}
-
-func (r *GameManager) recoverGames() error {
-	if r.noRecover {
-		return nil
-	}
-	gameInfos, err := db.GetAllActiveGames()
-	if err != nil {
-		return err
-	}
-	for _, info := range gameInfos {
-		game := NewGameFromGameInfo(r.ctx, &r.wg, r.workerManager, r, info, r.txPool, r.gameResultSettler)
-		if game == nil {
-			continue
-		}
-
-		for _, player := range game.currentRound.gamePlayers {
-			addr := player.PlayerAddress()
-			if _, ok := r.playerToGameMap[addr]; ok {
-				log.Errorf("player %s already in game, game id: %s", addr.String(), game.gameInfo.ID)
-			}
-			r.playerToGameMap[addr] = game
-		}
-		r.gamesMap[game.gameInfo.ID] = game
-		game.createSelf()
-	}
-	return nil
-}
-
-// HandleSubmitPlayerCommitment forwards a commitment submission to the game worker for validation and tx pool enqueue
-func (r *GameManager) HandleSubmitPlayerCommitment(evt *types.SubmitPlayerCommitment) error {
-	// Forward to game worker: it validates and enqueues to tx pool
-	ev := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
-	r.workerManager.SendEvent(fmt.Sprint(evt.GameID), ev)
-	_, err := ev.Await()
-	return err
-}
-
-// HandleSubmitPlayerCard receives a card submission and forwards it to the game worker for validation and tx pool enqueue
-func (r *GameManager) HandleSubmitPlayerCard(evt *types.SubmitPlayerCard) error {
-	ev := types.NewEvent(types.GAME_MANAGER_ID, evt, true)
-	r.workerManager.SendEvent(fmt.Sprint(evt.GameID), ev)
-	_, err := ev.Await()
-	return err
 }

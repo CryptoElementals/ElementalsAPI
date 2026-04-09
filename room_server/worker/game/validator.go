@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/CryptoElementals/common/log"
@@ -9,46 +10,49 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// validateCommitmentSubmission validates the commitment submission including round number and returns the 0-based index
-func (g *Game) validateCommitmentSubmission(evt *types.PlayerCommitmentOnChain) (uint32, error) {
-	if err := g.validateRoundAndIndex(evt.RoundNumber, evt.CommitmentIndex, evt.Address.TemporaryAddress, "commitment"); err != nil {
+// validateCommitmentSubmission validates the commitment submission including round number and returns the 0-based index.
+// Proto TurnNumber is the commitment index (1-based).
+func (g *Game) validateCommitmentSubmission(tx *proto.TxCommitmentOnChain) (uint32, error) {
+	var address types.PlayerAddress
+	address.FromProto(tx.Address)
+	if err := g.validateRoundAndIndex(tx.RoundNumber, tx.TurnNumber, address.TemporaryAddress, "commitment"); err != nil {
 		return 0, err
 	}
-	return evt.CommitmentIndex - 1, nil // Convert to 0-based
+	return tx.TurnNumber - 1, nil
 }
 
-// validateCardSubmission validates the card submission including round number and returns the 0-based index, card entry, card ID, and error
-// Returns (cardIdx, cardEntry, cardID, error). If card is already submitted, cardEntry will be nil.
-func (g *Game) validateCardSubmission(evt *types.PlayerCardOnChain) (uint32, *dao.TurnSubmittedCard, uint, error) {
-	if err := g.validateRoundAndIndex(evt.RoundNumber, evt.CardIndex, evt.Address.TemporaryAddress, "card"); err != nil {
+// validateCardSubmission validates the card submission including round number and returns the 0-based index, card entry, card ID, and error.
+// Proto TurnNumber is the card index (1-based). Returns (cardIdx, cardEntry, cardID, error). If card is already submitted, cardEntry will be nil.
+func (g *Game) validateCardSubmission(tx *proto.TxCardOnChain) (uint32, *dao.TurnSubmittedCard, uint, error) {
+	var address types.PlayerAddress
+	address.FromProto(tx.Address)
+	if err := g.validateRoundAndIndex(tx.RoundNumber, tx.TurnNumber, address.TemporaryAddress, "card"); err != nil {
 		return 0, nil, 0, err
 	}
 
-	if evt.Card == 0 {
+	if tx.CardId == 0 {
 		return 0, nil, 0, fmt.Errorf("card ID cannot be zero")
 	}
 
-	cardEntry, err := g.getAndValidateCardEntry(evt.Address.TemporaryAddress, evt.CardIndex)
+	cardEntry, err := g.getAndValidateCardEntry(address.TemporaryAddress, tx.TurnNumber)
 	if err != nil {
 		return 0, nil, 0, err
 	}
 
-	// Check if card is already submitted (CardID != 0)
 	if cardEntry.CardID != 0 {
-		cardIdx := evt.CardIndex - 1
-		log.Errorw("card already submitted", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "card index", cardIdx)
-		return cardIdx, nil, 0, nil // Return nil cardEntry to indicate already submitted
+		cardIdx := tx.TurnNumber - 1
+		log.Errorw("card already submitted", "game id", g.gameInfo.ID, "player address", address.TemporaryAddress, "card index", cardIdx)
+		return cardIdx, nil, 0, nil
 	}
 
-	// Return cardID from evt since cardEntry might not have CardID set yet
-	return evt.CardIndex - 1, cardEntry, evt.Card, nil
+	return tx.TurnNumber - 1, cardEntry, uint(tx.CardId), nil
 }
 
 // validateRoundAndIndex validates round number and index (1-based, 1-3) against current round and turn
 func (g *Game) validateRoundAndIndex(roundNumber, index uint32, playerAddr string, indexType string) error {
-	if roundNumber != g.currentRound.round.RoundNumber {
-		log.Errorw("stale event", "type", indexType, "game id", g.gameInfo.ID, "expected round", g.currentRound.round.RoundNumber, "got round", roundNumber, "player address", playerAddr)
-		return fmt.Errorf("round number mismatch: expected %d, got %d", g.currentRound.round.RoundNumber, roundNumber)
+	if roundNumber != g.currentRound.roundNumber {
+		log.Errorw("stale event", "type", indexType, "game id", g.gameInfo.ID, "expected round", g.currentRound.roundNumber, "got round", roundNumber, "player address", playerAddr)
+		return fmt.Errorf("round number mismatch: expected %d, got %d", g.currentRound.roundNumber, roundNumber)
 	}
 
 	expectedIndex := g.currentRound.getCurrentTurnNumber()
@@ -68,8 +72,6 @@ func (g *Game) getAndValidateCardEntry(playerAddr string, cardIndex uint32) (*da
 		return nil, fmt.Errorf("player not found: %w", err)
 	}
 
-	turnNumber := cardIndex // cardIndex is 1-based, same as turnNumber
-	var _ uint32 = turnNumber
 	playerTurnInfo := player.getCurrentPlayerTurnInfo()
 	if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
 		log.Errorw("commitment not submitted", "game id", g.gameInfo.ID, "player address", playerAddr, "card index", cardIndex)
@@ -84,44 +86,72 @@ func (g *Game) getAndValidateCardEntry(playerAddr string, cardIndex uint32) (*da
 	return playerTurnInfo.TurnSubmittedCard, nil
 }
 
-// validatePlayerCommitment validates the commitment using similar logic as validateCommitmentSubmission
-func (g *Game) validatePlayerCommitment(evt *types.SubmitPlayerCommitment) error {
-	if err := g.validateRoundAndIndex(evt.RoundNumber, evt.CommitmentIndex, evt.Address.TemporaryAddress, "commitment"); err != nil {
+// validatePlayerCommitment validates the commitment using similar logic as validateCommitmentSubmission.
+// Proto TurnNumber is the commitment index (1–3).
+func (g *Game) validatePlayerCommitment(req *proto.SubmitPlayerCommitmentRequest) error {
+	if req.Address == nil {
+		return fmt.Errorf("missing address")
+	}
+	if err := g.validateRoundAndIndex(req.RoundNumber, req.TurnNumber, req.Address.TemporaryAddress, "commitment"); err != nil {
 		return err
 	}
 
 	// check if the turn is waiting for commitments
-	if g.currentRound.turnStatus != proto.TurnStatus_TURN_WAITTING_COMMITMENTS {
-		log.Errorw("turn is not waiting for commitments", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.turnStatus)
+	if g.currentRound.getTurnStatus() != proto.TurnStatus_TURN_WAITTING_COMMITMENTS {
+		log.Errorw("turn is not waiting for commitments", "game id", g.gameInfo.ID, "player address", req.Address.TemporaryAddress, "turn status", g.currentRound.getTurnStatus())
 		return fmt.Errorf("turn is not waiting for commitments")
 	}
 
-	if len(evt.Commitment) == 0 {
+	if len(req.Commitment) == 0 {
 		return fmt.Errorf("commitment cannot be empty")
 	}
 
 	return nil
 }
 
-// validatePlayerCard validates the card using similar logic as validateCardSubmission
-func (g *Game) validatePlayerCard(evt *types.SubmitPlayerCard) error {
-	if err := g.validateRoundAndIndex(evt.RoundNumber, evt.CardIndex, evt.Address.TemporaryAddress, "card"); err != nil {
+// validatePlayerCard validates the card using similar logic as validateCardSubmission.
+// Proto TurnNumber is the card index (1–3).
+func (g *Game) validatePlayerCard(req *proto.SubmitPlayerCardRequest) error {
+	if req.Address == nil {
+		return fmt.Errorf("missing address")
+	}
+	if err := g.validateRoundAndIndex(req.RoundNumber, req.TurnNumber, req.Address.TemporaryAddress, "card"); err != nil {
 		return err
 	}
 
 	// check if the turn is waiting for card
-	if g.currentRound.turnStatus != proto.TurnStatus_TURN_WAITTING_CARDS {
-		log.Errorw("turn is not waiting for cards", "game id", g.gameInfo.ID, "player address", evt.Address.TemporaryAddress, "turn status", g.currentRound.turnStatus)
+	if g.currentRound.getTurnStatus() != proto.TurnStatus_TURN_WAITTING_CARDS {
+		log.Errorw("turn is not waiting for cards", "game id", g.gameInfo.ID, "player address", req.Address.TemporaryAddress, "turn status", g.currentRound.getTurnStatus())
 		return fmt.Errorf("turn is not waiting for cards")
 	}
 
-	if evt.Card == 0 {
+	if req.Card == 0 {
 		return fmt.Errorf("card ID cannot be zero")
 	}
 
-	if len(evt.Salt) == 0 {
+	if len(req.Salt) == 0 {
 		return fmt.Errorf("salt cannot be empty")
 	}
 
+	return nil
+}
+
+func validateSubmitPlayerCommitmentRequest(req *proto.SubmitPlayerCommitmentRequest) error {
+	if req == nil {
+		return errors.New("nil SubmitPlayerCommitmentRequest")
+	}
+	if req.Address == nil {
+		return errors.New("missing address")
+	}
+	return nil
+}
+
+func validateSubmitPlayerCardRequest(req *proto.SubmitPlayerCardRequest) error {
+	if req == nil {
+		return errors.New("nil SubmitPlayerCardRequest")
+	}
+	if req.Address == nil {
+		return errors.New("missing address")
+	}
 	return nil
 }

@@ -24,6 +24,9 @@ SCANNER_MAIN = ./cmd/ele-scanner
 ROOMSERVER_BIN = ele-roomserver
 ROOMSERVER_MAIN = ./cmd/ele-roomserver
 
+LOBBYSERVER_BIN = ele-lobbyserver
+LOBBYSERVER_MAIN = ./cmd/ele-lobbyserver
+
 BOTSERVER_BIN = ele-botserver
 BOTSERVER_MAIN = ./cmd/ele-botserver
 
@@ -41,11 +44,11 @@ REDISSTREAM_MAIN = ./cmd/ele-redis-stream
 
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner roomserver botserver stat tools stress redisstream clean deps lint help
+.PHONY: all build apiserver scanner roomserver lobbyserver botserver stat tools stress redisstream clean deps lint check-persist help
 
 all: build
 
-build: apiserver scanner roomserver botserver stat tools stress redisstream
+build: apiserver scanner roomserver lobbyserver botserver stat tools stress redisstream
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -61,6 +64,11 @@ roomserver: $(BIN_DIR)
 	@echo "Building $(ROOMSERVER_BIN)..."
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(ROOMSERVER_BIN) $(ROOMSERVER_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(ROOMSERVER_BIN)"
+
+lobbyserver: $(BIN_DIR)
+	@echo "Building $(LOBBYSERVER_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(LOBBYSERVER_BIN) $(LOBBYSERVER_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(LOBBYSERVER_BIN)"
 
 botserver: $(BIN_DIR)
 	@echo "Building $(BOTSERVER_BIN)..."
@@ -92,7 +100,7 @@ $(BIN_DIR):
 
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(STRESS_BIN) $(BIN_DIR)/$(REDISSTREAM_BIN)
+	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(LOBBYSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(STRESS_BIN) $(BIN_DIR)/$(REDISSTREAM_BIN)
 	@echo "Clean completed"
 
 deps:
@@ -107,6 +115,9 @@ lint:
 	else \
 		echo "golangci-lint not installed, skipping code linting"; \
 	fi
+
+check-persist:
+	@./scripts/check-roomserver-persist-guard.sh
 
 help:
 	@echo "ElementalsAPI Makefile Usage:"
@@ -127,6 +138,7 @@ help:
 	@echo "  deps          - Download dependencies"
 	@echo "  fmt           - Format code"
 	@echo "  lint          - Lint code"
+	@echo "  check-persist - Fail if room_server prod code references SaveFullGameGraph"
 	@echo "  help          - Show this help information"
 	@echo ""
 	@echo "Environment variables:"

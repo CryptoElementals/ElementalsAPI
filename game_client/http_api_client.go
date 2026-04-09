@@ -231,13 +231,13 @@ func (c *HttpApiClient) ExitQueue(tempAddress, playerID string) error {
 }
 
 // ConfirmBattle confirms battle via HTTP API
-func (c *HttpApiClient) ConfirmBattle(gameID uint, roundNumber, turnNumber uint32, tempAddress, playerID string) error {
+func (c *HttpApiClient) ConfirmBattle(gameID int64, roundNumber, turnNumber uint32, tempAddress, playerID string) error {
 	req := &api.ConfirmBattleRequest{
 		BaseRequest: api.BaseRequest{
 			Action:      api.CONFIRM_BATTLE_LABEL,
 			RequestUUID: uuid.NewString(),
 		},
-		GameID:      uint32(gameID),
+		GameID:      gameID,
 		RoundNumber: uint(roundNumber),
 		TurnNumber:  uint(turnNumber),
 		TempAddress: tempAddress,
@@ -256,27 +256,43 @@ func (c *HttpApiClient) ConfirmBattle(gameID uint, roundNumber, turnNumber uint3
 	return nil
 }
 
-// ContinueGame continues the game via HTTP API
-func (c *HttpApiClient) ContinueGame(gameID uint, tempAddress, playerID string) error {
-	req := &api.ContinueGameRequest{
+func (c *HttpApiClient) ConfirmMatch(matchID int64, tempAddress, playerID string) error {
+	req := &api.ConfirmMatchRequest{
 		BaseRequest: api.BaseRequest{
-			Action:      api.CONTINUE_GAME_LABEL,
+			Action:      api.CONFIRM_MATCH_LABEL,
 			RequestUUID: uuid.NewString(),
 		},
-		GameID:      uint(gameID),
+		MatchID:     matchID,
 		TempAddress: tempAddress,
 		PlayerID:    playerID,
 	}
-
-	var resp api.ContinueGameResponse
-	if err := c.makeRequest(api.CONTINUE_GAME_LABEL, req, &resp, true); err != nil {
+	var resp api.ConfirmMatchResponse
+	if err := c.makeRequest(api.CONFIRM_MATCH_LABEL, req, &resp, true); err != nil {
 		return err
 	}
-
 	if resp.RetCode != 0 {
-		return fmt.Errorf("continue game failed: %s", resp.Message)
+		return fmt.Errorf("confirm match failed: %s", resp.Message)
 	}
+	return nil
+}
 
+func (c *HttpApiClient) CancelMatch(matchID int64, tempAddress, playerID string) error {
+	req := &api.CancelMatchRequest{
+		BaseRequest: api.BaseRequest{
+			Action:      api.CANCEL_MATCH_LABEL,
+			RequestUUID: uuid.NewString(),
+		},
+		MatchID:     matchID,
+		TempAddress: tempAddress,
+		PlayerID:    playerID,
+	}
+	var resp api.CancelMatchResponse
+	if err := c.makeRequest(api.CANCEL_MATCH_LABEL, req, &resp, true); err != nil {
+		return err
+	}
+	if resp.RetCode != 0 {
+		return fmt.Errorf("cancel match failed: %s", resp.Message)
+	}
 	return nil
 }
 
@@ -371,13 +387,13 @@ func (c *HttpApiClient) SetUserProfile(playerID, name, avatar string) error {
 }
 
 // SubmitPlayerCommitment submits a player commitment via HTTP API
-func (c *HttpApiClient) SubmitPlayerCommitment(gameID uint, roundNumber, turnNumber uint32, commitment []byte, signature []byte, tempAddress, playerID string) error {
+func (c *HttpApiClient) SubmitPlayerCommitment(gameID int64, roundNumber, turnNumber uint32, commitment []byte, signature []byte, tempAddress, playerID string) error {
 	req := &api.SubmitPlayerCommitmentRequest{
 		BaseRequest: api.BaseRequest{
 			Action:      api.SUBMIT_PLAYER_COMMITMENT_LABEL,
 			RequestUUID: uuid.NewString(),
 		},
-		GameID:      uint32(gameID),
+		GameID:      gameID,
 		RoundNumber: roundNumber,
 		TurnNumber:  turnNumber,
 		Commitment:  hexutil.Encode(commitment),
@@ -399,13 +415,13 @@ func (c *HttpApiClient) SubmitPlayerCommitment(gameID uint, roundNumber, turnNum
 }
 
 // SubmitPlayerCard submits a player card via HTTP API
-func (c *HttpApiClient) SubmitPlayerCard(gameID uint, roundNumber, turnNumber uint32, card uint32, salt string, signature []byte, tempAddress, playerID string) error {
+func (c *HttpApiClient) SubmitPlayerCard(gameID int64, roundNumber, turnNumber uint32, card uint32, salt string, signature []byte, tempAddress, playerID string) error {
 	req := &api.SubmitPlayerCardRequest{
 		BaseRequest: api.BaseRequest{
 			Action:      api.SUBMIT_PLAYER_CARD_LABEL,
 			RequestUUID: uuid.NewString(),
 		},
-		GameID:      uint32(gameID),
+		GameID:      gameID,
 		RoundNumber: roundNumber,
 		TurnNumber:  turnNumber,
 		Card:        card,
@@ -561,12 +577,55 @@ func (s *sseScanner) readLine() (string, error) {
 	return line.String(), nil
 }
 
+// parseGameMatchedFromSSEMap builds GameMatched from SubscribeGameInfo SSE "Message" object (matched / continue rematch).
+func parseGameMatchedFromSSEMap(msg map[string]interface{}) *proto.GameMatched {
+	gm := &proto.GameMatched{}
+	if mid, ok := msg["MatchId"].(float64); ok {
+		gm.MatchId = int64(mid)
+	} else if mid, ok := msg["matchId"].(float64); ok {
+		gm.MatchId = int64(mid)
+	}
+	if lid, ok := msg["LastGameId"].(float64); ok {
+		v := int64(lid)
+		gm.LastGameId = &v
+	} else if lid, ok := msg["lastGameId"].(float64); ok {
+		v := int64(lid)
+		gm.LastGameId = &v
+	}
+	appendPlayers := func(players []interface{}) {
+		for _, p := range players {
+			playerMap, ok := p.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			player := &proto.PlayerAddress{}
+			if id, ok := playerMap["Id"].(float64); ok {
+				player.Id = int64(id)
+			} else if id, ok := playerMap["id"].(float64); ok {
+				player.Id = int64(id)
+			}
+			if tempAddr, ok := playerMap["TemporaryAddress"].(string); ok {
+				player.TemporaryAddress = tempAddr
+			} else if tempAddr, ok := playerMap["temporary_address"].(string); ok {
+				player.TemporaryAddress = tempAddr
+			}
+			gm.Players = append(gm.Players, player)
+		}
+	}
+	if players, ok := msg["Players"].([]interface{}); ok {
+		appendPlayers(players)
+	} else if players, ok := msg["players"].([]interface{}); ok {
+		appendPlayers(players)
+	}
+	return gm
+}
+
 // parseSSEEvent parses SSE event and converts it to proto.Event
 func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 	var sseEvent struct {
 		Type      string                 `json:"type"`
 		Data      map[string]interface{} `json:"data"`
-		Timestamp time.Time               `json:"timestamp"`
+		Timestamp time.Time              `json:"timestamp"`
 	}
 
 	if err := json.Unmarshal([]byte(eventData), &sseEvent); err != nil {
@@ -582,28 +641,10 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 
 	protoEvent := &proto.Event{}
 	switch eventType {
-	case "matched":
+	case "matched", "gameContinuable":
 		protoEvent.Type = proto.EventType_TYPE_MATCHED
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
-			gameMatched := &proto.GameMatched{}
-			if gameId, ok := msg["GameId"].(float64); ok {
-				gameMatched.GameId = uint32(gameId)
-			}
-			if players, ok := msg["Players"].([]interface{}); ok {
-				for _, p := range players {
-					if playerMap, ok := p.(map[string]interface{}); ok {
-						player := &proto.PlayerAddress{}
-						if id, ok := playerMap["Id"].(float64); ok {
-							player.Id = int64(id)
-						}
-						if tempAddr, ok := playerMap["TemporaryAddress"].(string); ok {
-							player.TemporaryAddress = tempAddr
-						}
-						gameMatched.Players = append(gameMatched.Players, player)
-					}
-				}
-			}
-			protoEvent.Event = &proto.Event_GameMatched{GameMatched: gameMatched}
+			protoEvent.Event = &proto.Event_GameMatched{GameMatched: parseGameMatchedFromSSEMap(msg)}
 		}
 	case "partConfirmed":
 		protoEvent.Type = proto.EventType_TYPE_PART_CONFIRMED
@@ -613,7 +654,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
 			gameReady := &proto.GameReady{}
 			if gameId, ok := msg["GameId"].(float64); ok {
-				gameReady.GameId = uint32(gameId)
+				gameReady.GameId = int64(gameId)
 			}
 			protoEvent.Event = &proto.Event_GameReady{GameReady: gameReady}
 		}
@@ -622,7 +663,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
 			roundReady := &proto.RoundReady{}
 			if gameId, ok := msg["GameId"].(float64); ok {
-				roundReady.GameId = uint32(gameId)
+				roundReady.GameId = int64(gameId)
 			}
 			if roundNum, ok := msg["RoundNum"].(float64); ok {
 				roundReady.RoundNum = uint32(roundNum)
@@ -634,7 +675,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
 			turnReady := &proto.TurnReady{}
 			if gameId, ok := msg["GameId"].(float64); ok {
-				turnReady.GameId = uint32(gameId)
+				turnReady.GameId = int64(gameId)
 			}
 			if roundNum, ok := msg["RoundNum"].(float64); ok {
 				turnReady.RoundNum = uint32(roundNum)
@@ -649,7 +690,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
 			commitmentsOnChain := &proto.CommitmentsOnChain{}
 			if gameId, ok := msg["GameId"].(float64); ok {
-				commitmentsOnChain.GameId = uint32(gameId)
+				commitmentsOnChain.GameId = int64(gameId)
 			}
 			if roundNum, ok := msg["RoundNum"].(float64); ok {
 				commitmentsOnChain.RoundNum = uint32(roundNum)
@@ -664,7 +705,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
 			turnCompleted := &proto.TurnCompleted{}
 			if gameId, ok := msg["GameId"].(float64); ok {
-				turnCompleted.GameId = uint32(gameId)
+				turnCompleted.GameId = int64(gameId)
 			}
 			if roundNum, ok := msg["RoundNum"].(float64); ok {
 				turnCompleted.RoundNum = uint32(roundNum)
@@ -679,6 +720,15 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 				turnCompleted.IsGameComplete = isGameComplete
 			}
 			protoEvent.Event = &proto.Event_TurnCompleted{TurnCompleted: turnCompleted}
+		}
+	case "gameSettlementResult":
+		protoEvent.Type = proto.EventType_TYPE_GAME_SETTLEMENT_RESULT
+		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
+			gsr := &proto.GameSettlementResult{}
+			if gameId, ok := msg["GameId"].(float64); ok {
+				gsr.GameId = int64(gameId)
+			}
+			protoEvent.Event = &proto.Event_GameSettlementResult{GameSettlementResult: gsr}
 		}
 	default:
 		return nil

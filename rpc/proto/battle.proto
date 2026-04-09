@@ -17,11 +17,8 @@ message PlayerCardStat {
     int32 CardID = 2;
     int32 HPBefore = 3;
     int32 HPAfter = 4;
-    int32 MultiplierBefore = 5;
-    int32 MultiplierAfter = 6;
-    repeated BattleEffect Effects = 7;
-    string Description = 8;
-    ElementRelation ElementRelation = 9;
+    string Description = 5;
+    ElementRelation ElementRelation = 6;
 }
 
 message PlayerRoundStat {
@@ -45,7 +42,7 @@ message PlayerReward {
     int32 TokenChange = 3;
     int32 PointChange = 4;
     bool Offline = 5;
-    bool Surrendered =6;
+    bool Surrendered = 6;
     PlayerGameResultStatus PlayerGameResultStatus = 7;
 }
 
@@ -72,22 +69,7 @@ message GameResult {
     int32 Multiplier = 1;
     int64 WinnerPlayerId = 2;
     string WinnerTemporaryAddress = 3;
-    GameResultType GameResultType = 5;
-    BattleReward Reward = 6;
-    uint64 GameContinueTimeout = 7;
-}
-
-enum BattleEffectType {
-    ATTACK = 0;
-    HEAL = 1;
-}
-
-message BattleEffect {
-    BattleEffectType Type = 1;    // "attack" or "heal"
-    int32 Value = 2;        // effect value
-    int64 TargetPlayerId = 3;      // target player address
-    string TargetTemporaryAddress = 4;      // target player address
-    string Description = 5; // effect description
+    GameResultType GameResultType = 4;
 }
 
 enum RoundCompleteReason {

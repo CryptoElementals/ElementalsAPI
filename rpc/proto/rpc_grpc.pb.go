@@ -20,639 +20,341 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RpcService_JoinQueue_FullMethodName              = "/rpc.RpcService/JoinQueue"
-	RpcService_ExitQueue_FullMethodName              = "/rpc.RpcService/ExitQueue"
-	RpcService_ContinueGame_FullMethodName           = "/rpc.RpcService/ContinueGame"
-	RpcService_GetGamePhase_FullMethodName           = "/rpc.RpcService/GetGamePhase"
-	RpcService_IsPlayerInQueue_FullMethodName        = "/rpc.RpcService/IsPlayerInQueue"
-	RpcService_GetPlayerStatus_FullMethodName        = "/rpc.RpcService/GetPlayerStatus"
-	RpcService_GetBattleInfo_FullMethodName          = "/rpc.RpcService/GetBattleInfo"
-	RpcService_ConfirmBattle_FullMethodName          = "/rpc.RpcService/ConfirmBattle"
-	RpcService_RefuseContinueGame_FullMethodName     = "/rpc.RpcService/RefuseContinueGame"
-	RpcService_Surrender_FullMethodName              = "/rpc.RpcService/Surrender"
-	RpcService_GetGameTimeoutConfig_FullMethodName   = "/rpc.RpcService/GetGameTimeoutConfig"
-	RpcService_SubmitPlayerCommitment_FullMethodName = "/rpc.RpcService/SubmitPlayerCommitment"
-	RpcService_SubmitPlayerCard_FullMethodName       = "/rpc.RpcService/SubmitPlayerCard"
-	RpcService_GetPlayerToken_FullMethodName         = "/rpc.RpcService/GetPlayerToken"
-	RpcService_SubmitTransactions_FullMethodName     = "/rpc.RpcService/SubmitTransactions"
+	RoomService_ConfirmBattle_FullMethodName          = "/rpc.RoomService/ConfirmBattle"
+	RoomService_Surrender_FullMethodName              = "/rpc.RoomService/Surrender"
+	RoomService_SubmitPlayerCommitment_FullMethodName = "/rpc.RoomService/SubmitPlayerCommitment"
+	RoomService_SubmitPlayerCard_FullMethodName       = "/rpc.RoomService/SubmitPlayerCard"
+	RoomService_SubmitTransactions_FullMethodName     = "/rpc.RoomService/SubmitTransactions"
+	RoomService_CreateGameAndRun_FullMethodName       = "/rpc.RoomService/CreateGameAndRun"
+	RoomService_SyncGamePhase_FullMethodName          = "/rpc.RoomService/SyncGamePhase"
 )
 
-// RpcServiceClient is the client API for RpcService service.
+// RoomServiceClient is the client API for RoomService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type RpcServiceClient interface {
-	// game related api
-	JoinQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	ContinueGame(ctx context.Context, in *ContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
-	IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error)
-	GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error)
-	GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error)
+//
+// RoomService is served by the room server.
+// It merges game/player/chain RPCs and room-worker RPCs.
+type RoomServiceClient interface {
+	// game related api (queue / match / status / token live on LobbyService)
 	ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error)
 	SubmitPlayerCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SubmitPlayerCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// token related logic
-	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// chain related api
 	SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// lobby -> room worker api
+	CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error)
+	SyncGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
-type rpcServiceClient struct {
+type roomServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewRpcServiceClient(cc grpc.ClientConnInterface) RpcServiceClient {
-	return &rpcServiceClient{cc}
+func NewRoomServiceClient(cc grpc.ClientConnInterface) RoomServiceClient {
+	return &roomServiceClient{cc}
 }
 
-func (c *rpcServiceClient) JoinQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *roomServiceClient) ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_JoinQueue_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RoomService_ConfirmBattle_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *rpcServiceClient) ExitQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *roomServiceClient) Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_ExitQueue_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RoomService_Surrender_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *rpcServiceClient) ContinueGame(ctx context.Context, in *ContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *roomServiceClient) SubmitPlayerCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_ContinueGame_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RoomService_SubmitPlayerCommitment_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *rpcServiceClient) GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GamePhase)
-	err := c.cc.Invoke(ctx, RpcService_GetGamePhase_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) IsPlayerInQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*IsPlayerInQueueResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IsPlayerInQueueResponse)
-	err := c.cc.Invoke(ctx, RpcService_IsPlayerInQueue_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetPlayerStatusResponse)
-	err := c.cc.Invoke(ctx, RpcService_GetPlayerStatus_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) GetBattleInfo(ctx context.Context, in *GetBattleInfoRequest, opts ...grpc.CallOption) (*GetBattleInfoResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetBattleInfoResponse)
-	err := c.cc.Invoke(ctx, RpcService_GetBattleInfo_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) ConfirmBattle(ctx context.Context, in *ConfirmBattleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *roomServiceClient) SubmitPlayerCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_ConfirmBattle_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RoomService_SubmitPlayerCard_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *rpcServiceClient) RefuseContinueGame(ctx context.Context, in *RefuseContinueGameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *roomServiceClient) SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_RefuseContinueGame_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RoomService_SubmitTransactions_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *rpcServiceClient) Surrender(ctx context.Context, in *SurrenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *roomServiceClient) CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateGameAndRunResponse)
+	err := c.cc.Invoke(ctx, RoomService_CreateGameAndRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *roomServiceClient) SyncGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_Surrender_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, RoomService_SyncGamePhase_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *rpcServiceClient) GetGameTimeoutConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TimeoutConfig, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(TimeoutConfig)
-	err := c.cc.Invoke(ctx, RpcService_GetGameTimeoutConfig_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) SubmitPlayerCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_SubmitPlayerCommitment_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) SubmitPlayerCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_SubmitPlayerCard_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetPlayerTokenResponse)
-	err := c.cc.Invoke(ctx, RpcService_GetPlayerToken_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rpcServiceClient) SubmitTransactions(ctx context.Context, in *TransactionBatch, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RpcService_SubmitTransactions_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// RpcServiceServer is the server API for RpcService service.
-// All implementations must embed UnimplementedRpcServiceServer
+// RoomServiceServer is the server API for RoomService service.
+// All implementations must embed UnimplementedRoomServiceServer
 // for forward compatibility.
-type RpcServiceServer interface {
-	// game related api
-	JoinQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
-	ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)
-	ContinueGame(context.Context, *ContinueGameRequest) (*emptypb.Empty, error)
-	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
-	IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error)
-	GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error)
-	GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error)
+//
+// RoomService is served by the room server.
+// It merges game/player/chain RPCs and room-worker RPCs.
+type RoomServiceServer interface {
+	// game related api (queue / match / status / token live on LobbyService)
 	ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error)
-	RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error)
 	Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error)
-	GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error)
 	SubmitPlayerCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error)
 	SubmitPlayerCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error)
-	// token related logic
-	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	// chain related api
 	SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error)
-	mustEmbedUnimplementedRpcServiceServer()
+	// lobby -> room worker api
+	CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error)
+	SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error)
+	mustEmbedUnimplementedRoomServiceServer()
 }
 
-// UnimplementedRpcServiceServer must be embedded to have
+// UnimplementedRoomServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedRpcServiceServer struct{}
+type UnimplementedRoomServiceServer struct{}
 
-func (UnimplementedRpcServiceServer) JoinQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method JoinQueue not implemented")
-}
-func (UnimplementedRpcServiceServer) ExitQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ExitQueue not implemented")
-}
-func (UnimplementedRpcServiceServer) ContinueGame(context.Context, *ContinueGameRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ContinueGame not implemented")
-}
-func (UnimplementedRpcServiceServer) GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetGamePhase not implemented")
-}
-func (UnimplementedRpcServiceServer) IsPlayerInQueue(context.Context, *PlayerAddress) (*IsPlayerInQueueResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method IsPlayerInQueue not implemented")
-}
-func (UnimplementedRpcServiceServer) GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerStatus not implemented")
-}
-func (UnimplementedRpcServiceServer) GetBattleInfo(context.Context, *GetBattleInfoRequest) (*GetBattleInfoResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetBattleInfo not implemented")
-}
-func (UnimplementedRpcServiceServer) ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error) {
+func (UnimplementedRoomServiceServer) ConfirmBattle(context.Context, *ConfirmBattleRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmBattle not implemented")
 }
-func (UnimplementedRpcServiceServer) RefuseContinueGame(context.Context, *RefuseContinueGameRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RefuseContinueGame not implemented")
-}
-func (UnimplementedRpcServiceServer) Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error) {
+func (UnimplementedRoomServiceServer) Surrender(context.Context, *SurrenderRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Surrender not implemented")
 }
-func (UnimplementedRpcServiceServer) GetGameTimeoutConfig(context.Context, *emptypb.Empty) (*TimeoutConfig, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetGameTimeoutConfig not implemented")
-}
-func (UnimplementedRpcServiceServer) SubmitPlayerCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
+func (UnimplementedRoomServiceServer) SubmitPlayerCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitPlayerCommitment not implemented")
 }
-func (UnimplementedRpcServiceServer) SubmitPlayerCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error) {
+func (UnimplementedRoomServiceServer) SubmitPlayerCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitPlayerCard not implemented")
 }
-func (UnimplementedRpcServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
-}
-func (UnimplementedRpcServiceServer) SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error) {
+func (UnimplementedRoomServiceServer) SubmitTransactions(context.Context, *TransactionBatch) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitTransactions not implemented")
 }
-func (UnimplementedRpcServiceServer) mustEmbedUnimplementedRpcServiceServer() {}
-func (UnimplementedRpcServiceServer) testEmbeddedByValue()                    {}
+func (UnimplementedRoomServiceServer) CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateGameAndRun not implemented")
+}
+func (UnimplementedRoomServiceServer) SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncGamePhase not implemented")
+}
+func (UnimplementedRoomServiceServer) mustEmbedUnimplementedRoomServiceServer() {}
+func (UnimplementedRoomServiceServer) testEmbeddedByValue()                     {}
 
-// UnsafeRpcServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to RpcServiceServer will
+// UnsafeRoomServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to RoomServiceServer will
 // result in compilation errors.
-type UnsafeRpcServiceServer interface {
-	mustEmbedUnimplementedRpcServiceServer()
+type UnsafeRoomServiceServer interface {
+	mustEmbedUnimplementedRoomServiceServer()
 }
 
-func RegisterRpcServiceServer(s grpc.ServiceRegistrar, srv RpcServiceServer) {
-	// If the following call pancis, it indicates UnimplementedRpcServiceServer was
+func RegisterRoomServiceServer(s grpc.ServiceRegistrar, srv RoomServiceServer) {
+	// If the following call pancis, it indicates UnimplementedRoomServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&RpcService_ServiceDesc, srv)
+	s.RegisterService(&RoomService_ServiceDesc, srv)
 }
 
-func _RpcService_JoinQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).JoinQueue(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_JoinQueue_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).JoinQueue(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_ExitQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).ExitQueue(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_ExitQueue_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).ExitQueue(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_ContinueGame_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ContinueGameRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).ContinueGame(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_ContinueGame_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).ContinueGame(ctx, req.(*ContinueGameRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_GetGamePhase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).GetGamePhase(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_GetGamePhase_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).GetGamePhase(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_IsPlayerInQueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).IsPlayerInQueue(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_IsPlayerInQueue_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).IsPlayerInQueue(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_GetPlayerStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PlayerAddress)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).GetPlayerStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_GetPlayerStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).GetPlayerStatus(ctx, req.(*PlayerAddress))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_GetBattleInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetBattleInfoRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).GetBattleInfo(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_GetBattleInfo_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).GetBattleInfo(ctx, req.(*GetBattleInfoRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_ConfirmBattle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RoomService_ConfirmBattle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ConfirmBattleRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).ConfirmBattle(ctx, in)
+		return srv.(RoomServiceServer).ConfirmBattle(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_ConfirmBattle_FullMethodName,
+		FullMethod: RoomService_ConfirmBattle_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).ConfirmBattle(ctx, req.(*ConfirmBattleRequest))
+		return srv.(RoomServiceServer).ConfirmBattle(ctx, req.(*ConfirmBattleRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_RefuseContinueGame_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RefuseContinueGameRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).RefuseContinueGame(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_RefuseContinueGame_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).RefuseContinueGame(ctx, req.(*RefuseContinueGameRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_Surrender_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RoomService_Surrender_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SurrenderRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).Surrender(ctx, in)
+		return srv.(RoomServiceServer).Surrender(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_Surrender_FullMethodName,
+		FullMethod: RoomService_Surrender_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).Surrender(ctx, req.(*SurrenderRequest))
+		return srv.(RoomServiceServer).Surrender(ctx, req.(*SurrenderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_GetGameTimeoutConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).GetGameTimeoutConfig(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_GetGameTimeoutConfig_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).GetGameTimeoutConfig(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_SubmitPlayerCommitment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RoomService_SubmitPlayerCommitment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SubmitPlayerCommitmentRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).SubmitPlayerCommitment(ctx, in)
+		return srv.(RoomServiceServer).SubmitPlayerCommitment(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_SubmitPlayerCommitment_FullMethodName,
+		FullMethod: RoomService_SubmitPlayerCommitment_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).SubmitPlayerCommitment(ctx, req.(*SubmitPlayerCommitmentRequest))
+		return srv.(RoomServiceServer).SubmitPlayerCommitment(ctx, req.(*SubmitPlayerCommitmentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_SubmitPlayerCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RoomService_SubmitPlayerCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SubmitPlayerCardRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).SubmitPlayerCard(ctx, in)
+		return srv.(RoomServiceServer).SubmitPlayerCard(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_SubmitPlayerCard_FullMethodName,
+		FullMethod: RoomService_SubmitPlayerCard_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).SubmitPlayerCard(ctx, req.(*SubmitPlayerCardRequest))
+		return srv.(RoomServiceServer).SubmitPlayerCard(ctx, req.(*SubmitPlayerCardRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RpcService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetPlayerTokenRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RpcServiceServer).GetPlayerToken(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RpcService_GetPlayerToken_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).GetPlayerToken(ctx, req.(*GetPlayerTokenRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RpcService_SubmitTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _RoomService_SubmitTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TransactionBatch)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RpcServiceServer).SubmitTransactions(ctx, in)
+		return srv.(RoomServiceServer).SubmitTransactions(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RpcService_SubmitTransactions_FullMethodName,
+		FullMethod: RoomService_SubmitTransactions_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RpcServiceServer).SubmitTransactions(ctx, req.(*TransactionBatch))
+		return srv.(RoomServiceServer).SubmitTransactions(ctx, req.(*TransactionBatch))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// RpcService_ServiceDesc is the grpc.ServiceDesc for RpcService service.
+func _RoomService_CreateGameAndRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateGameAndRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoomServiceServer).CreateGameAndRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoomService_CreateGameAndRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoomServiceServer).CreateGameAndRun(ctx, req.(*CreateGameAndRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RoomService_SyncGamePhase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlayerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoomServiceServer).SyncGamePhase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoomService_SyncGamePhase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoomServiceServer).SyncGamePhase(ctx, req.(*PlayerAddress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// RoomService_ServiceDesc is the grpc.ServiceDesc for RoomService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var RpcService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "rpc.RpcService",
-	HandlerType: (*RpcServiceServer)(nil),
+var RoomService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "rpc.RoomService",
+	HandlerType: (*RoomServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "JoinQueue",
-			Handler:    _RpcService_JoinQueue_Handler,
-		},
-		{
-			MethodName: "ExitQueue",
-			Handler:    _RpcService_ExitQueue_Handler,
-		},
-		{
-			MethodName: "ContinueGame",
-			Handler:    _RpcService_ContinueGame_Handler,
-		},
-		{
-			MethodName: "GetGamePhase",
-			Handler:    _RpcService_GetGamePhase_Handler,
-		},
-		{
-			MethodName: "IsPlayerInQueue",
-			Handler:    _RpcService_IsPlayerInQueue_Handler,
-		},
-		{
-			MethodName: "GetPlayerStatus",
-			Handler:    _RpcService_GetPlayerStatus_Handler,
-		},
-		{
-			MethodName: "GetBattleInfo",
-			Handler:    _RpcService_GetBattleInfo_Handler,
-		},
-		{
 			MethodName: "ConfirmBattle",
-			Handler:    _RpcService_ConfirmBattle_Handler,
-		},
-		{
-			MethodName: "RefuseContinueGame",
-			Handler:    _RpcService_RefuseContinueGame_Handler,
+			Handler:    _RoomService_ConfirmBattle_Handler,
 		},
 		{
 			MethodName: "Surrender",
-			Handler:    _RpcService_Surrender_Handler,
-		},
-		{
-			MethodName: "GetGameTimeoutConfig",
-			Handler:    _RpcService_GetGameTimeoutConfig_Handler,
+			Handler:    _RoomService_Surrender_Handler,
 		},
 		{
 			MethodName: "SubmitPlayerCommitment",
-			Handler:    _RpcService_SubmitPlayerCommitment_Handler,
+			Handler:    _RoomService_SubmitPlayerCommitment_Handler,
 		},
 		{
 			MethodName: "SubmitPlayerCard",
-			Handler:    _RpcService_SubmitPlayerCard_Handler,
-		},
-		{
-			MethodName: "GetPlayerToken",
-			Handler:    _RpcService_GetPlayerToken_Handler,
+			Handler:    _RoomService_SubmitPlayerCard_Handler,
 		},
 		{
 			MethodName: "SubmitTransactions",
-			Handler:    _RpcService_SubmitTransactions_Handler,
+			Handler:    _RoomService_SubmitTransactions_Handler,
+		},
+		{
+			MethodName: "CreateGameAndRun",
+			Handler:    _RoomService_CreateGameAndRun_Handler,
+		},
+		{
+			MethodName: "SyncGamePhase",
+			Handler:    _RoomService_SyncGamePhase_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

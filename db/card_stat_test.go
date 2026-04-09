@@ -23,7 +23,6 @@ func setupTestDB(t *testing.T) {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
-		&dao.CardEffect{},
 	}
 	err = Get().AutoMigrate(migrates...)
 	require.NoError(t, err)
@@ -75,7 +74,7 @@ func setupTestDB(t *testing.T) {
 }
 
 // createRound 创建 Round 记录（使用原始 SQL 避免 GORM 解析嵌套结构）
-func createRound(t *testing.T, gameID uint, roundNumber uint32) uint {
+func createRound(t *testing.T, gameID int64, roundNumber uint32) uint {
 	t.Helper()
 	var roundID uint
 	result := Get().Exec(`
@@ -103,7 +102,7 @@ func createTurn(t *testing.T, roundID uint, turnNumber uint32) uint {
 // createPlayerTurnInfoWithCard 创建 PlayerTurnInfo 并手动序列化 TurnSubmittedCard 为 JSON
 func createPlayerTurnInfoWithCard(t *testing.T, turnID uint, playerID int64, tempAddr string, card *dao.TurnSubmittedCard) {
 	t.Helper()
-	// 序列化 TurnSubmittedCard 为 JSON（不包含 CardEffects，因为它是关联表）
+	// 序列化 TurnSubmittedCard 为 JSON
 	cardJSON, err := json.Marshal(card)
 	require.NoError(t, err)
 

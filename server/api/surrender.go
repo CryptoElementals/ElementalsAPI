@@ -21,7 +21,7 @@ func init() {
 type SurrenderRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	GameID      uint32 `mapstructure:"GameID" validate:"required"`      // 游戏ID
+	GameID      int64 `mapstructure:"GameID" validate:"required"`      // 游戏ID
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 

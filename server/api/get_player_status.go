@@ -26,8 +26,8 @@ type GetPlayerStatusRequest struct {
 // GetPlayerStatusResponse 响应结构体
 type GetPlayerStatusResponse struct {
 	BaseResponse
-	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME, 4=WAITTING_CONTINUE
-	StatusName string `json:"StatusName"` // 状态名称：UNKNOWN, IN_QUEUE, MATCHED, IN_GAME, WAITTING_CONTINUE
+	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME (4 deprecated)
+	StatusName string `json:"StatusName"` // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME
 }
 
 type GetPlayerStatusTask struct {
@@ -90,11 +90,10 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	// 通过gRPC调用RoomServer的GetPlayerStatus
-	rpcClient := client.GetGlobalRpcClient()
-	if rpcClient == nil {
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "gRPC client not initialized"
+		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
 		return task.Response, nil
 	}
 
@@ -103,10 +102,10 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 		TemporaryAddress: tempAddress,
 	}
 
-	resp, err := rpcClient.GetPlayerStatus(context.Background(), req)
+	resp, err := lobbyClient.GetPlayerStatus(context.Background(), req)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer GetPlayerStatus failed: " + err.Error()
+		task.Response.BaseResponse.Message = "Lobby GetPlayerStatus failed: " + err.Error()
 		return task.Response, nil
 	}
 
@@ -126,12 +125,11 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "IN_QUEUE"
 	case proto.PlayerStatus_PLAYER_MATCHED:
 		return "MATCHED"
+	case proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
+		return "PENDING_QUEUE_MATCH"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return "IN_GAME"
-	case proto.PlayerStatus_PLAYER_WAITTING_CONTINUE:
-		return "WAITTING_CONTINUE"
 	default:
 		return "UNKNOWN"
 	}
 }
-

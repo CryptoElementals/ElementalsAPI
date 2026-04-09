@@ -11,9 +11,12 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
+	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -22,6 +25,7 @@ import (
 
 var chainRPC = "http://152.32.231.145:8545"
 var svrUrl = "localhost:30011"
+var lobbyURL = "localhost:30012"
 var roomV2ContractAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
 var fakeRoomAddress = "0x22767b2ba3cba853af78c9d91c6c520a2b5cb428"
 
@@ -32,6 +36,27 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 	if len(timeout) > 0 {
 		gametTimeout = timeout[0]
 	}
+	if gametTimeout == 0 {
+		gametTimeout = 10
+	}
+	ga := &dao.GameArgs{
+		MaxNormalRounds:                       3,
+		MaxExtraRounds:                        0,
+		MaxTurnsPerNormalRound:                3,
+		MaxTurnsPerExtraRound:                 1,
+		InitialHP:                             3000,
+		BaseStake:                             1000,
+		ConfirmationTimeout:                   gametTimeout,
+		CommitmentSubmissionTimeout:           gametTimeout,
+		CardSubmissionTimeout:                 gametTimeout,
+		GameContinueTimeout:                   gametTimeout,
+		ConfirmationTimeoutRedundancy:         10,
+		CommitmentSubmissionTimeoutRedundancy: 10,
+		CardSubmissionTimeoutRedundancy:       10,
+		GameContinueTimeoutRedundancy:         10,
+	}
+	require.NoError(t, db.Get().Create(ga).Error)
+	dao.MustValidateGameArgs(ga)
 	cfg := &config.RoomServerConfig{
 		LogCfg: log.Config{
 			Development: true,
@@ -47,23 +72,26 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		WalletPaths: []string{tempFile},
 
 		ListenPort: 30011,
-		GameParams: config.GameParamConfig{
-			TokenThreshold:              1000,
-			InitialMultiplier:           1,
-			SystemFeeRate:               0.016,
-			WinnerPointRate:             0.012,
-			LoserPointRate:              0.004,
-			TieTokenRate:                0.008,
-			TiePointRate:                0.008,
-			BaseStake:                   1000,
-			CommitmentSubmissionTimeout: gametTimeout,
-			CardSubmissionTimeout:       gametTimeout,
-			GameContinueTimeout:         gametTimeout,
-			MaxRounds:                   3,
-			InitialHP:                   3000,
-		},
+		GameArgsID: ga.ID,
 	}
-	config.InitializeGameParams(&cfg.GameParams)
+	config.InitializeGameParams(&config.GameParamConfig{
+		SystemFeeRate:   0.016,
+		WinnerPointRate: 0.012,
+		LoserPointRate:  0.004,
+		TieTokenRate:    0.008,
+		TiePointRate:    0.008,
+		BaseStake:       1000,
+		MaxRounds:       3,
+		InitialHP:       3000,
+	})
+	if config.GameParams.BaseStake == 0 {
+		config.GameParams.BaseStake = 1000
+	}
+	redisAddr := os.Getenv("ELEMENTALS_REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "127.0.0.1:6379"
+	}
+	require.NoError(t, redis.Init(&redis.Config{Address: redisAddr, Size: 8}))
 	svr, err := New(context.Background(), cfg, true)
 	if err != nil {
 		require.NoError(t, err)
@@ -72,6 +100,27 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 	if err != nil {
 		require.NoError(t, err)
 	}
+	lcfg := &config.LobbyServerConfig{
+		LogCfg:              cfg.LogCfg,
+		DbCfg:               cfg.DbCfg,
+		ListenPort:          30012,
+		RoomServerAddress:   "127.0.0.1:30011",
+		MinTokenToJoinQueue: 1000,
+		GameArgsID:          ga.ID,
+		BotWaitTime:         0,
+		StatServiceEndpoint: "",
+		IsDevelop:           true,
+	}
+	go func() {
+		ls, e := lobbyserver.New(context.Background(), lcfg)
+		if e != nil {
+			panic(e)
+		}
+		if e := ls.Start(); e != nil {
+			panic(e)
+		}
+	}()
+	time.Sleep(3 * time.Second)
 }
 
 func TestMain(m *testing.M) {
@@ -144,6 +193,17 @@ func toJsonLoggable(obj any) string {
 	return string(res)
 }
 
+func requireRoundGameOverFromDB(t *testing.T, gameID int64, round uint) {
+	t.Helper()
+	gameInfo, err := db.LoadGameByGameID(gameID)
+	require.NoError(t, err)
+	synth := conversion.RoundByNumber(gameInfo, uint32(round))
+	require.NotNil(t, synth)
+	rr := conversion.DbRoundToRoundResult(synth, gameInfo)
+	require.True(t, rr.IsGameOver)
+	require.NotNil(t, gameInfo.GameResult)
+}
+
 var timeoutMapByPlayer = map[types.PlayerAddress]map[proto.EventType]time.Duration{}
 
 func runClient(t *testing.T,
@@ -154,7 +214,7 @@ func runClient(t *testing.T,
 	submittedCards []uint32,
 	txChan chan *proto.TransactionBatch,
 	partConfimredChan chan uint,
-	gameIDChan chan uint,
+	gameIDChan chan int64,
 ) {
 	chanEvt := make(chan *proto.Event)
 	chanErr := make(chan error)
@@ -162,7 +222,7 @@ func runClient(t *testing.T,
 	go func() {
 		defer fmt.Println("palyer quit", addr)
 		defer wg.Done()
-		gameID := uint(0)
+		gameID := int64(0)
 		round := uint(1)
 		for {
 			select {
@@ -184,21 +244,25 @@ func runClient(t *testing.T,
 					return
 				case proto.EventType_TYPE_MATCHED:
 					t.Log("player matched")
-					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
-					require.NoError(t, err)
-					gameID = uint(phase.GameID)
-					gameIDChan <- gameID
-					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
+					matched := evt.GetGameMatched()
+					if matched != nil && matched.GetMatchId() != 0 {
+						require.NoError(t, client.RpcClient.ConfirmMatch(ctx, addr, matched.GetMatchId()))
+					}
 				case proto.EventType_TYPE_PART_CONFIRMED:
 					t.Log("player part confirmed")
 					partConfimredChan <- round
 				case proto.EventType_TYPE_GAME_CREATED:
 					t.Log("game created")
-					// get contract
-					phase, err := client.RpcClient.GetGamePhase(ctx, addr)
-					require.NoError(t, err)
-					gameID = uint(phase.GameID)
-					t.Log("game phase: ", toJsonLoggable(phase))
+					gr := evt.GetGameReady()
+					require.NotNil(t, gr, "TYPE_GAME_CREATED must carry GameReady")
+					gameID = gr.GetGameId()
+					require.NotZero(t, gameID, "game id must be available after TYPE_GAME_CREATED")
+					select {
+					case gameIDChan <- gameID:
+					default:
+					}
+					t.Log("game ready: ", toJsonLoggable(gr))
+					require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1))
 					// ContractAddress removed - always uses RoomV2 contract address from config
 				case proto.EventType_TYPE_ROUND_READY:
 					t.Log("round ready")
@@ -210,10 +274,9 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_trasactions", addr.String(), round)),
-								GameId: uint32(1), // game_id is required
+								GameId: gameID,
 								Tx: &proto.Transaction_CommitmentOnChain{
 									CommitmentOnChain: &proto.TxCommitmentOnChain{
-										GameId:      int64(1),
 										Address:     addr.ToProtoNoWallet(),
 										RoundNumber: uint32(round),
 										TurnNumber:  1,
@@ -233,10 +296,9 @@ func runClient(t *testing.T,
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: []byte(fmt.Sprintf("%s_%s_%d", "submit_cards", addr.String(), round)),
-								GameId: uint32(1), // game_id is required
+								GameId: gameID,
 								Tx: &proto.Transaction_CardOnChain{
 									CardOnChain: &proto.TxCardOnChain{
-										GameId:      int64(1),
 										Address:     addr.ToProtoNoWallet(),
 										RoundNumber: uint32(round),
 										TurnNumber:  1,
@@ -247,30 +309,30 @@ func runClient(t *testing.T,
 							},
 						},
 					}
-				case proto.EventType_TYPE_CARDS_ON_CHAIN:
-					t.Log("cards on chain")
-					// skip
-				case proto.EventType_TYPE_ROUND_COMPLETE:
-					t.Log("round complete")
-					battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
-					require.NoError(t, err)
-					t.Log("battle info: ", toJsonLoggable(battleInfo))
-					if !battleInfo.RoundResult.IsGameOver {
+				case proto.EventType_TYPE_TURN_COMPLETE:
+					t.Log("turn complete")
+					tc := evt.GetTurnCompleted()
+					if tc == nil {
+						break
+					}
+					if tc.GetIsGameComplete() {
+						t.Log("game complete")
+						close(partConfimredChan)
+						return
+					}
+					if tc.GetIsRoundComplete() && !tc.GetIsGameComplete() {
+						t.Log("round complete, advancing")
 						round++
 						require.NoError(t, client.RpcClient.ConfirmBattle(ctx, addr, gameID, round, 1)) // Turn 1 for first round
 						t.Logf("confirm submitted, addr: %s, round %d, game: %d", addr.String(), round, gameID)
 					}
-				case proto.EventType_TYPE_GAME_COMPLETE:
-					t.Log("game complete")
-					close(partConfimredChan)
-					return
 				}
 			case err := <-chanErr:
 				require.NoError(t, err)
 			}
 		}
 	}()
-	require.NoError(t, client.PubSubClient.Subscribe(addr.String(), addr.String(), chanEvt, chanErr))
+	require.NoError(t, client.PubSubClient.Subscribe("test-sub-"+addr.String(), addr.ToProto(), chanEvt, chanErr))
 	time.Sleep(1 * time.Second)
 }
 
@@ -279,7 +341,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	prepareCards(t)
 	prepareUserTokens(t)
 	setupTestSvc(t)
-	client, err := rpc.NewClient(svrUrl)
+	client, err := rpc.NewClient(svrUrl, lobbyURL)
 	require.NoError(t, err)
 	defer client.Close()
 	ctx, ccl := context.WithTimeout(context.Background(), 30*time.Second)
@@ -294,7 +356,7 @@ func TestServer_BattleFullLogic(t *testing.T) {
 	}
 	chan1 := make(chan uint, 3)
 	chan2 := make(chan uint, 3)
-	gameIDChan := make(chan uint, 2)
+	gameIDChan := make(chan int64, 2)
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	doneChan := make(chan struct{})
@@ -350,11 +412,9 @@ func TestServer_BattleFullLogic(t *testing.T) {
 				Transactions: []*proto.Transaction{
 					{
 						TxHash: txHashBytes,
-						GameId: uint32(gameID),
+						GameId: gameID,
 						Tx: &proto.Transaction_GameCreated{
-							GameCreated: &proto.TxGameCreated{
-								GameId: int64(gameID),
-							},
+							GameCreated: &proto.TxGameCreated{},
 						},
 					},
 				},
@@ -367,10 +427,9 @@ func TestServer_BattleFullLogic(t *testing.T) {
 				Transactions: []*proto.Transaction{
 					{
 						TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-						GameId: uint32(gameID),
+						GameId: gameID,
 						Tx: &proto.Transaction_GameTurnSetupReady{
 							GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-								GameId:      int64(gameID),
 								RoundNumber: uint32(round),
 								TurnNumber:  1,
 							},
@@ -385,38 +444,12 @@ func TestServer_BattleFullLogic(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
-	require.NoError(t, err)
-	require.NotNil(t, battleInfo)
-	require.NotNil(t, battleInfo.RoundResult)
-	require.NotNil(t, battleInfo.GameResult)
-	require.True(t, battleInfo.RoundResult.IsGameOver)
+	requireRoundGameOverFromDB(t, gameID, round)
 	token, err := client.RpcClient.GetPlayerToken(ctx, addr1.Id)
 	require.NoError(t, err)
 	require.NotNil(t, token)
-	chanEvt1 := make(chan *proto.Event, 2)
-	chanErr1 := make(chan error, 2)
-	chanEvt2 := make(chan *proto.Event, 2)
-	chanErr2 := make(chan error, 2)
-	require.NoError(t, client.PubSubClient.Subscribe(addr1.String(), addr1.String(), chanEvt1, chanErr1))
-	require.NoError(t, client.PubSubClient.Subscribe(addr2.String(), addr2.String(), chanEvt2, chanErr2))
-	time.Sleep(1 * time.Second)
-	client.RpcClient.RefuseContinueGame(ctx, addr1, gameID)
-	for i := 0; i < 2; i++ {
-		select {
-		case evt := <-chanEvt1:
-			require.NotNil(t, evt)
-			require.Equal(t, proto.EventType_TYPE_CONTINUE_CANCELED, evt.Type)
-		case evt := <-chanEvt2:
-			require.NotNil(t, evt)
-			require.Equal(t, proto.EventType_TYPE_CONTINUE_CANCELED, evt.Type)
-		case err := <-chanErr1:
-			require.NoError(t, err)
-		case err := <-chanErr2:
-			require.NoError(t, err)
-		}
-	}
-
+	// After game end, lobby may put humans in PLAYER_PENDING_QUEUE_MATCH (continue rematch pending ConfirmMatch); JoinQueue must fail until they ConfirmMatch or the rematch times out.
+	require.Error(t, client.RpcClient.JoinQueue(ctx, addr1))
 }
 
 func TestServer_BattleTimeout(t *testing.T) {
@@ -424,7 +457,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 	prepareUserTokens(t)
 	prepareCards(t)
 	setupTestSvc(t, 10)
-	client, err := rpc.NewClient(svrUrl)
+	client, err := rpc.NewClient(svrUrl, lobbyURL)
 	require.NoError(t, err)
 	defer client.Close()
 	ctx := context.Background()
@@ -437,12 +470,12 @@ func TestServer_BattleTimeout(t *testing.T) {
 		TemporaryAddress: "tmp2",
 	}
 
-	var gameID uint
+	var gameID int64
 	var round uint
 	var setupBattle = func(doneChan chan struct{}, doContinue bool) {
 		chan1 := make(chan uint, 3)
 		chan2 := make(chan uint, 3)
-		gameIDChan := make(chan uint, 2)
+		gameIDChan := make(chan int64, 2)
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 
@@ -455,17 +488,9 @@ func TestServer_BattleTimeout(t *testing.T) {
 		}()
 		runClient(t, ctx, &wg, client, addr1, []uint32{4, 5, 3}, txChan, chan1, gameIDChan)
 		runClient(t, ctx, &wg, client, addr2, []uint32{1, 2, 4}, txChan, chan2, gameIDChan)
-		if doContinue {
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr1, gameID))
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr2, gameID))
-			// input expected game id manually
-			gameIDChan <- 2
-			chan1 <- 1
-			chan2 <- 1
-		} else {
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
-		}
+		_ = doContinue
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
 
 		go func() {
 			wg.Wait()
@@ -516,11 +541,9 @@ func TestServer_BattleTimeout(t *testing.T) {
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: txHashBytes,
-								GameId: uint32(gameID),
+								GameId: gameID,
 								Tx: &proto.Transaction_GameCreated{
-									GameCreated: &proto.TxGameCreated{
-										GameId: int64(gameID),
-									},
+									GameCreated: &proto.TxGameCreated{},
 								},
 							},
 						},
@@ -533,10 +556,9 @@ func TestServer_BattleTimeout(t *testing.T) {
 						Transactions: []*proto.Transaction{
 							{
 								TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-								GameId: uint32(gameID),
+								GameId: gameID,
 								Tx: &proto.Transaction_GameTurnSetupReady{
 									GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-										GameId:      int64(gameID),
 										RoundNumber: uint32(round),
 										TurnNumber:  1,
 									},
@@ -549,12 +571,8 @@ func TestServer_BattleTimeout(t *testing.T) {
 		}()
 
 	}
-	var checkBasicResult = func(battleInfo *proto.GetBattleInfoResponse, err error) {
-		require.NoError(t, err)
-		require.NotNil(t, battleInfo)
-		require.NotNil(t, battleInfo.RoundResult)
-		require.NotNil(t, battleInfo.GameResult)
-		require.True(t, battleInfo.RoundResult.IsGameOver)
+	var checkBasicResult = func() {
+		requireRoundGameOverFromDB(t, gameID, 1)
 	}
 	var runCase = func() {
 		doneChan := make(chan struct{})
@@ -565,9 +583,7 @@ func TestServer_BattleTimeout(t *testing.T) {
 		case <-doneChan:
 		}
 		// should stop at round one
-		battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, 1)
-		checkBasicResult(battleInfo, err)
-
+		checkBasicResult()
 	}
 	var setupTimeout = func(addr *types.PlayerAddress, evtType proto.EventType, interval time.Duration) {
 		if timeoutMapByPlayer[*addr] == nil {
@@ -591,16 +607,12 @@ func TestServer_BattleTimeout(t *testing.T) {
 	runCase()
 	clear(timeoutMapByPlayer)
 
-	//test round confirm timeout
-	setupTimeout(addr1, proto.EventType_TYPE_ROUND_COMPLETE, 12*time.Second)
+	// test round confirm timeout (signaled via TYPE_TURN_COMPLETE + IsRoundComplete)
+	setupTimeout(addr1, proto.EventType_TYPE_TURN_COMPLETE, 12*time.Second)
 	runCase()
 	clear(timeoutMapByPlayer)
 
-	// test continue confirm timeout
-	runCase()
-	time.Sleep(12 * time.Second)
-	err = client.RpcClient.ContinueGame(ctx, addr1, gameID)
-	require.NotNil(t, err)
+	// Continue rematch uses ConfirmMatch + match confirmation timeout (same as queue PVP); no ContinueGame RPC.
 }
 
 func TestServer_BattleContinue(t *testing.T) {
@@ -608,7 +620,7 @@ func TestServer_BattleContinue(t *testing.T) {
 	prepareUserTokens(t)
 	prepareCards(t)
 	setupTestSvc(t)
-	client, err := rpc.NewClient(svrUrl)
+	client, err := rpc.NewClient(svrUrl, lobbyURL)
 	require.NoError(t, err)
 	defer client.Close()
 	ctx, ccl := context.WithTimeout(context.Background(), 500*time.Second)
@@ -622,12 +634,12 @@ func TestServer_BattleContinue(t *testing.T) {
 		TemporaryAddress: "tmp2",
 	}
 
-	var gameID uint
+	var gameID int64
 	var round uint
 	var setupBattle = func(doneChan chan struct{}, doContinue bool) {
 		chan1 := make(chan uint, 3)
 		chan2 := make(chan uint, 3)
-		gameIDChan := make(chan uint, 2)
+		gameIDChan := make(chan int64, 2)
 		wg := sync.WaitGroup{}
 		wg.Add(2)
 
@@ -640,17 +652,9 @@ func TestServer_BattleContinue(t *testing.T) {
 		}()
 		runClient(t, ctx, &wg, client, addr1, []uint32{4, 5, 3}, txChan, chan1, gameIDChan)
 		runClient(t, ctx, &wg, client, addr2, []uint32{1, 2, 4}, txChan, chan2, gameIDChan)
-		if doContinue {
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr1, gameID))
-			require.NoError(t, client.RpcClient.ContinueGame(ctx, addr2, gameID))
-			// input expected game id manually
-			gameIDChan <- 2
-			chan1 <- 1
-			chan2 <- 1
-		} else {
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
-			require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
-		}
+		_ = doContinue
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr1))
+		require.NoError(t, client.RpcClient.JoinQueue(ctx, addr2))
 
 		go func() {
 			wg.Wait()
@@ -692,11 +696,9 @@ func TestServer_BattleContinue(t *testing.T) {
 					Transactions: []*proto.Transaction{
 						{
 							TxHash: txHashBytes,
-							GameId: uint32(gameID),
+							GameId: gameID,
 							Tx: &proto.Transaction_GameCreated{
-								GameCreated: &proto.TxGameCreated{
-									GameId: int64(gameID),
-								},
+								GameCreated: &proto.TxGameCreated{},
 							},
 						},
 					},
@@ -709,10 +711,9 @@ func TestServer_BattleContinue(t *testing.T) {
 					Transactions: []*proto.Transaction{
 						{
 							TxHash: fmt.Appendf(nil, "%s_%d", "round_ready", round),
-							GameId: uint32(gameID),
+							GameId: gameID,
 							Tx: &proto.Transaction_GameTurnSetupReady{
 								GameTurnSetupReady: &proto.TxGameTurnSetupReady{
-									GameId:      int64(gameID),
 									RoundNumber: uint32(round),
 									TurnNumber:  1,
 								},
@@ -730,12 +731,7 @@ func TestServer_BattleContinue(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err := client.RpcClient.GetBattleInfo(ctx, gameID, round)
-	require.NoError(t, err)
-	require.NotNil(t, battleInfo)
-	require.NotNil(t, battleInfo.RoundResult)
-	require.NotNil(t, battleInfo.GameResult)
-	require.True(t, battleInfo.RoundResult.IsGameOver)
+	requireRoundGameOverFromDB(t, gameID, round)
 	// continue game
 	doneChan = make(chan struct{})
 	setupBattle(doneChan, true)
@@ -744,10 +740,5 @@ func TestServer_BattleContinue(t *testing.T) {
 		t.Error("timeout waiting game complete")
 	case <-doneChan:
 	}
-	battleInfo, err = client.RpcClient.GetBattleInfo(ctx, gameID, round)
-	require.NoError(t, err)
-	require.NotNil(t, battleInfo)
-	require.NotNil(t, battleInfo.RoundResult)
-	require.NotNil(t, battleInfo.GameResult)
-	require.True(t, battleInfo.RoundResult.IsGameOver)
+	requireRoundGameOverFromDB(t, gameID, round)
 }

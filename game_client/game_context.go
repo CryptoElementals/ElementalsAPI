@@ -38,7 +38,7 @@ type GameContext struct {
 	errChan      chan error
 	cardProvider CardProvider // Interface to get card for each turn
 
-	gameID       uint
+	gameID       int64
 	players      []*types.PlayerAddress
 	currentRound uint32
 	currentTurn  uint32
@@ -72,7 +72,7 @@ func (c *GameContext) Subscribe(id ...string) error {
 	} else {
 		subId = c.myself.String()
 	}
-	err := c.rpcClient.PubSubClient.Subscribe(c.myself.String(), subId, c.evtChan, c.errChan)
+	err := c.rpcClient.PubSubClient.Subscribe(subId, c.myself.ToProto(), c.evtChan, c.errChan)
 	if err != nil {
 		return err
 	}
@@ -99,21 +99,43 @@ func (c *GameContext) Run() error {
 					log.Warnw("game matched event missing GameMatched data")
 					continue
 				}
-				log.Infow("game matched", "game id", matched.GameId)
-				c.gameID = uint(matched.GameId)
+				if matched.LastGameId != nil {
+					log.Infow("game matched (continue rematch)", "match id", matched.GetMatchId(), "last game id", matched.GetLastGameId())
+					if matched.GetMatchId() != 0 {
+						if err := c.cancelMatch(matched.GetMatchId()); err != nil {
+							log.Errorw("failed to cancel unexpected continue rematch", "match id", matched.GetMatchId(), "error", err)
+						} else {
+							log.Infow("continue rematch canceled for bot", "match id", matched.GetMatchId())
+						}
+					}
+					continue
+				} else {
+					log.Infow("game matched", "match id", matched.GetMatchId())
+				}
 				c.players = c.players[:0] // Reuse slice, more efficient than nil
 				for _, pp := range matched.Players {
 					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
 				}
 				c.currentRound = 1
 				c.currentTurn = 1
-				if err := c.confirmBattle(); err != nil {
-					log.Errorw("failed to confirm battle", "error", err)
+				if matched.GetMatchId() != 0 {
+					if err := c.confirmMatch(matched.GetMatchId()); err != nil {
+						log.Errorw("failed to confirm match", "error", err)
+					}
 				}
 			case proto.EventType_TYPE_PART_CONFIRMED:
 				log.Infow("player part confirmed")
 			case proto.EventType_TYPE_GAME_CREATED:
-				log.Infow("game created")
+				gr := evt.GetGameReady()
+				if gr == nil {
+					log.Warnw("game created event missing GameReady data")
+					continue
+				}
+				c.gameID = gr.GetGameId()
+				log.Infow("game created", "game id", c.gameID)
+				if err := c.confirmBattle(); err != nil {
+					log.Errorw("failed to confirm battle after game created", "error", err)
+				}
 			case proto.EventType_TYPE_ROUND_READY:
 				roundReady := evt.GetRoundReady()
 				if roundReady == nil {
@@ -226,6 +248,11 @@ func (c *GameContext) Run() error {
 				} else {
 					log.Infow("battle confirmed", "round", c.currentRound, "turn", c.currentTurn)
 				}
+			case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
+				gsr := evt.GetGameSettlementResult()
+				if gsr != nil {
+					log.Infow("game settlement result", "game id", gsr.GetGameId(), "reward", types.ToJsonLoggable(gsr.GetReward()))
+				}
 			}
 		}
 	}
@@ -253,6 +280,14 @@ func (c *GameContext) confirmBattle() error {
 		return err
 	}
 	return nil
+}
+
+func (c *GameContext) confirmMatch(matchID int64) error {
+	return c.rpcClient.RpcClient.ConfirmMatch(c.ctx, c.myself, matchID)
+}
+
+func (c *GameContext) cancelMatch(matchID int64) error {
+	return c.rpcClient.RpcClient.CancelMatch(c.ctx, c.myself, matchID)
 }
 
 // PrepareNewCard generates a new salt and calculates the commitment for the given card
@@ -372,13 +407,5 @@ func (c *GameContext) submitCard(card uint32, salt string) error {
 		return err
 	}
 	log.Infow("card submitted successfully", "round", c.currentRound, "turn", c.currentTurn)
-	return nil
-}
-
-func (c *GameContext) Continue() error {
-	err := c.rpcClient.RpcClient.ContinueGame(c.ctx, c.myself, c.gameID)
-	if err != nil {
-		return err
-	}
 	return nil
 }

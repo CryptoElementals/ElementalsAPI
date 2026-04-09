@@ -2,8 +2,8 @@ package chain
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -13,7 +13,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -62,7 +61,7 @@ func NewChain(
 
 // SubmitTasks submits a batch of pre-encoded RoomV3 tasks to the chain.
 // Tasks are ABI-encoded payloads compatible with RoomV3.batchSubmitTasks.
-func (c *Chain) SubmitTasks(tasks []RoomContractTask) error {
+func (c *Chain) SubmitTasks(tasks []types.RoomContractTask) error {
 	if c.roomV3Client == nil {
 		return errors.New("room v3 client not initialized")
 	}
@@ -81,11 +80,11 @@ func (c *Chain) SubmitTasks(tasks []RoomContractTask) error {
 	if err != nil {
 		return err
 	}
-	c.recordTxStart(txHash, "submitTasks", 0)
+	c.recordTxStart(txHash, "submitTasks", len(tasks))
 	return nil
 }
 
-func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
+func (c *Chain) recordTxStart(txHash string, eventName string, taskCount int) {
 	if txHash == "" {
 		return
 	}
@@ -93,19 +92,11 @@ func (c *Chain) recordTxStart(txHash string, eventName string, gameID uint) {
 	c.txTimesLock.Lock()
 	c.txTimes[txHash] = now
 	c.txTimesLock.Unlock()
-	if gameID != 0 {
-		log.Debugw("chain tx sent",
-			"event", eventName,
-			"tx_hash", txHash,
-			"game_id", gameID,
-		)
-	} else {
-		log.Debugw("chain tx sent",
-			"event", eventName,
-			"tx_hash", txHash,
-		)
-	}
-
+	log.Debugw("chain tx sent",
+		"event", eventName,
+		"tx_hash", txHash,
+		"task_count", taskCount,
+	)
 }
 
 func (c *Chain) Start() error {
@@ -113,41 +104,7 @@ func (c *Chain) Start() error {
 	return nil
 }
 
-func (c *Chain) batchSendTxs(evt *batchTxEvent) {
-	c.handleChainEvents(evt)
-}
-
-func (c *Chain) handleChainEvents(evt *batchTxEvent) {
-	batchTx := &types.EventBatch{}
-	blockHash := strings.ToLower(hexutil.Encode(evt.blockHash))
-	blockNumber := evt.blockNum
-	blockTime := int64(evt.txs.Timestamp)
-	for _, protoTx := range evt.txs.Transactions {
-		hash := strings.ToLower(hexutil.Encode(protoTx.TxHash))
-		gid := uint(protoTx.GameId)
-		switch tx := protoTx.Tx.(type) {
-		case *proto.Transaction_GameCreated:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
-			c.gameCreated(batchTx, blockTime, uint(gid), hash, blockHash, blockNumber, tx)
-		case *proto.Transaction_GameTurnSetupReady:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
-			c.gameTurnSetupReady(batchTx, blockTime, uint(gid), hash, blockHash, blockNumber, tx)
-		case *proto.Transaction_CommitmentOnChain:
-			address := types.PlayerAddress{}
-			address.FromProto(tx.CommitmentOnChain.Address)
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
-			c.commitmentOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
-		case *proto.Transaction_CardOnChain:
-			address := types.PlayerAddress{}
-			address.FromProto(tx.CardOnChain.Address)
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
-			c.cardOnChain(batchTx, blockTime, gid, hash, blockHash, blockNumber, tx)
-		}
-	}
-	batchTx.Wait()
-}
-
-func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string, blockNumber uint64, eventName string) {
+func (c *Chain) logTxCompletionIfTracked(hash string, gid int64, blockHash string, blockNumber uint64, eventName string) {
 	// If we have a recorded submission time for this tx, log the end-to-end latency
 	c.txTimesLock.Lock()
 	start, ok := c.txTimes[hash]
@@ -170,76 +127,26 @@ func (c *Chain) logTxCompletionIfTracked(hash string, gid uint, blockHash string
 	)
 }
 
-func (c *Chain) gameCreated(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameCreated) error {
-	// For RoomV2, there's only one contract address, so RoomContractAddress is not needed
-	contractCreatedEvt := types.NewEvent(types.CHAIN_MANAGER_ID, &types.RoomCreated{
-		GameID:    gameID,
-		TimeStamp: blockTime,
-	}, true)
-	batchTx.Add(contractCreatedEvt)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), contractCreatedEvt)
-	// Transaction tables removed - no longer saving to database
-	return nil
-}
-
-func (c *Chain) gameTurnSetupReady(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_GameTurnSetupReady) error {
-	turnSetupReadyEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.NewTurnSetupComplete{
-		GameID:      gameID,
-		RoundNumber: tx.GameTurnSetupReady.RoundNumber,
-		TurnNumber:  tx.GameTurnSetupReady.TurnNumber,
-		TimeStamp:   blockTime,
-	}, true)
-	batchTx.Add(turnSetupReadyEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), turnSetupReadyEvent)
-	return nil
-}
-
-func (c *Chain) commitmentOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CommitmentOnChain) error {
-	player := types.PlayerAddress{}
-	player.FromProto(tx.CommitmentOnChain.Address)
-	roundNumber := tx.CommitmentOnChain.RoundNumber
-	turnNumber := tx.CommitmentOnChain.TurnNumber
-	commitment := tx.CommitmentOnChain.Commitment
-
-	// Use turn_number as commitment index (turn_number is 1-based: 1, 2, 3)
-	commitmentIndex := turnNumber
-
-	commitmentOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCommitmentOnChain{
-		GameID:          gameID,
-		Address:         player,
-		RoundNumber:     roundNumber,
-		Commitment:      commitment,
-		CommitmentIndex: commitmentIndex, // 1-based (1, 2, 3)
-		TimeStamp:       blockTime,
-	}, true)
-	batchTx.Add(commitmentOnChainEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), commitmentOnChainEvent)
-	// Transaction tables removed - no longer saving to database
-	return nil
-}
-
-func (c *Chain) cardOnChain(batchTx *types.EventBatch, blockTime int64, gameID uint, txHash string, blockHash string, blockNumber uint64, tx *proto.Transaction_CardOnChain) error {
-	player := types.PlayerAddress{}
-	player.FromProto(tx.CardOnChain.Address)
-	roundNumber := tx.CardOnChain.RoundNumber
-	turnNumber := tx.CardOnChain.TurnNumber
-	salt := tx.CardOnChain.Salt
-	cardID := uint(tx.CardOnChain.CardId)
-
-	// Use turn_number as card index (turn_number is 1-based: 1, 2, 3)
-	cardIndex := turnNumber
-
-	cardOnChainEvent := types.NewEvent(types.CHAIN_MANAGER_ID, &types.PlayerCardOnChain{
-		GameID:      gameID,
-		Address:     player,
-		RoundNumber: roundNumber,
-		Salt:        salt,
-		Card:        cardID,
-		CardIndex:   cardIndex, // 1-based (1, 2, 3) - matches CommitmentIndex
-		TimeStamp:   blockTime,
-	}, true)
-	batchTx.Add(cardOnChainEvent)
-	c.workerManager.SendEvent(fmt.Sprint(gameID), cardOnChainEvent)
-	// Transaction tables removed - no longer saving to database
-	return nil
+// NotifyTxsCompleted logs completion latency for tx hashes that were previously tracked by SubmitTasks.
+// This is used when tx handling ingress is outside chain service (e.g. game manager).
+func (c *Chain) NotifyTxsCompleted(txs *proto.TransactionBatch) {
+	if txs == nil {
+		return
+	}
+	blockHash := strings.ToLower("0x" + hex.EncodeToString(txs.BlockHash))
+	blockNumber := txs.BlockNumber
+	for _, protoTx := range txs.Transactions {
+		hash := strings.ToLower("0x" + hex.EncodeToString(protoTx.TxHash))
+		gid := protoTx.GameId
+		switch protoTx.Tx.(type) {
+		case *proto.Transaction_GameCreated:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
+		case *proto.Transaction_GameTurnSetupReady:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
+		case *proto.Transaction_CommitmentOnChain:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
+		case *proto.Transaction_CardOnChain:
+			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
+		}
+	}
 }

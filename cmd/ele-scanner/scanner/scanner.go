@@ -146,7 +146,7 @@ func (s *Scanner) Run() {
 	}
 
 	for {
-		s.rpcClient, err = eleClient.NewRpcClientWithAddr(s.roomServerHttpRpc)
+		s.rpcClient, err = eleClient.NewRpcClientRoomOnly(s.roomServerHttpRpc)
 		if err != nil {
 			log.Errorf("Failed to create rpcClient to roomServer: %v, retrying in %d seconds...", err.Error(), dialTimeout)
 			time.Sleep(time.Duration(dialTimeout) * time.Second)
@@ -553,7 +553,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				GameId: uint32(eventData.GameId.Int64()),
+				GameId: eventData.GameId.Int64(),
 				Tx: &proto.Transaction_GameCreated{
 					GameCreated: &proto.TxGameCreated{},
 				},
@@ -569,7 +569,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				GameId: uint32(eventData.GameId.Int64()),
+				GameId: eventData.GameId.Int64(),
 				Tx: &proto.Transaction_GameTurnSetupReady{
 					GameTurnSetupReady: &proto.TxGameTurnSetupReady{
 						RoundNumber: uint32(eventData.Round.Uint64()),
@@ -587,7 +587,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 			}
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				GameId: uint32(eventData.GameId.Int64()),
+				GameId: eventData.GameId.Int64(),
 				Tx: &proto.Transaction_CommitmentOnChain{
 					CommitmentOnChain: &proto.TxCommitmentOnChain{
 						Address: &proto.PlayerAddress{
@@ -611,7 +611,7 @@ func (s *Scanner) processTx(tx blockchain.OptimismTx) ([]*proto.Transaction, err
 
 			txSubmit = &proto.Transaction{
 				TxHash: common.HexToHash(tx.Hash).Bytes(),
-				GameId: uint32(eventData.GameId.Int64()),
+				GameId: eventData.GameId.Int64(),
 				Tx: &proto.Transaction_CardOnChain{
 					CardOnChain: &proto.TxCardOnChain{
 						Address: &proto.PlayerAddress{

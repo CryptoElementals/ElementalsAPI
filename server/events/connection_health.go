@@ -1,13 +1,11 @@
 package events
 
 import (
-	"context"
 	"sync"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/client"
-	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // ConnectionHealthMonitor 连接健康监控器
@@ -45,24 +43,10 @@ func (chm *ConnectionHealthMonitor) CheckHealth() bool {
 		return false
 	}
 
-	// 尝试发送一个轻量级的健康检查请求
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 使用一个简单的ListTopics请求作为健康检查
-	pubsubClient := client.GetGlobalPubSubClient()
-	if pubsubClient == nil {
+	if err := client.CheckRedisPing(); err != nil {
 		chm.isHealthy = false
 		chm.failureCount++
-		log.Warnf("连接健康检查失败: PubSub客户端未初始化")
-		return false
-	}
-
-	_, err := pubsubClient.ListTopics(ctx, &proto.ListTopicsRequest{Pattern: ""})
-	if err != nil {
-		chm.isHealthy = false
-		chm.failureCount++
-		log.Warnf("连接健康检查失败: %v", err)
+		log.Warnf("连接健康检查失败: Redis: %v", err)
 		return false
 	}
 

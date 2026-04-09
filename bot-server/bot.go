@@ -3,18 +3,20 @@ package botserver
 import (
 	"context"
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"time"
 
 	gameclient "github.com/CryptoElementals/common/game_client"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type playerWallet struct {
@@ -97,19 +99,21 @@ type Bot struct {
 	w            *playerWallet
 	addr         *types.PlayerAddress
 	client       *rpc.Client
-	ethClient    *ethclient.Client
 	bindOpt      *bind.TransactOpts
 	chanEvt      chan *proto.Event
 	chanErr      chan error
 	cardProvider gameclient.CardProvider
+	mode         string
+	apiBaseURL   string
 }
 
 func NewBot(
 	ctx context.Context,
 	playerWallet *playerWallet,
 	client *rpc.Client,
-	ethClient *ethclient.Client,
 	chainID *big.Int,
+	mode string,
+	apiBaseURL string,
 ) *Bot {
 	addr := types.NewPlayerAddress(playerWallet.playerId, playerWallet.tempWallet.GetAddrHex())
 	opt := &bind.TransactOpts{
@@ -118,18 +122,19 @@ func NewBot(
 		Signer:  playerWallet.tempWallet.BuildTxSinger(chainID),
 	}
 	return &Bot{
-		ctx:       ctx,
-		w:         playerWallet,
-		addr:      addr,
-		client:    client,
-		ethClient: ethClient,
-		bindOpt:   opt,
-		chanEvt:   make(chan *proto.Event, 1),
-		chanErr:   make(chan error, 1),
+		ctx:     ctx,
+		w:       playerWallet,
+		addr:    addr,
+		client:  client,
+		bindOpt: opt,
+		chanEvt: make(chan *proto.Event, 1),
+		chanErr: make(chan error, 1),
 		cardProvider: &roundInfo{
 			roundNum:   1,
 			turnNumber: 1,
 		},
+		mode:       mode,
+		apiBaseURL: apiBaseURL,
 	}
 }
 
@@ -138,11 +143,64 @@ func (b *Bot) formatBotID() string {
 }
 
 func (b *Bot) run() error {
-	err := b.runGameContext()
+	backoff := 500 * time.Millisecond
+	const maxBackoff = 5 * time.Second
+	for {
+		var err error
+		if b.mode == "http" {
+			err = b.runGameContextHTTP()
+		} else {
+			err = b.runGameContext()
+		}
+		if err == nil {
+			if b.ctx.Err() != nil {
+				return nil
+			}
+			backoff = 500 * time.Millisecond
+			continue
+		}
+		if b.ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			return nil
+		}
+		log.Errorw("bot_stream_subscribe_failed", "err", err, "addr", b.addr.String(), "retry_in", backoff.String())
+		select {
+		case <-b.ctx.Done():
+			return nil
+		case <-time.After(backoff):
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+		log.Infow("bot_stream_subscribe_retrying", "addr", b.addr.String())
+	}
+}
+
+func (b *Bot) runGameContextHTTP() error {
+	gameContext, err := gameclient.NewGameContextHTTP(b.ctx, b.apiBaseURL, b.w.playerId, b.w.tempWallet, b.cardProvider)
 	if err != nil {
 		return err
 	}
-	return nil
+	if err := gameContext.SignIn(); err != nil {
+		return err
+	}
+	if err := gameContext.Subscribe(); err != nil {
+		return err
+	}
+	defer gameContext.Close()
+	for {
+		select {
+		case <-b.ctx.Done():
+			return nil
+		default:
+			err = gameContext.Run()
+			if err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (b *Bot) runGameContext() error {

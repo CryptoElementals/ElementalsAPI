@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 var globalTestWorkerManager *WorkerManager
@@ -29,14 +30,12 @@ func TestMain(m *testing.M) {
 func TestWorkerManager_SendEvent(t *testing.T) {
 	h := &testEventHandler{tt: t, evtChan: make(chan *types.Event, 1)}
 	// setup a test worker
-	globalTestWorkerManager.SpwanWorker(context.Background(), "worker1", 1, h)
+	globalTestWorkerManager.SpawnWorker(context.Background(), "worker1", 1, h)
 
 	// send event to worker1
-	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &types.PlayerReadyEvent{
-		GameId:        1,
-		RoundNumber:   1,
-		TurnNumber:    1,
-		PlayerAddress: types.PlayerAddress{Id: 1, TemporaryAddress: "temp"},
+	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &proto.SurrenderRequest{
+		GameID:  1,
+		Address: &proto.PlayerAddress{Id: 1, TemporaryAddress: "temp"},
 	}))
 	time.Sleep(1 * time.Millisecond)
 	// check if worker1 received the event
@@ -53,15 +52,13 @@ func TestWorkerManager_SendEvent(t *testing.T) {
 func TestWorkerManager_CloseWorker(t *testing.T) {
 	h := &testEventHandler{tt: t, evtChan: make(chan *types.Event, 1)}
 	// setup a test worker
-	globalTestWorkerManager.SpwanWorker(context.Background(), "worker1", 1, h)
+	globalTestWorkerManager.SpawnWorker(context.Background(), "worker1", 1, h)
 	// close worker1
 	globalTestWorkerManager.CloseWorker("worker1")
 
-	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &types.PlayerReadyEvent{
-		GameId:        1,
-		RoundNumber:   1,
-		TurnNumber:    1,
-		PlayerAddress: types.PlayerAddress{Id: 1, TemporaryAddress: "temp"},
+	globalTestWorkerManager.SendEvent("worker1", types.NewEvent("sender", &proto.SurrenderRequest{
+		GameID:  1,
+		Address: &proto.PlayerAddress{Id: 1, TemporaryAddress: "temp"},
 	}))
 	// check if worker1 is closed
 	select {

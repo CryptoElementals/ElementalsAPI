@@ -10,11 +10,10 @@ func Migrate() error {
 	migrates := []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
+		&dao.GameArgs{},
 		&dao.Game{},
-		&dao.Round{},
 		&dao.Turn{},
 		&dao.PlayerTurnInfo{},
-		&dao.CardEffect{},
 		&dao.GamePlayerInfo{},
 		&dao.PlayerReward{},
 		&dao.BattleReward{},
@@ -26,6 +25,12 @@ func Migrate() error {
 		&dao.LockedUserToken{},
 		&dao.DevTempKey{},
 		&dao.UserStat{},
+		&dao.TournamentSchedule{},
+		&dao.Tournament{},
+		&dao.TournamentEntry{},
+		&dao.TournamentMatch{},
+		&dao.GameMatch{},
+		&dao.BotAccount{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -38,11 +43,10 @@ func MigrateMemDb() error {
 	var migrates = []any{
 		&dao.UserProfile{},
 		&dao.CardStat{},
+		&dao.GameArgs{},
 		&dao.Game{},
-		&dao.Round{},
 		&dao.Turn{},
 		&dao.PlayerTurnInfo{},
-		&dao.CardEffect{},
 		&dao.GamePlayerInfo{},
 		&dao.PlayerReward{},
 		&dao.BattleReward{},
@@ -53,6 +57,12 @@ func MigrateMemDb() error {
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
 		&dao.DevTempKey{},
+		&dao.TournamentSchedule{},
+		&dao.Tournament{},
+		&dao.TournamentEntry{},
+		&dao.TournamentMatch{},
+		&dao.GameMatch{},
+		&dao.BotAccount{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

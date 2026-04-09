@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package rpc;
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+// Deprecated: room worker RPCs were merged into RoomService in rpc.proto.
+

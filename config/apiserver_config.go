@@ -16,9 +16,10 @@ type ApiServerConfig struct {
 	LogCfg            log.Config      `mapstructure:"log"`
 	RedisCfg          redis.Config    `mapstructure:"redis"`
 	DbCfg             db.Config       `mapstructure:"database"`
-	ServerCfg         ServerConfig    `mapstructure:"server"`
-	RoomServerAddress string          `mapstructure:"room-server-address"`
-	GameParams        GameParamConfig `mapstructure:"game-params"`
+	ServerCfg           ServerConfig    `mapstructure:"server"`
+	RoomServerAddress   string          `mapstructure:"room-server-address"`
+	LobbyServerAddress  string          `mapstructure:"lobby-server-address"`
+	GameParams          GameParamConfig `mapstructure:"game-params"`
 	S3Config          S3Config        `mapstructure:"s3"`
 }
 
@@ -75,6 +76,9 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 	// Validate room server address
 	if cfg.RoomServerAddress == "" {
 		return fmt.Errorf("room server address cannot be empty")
+	}
+	if cfg.LobbyServerAddress == "" {
+		return fmt.Errorf("lobby server address cannot be empty")
 	}
 
 	return nil
@@ -171,9 +175,12 @@ func setDefaultValues(cfg *ApiServerConfig) {
 		cfg.ServerCfg.ServiceName = "DILL"
 	}
 
-	// 默认 RoomServer 地址
+	// 默认 RoomServer / Lobby 地址
 	if cfg.RoomServerAddress == "" {
 		cfg.RoomServerAddress = "127.0.0.1:50051"
+	}
+	if cfg.LobbyServerAddress == "" {
+		cfg.LobbyServerAddress = "127.0.0.1:50052"
 	}
 
 	// Set default S3 configuration

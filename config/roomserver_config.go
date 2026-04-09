@@ -11,18 +11,19 @@ var RSGConf = RoomServerConfig{}
 
 // RoomServerConfig represents the complete application configuration structure
 type RoomServerConfig struct {
-	LogCfg              log.Config      `mapstructure:"log"`
-	RedisCfg            redis.Config    `mapstructure:"redis"`
-	DbCfg               db.Config       `mapstructure:"database"`
-	ChainCfg            ChainConfig     `mapstructure:"chain"`
-	GameParams          GameParamConfig `mapstructure:"game-params"`
-	WalletPaths         []string        `mapstructure:"wallet-paths"`
-	ListenPort          int64           `mapstructure:"listen-port"`
-	BotWaitTime         int64           `mapstructure:"bot-wait-time"`
-	StatServiceEndpoint string          `mapstructure:"stat-service-endpoint"`
-	ShouldRecverGames   bool            `mapstructure:"should-recover-games"`
+	LogCfg      log.Config   `mapstructure:"log"`
+	RedisCfg    redis.Config `mapstructure:"redis"`
+	DbCfg       db.Config    `mapstructure:"database"`
+	ChainCfg    ChainConfig  `mapstructure:"chain"`
+	WalletPaths []string     `mapstructure:"wallet-paths"`
+	ListenPort  int64        `mapstructure:"listen-port"`
+
 	// pool batch size for on-chain submissions
 	PoolBatchSize int `mapstructure:"pool-batch-size"`
+
+	PoolProcessingInterval int `mapstructure:"pool-processing-interval"`
+	// GameArgsID is the game_args row id used for new matches (must be non-zero; room server loads it at startup).
+	GameArgsID uint `mapstructure:"game-args-id"`
 }
 
 func InitRSConfig(configPath string) error {
@@ -34,9 +35,6 @@ func InitRSConfig(configPath string) error {
 	if err := viper.Unmarshal(&RSGConf); err != nil {
 		return err
 	}
-
-	// 初始化游戏参数
-	InitializeGameParams(&RSGConf.GameParams)
 
 	return nil
 }

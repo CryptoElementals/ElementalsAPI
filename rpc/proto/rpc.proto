@@ -8,27 +8,21 @@ import "rpc/proto/battle.proto";
 
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
-service RpcService {
-    // game related api
-    rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);
-    rpc ExitQueue(PlayerAddress) returns (google.protobuf.Empty);
-    rpc ContinueGame(ContinueGameRequest) returns (google.protobuf.Empty);
-    rpc GetGamePhase(PlayerAddress) returns (GamePhase);
-    rpc IsPlayerInQueue(PlayerAddress) returns (IsPlayerInQueueResponse);
-    rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
-    rpc GetBattleInfo(GetBattleInfoRequest) returns (GetBattleInfoResponse);
+// RoomService is served by the room server.
+// It merges game/player/chain RPCs and room-worker RPCs.
+service RoomService {
+    // game related api (queue / match / status / token live on LobbyService)
     rpc ConfirmBattle(ConfirmBattleRequest) returns (google.protobuf.Empty);
-    rpc RefuseContinueGame(RefuseContinueGameRequest) returns (google.protobuf.Empty);
     rpc Surrender(SurrenderRequest)returns (google.protobuf.Empty);
-    rpc GetGameTimeoutConfig(google.protobuf.Empty)returns(TimeoutConfig);
     rpc SubmitPlayerCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
     rpc SubmitPlayerCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
 
-    // token related logic
-    rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
-
     // chain related api
     rpc SubmitTransactions(TransactionBatch) returns (google.protobuf.Empty);
+
+    // lobby -> room worker api
+    rpc CreateGameAndRun(CreateGameAndRunRequest) returns (CreateGameAndRunResponse);
+    rpc SyncGamePhase(PlayerAddress) returns (google.protobuf.Empty);
 }
 
 message TimeoutConfig {
@@ -39,16 +33,12 @@ message TimeoutConfig {
 }
 
 message UnregisterBotsRequest {
-    repeated rpc.PlayerAddress PlayerAddresses =1;
+    repeated rpc.PlayerAddress PlayerAddresses = 1;
 }
 
 message SurrenderRequest {
-    uint32 GameID = 1;
+    int64 GameID = 1;
     PlayerAddress Address = 2;
-}
-
-message IsPlayerInQueueResponse {
-    bool IsInQueue = 1;
 }
 
 message GetPlayerStatusResponse {
@@ -71,22 +61,12 @@ message PlayerAddress {
     string temporary_address = 2;
 }
 
-message ContinueGameRequest {
-    PlayerAddress player = 1;
-    uint32 LastGameID = 2;
-}
-
-message RefuseContinueGameRequest {
-    PlayerAddress player = 1;
-    uint32 LastGameID = 2;
-}
-
 enum PlayerStatus {
     PLAYER_UNKNOWN = 0;
     PLAYER_IN_QUEUE = 1;
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
-    PLAYER_WAITTING_CONTINUE = 4;
+    PLAYER_PENDING_QUEUE_MATCH = 4;
 }
 
 enum PlayerTurnStatus {
@@ -100,35 +80,34 @@ message GamePhasePlayer {
     PlayerAddress Address = 1;
     PlayerTurnStatus TurnStatus = 2;
     uint32 CurrentHP = 3;
-    uint32 CurrentMultiplier = 4;
-    optional bytes Commitment = 7;
-    optional uint32 Card = 8;
+    optional bytes Commitment = 4;
+    optional uint32 Card = 5;
 }
 
 message GamePhase {
     GameType GameType = 1;
-    uint32 GameID = 2;
+    int64 GameID = 2;
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
     repeated GamePhasePlayer Players = 6;
 }
 
-message GetBattleInfoRequest {
-    uint32 GameID = 1;
-    uint32 RoundNumber = 2;
-}
-
-message GetBattleInfoResponse {
-    battle.RoundResult round_result = 1;
-    battle.GameResult game_result = 2;
-}
-
 message ConfirmBattleRequest {
     PlayerAddress PlayerAddress = 1;
-    uint32 GameID = 2;
+    int64 GameID = 2;
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
+}
+
+message ConfirmMatchRequest {
+    PlayerAddress PlayerAddress = 1;
+    int64 MatchId = 2;
+}
+
+message CancelMatchRequest {
+    PlayerAddress PlayerAddress = 1;
+    int64 MatchId = 2;
 }
 
 enum TurnStatus {
@@ -137,6 +116,7 @@ enum TurnStatus {
     TURN_WAITTING_COMMITMENTS = 2;
     TURN_WAITTING_CARDS = 3;
     TURN_ROUND_COMPLETED = 4;  // Special state: round is completed
+    TURN_COMPLETED = 5;
 }
 
 
@@ -151,13 +131,10 @@ message RoundSubmittedCard {
     uint32 SubmittedCardId = 1;
     uint32 PlayerHealthBefore = 2;
     uint32 PlayerHealthEnd = 3;
-    uint32 MultiplierBefore = 4;      // multiplier before this card
-    uint32 MultiplierAfter = 5;       // multiplier after this card  
-    string Description = 6;            // battle description
-    battle.ElementRelation ElementRelation = 7;       // element relation type
-    repeated battle.BattleEffect Effects = 8; // effects applied to this player
-    bytes SubmittedCommitment = 9;
-    bytes Salt = 10;
+    string Description = 4;
+    battle.ElementRelation ElementRelation = 5;
+    bytes SubmittedCommitment = 6;
+    bytes Salt = 7;
 }
 
 message Round {
@@ -180,7 +157,7 @@ enum GameType {
 }
 
 message GameInfo {
-    uint32 game_id = 1;
+    int64 game_id = 1;
     GameType game_type = 2;
     GameStatus status = 3;
     int32 initial_hp = 4;
@@ -191,7 +168,7 @@ message GameInfo {
 
 message Transaction {
     bytes tx_hash = 1;
-    uint32 game_id = 2;
+    int64 game_id = 2;
     oneof tx {
         TxGameCreated game_created = 3;
         TxGameTurnSetupReady game_turn_setup_ready = 4;
@@ -231,7 +208,7 @@ message TxCardOnChain {
 }
 
 message SubmitPlayerCommitmentRequest {
-    uint32 GameID = 1;
+    int64 GameID = 1;
     PlayerAddress Address = 2;
     uint32 RoundNumber = 3;
     bytes Commitment = 4;
@@ -240,11 +217,22 @@ message SubmitPlayerCommitmentRequest {
 }
 
 message SubmitPlayerCardRequest {
-    uint32 GameID = 1;
+    int64 GameID = 1;
     PlayerAddress Address = 2;
     uint32 RoundNumber = 3;
     bytes Salt = 4;
     uint32 Card = 5;
     uint32 TurnNumber = 6;
     bytes Signature = 7;
+}
+
+message CreateGameAndRunRequest {
+  repeated PlayerAddress players = 1;
+  uint32 game_type = 2;
+  // Queue PVP: snowflake game_match id after ConfirmMatch; 0 for tournament / no lobby match row.
+  int64 completed_match_id = 3;
+}
+
+message CreateGameAndRunResponse {
+  int64 game_id = 1;
 }

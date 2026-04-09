@@ -104,11 +104,10 @@ func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	// 通过gRPC调用RoomServer的ExitQueue
-	rpcClient := client.GetGlobalRpcClient()
-	if rpcClient == nil {
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "gRPC client not initialized"
+		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
 		return task.Response, nil
 	}
 
@@ -117,10 +116,10 @@ func (task *ExitQueueTask) Run(c *gin.Context) (Response, error) {
 		TemporaryAddress: tempAddress,
 	}
 
-	_, err = rpcClient.ExitQueue(context.Background(), playerAddr)
+	_, err = lobbyClient.ExitQueue(context.Background(), playerAddr)
 	if err != nil {
 		task.Response.BaseResponse.RetCode = 1002
-		task.Response.BaseResponse.Message = "RoomServer ExitQueue failed: " + err.Error()
+		task.Response.BaseResponse.Message = "Lobby ExitQueue failed: " + err.Error()
 		return task.Response, nil
 	}
 

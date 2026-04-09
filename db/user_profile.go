@@ -24,13 +24,18 @@ func GetUserProfileByAddress(address string) (*dao.UserProfile, error) {
 
 // GetUserProfileByPlayerID 根据玩家ID获取用户档案
 func GetUserProfileByPlayerID(playerID string) (*dao.UserProfile, error) {
+	return GetUserProfileByPlayerIDWithDB(playerID, Get())
+}
+
+// GetUserProfileByPlayerIDWithDB loads a profile using the given DB session (e.g. transaction)
+// so sqlite dev mode with a single pooled connection does not deadlock inside Transaction callbacks.
+func GetUserProfileByPlayerIDWithDB(playerID string, gdb *gorm.DB) (*dao.UserProfile, error) {
 	var userProfile dao.UserProfile
-	// playerID 存在于 session 中为字符串，这里解析为 uint64
 	id, err := strconv.ParseUint(playerID, 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	if err := Get().Where("player_id = ?", id).First(&userProfile).Error; err != nil {
+	if err := gdb.Where("player_id = ?", id).First(&userProfile).Error; err != nil {
 		return nil, err
 	}
 	return &userProfile, nil

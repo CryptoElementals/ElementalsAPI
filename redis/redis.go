@@ -145,6 +145,12 @@ func Exist(key string) (bool, error) {
 	return redis.Bool(conn.Do(EXISTS_COMMAND, key))
 }
 
+// GetConfig returns the global Redis config set by Init.
+// Returns nil if Init has not been called.
+func GetConfig() *Config {
+	return globalConfig
+}
+
 func Ping() error {
 	conn := globalPool.Get()
 	defer func() {

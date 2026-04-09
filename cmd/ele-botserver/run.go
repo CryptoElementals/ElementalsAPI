@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	botserver "github.com/CryptoElementals/common/bot-server"
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +38,17 @@ func runBotServer() {
 	err = log.InitGlobalLogger(&config.BotCfg.LogCfg)
 	if err != nil {
 		panic("init logger failed: " + err.Error())
+	}
+	if err := db.Init(&config.BotCfg.DbCfg); err != nil {
+		panic(fmt.Sprintf("init db failed: %v", err))
+	}
+	if err := db.EnsureBotAccountTable(); err != nil {
+		panic(fmt.Sprintf("ensure bot_accounts table failed: %v", err))
+	}
+	if config.BotCfg.GameClientMode == "grpc" {
+		if err := redis.Init(&config.BotCfg.RedisCfg); err != nil {
+			panic(fmt.Sprintf("init redis failed for grpc bot mode: %v", err))
+		}
 	}
 	svr := botserver.NewBotServer(&config.BotCfg)
 	svr.Start()

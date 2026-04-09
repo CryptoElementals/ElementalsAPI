@@ -1,3 +1,5 @@
+// Package worker implements the room server's in-process worker pool: one goroutine per logical id
+// (player, chain manager, game manager) with events routed through WorkerManager.
 package worker
 
 import (
@@ -34,6 +36,17 @@ type Worker struct {
 	closer   WorkerCloser
 }
 
+func signalAck(event *types.Event, handleErr error, workerID string) {
+	if event == nil || event.AckChan == nil {
+		return
+	}
+	if handleErr != nil {
+		log.Debugw("worker handle event failed", "worker id", workerID, "event", types.ToJsonLoggable(event), "err", handleErr)
+		event.AckChan <- handleErr
+	}
+	close(event.AckChan)
+}
+
 func NewWorker(ctx context.Context, id string, t WorkerType, workerCloser WorkerCloser, sender EventSender, handler EventHandler) *Worker {
 	ctx, ccl := context.WithCancel(ctx)
 	return &Worker{
@@ -57,15 +70,7 @@ func (w *Worker) Run() {
 		case event := <-w.msgQueue:
 			log.Debugw("worker received event", "worker id", w.Id, "eventType", reflect.TypeOf(event.Data))
 			err := w.handler.Handle(w.ctx, event)
-			if event.AckChan != nil {
-				if err != nil {
-					log.Debugw("worker handle event failed", "worker id", w.Id, "event", types.ToJsonLoggable(event), "err", err)
-					event.AckChan <- err
-					close(event.AckChan)
-				} else {
-					close(event.AckChan)
-				}
-			}
+			signalAck(event, err, w.Id)
 		}
 	}
 }

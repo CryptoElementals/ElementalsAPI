@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -20,7 +19,10 @@ const (
 	WORKER_TYPE_QUEUE        = 5
 )
 
-const GameTypePVP = 1
+const (
+	GameTypePVP        = 1
+	GameTypeTournament = 2
+)
 
 // well known worker id
 const (
@@ -134,24 +136,6 @@ func AssertInterface[T any](evt *Event) (T, error) {
 	return data, nil
 }
 
-type BatchDone struct {
-	ID string
-}
-
-type EventBatch struct {
-	evt []*Event
-}
-
-func (b *EventBatch) Add(evt *Event) {
-	b.evt = append(b.evt, evt)
-}
-
-func (b *EventBatch) Wait() {
-	for _, e := range b.evt {
-		_, _ = e.Await() // Ignore response and error for batch operations
-	}
-}
-
 func ToJsonLoggable(obj any) string {
 	res, _ := json.Marshal(obj)
 	return string(res)
@@ -162,9 +146,3 @@ func ToJsonLoggableIndent(obj any) string {
 	return string(res)
 }
 
-type GameContinueInfo struct {
-	GameID          uint
-	EndTime         time.Time
-	ContinueTimeout int64
-	Players         []PlayerAddress
-}

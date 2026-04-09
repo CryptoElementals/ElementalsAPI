@@ -67,7 +67,7 @@ func (r *RedisStream) Read(ctx context.Context, streamName string, startID strin
 		return nil, err
 	}
 	if reply == nil {
-		return nil, nil
+		return nil, nil    
 	}
 
 	return parseXReadReply(reply, streamName)
