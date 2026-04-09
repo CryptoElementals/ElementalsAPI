@@ -347,7 +347,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 		switch tx := protoTx.Tx.(type) {
 		case *proto.Transaction_GameCreated:
 			if err := r.executeOnGame(gameID, func(g *Game) error { return g.handleRoomCreated(blockTime) }); err != nil {
-				return err
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "game_created")
 			}
 		case *proto.Transaction_GameTurnSetupReady:
 			if tx == nil || tx.GameTurnSetupReady == nil {
@@ -356,7 +356,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 			if err := r.executeOnGame(gameID, func(g *Game) error {
 				return g.handleNewTurnSetupOnChain(gameID, blockTime, tx.GameTurnSetupReady)
 			}); err != nil {
-				return err
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "game_turn_setup_ready")
 			}
 		case *proto.Transaction_CommitmentOnChain:
 			if tx == nil || tx.CommitmentOnChain == nil {
@@ -365,7 +365,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 			if err := r.executeOnGame(gameID, func(g *Game) error {
 				return g.handleGameStateWaittingCommitments(tx.CommitmentOnChain)
 			}); err != nil {
-				return err
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "commitment_on_chain")
 			}
 		case *proto.Transaction_CardOnChain:
 			if tx == nil || tx.CardOnChain == nil {
@@ -374,7 +374,7 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 			if err := r.executeOnGame(gameID, func(g *Game) error {
 				return g.handleGameStateCardSubmitted(tx.CardOnChain)
 			}); err != nil {
-				return err
+				log.Errorw("SubmitTransactions: handler failed", "error", err, "gameID", gameID, "txKind", "card_on_chain")
 			}
 		}
 	}

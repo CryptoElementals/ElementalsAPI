@@ -39,7 +39,8 @@ type Service struct {
 }
 
 func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
-	return s.gameManager.SubmitTransactions(txs)
+	s.gameManager.SubmitTransactions(txs)
+	return nil
 }
 
 func NewService(

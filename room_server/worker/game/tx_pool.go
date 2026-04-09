@@ -148,6 +148,7 @@ func (p *txPool) addCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
 	}
 
 	p.commitmentPool[key] = evt
+	log.Infow("request added to tx pool", "kind", "commitment", "gameID", gameID, "address", addr.TemporaryAddress, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 	return nil
 }
 
@@ -186,6 +187,7 @@ func (p *txPool) addCard(evt *proto.SubmitPlayerCardRequest) error {
 	}
 
 	p.cardPool[key] = evt
+	log.Infow("request added to tx pool", "kind", "card", "gameID", gameID, "address", addr.TemporaryAddress, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 	return nil
 }
 
@@ -194,6 +196,7 @@ func (p *txPool) addCreateRoom(evt *types.RequireGameCreationEvent) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
 	p.createRoomPool[evt.GameID] = evt
+	log.Infow("request added to tx pool", "kind", "create_room", "gameID", evt.GameID)
 }
 
 // addSetTurnReady enqueues a set-turn-ready event (one per game/round/turn).
@@ -202,6 +205,7 @@ func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 	p.poolLock.Lock()
 	defer p.poolLock.Unlock()
 	p.setTurnReadyPool[key] = evt
+	log.Infow("request added to tx pool", "kind", "set_turn_ready", "gameID", evt.GameID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 }
 
 // AddCommitment implements TxPoolEnqueuer; enqueues after validation (e.g. by Game).

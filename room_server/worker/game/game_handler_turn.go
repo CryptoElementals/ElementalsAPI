@@ -71,20 +71,9 @@ func (g *Game) handleConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	}
 
 	return g.afterTx(func() error {
-		if g.currentRound.roundNumber == 1 && g.currentRound.getCurrentTurnNumber() == 1 {
-			allPlayers := make([]types.PlayerAddress, 0, len(g.currentRound.gamePlayers))
-			for _, pl := range g.currentRound.gamePlayers {
-				allPlayers = append(allPlayers, pl.PlayerAddress())
-			}
-			if err := g.sendContractCreation(allPlayers); err != nil {
-				g.handleGameAbortInternalError()
-				return err
-			}
-		} else {
-			if err := g.sendTurnReady(); err != nil {
-				g.handleGameAbortInternalError()
-				return err
-			}
+		if err := g.sendTurnReady(); err != nil {
+			g.handleGameAbortInternalError()
+			return err
 		}
 		g.sendTimerEventByCurrentRound()
 		return nil
@@ -226,6 +215,7 @@ func (g *Game) handleTurnEnd() error {
 		evt := turnCompletedEvt
 		return g.afterTx(func() error {
 			g.publishProtoToAllPlayers(evt)
+			g.sendTimerEventByCurrentRound()
 			return nil
 		})
 	}

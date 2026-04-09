@@ -127,7 +127,6 @@ func (g *Game) setupNewRound() {
 	g.currentRound.roundNumber = roundNum
 	g.currentRound.turnNumber = 1
 	g.currentRound.createNewTurn()
-	g.sendTimerEventByCurrentRound()
 }
 
 func (g *Game) getGamePlayer(tempAddr string) (*gamePlayer, error) {
