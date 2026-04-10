@@ -1,6 +1,8 @@
 package redis
 
 import (
+	"strconv"
+
 	"github.com/CryptoElementals/common/log"
 	"github.com/gomodule/redigo/redis"
 )
@@ -57,6 +59,22 @@ func HGet(key string, field string) (string, error) {
 		}
 	}()
 	return redis.String(conn.Do(HGET_COMMAND, key, field))
+}
+
+// HGetInt64 parses a hash field as base-10 int64. If the field is missing, ok is false and err is nil.
+func HGetInt64(key, field string) (value int64, ok bool, err error) {
+	s, err := HGet(key, field)
+	if err == redis.ErrNil {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	return v, true, nil
 }
 
 func HMGet(key string, fields ...string) ([]interface{}, error) {

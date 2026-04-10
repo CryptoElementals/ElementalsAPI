@@ -3,14 +3,16 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/lobby_server/bot_manager"
+	"github.com/CryptoElementals/common/lobby_server/player_info"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
@@ -22,28 +24,20 @@ import (
 // EventPublisher publishes outbound player notifications (same contract as game.Publisher).
 type EventPublisher = pubsub.Publisher
 
-const queueInfoPrefix = "queue_info"
-const lockedTokenPrefix = "locked_token"
-const queueInfoVal = "v"
-
 type Queue struct {
-	ctx                  context.Context
-	lock                 sync.RWMutex
-	queue                map[types.PlayerAddress]time.Time
-	pendingMatchByPlayer map[types.PlayerAddress]int64
-	inGameByPlayer       map[types.PlayerAddress]bool
+	ctx        context.Context
+	lock       sync.RWMutex
+	lobbyState *player_info.RedisStore
+	botStore   *bot_manager.RedisStore
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
 	continueRematchCancelTimeoutSec    int64
 	continueRematchCancelRedundancySec int64
 	publisher                          EventPublisher
-	queueCache                         cache.Cache
-	lockedTokenCache                   cache.Cache
 	closing                            bool
 	gameCreator                        GameCreator
 	minTokenToJoinQueue                int32
 	matchConfirmationTimeout           int64
 
-	botMgr      *botManager
 	botWaitTime time.Duration
 
 	statServiceEndpoint string
@@ -57,7 +51,6 @@ type GameCreator interface {
 func NewQueue(
 	ctx context.Context,
 	pub EventPublisher,
-	c cache.Cache,
 	gameCreator GameCreator,
 	matchConfirmationTimeout int64,
 	continueTimeout int64,
@@ -65,28 +58,30 @@ func NewQueue(
 	botWaitTime int64,
 	minTokenToJoinQueue int32,
 	statServiceEndpoint string,
-) *Queue {
-	queueCache := cache.WithPrefix(queueInfoPrefix, c)
-	tokenCache := cache.WithPrefix(lockedTokenPrefix, c)
+) (*Queue, error) {
 	q := &Queue{
 		ctx:                                ctx,
-		queue:                              make(map[types.PlayerAddress]time.Time),
-		pendingMatchByPlayer:               make(map[types.PlayerAddress]int64),
-		inGameByPlayer:                     make(map[types.PlayerAddress]bool),
 		publisher:                          pub,
-		lockedTokenCache:                   tokenCache,
-		queueCache:                         queueCache,
 		gameCreator:                        gameCreator,
 		continueRematchCancelTimeoutSec:    continueTimeout,
 		continueRematchCancelRedundancySec: continueTimeoutRedundancy,
-		botMgr:                             newBotManager(),
 		botWaitTime:                        time.Duration(botWaitTime) * time.Second,
 		minTokenToJoinQueue:                minTokenToJoinQueue,
 		matchConfirmationTimeout:           matchConfirmationTimeout,
 		statServiceEndpoint:                statServiceEndpoint,
 	}
+	lobbyState, err := player_info.NewRedisStore("")
+	if err != nil {
+		return nil, fmt.Errorf("lobby redis state: %w", err)
+	}
+	q.lobbyState = lobbyState
+	botStore, err := bot_manager.NewRedisStore("")
+	if err != nil {
+		return nil, fmt.Errorf("lobby redis bots: %w", err)
+	}
+	q.botStore = botStore
 	q.registerPendingMatchConfirmationTimeoutHandler()
-	return q
+	return q, nil
 }
 
 func (q *Queue) start() error {
@@ -100,17 +95,6 @@ func (q *Queue) start() error {
 	} else {
 		log.Infow("stat service endpoint empty; skipping gRPC dial and post-game UpdatePlayerStats")
 	}
-	keys, err := q.queueCache.List("")
-	if err != nil {
-		return err
-	}
-	for _, key := range keys {
-		var player types.PlayerAddress
-		if err := player.Parse(key); err != nil {
-			return err
-		}
-		q.queue[player] = time.Now()
-	}
 	q.addBotRoutine()
 	return nil
 }
@@ -118,11 +102,7 @@ func (q *Queue) start() error {
 func (q *Queue) close() {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	// drain the queue when closing
 	q.closing = true
-	for addr := range q.queue {
-		q.removePlayerFromQueue(addr)
-	}
 }
 
 func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
@@ -134,35 +114,31 @@ func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 		log.Debugw("cannot join queue, server is closing", "addr", address.String())
 		return errors.New("server is closing")
 	}
-	if _, ok := q.queue[address]; ok {
+	inQueue, err := q.lobbyState.IsInQueue(q.ctx, address)
+	if err != nil {
+		return err
+	}
+	if inQueue {
 		return errors.New("player already in queue")
 	}
 	log.Infow("join queue", "player id", address.Id, "temporary address", address.TemporaryAddress)
-	err := q.lockToken(&address)
+	err = q.lockToken(&address)
 	if err != nil {
 		log.Errorf("cannot join queue, err: %s", err.Error())
 		return err
 	}
-	matched := false
-	for player := range q.queue {
-		if player.Id == address.Id ||
-			player.TemporaryAddress == address.TemporaryAddress {
-			continue
-		}
-
-		err := q.matchPlayers([]types.PlayerAddress{address, player})
-		if err != nil {
-			return err
-		}
-		matched = true
-		break
+	now := time.Now()
+	candidate, queued, err := q.lobbyState.JoinQueueOrGetMatchCandidate(q.ctx, address, now.UnixMilli())
+	if err != nil {
+		_ = q.unlockToken(&address)
+		return err
 	}
-	if !matched {
-		q.queue[address] = time.Now()
-		err := q.queueCache.Set(address.String(), queueInfoVal, 0)
-		if err != nil {
-			log.Errorf("set player to queue cache failed: %s", err.Error())
-		}
+	if candidate != nil {
+		return q.matchPlayers([]types.PlayerAddress{address, *candidate})
+	}
+	if !queued {
+		_ = q.unlockToken(&address)
+		return errors.New("player cannot enter queue")
 	}
 	return nil
 }
@@ -176,7 +152,10 @@ func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
 	address.FromProto(req)
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	_, ok := q.queue[address]
+	ok, err := q.lobbyState.IsInQueue(q.ctx, address)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		log.Debugw("player not in queue", "player", address.String())
 		return nil
@@ -185,8 +164,9 @@ func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
 }
 
 func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
-	delete(q.queue, player)
-	q.queueCache.Delete(player.String())
+	if err := q.lobbyState.RemoveQueue(q.ctx, player); err != nil {
+		log.Errorw("remove player from redis queue failed", "player", player.String(), "err", err)
+	}
 	err := q.unlockToken(&player)
 	if err != nil {
 		log.Errorf("unlock user token failed: %s", err.Error())
@@ -200,7 +180,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	for _, p := range event.GameInfo.Players {
 		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
 		q.markPlayerOutOfGameLocked(*addr)
-		isBot := q.botMgr.releaseInGameBot(*addr)
+		isBot := q.releaseInGameBotLocked(*addr)
 		if isBot {
 			bots.Add(*addr)
 		}
@@ -217,12 +197,15 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 
 	q.publishGameSettlementResult(event.GameInfo)
 
-	if q.anyHumanPlayerBelowQueueThreshold(event.GameInfo, bots) {
+	if len(bots) > 0 {
+		log.Infow("skipping continue rematch: game included bots", "game_id", event.GameInfo.ID)
+		q.publishNotMatchableForHumans(event.GameInfo, event.GameInfo.ID, bots)
+	} else if q.anyHumanPlayerBelowQueueThreshold(event.GameInfo, bots) {
 		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", event.GameInfo.ID)
 		q.publishNotMatchableForHumans(event.GameInfo, event.GameInfo.ID, bots)
 	} else {
 		q.lock.Lock()
-		q.tryStartContinueRematchAfterGame(event.GameInfo, bots)
+		q.tryStartContinueRematchAfterGame(event.GameInfo)
 		q.lock.Unlock()
 	}
 
@@ -252,27 +235,39 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 }
 
 func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
-	q.lock.RLock()
-	defer q.lock.RUnlock()
-	_, ok := q.queue[address]
+	ok, err := q.lobbyState.IsInQueue(q.ctx, address)
+	if err != nil {
+		log.Errorw("redis is in queue check failed", "player", address.String(), "err", err)
+		return false
+	}
 	return ok
 }
 
 func (q *Queue) isPlayerInGame(address types.PlayerAddress) bool {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
-	q.lock.RLock()
-	defer q.lock.RUnlock()
-	return q.inGameByPlayer[address]
+	ok, err := q.lobbyState.IsInGame(q.ctx, address)
+	if err != nil {
+		log.Errorw("redis is in game check failed", "player", address.String(), "err", err)
+		return false
+	}
+	return ok
 }
 
-func (q *Queue) markPlayerInGameLocked(address types.PlayerAddress) {
+func (q *Queue) pendingMatchID(address types.PlayerAddress) (int64, bool) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
-	q.inGameByPlayer[address] = true
+	mid, ok, err := q.lobbyState.PendingMatchID(q.ctx, address)
+	if err != nil {
+		log.Errorw("redis pending match lookup failed", "player", address.String(), "err", err)
+		return 0, false
+	}
+	return mid, ok
 }
 
 func (q *Queue) markPlayerOutOfGameLocked(address types.PlayerAddress) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
-	delete(q.inGameByPlayer, address)
+	if err := q.lobbyState.MarkPlayersOutOfGame(q.ctx, address); err != nil {
+		log.Errorw("mark player out of game in redis failed", "player", address.String(), "err", err)
+	}
 }
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {

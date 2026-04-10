@@ -57,6 +57,25 @@ func ZScore(key string, member interface{}) (float64, error) {
 	return redis.Float64(conn.Do(ZSCORE_COMMAND, key, member))
 }
 
+// ZScoreMemberExists reports whether member is present in the sorted set (ZSCORE is not nil).
+func ZScoreMemberExists(key string, member interface{}) (bool, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+	v, err := conn.Do(ZSCORE_COMMAND, key, member)
+	if err != nil {
+		return false, err
+	}
+	if v == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
 func ZCard(key string) (int, error) {
 	conn := globalPool.Get()
 	defer func() {

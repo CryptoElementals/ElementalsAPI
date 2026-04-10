@@ -40,14 +40,13 @@ func (q *Queue) createPvpMatchFromQueue(players []types.PlayerAddress) error {
 		return err
 	}
 	matchID := m.ID
-	q.pendingMatchByPlayer[p1] = matchID
-	q.pendingMatchByPlayer[p2] = matchID
 	pair := []types.PlayerAddress{p1, p2}
-	for _, p := range pair {
-		delete(q.queue, p)
-		if err := q.queueCache.Delete(p.String()); err != nil {
-			log.Errorf("delete player from queue cache failed: %s", err.Error())
-		}
+	ok, err := q.lobbyState.SetPendingPair(q.ctx, matchID, p1, p2)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("set pending pair conflict for match_id=%d", matchID)
 	}
 	q.publishMatchPending(matchID, pair, nil)
 	log.Infow("pvp match pending confirmations", "match_id", matchID, "p1", p1.String(), "p2", p2.String())
@@ -74,8 +73,13 @@ func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGa
 		return 0, err
 	}
 	matchID := m.ID
-	q.pendingMatchByPlayer[p1] = matchID
-	q.pendingMatchByPlayer[p2] = matchID
+	ok, err := q.lobbyState.SetPendingPair(q.ctx, matchID, p1, p2)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, fmt.Errorf("set pending pair conflict for continue rematch match_id=%d", matchID)
+	}
 	pair := []types.PlayerAddress{p1, p2}
 	lg := lastGameID
 	q.publishMatchPending(matchID, pair, &lg)
@@ -141,12 +145,12 @@ func (q *Queue) HandleCancelMatch(req *pb.CancelMatchRequest) error {
 	if matchID == 0 {
 		return errors.New("missing match id")
 	}
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	mapID, ok := q.pendingMatchByPlayer[addr]
+	mapID, ok := q.pendingMatchID(addr)
 	if !ok || mapID != matchID {
 		return fmt.Errorf("no pending match for player")
 	}
+	q.lock.Lock()
+	defer q.lock.Unlock()
 	m, err := db.GetGameMatchByID(q.ctx, matchID)
 	if err != nil {
 		return err
@@ -183,9 +187,7 @@ func (q *Queue) HandleConfirmMatch(req *pb.ConfirmMatchRequest) error {
 		return errors.New("missing match id")
 	}
 
-	q.lock.RLock()
-	mapID, ok := q.pendingMatchByPlayer[addr]
-	q.lock.RUnlock()
+	mapID, ok := q.pendingMatchID(addr)
 	if !ok || mapID != matchID {
 		return fmt.Errorf("no pending match for player")
 	}
@@ -194,32 +196,8 @@ func (q *Queue) HandleConfirmMatch(req *pb.ConfirmMatchRequest) error {
 	if err != nil {
 		return err
 	}
-	if !both {
-		partner := otherPlayerFromMatch(m, addr)
-		if partner != nil && q.botMgr.isBot(*partner) {
-			_, _, both2, err2 := db.TryConfirmGameMatchPlayer(q.ctx, matchID, partner.Id, partner.TemporaryAddress)
-			if err2 != nil {
-				return err2
-			}
-			if both2 {
-				m2, err3 := db.GetGameMatchByID(q.ctx, matchID)
-				if err3 != nil {
-					return err3
-				}
-				return q.finalizeConfirmedGameMatch(m2)
-			}
-		}
-		return nil
-	}
-	return q.finalizeConfirmedGameMatch(m)
-}
-
-func otherPlayerFromMatch(m *dao.GameMatch, self types.PlayerAddress) *types.PlayerAddress {
-	if m.Player1ID == self.Id && strings.EqualFold(m.Player1TempAddress, self.TemporaryAddress) {
-		return types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress)
-	}
-	if m.Player2ID == self.Id && strings.EqualFold(m.Player2TempAddress, self.TemporaryAddress) {
-		return types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress)
+	if both {
+		return q.finalizeConfirmedGameMatch(m)
 	}
 	return nil
 }
@@ -250,14 +228,15 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 	if err := db.CompleteClaimedGameMatch(q.ctx, m.ID, gid); err != nil {
 		log.Errorw("complete claimed game_match", "match_id", m.ID, "game_id", gid, "err", err)
 	}
-	q.lock.Lock()
-	for _, p := range players {
-		delete(q.pendingMatchByPlayer, p)
-		q.markPlayerInGameLocked(p)
+	ok, err := q.lobbyState.FinalizeConfirmedPair(q.ctx, m.ID, players[0], players[1])
+	if err != nil {
+		return err
 	}
-	q.lock.Unlock()
+	if !ok {
+		return fmt.Errorf("finalize confirmed pair conflict for match_id=%d", m.ID)
+	}
 	for _, p := range players {
-		if q.botMgr.isBot(p) {
+		if q.isBotLocked(p) {
 			continue
 		}
 		if err := db.SetLockedTokenGameID(q.ctx, p.Id, p.TemporaryAddress, gid); err != nil {
@@ -269,9 +248,6 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 
 // IsPlayerPendingMatch reports whether the player is waiting on game_match confirmations (caller should not hold q.lock).
 func (q *Queue) IsPlayerPendingMatch(address types.PlayerAddress) bool {
-	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
-	q.lock.RLock()
-	defer q.lock.RUnlock()
-	_, ok := q.pendingMatchByPlayer[address]
+	_, ok := q.pendingMatchID(address)
 	return ok
 }
