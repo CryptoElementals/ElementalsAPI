@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/redis"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +68,7 @@ func TestJoinExitQueue(t *testing.T) {
 	testMiniRedis.FlushAll()
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
 	var err error
-	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, "")
+	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, 0, "")
 	require.NoError(t, err)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
@@ -92,7 +92,7 @@ func TestGameMatched(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(ctrl)
 	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
 	var err error
-	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, "")
+	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, 0, "")
 	require.NoError(t, err)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event

@@ -19,36 +19,6 @@ func (s Set[T]) Contains(value T) bool {
 	return exists
 }
 
-func (q *Queue) RegisterBots(addrs ...*types.PlayerAddress) error {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	log.Infow("register bots", "bots", types.ToJsonLoggable(addrs))
-	bots := make([]types.PlayerAddress, 0, len(addrs))
-	for _, addr := range addrs {
-		bots = append(bots, *addr)
-	}
-	if err := q.botStore.RegisterBots(bots...); err != nil {
-		log.Errorw("redis register bots failed", "err", err)
-		return err
-	}
-	return nil
-}
-
-func (q *Queue) UnregisterBots(addrs ...*types.PlayerAddress) error {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	log.Infow("unregister bots", "bots", types.ToJsonLoggable(addrs))
-	bots := make([]types.PlayerAddress, 0, len(addrs))
-	for _, addr := range addrs {
-		bots = append(bots, *addr)
-	}
-	if err := q.botStore.UnregisterBots(bots...); err != nil {
-		log.Errorw("redis unregister bots failed", "err", err)
-		return err
-	}
-	return nil
-}
-
 func (q *Queue) isBotLocked(addr types.PlayerAddress) bool {
 	isBot, err := q.botStore.IsBot(addr)
 	if err != nil {
@@ -59,9 +29,9 @@ func (q *Queue) isBotLocked(addr types.PlayerAddress) bool {
 }
 
 func (q *Queue) popBotForMatchLocked() (types.PlayerAddress, bool) {
-	addr, err := q.botStore.PopIdleBotForMatch()
+	addr, err := q.botStore.PopFreshIdleBotForMatch(time.Now().UnixMilli(), q.botFreshness.Milliseconds())
 	if err != nil {
-		log.Errorw("redis pop idle bot failed", "err", err)
+		log.Errorw("redis pop fresh idle bot failed", "err", err)
 		return types.PlayerAddress{}, false
 	}
 	if addr == nil {
@@ -71,7 +41,7 @@ func (q *Queue) popBotForMatchLocked() (types.PlayerAddress, bool) {
 }
 
 func (q *Queue) releaseInGameBotLocked(addr types.PlayerAddress) bool {
-	ok, err := q.botStore.ReleaseInGameBot(addr)
+	ok, err := q.botStore.ReleaseInGameBot(addr, time.Now().UnixMilli(), q.botFreshness.Milliseconds())
 	if err != nil {
 		log.Errorw("redis release in-game bot failed", "player", addr.String(), "err", err)
 		return false

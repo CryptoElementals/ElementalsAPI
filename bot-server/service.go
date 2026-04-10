@@ -22,16 +22,20 @@ import (
 )
 
 type Service struct {
-	ctx        context.Context
-	ccl        context.CancelFunc
-	bots       []*Bot
-	addresses  []*types.PlayerAddress
-	rpcClient  *rpc.Client
-	wg         sync.WaitGroup
-	mu         sync.Mutex
-	started    bool
-	registered bool
-	mode       string
+	ctx               context.Context
+	ccl               context.CancelFunc
+	bots              []*Bot
+	addresses         []*types.PlayerAddress
+	rpcClient         *rpc.Client
+	wg                sync.WaitGroup
+	mu                sync.Mutex
+	started           bool
+	registered        bool
+	mode              string
+	registry          *redisBotRegistry
+	heartbeatInterval time.Duration
+	heartbeatCancel   context.CancelFunc
+	heartbeatWG       sync.WaitGroup
 }
 
 func parseWallet(path config.WalletInfo) (*playerWallet, error) {
@@ -91,13 +95,21 @@ func NewService(
 		bots = append(bots, b)
 		addresses = append(addresses, p.address())
 	}
+	var registry *redisBotRegistry
+	if r, regErr := newRedisBotRegistry(""); regErr != nil {
+		log.Warnw("bot registry redis not available", "err", regErr)
+	} else {
+		registry = r
+	}
 	return &Service{
-		ctx:       ctx,
-		ccl:       ccl,
-		rpcClient: rpcClient,
-		bots:      bots,
-		addresses: addresses,
-		mode:      mode,
+		ctx:               ctx,
+		ccl:               ccl,
+		rpcClient:         rpcClient,
+		bots:              bots,
+		addresses:         addresses,
+		mode:              mode,
+		registry:          registry,
+		heartbeatInterval: time.Duration(cfg.BotRegistryHeartbeatIntervalSec) * time.Second,
 	}, nil
 }
 
@@ -107,10 +119,15 @@ func (s *Service) Start() error {
 		s.mu.Unlock()
 		return nil
 	}
-	if err := s.rpcClient.RpcClient.RegisterBots(s.ctx, s.addresses...); err != nil {
+	if s.registry == nil {
 		s.mu.Unlock()
-		return fmt.Errorf("register bots: %w", err)
+		return fmt.Errorf("redis bot registry is required but not available")
 	}
+	if err := s.upsertBotsAliveNow(); err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("upsert bots alive to redis: %w", err)
+	}
+	s.startHeartbeatLoopLocked()
 	s.registered = true
 	s.started = true
 	s.mu.Unlock()
@@ -229,17 +246,76 @@ func (s *Service) Stop() {
 	s.started = false
 	registered := s.registered
 	s.registered = false
+	heartbeatCancel := s.heartbeatCancel
+	s.heartbeatCancel = nil
 	s.mu.Unlock()
 
+	if heartbeatCancel != nil {
+		heartbeatCancel()
+	}
+	s.heartbeatWG.Wait()
 	s.ccl()
 	s.wg.Wait()
 	if registered {
-		unregisterCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.rpcClient.RpcClient.UnregisterBots(unregisterCtx, s.addresses...); err != nil {
-			log.Errorw("bot_unregister_failed", "err", err, "count", len(s.addresses))
+		typed := make([]types.PlayerAddress, 0, len(s.addresses))
+		for _, a := range s.addresses {
+			if a != nil {
+				typed = append(typed, *a)
+			}
+		}
+		if err := s.registry.MarkStopping(typed); err != nil {
+			log.Errorw("bot_mark_stopping_failed", "err", err, "count", len(s.addresses))
 		} else {
-			log.Infow("bot_unregister_success", "count", len(s.addresses))
+			log.Infow("bot_mark_stopping_success", "count", len(s.addresses), "marker", 1)
 		}
 	}
+}
+
+func (s *Service) upsertBotsAliveNow() error {
+	typed := make([]types.PlayerAddress, 0, len(s.addresses))
+	for _, a := range s.addresses {
+		if a == nil {
+			continue
+		}
+		typed = append(typed, *a)
+	}
+	return s.registry.UpsertAlive(time.Now().UnixMilli(), typed)
+}
+
+func (s *Service) heartbeatBotsNow() error {
+	typed := make([]types.PlayerAddress, 0, len(s.addresses))
+	for _, a := range s.addresses {
+		if a == nil {
+			continue
+		}
+		typed = append(typed, *a)
+	}
+	return s.registry.Heartbeat(time.Now().UnixMilli(), typed)
+}
+
+func (s *Service) startHeartbeatLoopLocked() {
+	if s.registry == nil {
+		return
+	}
+	if s.heartbeatInterval <= 0 {
+		s.heartbeatInterval = 5 * time.Second
+	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	s.heartbeatCancel = cancel
+	s.heartbeatWG.Add(1)
+	go func() {
+		defer s.heartbeatWG.Done()
+		ticker := time.NewTicker(s.heartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.heartbeatBotsNow(); err != nil {
+					log.Errorw("bot_heartbeat_failed", "err", err)
+				}
+			}
+		}
+	}()
 }

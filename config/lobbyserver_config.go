@@ -12,16 +12,17 @@ var LSGConf = LobbyServerConfig{}
 
 // LobbyServerConfig is loaded by ele-lobbyserver.
 type LobbyServerConfig struct {
-	LogCfg              log.Config    `mapstructure:"log"`
-	RedisCfg            redis.Config  `mapstructure:"redis"`
-	DbCfg               db.Config     `mapstructure:"database"`
-	ListenPort          int64         `mapstructure:"listen-port"`
-	RoomServerAddress   string        `mapstructure:"room-server-address"`
-	MinTokenToJoinQueue int32         `mapstructure:"min-token-to-join-queue"`
-	GameArgsID          uint          `mapstructure:"game-args-id"`
-	BotWaitTime         int64         `mapstructure:"bot-wait-time"`
-	StatServiceEndpoint string        `mapstructure:"stat-service-endpoint"`
-	IsDevelop           bool          `mapstructure:"is-develop"`
+	LogCfg                  log.Config   `mapstructure:"log"`
+	RedisCfg                redis.Config `mapstructure:"redis"`
+	DbCfg                   db.Config    `mapstructure:"database"`
+	ListenPort              int64        `mapstructure:"listen-port"`
+	RoomServerAddress       string       `mapstructure:"room-server-address"`
+	MinTokenToJoinQueue     int32        `mapstructure:"min-token-to-join-queue"`
+	GameArgsID              uint         `mapstructure:"game-args-id"`
+	BotWaitTime             int64        `mapstructure:"bot-wait-time"`
+	BotRegistryFreshnessSec int64        `mapstructure:"bot-registry-freshness-sec"`
+	StatServiceEndpoint     string       `mapstructure:"stat-service-endpoint"`
+	IsDevelop               bool         `mapstructure:"is-develop"`
 }
 
 // InitLSConfig loads lobby server config from a YAML file (viper).
@@ -35,6 +36,9 @@ func InitLSConfig(configPath string) error {
 	}
 	if LSGConf.MinTokenToJoinQueue == 0 {
 		LSGConf.MinTokenToJoinQueue = 10000
+	}
+	if LSGConf.BotRegistryFreshnessSec <= 0 {
+		LSGConf.BotRegistryFreshnessSec = 10
 	}
 	return nil
 }

@@ -70,6 +70,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 		argsTemplate.GameContinueTimeout,
 		argsTemplate.GameContinueTimeoutRedundancy,
 		cfg.BotWaitTime,
+		cfg.BotRegistryFreshnessSec,
 		cfg.StatServiceEndpoint,
 	)
 	if err != nil {

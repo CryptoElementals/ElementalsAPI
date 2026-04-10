@@ -38,7 +38,8 @@ type Queue struct {
 	minTokenToJoinQueue                int32
 	matchConfirmationTimeout           int64
 
-	botWaitTime time.Duration
+	botWaitTime  time.Duration
+	botFreshness time.Duration
 
 	statServiceEndpoint string
 	statSvcClient       proto.StatServiceClient
@@ -56,9 +57,13 @@ func NewQueue(
 	continueTimeout int64,
 	continueTimeoutRedundancy int64,
 	botWaitTime int64,
+	botFreshnessSec int64,
 	minTokenToJoinQueue int32,
 	statServiceEndpoint string,
 ) (*Queue, error) {
+	if botFreshnessSec <= 0 {
+		botFreshnessSec = 20
+	}
 	q := &Queue{
 		ctx:                                ctx,
 		publisher:                          pub,
@@ -66,6 +71,7 @@ func NewQueue(
 		continueRematchCancelTimeoutSec:    continueTimeout,
 		continueRematchCancelRedundancySec: continueTimeoutRedundancy,
 		botWaitTime:                        time.Duration(botWaitTime) * time.Second,
+		botFreshness:                       time.Duration(botFreshnessSec) * time.Second,
 		minTokenToJoinQueue:                minTokenToJoinQueue,
 		matchConfirmationTimeout:           matchConfirmationTimeout,
 		statServiceEndpoint:                statServiceEndpoint,
