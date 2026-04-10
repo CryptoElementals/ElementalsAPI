@@ -15,14 +15,15 @@ import (
 	"gorm.io/gorm"
 )
 
-const maxLockTime = 10 * time.Minute
+const maxLockTimeForQueue = 10 * time.Minute
+const maxLockTimeForTournament = 30 * time.Minute
 const maxPlayerPerAddress = 3
 
 func SaveUserToken(tokens ...dao.UserToken) error {
 	return Get().Save(&tokens).Error
 }
 
-func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32) (err error) {
+func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32, tournamentID string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		// resolve user by address
 		profile, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
@@ -45,6 +46,11 @@ func LockUserToken(ctx context.Context, playerId int64, tempAddress string, toke
 		lockedAmount := int32(0)
 		lockedNum := 0
 		for _, locked := range userToken.LockedTokens {
+			maxLockTime := maxLockTimeForQueue
+			if locked.TournamentID != "" {
+				maxLockTime = maxLockTimeForTournament
+			}
+
 			if time.Since(locked.CreatedAt) < maxLockTime {
 				lockedNum++
 				lockedAmount += locked.TokenAmount
@@ -56,26 +62,53 @@ func LockUserToken(ctx context.Context, playerId int64, tempAddress string, toke
 				continue
 			}
 			if locked.TemporaryAddress == tempAddress {
-				if locked.GameID == 0 {
+				if locked.TournamentID == "" {
+					if locked.GameID == 0 {
+						return errors.New("user token is locked")
+					}
+					log.Infow("LockUserToken called but game id != 0", "game id", locked.GameID)
+					// already locked by some game
+					// check if game is still running
+					gameInfo := &dao.Game{}
+					err := tx.Where("id = ? and status != ? and status != ?", locked.GameID, proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED).Find(gameInfo).Error
+					if err == nil {
+						// game still running
+						return errors.New("user token is locked")
+					}
+					if err != gorm.ErrRecordNotFound {
+						return err
+					}
+					// game stopped, delete the record
+					log.Infow("locked game info not found", "game id", locked.GameID)
+					err = tx.Delete(locked).Error
+					if err != nil {
+						return err
+					}
+				}
+
+				if locked.TournamentID != "" {
+					// Check whether tournament has ended; if ended/stale, cleanup lock.
+					tournament := &dao.Tournament{}
+					err := tx.Where(
+						"tournament_id = ? AND status IN ?",
+						locked.TournamentID,
+						[]dao.TournamentStatus{
+							dao.TournamentStatusRegistrationOpen,
+							dao.TournamentStatusInProgress,
+						},
+					).First(tournament).Error
+					if err == gorm.ErrRecordNotFound {
+						if derr := tx.Delete(locked).Error; derr != nil {
+							return derr
+						}
+						lockedNum--
+						lockedAmount -= locked.TokenAmount
+						continue
+					}
+					if err != nil {
+						return err
+					}
 					return errors.New("user token is locked")
-				}
-				log.Infow("LockUserToken called but game id != 0", "game id", locked.GameID)
-				// already locked by some game
-				// check if game is still running
-				gameInfo := &dao.Game{}
-				err := tx.Where("id = ? and status != ? and status != ?", locked.GameID, proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED).Find(gameInfo).Error
-				if err == nil {
-					// game still running
-					return errors.New("user token is locked")
-				}
-				if err != gorm.ErrRecordNotFound {
-					return err
-				}
-				// game stopped, delete the record
-				log.Infow("locked game info not found", "game id", locked.GameID)
-				err = tx.Delete(locked).Error
-				if err != nil {
-					return err
 				}
 			}
 		}
@@ -89,6 +122,7 @@ func LockUserToken(ctx context.Context, playerId int64, tempAddress string, toke
 			UserTokenID:      userToken.ID,
 			TokenAmount:      tokenAmount,
 			TemporaryAddress: tempAddress,
+			TournamentID:     tournamentID,
 		}
 		err = tx.Save(newLocked).Error
 		if err != nil {
@@ -123,7 +157,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 			lockedAmount := int32(0)
 			lockedNum := 0
 			for _, locked := range userToken.LockedTokens {
-				if time.Since(locked.CreatedAt) < maxLockTime {
+				if time.Since(locked.CreatedAt) < maxLockTimeForQueue {
 					lockedNum++
 					lockedAmount += locked.TokenAmount
 				} else {
@@ -158,7 +192,7 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 	})
 }
 
-func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (err error) {
+func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string, isTournament bool) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		_, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
 		if perr != nil {
@@ -168,6 +202,11 @@ func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string) (e
 		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			return err
+		}
+
+		maxLockTime := maxLockTimeForQueue
+		if isTournament {
+			maxLockTime = maxLockTimeForTournament
 		}
 		for _, locked := range userToken.LockedTokens {
 			if locked.TemporaryAddress == tempAddress {
@@ -286,7 +325,7 @@ func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error)
 	// filter locked tokens by time
 	lockedTokens := make([]*dao.LockedUserToken, 0)
 	for _, locked := range userToken.LockedTokens {
-		if time.Since(locked.CreatedAt) < maxLockTime {
+		if time.Since(locked.CreatedAt) < maxLockTimeForQueue {
 			lockedTokens = append(lockedTokens, locked)
 		}
 	}

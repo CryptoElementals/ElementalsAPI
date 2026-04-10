@@ -1,35 +1,69 @@
 package db
 
 import (
-	"errors"
 	"time"
 
 	dao "github.com/CryptoElementals/common/models"
 	"gorm.io/gorm"
 )
 
-// TournamentListEnabledSchedules returns schedules with Enabled=true.
-func TournamentListEnabledSchedules() ([]dao.TournamentSchedule, error) {
-	var rows []dao.TournamentSchedule
-	if err := Get().Where("enabled = ?", true).Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-// TournamentGetSchedule loads a schedule by id.
-func TournamentGetSchedule(id uint) (*dao.TournamentSchedule, error) {
-	var s dao.TournamentSchedule
-	if err := Get().First(&s, id).Error; err != nil {
-		return nil, err
-	}
-	return &s, nil
-}
-
-// TournamentGetOpenByScheduleID returns the open registration tournament for this schedule, if any.
-func TournamentGetOpenByScheduleID(scheduleID uint) (*dao.Tournament, error) {
+// TournamentGetLatestByScheduledStart returns the newest tournament by scheduled_start_at.
+func TournamentGetLatestByScheduledStart() (*dao.Tournament, error) {
 	var t dao.Tournament
-	err := Get().Where("tournament_schedule_id = ? AND status = ?", scheduleID, dao.TournamentStatusOpen).
+	err := Get().Order("scheduled_start_at DESC").First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// TournamentGetByScheduledStart finds a tournament exactly at scheduled_start_at.
+func TournamentGetByScheduledStart(at time.Time) (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().Where("scheduled_start_at = ?", at).First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// TournamentCreate inserts a tournament.
+func TournamentCreate(t *dao.Tournament) error {
+	return Get().Create(t).Error
+}
+
+// TournamentSave updates a tournament row.
+func TournamentSave(t *dao.Tournament) error {
+	return Get().Save(t).Error
+}
+
+// TournamentGetByID loads tournament by id.
+func TournamentGetByID(id uint) (*dao.Tournament, error) {
+	var t dao.Tournament
+	if err := Get().First(&t, id).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// TournamentGetLatestRegistrationOpen returns latest registration_open tournament by scheduled_start_at.
+func TournamentGetLatestRegistrationOpen() (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().Where("status = ?", dao.TournamentStatusRegistrationOpen).
+		Order("scheduled_start_at DESC").First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// TournamentGetLatestRegistrationOpenBeforeDeadline returns latest registration_open tournament
+// whose registration_deadline is still in the future.
+func TournamentGetLatestRegistrationOpenBeforeDeadline(now time.Time) (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().
+		Where("status = ? AND registration_deadline > ?", dao.TournamentStatusRegistrationOpen, now).
+		Order("scheduled_start_at DESC").
 		First(&t).Error
 	if err != nil {
 		return nil, err
@@ -37,88 +71,113 @@ func TournamentGetOpenByScheduleID(scheduleID uint) (*dao.Tournament, error) {
 	return &t, nil
 }
 
-// TournamentGetLatestByScheduleID returns the tournament with the highest instance_index for the schedule.
-func TournamentGetLatestByScheduleID(scheduleID uint) (*dao.Tournament, error) {
+// TournamentGetRegistrationOpenByTournamentIDBeforeDeadline returns a specific tournament
+// by business tournament_id when registration is still open and not expired.
+func TournamentGetRegistrationOpenByTournamentIDBeforeDeadline(tournamentID string, now time.Time) (*dao.Tournament, error) {
 	var t dao.Tournament
-	err := Get().Where("tournament_schedule_id = ?", scheduleID).
-		Order("instance_index DESC").First(&t).Error
+	err := Get().
+		Where("tournament_id = ? AND status = ? AND registration_deadline > ?", tournamentID, dao.TournamentStatusRegistrationOpen, now).
+		First(&t).Error
 	if err != nil {
 		return nil, err
 	}
 	return &t, nil
 }
 
-// TournamentCreate persists a new tournament row.
-func TournamentCreate(t *dao.Tournament) error {
-	return Get().Create(t).Error
-}
-
-// TournamentSave updates an existing tournament.
-func TournamentSave(t *dao.Tournament) error {
-	return Get().Save(t).Error
-}
-
-// TournamentListOpenPastScheduled lists tournaments that are still open but scheduled_start_at <= before.
-func TournamentListOpenPastScheduled(before time.Time) ([]dao.Tournament, error) {
+// TournamentListRegistrationOpenPastScheduled lists registration_open tournaments whose scheduled start has arrived.
+func TournamentListRegistrationOpenPastScheduled(before time.Time) ([]dao.Tournament, error) {
 	var rows []dao.Tournament
-	err := Get().Where("status = ? AND scheduled_start_at <= ?", dao.TournamentStatusOpen, before).
+	err := Get().Where("status = ? AND scheduled_start_at <= ?", dao.TournamentStatusRegistrationOpen, before).
 		Find(&rows).Error
 	return rows, err
 }
 
-// TournamentNextJoinSequence returns max(join_sequence)+1 for the tournament (starts at 1).
-func TournamentNextJoinSequence(tx *gorm.DB, tournamentID uint) (int64, error) {
-	var last dao.TournamentEntry
-	err := tx.Where("tournament_id = ?", tournamentID).
-		Order("join_sequence DESC").
-		First(&last).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return 1, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	return last.JoinSequence + 1, nil
-}
-
-// TournamentGetEntryByPlayer returns a non-deleted entry for this player in this tournament, if any.
-func TournamentGetEntryByPlayer(tournamentID uint, playerID int64, tempAddr string) (*dao.TournamentEntry, error) {
-	var e dao.TournamentEntry
-	err := Get().Where("tournament_id = ? AND player_id = ? AND LOWER(temporary_address) = LOWER(?)",
-		tournamentID, playerID, tempAddr).First(&e).Error
+// TournamentGetLatestRegistrationOpenPastScheduled returns one latest registration_open tournament
+// whose scheduled_start_at has arrived.
+func TournamentGetLatestRegistrationOpenWithSlot(slot time.Time) (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().
+		Where("status = ? AND scheduled_start_at = ?", dao.TournamentStatusRegistrationOpen, slot).
+		Order("scheduled_start_at DESC, id DESC").
+		First(&t).Error
 	if err != nil {
 		return nil, err
 	}
-	return &e, nil
+	return &t, nil
 }
 
-// TournamentCreateEntry inserts an entry (use inside a transaction with TournamentNextJoinSequence).
-func TournamentCreateEntry(tx *gorm.DB, e *dao.TournamentEntry) error {
-	return tx.Create(e).Error
+// --- tournament_participants ---
+
+func TournamentGetParticipantByPlayer(tournamentBusinessID string, playerID int64, tempAddr string) (*dao.TournamentParticipant, error) {
+	var p dao.TournamentParticipant
+	err := Get().Where("tournament_id = ? AND player_id = ? AND LOWER(temp_address) = LOWER(?)",
+		tournamentBusinessID, playerID, tempAddr).First(&p).Error
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
-// TournamentSaveEntry updates an entry.
-func TournamentSaveEntry(tx *gorm.DB, e *dao.TournamentEntry) error {
-	return tx.Save(e).Error
+// TournamentGetParticipantByBusinessTournamentIDAndTemp loads a participant by business tournament_id and temp address.
+func TournamentGetParticipantByBusinessTournamentIDAndTemp(tournamentBusinessID string, tempAddr string) (*dao.TournamentParticipant, error) {
+	var p dao.TournamentParticipant
+	err := Get().Where("tournament_id = ? AND LOWER(temp_address) = LOWER(?)",
+		tournamentBusinessID, tempAddr).First(&p).Error
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
-// TournamentListQueuedEntries returns entries with status Queued ordered by join_sequence.
-func TournamentListQueuedEntries(tx *gorm.DB, tournamentID uint) ([]dao.TournamentEntry, error) {
-	var rows []dao.TournamentEntry
-	err := tx.Where("tournament_id = ? AND status = ?", tournamentID, dao.TournamentEntryStatusQueued).
-		Order("join_sequence ASC").Find(&rows).Error
-	return rows, err
+func TournamentCreateParticipant(tx *gorm.DB, p *dao.TournamentParticipant) error {
+	return tx.Create(p).Error
 }
 
-// TournamentListMatchesForRound returns matches for a round ordered by match_index.
-func TournamentListMatchesForRound(tx *gorm.DB, tournamentID uint, roundNumber uint32) ([]dao.TournamentMatch, error) {
+func TournamentSaveParticipant(tx *gorm.DB, p *dao.TournamentParticipant) error {
+	return tx.Save(p).Error
+}
+
+func TournamentDeleteParticipant(tx *gorm.DB, p *dao.TournamentParticipant) error {
+	return tx.Delete(p).Error
+}
+
+func TournamentListParticipantsByStatus(tx *gorm.DB, tournamentID string, status dao.TournamentParticipantStatus) ([]dao.TournamentParticipant, error) {
+	var rows []dao.TournamentParticipant
+	err := tx.Where("tournament_id = ? AND status = ?", tournamentID, status).
+		Order("created_at ASC").Find(&rows).Error
+	if err != nil {
+		return []dao.TournamentParticipant{}, err
+	}
+	return rows, nil
+}
+
+// --- tournament_rounds ---
+
+func TournamentCreateRound(tx *gorm.DB, r *dao.TournamentRound) error {
+	return tx.Create(r).Error
+}
+
+func TournamentSaveRound(tx *gorm.DB, r *dao.TournamentRound) error {
+	return tx.Save(r).Error
+}
+
+func TournamentGetRound(tx *gorm.DB, tournamentID string, roundNo uint32) (*dao.TournamentRound, error) {
+	var r dao.TournamentRound
+	if err := tx.Where("tournament_id = ? AND round_no = ?", tournamentID, roundNo).First(&r).Error; err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// --- tournament_matches ---
+
+func TournamentListMatchesForRound(tx *gorm.DB, tournamentBusinessID string, roundNo uint32) ([]dao.TournamentMatch, error) {
 	var rows []dao.TournamentMatch
-	err := tx.Where("tournament_id = ? AND round_number = ?", tournamentID, roundNumber).
-		Order("match_index ASC").Find(&rows).Error
+	err := tx.Where("tournament_id = ? AND round_no = ?", tournamentBusinessID, roundNo).
+		Order("match_no ASC").Find(&rows).Error
 	return rows, err
 }
 
-// TournamentGetMatchByGameID finds a bracket match linked to a game.
 func TournamentGetMatchByGameID(gameID int64) (*dao.TournamentMatch, error) {
 	var m dao.TournamentMatch
 	err := Get().Where("game_id = ?", gameID).First(&m).Error
@@ -128,31 +187,19 @@ func TournamentGetMatchByGameID(gameID int64) (*dao.TournamentMatch, error) {
 	return &m, nil
 }
 
-// TournamentCreateMatch inserts a match row.
 func TournamentCreateMatch(tx *gorm.DB, m *dao.TournamentMatch) error {
 	return tx.Create(m).Error
 }
 
-// TournamentSaveMatch updates a match.
 func TournamentSaveMatch(tx *gorm.DB, m *dao.TournamentMatch) error {
 	return tx.Save(m).Error
 }
 
-// TournamentLoadMatchByID loads a match with EntryA and EntryB preloaded (for join_sequence).
 func TournamentLoadMatchByID(tx *gorm.DB, id uint) (*dao.TournamentMatch, error) {
 	var m dao.TournamentMatch
-	err := tx.Preload("EntryA").Preload("EntryB").First(&m, id).Error
+	err := tx.First(&m, id).Error
 	if err != nil {
 		return nil, err
 	}
 	return &m, nil
-}
-
-// TournamentLoadEntry loads an entry by id.
-func TournamentLoadEntry(tx *gorm.DB, id uint) (*dao.TournamentEntry, error) {
-	var e dao.TournamentEntry
-	if err := tx.First(&e, id).Error; err != nil {
-		return nil, err
-	}
-	return &e, nil
 }

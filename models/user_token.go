@@ -13,5 +13,6 @@ type LockedUserToken struct {
 	UserTokenID      uint   `gorm:"index:id_addr;not null"`
 	TemporaryAddress string `gorm:"index:id_addr;not null"`
 	GameID           int64
-	TokenAmount      int32 `gorm:"default:0"`
+	TournamentID     string `gorm:"index:id_addr;not null"`
+	TokenAmount      int32  `gorm:"default:0"`
 }

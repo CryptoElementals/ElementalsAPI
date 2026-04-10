@@ -277,12 +277,12 @@ func (q *Queue) markPlayerOutOfGameLocked(address types.PlayerAddress) {
 
 func (q *Queue) lockToken(address *types.PlayerAddress) error {
 	log.Infow("lock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
-	return db.LockUserToken(q.ctx, address.Id, address.TemporaryAddress, q.minTokenToJoinQueue)
+	return db.LockUserToken(q.ctx, address.Id, address.TemporaryAddress, q.minTokenToJoinQueue, "")
 }
 
 func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	log.Infow("unlock user token", "addr", address.String(), "token amount", q.minTokenToJoinQueue)
-	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress)
+	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress, false)
 }
 
 func (q *Queue) publishGameSettlementResult(game *dao.Game) {

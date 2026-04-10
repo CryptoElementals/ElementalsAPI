@@ -19,8 +19,15 @@ service LobbyService {
   // Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
   rpc RegisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
   rpc UnregisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
+  //todo: tournament related rpc
+  rpc JoinTournament(JoinTournamentRequest) returns (google.protobuf.Empty);
 }
 
 message RegisterBotsForLobbyRequest {
   repeated PlayerAddress Addresses = 1;
+}
+
+message JoinTournamentRequest {
+  PlayerAddress PlayerAddress = 1;
+  string TournamentID = 2;
 }

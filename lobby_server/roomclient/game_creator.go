@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// GameCreator implements queue.GameCreator and turnament.GameCreator via RoomService.
+// GameCreator implements queue.GameCreator and tournament.GameCreator via RoomService.
 type GameCreator struct {
 	Client proto.RoomServiceClient
 }

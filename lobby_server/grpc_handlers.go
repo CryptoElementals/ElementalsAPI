@@ -6,7 +6,7 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
-	"github.com/CryptoElementals/common/lobby_server/worker/turnament"
+	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc/codes"
@@ -18,13 +18,13 @@ import (
 type GRPCServices struct {
 	proto.UnimplementedLobbyServiceServer
 
-	queueSvc   *queue.Service
-	tournSvc   *turnament.TournamentQueueService
-	roomWorker proto.RoomServiceClient
+	queueSvc      *queue.Service
+	tournamentSvc *tournament.TournamentQueueService
+	roomWorker    proto.RoomServiceClient
 }
 
-func NewGRPCServices(q *queue.Service, t *turnament.TournamentQueueService, rw proto.RoomServiceClient) *GRPCServices {
-	return &GRPCServices{queueSvc: q, tournSvc: t, roomWorker: rw}
+func NewGRPCServices(q *queue.Service, t *tournament.TournamentQueueService, rw proto.RoomServiceClient) *GRPCServices {
+	return &GRPCServices{queueSvc: q, tournamentSvc: t, roomWorker: rw}
 }
 
 func (s *GRPCServices) JoinQueue(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
@@ -96,10 +96,10 @@ func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	if err := s.queueSvc.GameResultSettlement(ev); err != nil {
 		return err
 	}
-	if s.tournSvc == nil {
+	if s.tournamentSvc == nil {
 		return nil
 	}
-	return s.tournSvc.GameResultSettlementHook(ev)
+	return s.tournamentSvc.GameResultSettlementHook(ev)
 }
 
 func playerAddressesFromRegisterBotsRequest(req *proto.RegisterBotsForLobbyRequest) []*types.PlayerAddress {
@@ -113,4 +113,8 @@ func playerAddressesFromRegisterBotsRequest(req *proto.RegisterBotsForLobbyReque
 		out = append(out, &a)
 	}
 	return out
+}
+
+func (s *GRPCServices) JoinTournament(ctx context.Context, req *proto.JoinTournamentRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, s.tournamentSvc.HandleJoinTournamentEvent(req.TournamentID, req.PlayerAddress)
 }
