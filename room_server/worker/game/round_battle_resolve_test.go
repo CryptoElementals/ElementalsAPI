@@ -1,0 +1,46 @@
+package game
+
+import (
+	"testing"
+
+	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/stretchr/testify/require"
+)
+
+func TestRound_isExtraRound(t *testing.T) {
+	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
+	pvp := &round{game: &dao.Game{GameArgs: ga, Type: types.GameTypePVP}, roundNumber: 4}
+	require.False(t, pvp.isExtraRound())
+
+	tourReg := &round{game: &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}, roundNumber: 3}
+	require.False(t, tourReg.isExtraRound())
+
+	tourOT := &round{game: &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}, roundNumber: 4}
+	require.True(t, tourOT.isExtraRound())
+}
+
+// Overtime used to keep playing when HP differed before the final scheduled round; tie-break should end as soon as HP splits.
+func TestCheckGameOverByHP_overtimeHPSpreadEndsImmediately(t *testing.T) {
+	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
+	g := &dao.Game{
+		Type:               dao.GameTypeTournament,
+		GameArgs:           ga,
+		RegulationRounds:   3,
+		OvertimeRoundsCap:  3,
+	}
+	// First OT round (4), single turn — not last overall round.
+	r := &round{game: g, roundNumber: 4, turnNumber: 1}
+	require.True(t, r.isExtraRound())
+	require.False(t, r.isGameEndsByRoundAndTurn())
+
+	states := []*gameEndState{
+		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
+		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
+	}
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, r.roundNumber, false, true)
+	require.True(t, ok)
+	require.Equal(t, gameResultNormal, grType)
+	require.Equal(t, int64(1), winnerID)
+	require.Equal(t, "a", winnerTemp)
+}

@@ -77,6 +77,18 @@ func (r *round) maxConfiguredRounds() uint32 {
 	return dao.EffectiveMaxRounds(r.game)
 }
 
+// isExtraRound is true for tournament overtime rounds (after regulation). PVP always false.
+func (r *round) isExtraRound() bool {
+	if r == nil || r.game == nil {
+		return false
+	}
+	if r.game.Type != dao.GameTypeTournament {
+		return false
+	}
+	reg := dao.RegulationRoundsForPub(r.game)
+	return r.roundNumber > reg
+}
+
 func (r *round) turnsPerRound() uint32 {
 	if r == nil || r.game == nil {
 		return 0

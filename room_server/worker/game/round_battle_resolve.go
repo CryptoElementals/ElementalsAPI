@@ -219,7 +219,9 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		}
 		finalMultiplier = rewardSpreadMultiplier(hps)
 	} else {
-		if !hasOffline && !(checkRoundTurnLimit && r.isGameEndsByRoundAndTurn()) {
+		endedBySchedule := checkRoundTurnLimit && r.isGameEndsByRoundAndTurn()
+		tieBrokenInOvertime := checkRoundTurnLimit && r.isExtraRound()
+		if !hasOffline && !endedBySchedule && !tieBrokenInOvertime {
 			return false, gameResultNormal, 0, "", 1
 		}
 
