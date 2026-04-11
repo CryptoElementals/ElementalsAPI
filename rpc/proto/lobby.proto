@@ -7,7 +7,7 @@ import "rpc/proto/rpc.proto";
 
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
-// LobbyService is served by the lobby server: PVP queue, status, tokens, bots.
+// LobbyService is served by the lobby server: PVP queue, status, tokens.
 // Tournament join/exit RPCs will be added later; tournament logic runs in-process on lobby today.
 service LobbyService {
   rpc JoinQueue(PlayerAddress) returns (google.protobuf.Empty);

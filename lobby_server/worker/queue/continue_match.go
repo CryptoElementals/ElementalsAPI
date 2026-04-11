@@ -17,7 +17,9 @@ type pendingMatchConfirmationTimeoutEvent struct {
 	MatchID int64 `json:"match_id"`
 }
 
-func (e *pendingMatchConfirmationTimeoutEvent) EventType() string { return "pending_match_confirmation_timeout" }
+func (e *pendingMatchConfirmationTimeoutEvent) EventType() string {
+	return "pending_match_confirmation_timeout"
+}
 
 func (e *pendingMatchConfirmationTimeoutEvent) Marshal() []byte {
 	b, _ := json.Marshal(e)
@@ -55,31 +57,34 @@ func (q *Queue) handlePendingMatchConfirmationTimeout(evt *pendingMatchConfirmat
 	return nil
 }
 
-// abortPendingMatchLocked clears in-memory pending state, cancels DB row if still pending, unlocks human tokens, optionally notifies TYPE_MATCH_CANCELED. Caller must hold q.lock.
+// abortPendingMatchLocked cancels DB row if still pending, clears Redis pending pair, unlocks human tokens, optionally notifies TYPE_MATCH_CANCELED. Caller must hold q.lock.
 func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool, fromTimeout bool) {
-	var players []types.PlayerAddress
-	for p, mid := range q.pendingMatchByPlayer {
-		if mid == matchID {
-			players = append(players, p)
-		}
-	}
-	if len(players) == 0 {
-		return
-	}
 	m, err := db.GetGameMatchByID(q.ctx, matchID)
 	if err != nil {
 		log.Errorw("abort pending match: load game_match", "match_id", matchID, "err", err)
 	}
-	if m != nil && m.Status == dao.GameMatchStatusPending {
+	if m == nil {
+		return
+	}
+	players := []types.PlayerAddress{
+		*types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress),
+		*types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress),
+	}
+	if m.Status == dao.GameMatchStatusPending {
 		if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
 			log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
 		}
 	}
-	for _, p := range players {
-		delete(q.pendingMatchByPlayer, p)
+	if len(players) == 2 {
+		ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
+		if err != nil {
+			log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
+		} else if !ok {
+			log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
+		}
 	}
 	for _, p := range players {
-		if q.botMgr.isBot(p) {
+		if q.isBotLocked(p) {
 			continue
 		}
 		if err := q.unlockToken(&p); err != nil {
@@ -91,12 +96,11 @@ func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool,
 	}
 }
 
-// tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Caller must hold q.lock.
-func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game, bots Set[types.PlayerAddress]) {
+// tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished human-vs-human game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Caller must hold q.lock; do not call when the game included bots.
+func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game) {
 	if len(game.Players) != 2 {
 		return
 	}
-	hasHuman := false
 	players := make([]types.PlayerAddress, 0, 2)
 	for _, p := range game.Players {
 		if p == nil {
@@ -104,18 +108,9 @@ func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game, bots Set[types.
 		}
 		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
 		players = append(players, *addr)
-		if !bots.Contains(*addr) {
-			hasHuman = true
-		}
-	}
-	if !hasHuman {
-		return
 	}
 	var locked []types.PlayerAddress
 	for _, pl := range players {
-		if q.botMgr.isBot(pl) {
-			continue
-		}
 		if err := q.lockToken(&pl); err != nil {
 			for _, u := range locked {
 				_ = q.unlockToken(&u)

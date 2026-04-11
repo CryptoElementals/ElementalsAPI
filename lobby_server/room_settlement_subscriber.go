@@ -9,7 +9,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// runRoomSettlementSubscriber reads [pubsub.TopicRoomSettlement] from Redis (same cluster as room server).
+// runRoomSettlementSubscriber reads [pubsub.TopicRoomSettlementPVP] from Redis (same cluster as room server).
 func (s *Service) runRoomSettlementSubscriber() {
 	go func() {
 		for {
@@ -37,7 +37,7 @@ func (s *Service) readRoomSettlementStream(ctx context.Context) error {
 		return nil
 	}
 	sub := pubsub.NewStreamSubscriber(s.eventStream)
-	msgCh, stop, err := sub.Subscribe(ctx, pubsub.TopicRoomSettlement, pubsub.SubscribeOptions{})
+	msgCh, stop, err := sub.Subscribe(ctx, pubsub.TopicRoomSettlementPVP, pubsub.SubscribeOptions{})
 	if err != nil {
 		return err
 	}

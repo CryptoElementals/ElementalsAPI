@@ -143,7 +143,7 @@ func (c *PubSubClient) ListTopics(pattern string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	for _, name := range []string{pubsub.TopicRoom, pubsub.TopicLobby, pubsub.TopicRoomSettlement} {
+	for _, name := range []string{pubsub.TopicRoom, pubsub.TopicLobby, pubsub.TopicRoomSettlementPVP} {
 		n, err := c.stream.Len(ctx, name)
 		if err != nil {
 			log.Debugw("pubsub stream len", "topic", name, "err", err)

@@ -2,6 +2,7 @@ package roomserver
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/game"
@@ -9,7 +10,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// settlementStreamPublisher notifies the lobby via the room Pub/Sub stream ([pubsub.TopicRoomSettlement]) when a game ends.
+// settlementStreamPublisher notifies the lobby via the room Pub/Sub stream ([pubsub.TopicRoomSettlementPVP]) when a game ends.
 type settlementStreamPublisher struct {
 	ctx context.Context
 	pub game.Publisher
@@ -29,7 +30,13 @@ func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameComplete
 			GameCompletedNotice: &proto.GameCompletedNotice{GameId: evt.GameID},
 		},
 	}
-	return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlement, out)
+	switch evt.GameInfo.Type {
+	case types.GameTypePVP:
+		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementPVP, out)
+	case types.GameTypeTournament:
+		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementTournament, out)
+	}
+	return fmt.Errorf("unknown game type: %d", evt.GameInfo.Type)
 }
 
 var _ game.GameResultSettler = (*settlementStreamPublisher)(nil)

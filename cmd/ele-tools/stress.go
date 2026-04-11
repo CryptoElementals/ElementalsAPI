@@ -11,7 +11,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var runCmd = &cobra.Command{
+var stressCmd = &cobra.Command{
+	Use:   "stress",
+	Short: "stress-test the game server with multiple bots",
+	Long: `Runs multiple bots against the game server: wallet generation, login,
+and game loops. Use stress run with a stress config YAML.`,
+}
+
+var stressRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "start stress test",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -19,32 +26,29 @@ var runCmd = &cobra.Command{
 	},
 }
 
-var configPath string
+var stressConfigPath string
 
 func init() {
-	rootCmd.AddCommand(runCmd)
-	runCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
-	runCmd.MarkFlagRequired("config")
+	rootCmd.AddCommand(stressCmd)
+	stressCmd.AddCommand(stressRunCmd)
+	stressRunCmd.Flags().StringVarP(&stressConfigPath, "config", "c", "", "stress config file path")
+	_ = stressRunCmd.MarkFlagRequired("config")
 }
 
 func runStressTest() {
-	err := config.InitStressConfig(configPath)
-	if err != nil {
+	if err := config.InitStressConfig(stressConfigPath); err != nil {
 		panic("init config failed: " + err.Error())
 	}
-	err = log.InitGlobalLogger(&config.StressCfg.LogCfg)
-	if err != nil {
+	if err := log.InitGlobalLogger(&config.StressCfg.LogCfg); err != nil {
 		panic("init logger failed: " + err.Error())
 	}
 
-	// Convert config.StressConfig to stress.Config
 	stressConfig := &stress.Config{
-		BaseURL:   config.StressCfg.BaseURL,
-		NumBots:   config.StressCfg.NumBots,
+		BaseURL:    config.StressCfg.BaseURL,
+		NumBots:    config.StressCfg.NumBots,
 		BotInfoCSV: config.StressCfg.BotInfoCSV,
 	}
 
-	// Create and start manager
 	manager, err := stress.NewManager(stressConfig)
 	if err != nil {
 		log.Fatalf("failed to create manager: %v", err)

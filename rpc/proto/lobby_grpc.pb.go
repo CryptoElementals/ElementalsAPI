@@ -35,7 +35,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// LobbyService is served by the lobby server: PVP queue, status, tokens, bots.
+// LobbyService is served by the lobby server: PVP queue, status, tokens.
 // Tournament join/exit RPCs will be added later; tournament logic runs in-process on lobby today.
 type LobbyServiceClient interface {
 	JoinQueue(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -153,7 +153,7 @@ func (c *lobbyServiceClient) JoinTournament(ctx context.Context, in *JoinTournam
 // All implementations must embed UnimplementedLobbyServiceServer
 // for forward compatibility.
 //
-// LobbyService is served by the lobby server: PVP queue, status, tokens, bots.
+// LobbyService is served by the lobby server: PVP queue, status, tokens.
 // Tournament join/exit RPCs will be added later; tournament logic runs in-process on lobby today.
 type LobbyServiceServer interface {
 	JoinQueue(context.Context, *PlayerAddress) (*emptypb.Empty, error)

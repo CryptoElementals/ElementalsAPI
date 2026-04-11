@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/CryptoElementals/common/config"
 	gameclient "github.com/CryptoElementals/common/game_client"
 	"github.com/CryptoElementals/common/log"
 	rpc "github.com/CryptoElementals/common/rpc/client"
@@ -53,14 +54,13 @@ func init() {
 	rootCmd.AddCommand(gameCmd)
 	gameCmd.AddCommand(gameRunCmd)
 
+	gameRunCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	gameRunCmd.Flags().StringVarP(&gameClientMode, "client-mode", "m", "grpc", "game client mode: grpc or http")
 	gameRunCmd.Flags().StringVarP(&roomServerEndpoint, "room-server-endpoint", "r", "", "room server endpoint")
 	gameRunCmd.Flags().StringVarP(&lobbyServerEndpoint, "lobby-server-endpoint", "l", "", "lobby server endpoint")
 	gameRunCmd.Flags().StringVarP(&apiServerEndpoint, "api-server-endpoint", "a", "", "api server endpoint (required when --client-mode=http)")
 	gameRunCmd.Flags().Int64VarP(&playerId, "player-id", "p", 0, "player ID")
 	gameRunCmd.Flags().StringVarP(&tempWalletPath, "temp-wallet-path", "t", "", "temp wallet path")
-	gameRunCmd.MarkFlagRequired("player-id")
-	gameRunCmd.MarkFlagRequired("temp-wallet-path")
 }
 
 // InteractiveCardProvider reads card from user input
@@ -91,6 +91,36 @@ func (p *InteractiveCardProvider) GetCard(round uint32, turn uint32) (uint32, er
 }
 
 func startGame() error {
+	if configPath != "" {
+		if err := config.InitToolsConfig(configPath); err != nil {
+			return fmt.Errorf("load tools config: %w", err)
+		}
+		if playerId == 0 {
+			playerId = config.ToolsGConf.Game.PlayerID
+		}
+		if tempWalletPath == "" {
+			tempWalletPath = config.ToolsGConf.Game.TempWalletPath
+		}
+		if roomServerEndpoint == "" {
+			roomServerEndpoint = config.ToolsGConf.Game.RoomServerEndpoint
+		}
+		if lobbyServerEndpoint == "" {
+			lobbyServerEndpoint = config.ToolsGConf.Game.LobbyServerEndpoint
+		}
+		if apiServerEndpoint == "" {
+			apiServerEndpoint = config.ToolsGConf.Game.ApiServerEndpoint
+		}
+		if gameClientMode == "" {
+			gameClientMode = config.ToolsGConf.Game.ClientMode
+		}
+	}
+	if playerId == 0 {
+		return fmt.Errorf("player-id is required (flag or tools config game.player-id)")
+	}
+	if tempWalletPath == "" {
+		return fmt.Errorf("temp-wallet-path is required (flag or tools config game.temp-wallet-path)")
+	}
+
 	err := log.InitGlobalLogger(&log.Config{
 		Development: true,
 	})

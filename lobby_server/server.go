@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
@@ -38,17 +37,6 @@ type Service struct {
 func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	s := &Service{ctx: ctx, cfg: cfg}
 
-	var c cache.Cache
-	var err error
-	if cfg.IsDevelop {
-		c = cache.NewMemCache()
-	} else {
-		c, err = cache.NewRedisCache()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	argsTemplate, err := db.LoadRoomServerGameArgs(cfg.GameArgsID)
 	if err != nil {
 		return nil, fmt.Errorf("game_args template (game-args-id=%d): %w", cfg.GameArgsID, err)
@@ -76,14 +64,20 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	eventPub := pubsub.NewStreamPublisher(st)
 	s.eventStream = st
 
-	s.queueSvc = queue.NewService(ctx, eventPub, c, gc,
+	queueSvc, err := queue.NewService(ctx, eventPub, gc,
 		cfg.MinTokenToJoinQueue,
 		argsTemplate.ConfirmationTimeout,
 		argsTemplate.GameContinueTimeout,
 		argsTemplate.GameContinueTimeoutRedundancy,
 		cfg.BotWaitTime,
+		cfg.BotRegistryFreshnessSec,
 		cfg.StatServiceEndpoint,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("queue service: %w", err)
+	}
+	s.queueSvc = queueSvc
+
 	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, gc,
 		cfg.TournamentCfg.EntryFee,
 		cfg.TournamentCfg.MinPlayersRequired,

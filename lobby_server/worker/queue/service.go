@@ -2,8 +2,8 @@ package queue
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -19,19 +19,20 @@ type Service struct {
 
 func NewService(ctx context.Context,
 	pub EventPublisher,
-	cache cache.Cache,
 	gameCreator GameCreator,
 	minTokenToJoinQueue int32,
 	matchConfirmationTimeout int64,
 	continueTimeout int64,
 	continueTimeoutRedundancy int64,
 	botWaitTime int64,
+	botFreshnessSec int64,
 	statServiceEndpoint string,
-) *Service {
-	return &Service{
-		ctx:   ctx,
-		queue: NewQueue(ctx, pub, cache, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, minTokenToJoinQueue, statServiceEndpoint),
+) (*Service, error) {
+	q, err := NewQueue(ctx, pub, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, botFreshnessSec, minTokenToJoinQueue, statServiceEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("queue: %w", err)
 	}
+	return &Service{ctx: ctx, queue: q}, nil
 }
 
 func (s *Service) Start() error {
@@ -69,14 +70,6 @@ func (s *Service) GetPlayerToken(playerId int64) (*proto.GetPlayerTokenResponse,
 
 func (s *Service) GameResultSettlement(event *types.GameCompletedEvent) error {
 	return s.queue.GameResultSettlement(event)
-}
-
-func (s *Service) RegisterBots(addrs ...*types.PlayerAddress) error {
-	return s.queue.RegisterBots(addrs...)
-}
-
-func (s *Service) UnregisterBots(addrs ...*types.PlayerAddress) error {
-	return s.queue.UnregisterBots(addrs...)
 }
 
 // HandleConfirmMatch records a queue-side confirmation for a pending game_match (see Rpc ConfirmMatch).

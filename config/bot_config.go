@@ -16,16 +16,17 @@ type WalletInfo struct {
 }
 
 type BotConfig struct {
-	LogCfg              log.Config   `mapstructure:"log"`
-	ChainCfg            ChainConfig  `mapstructure:"chain"`
-	DbCfg               db.Config    `mapstructure:"database"`
-	RedisCfg            redis.Config `mapstructure:"redis"`
-	RoomServerEndpoint  string       `mapstructure:"room-server-endpoint"`
-	LobbyServerEndpoint string       `mapstructure:"lobby-server-endpoint"`
-	ApiServerEndpoint   string       `mapstructure:"api-server-endpoint"`
-	NumBots             int          `mapstructure:"num-bots"`
-	GameClientMode      string       `mapstructure:"game-client-mode"` // grpc | http
-	WalletInfos         []WalletInfo `mapstructure:"wallet-infos"`     // legacy fallback
+	LogCfg                          log.Config   `mapstructure:"log"`
+	ChainCfg                        ChainConfig  `mapstructure:"chain"`
+	DbCfg                           db.Config    `mapstructure:"database"`
+	RedisCfg                        redis.Config `mapstructure:"redis"`
+	RoomServerEndpoint              string       `mapstructure:"room-server-endpoint"`
+	LobbyServerEndpoint             string       `mapstructure:"lobby-server-endpoint"`
+	ApiServerEndpoint               string       `mapstructure:"api-server-endpoint"`
+	NumBots                         int          `mapstructure:"num-bots"`
+	GameClientMode                  string       `mapstructure:"game-client-mode"` // grpc | http
+	BotRegistryHeartbeatIntervalSec int          `mapstructure:"bot-registry-heartbeat-interval-sec"`
+	WalletInfos                     []WalletInfo `mapstructure:"wallet-infos"` // legacy fallback
 }
 
 var BotCfg BotConfig
@@ -55,8 +56,11 @@ func InitBotConfig(configPath string) error {
 	if BotCfg.GameClientMode != "grpc" && BotCfg.GameClientMode != "http" {
 		return fmt.Errorf("game-client-mode must be either grpc or http")
 	}
-	if BotCfg.GameClientMode == "grpc" && BotCfg.RedisCfg.Address == "" {
-		return fmt.Errorf("redis.address is required when game-client-mode=grpc")
+	if BotCfg.RedisCfg.Address == "" {
+		return fmt.Errorf("redis.address is required for redis-backed bot registry")
+	}
+	if BotCfg.BotRegistryHeartbeatIntervalSec <= 0 {
+		BotCfg.BotRegistryHeartbeatIntervalSec = 8
 	}
 
 	return nil

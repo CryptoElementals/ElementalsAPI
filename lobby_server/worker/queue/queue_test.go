@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/redis"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,8 @@ func (h *testEventHandler) Handle(ctx context.Context, event *types.Event) error
 
 var globalTestQueueService *Service
 
+var testMiniRedis *miniredis.Miniredis
+
 // noopEventPublisher satisfies EventPublisher for tests (non-nil publisher required).
 type noopEventPublisher struct{}
 
@@ -41,6 +44,15 @@ func TestMain(m *testing.M) {
 	if err := db.MigrateMemDb(); err != nil {
 		panic(err)
 	}
+	var err error
+	testMiniRedis, err = miniredis.Run()
+	if err != nil {
+		panic(err)
+	}
+	defer testMiniRedis.Close()
+	if err := redis.Init(&redis.Config{Address: testMiniRedis.Addr(), Size: 4}); err != nil {
+		panic(err)
+	}
 	for _, p := range []dao.UserProfile{
 		{PlayerID: 1, Name: "queue_test_p1", Address: "addr1"},
 		{PlayerID: 2, Name: "queue_test_p2", Address: "addr2"},
@@ -53,15 +65,18 @@ func TestMain(m *testing.M) {
 }
 
 func TestJoinExitQueue(t *testing.T) {
+	testMiniRedis.FlushAll()
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
-	globalTestQueueService = NewService(context.Background(), noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
+	var err error
+	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, 0, "")
+	require.NoError(t, err)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
 		Id:               1,
 		TemporaryAddress: "temporary1",
 	}
-	err := globalTestQueueService.HandleJoinQueueEvent(player1.ToProto())
+	err = globalTestQueueService.HandleJoinQueueEvent(player1.ToProto())
 	require.NoError(t, err)
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1))
 
@@ -72,10 +87,13 @@ func TestJoinExitQueue(t *testing.T) {
 }
 
 func TestGameMatched(t *testing.T) {
+	testMiniRedis.FlushAll()
 	ctrl := gomock.NewController(t)
 	gameCreator := tt.NewMockGameCreator(ctrl)
 	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
-	globalTestQueueService = NewService(context.Background(), noopEventPublisher{}, cache.NewMemCache(), gameCreator, 0, 60, 0, 0, 0, "")
+	var err error
+	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, 0, "")
+	require.NoError(t, err)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
 	player1 := types.PlayerAddress{
@@ -91,7 +109,7 @@ func TestGameMatched(t *testing.T) {
 		TemporaryAddress: "temporary2",
 	}
 
-	err := globalTestQueueService.HandleJoinQueueEvent(player1.ToProto())
+	err = globalTestQueueService.HandleJoinQueueEvent(player1.ToProto())
 	require.NoError(t, err)
 	require.True(t, globalTestQueueService.IsPlayerInQueue(player1))
 

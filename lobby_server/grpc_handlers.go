@@ -73,16 +73,6 @@ func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerT
 	return s.queueSvc.GetPlayerToken(req.Id)
 }
 
-func (s *GRPCServices) RegisterBots(ctx context.Context, req *proto.RegisterBotsForLobbyRequest) (*emptypb.Empty, error) {
-	addrs := playerAddressesFromRegisterBotsRequest(req)
-	return &emptypb.Empty{}, s.queueSvc.RegisterBots(addrs...)
-}
-
-func (s *GRPCServices) UnregisterBots(ctx context.Context, req *proto.RegisterBotsForLobbyRequest) (*emptypb.Empty, error) {
-	addrs := playerAddressesFromRegisterBotsRequest(req)
-	return &emptypb.Empty{}, s.queueSvc.UnregisterBots(addrs...)
-}
-
 // HandleGameCompletedFromRoom runs queue and tournament settlement after the room publishes TYPE_GAME_COMPLETED (game id only; full row loaded here).
 func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	if gameID == 0 {

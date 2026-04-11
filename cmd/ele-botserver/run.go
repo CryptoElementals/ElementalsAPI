@@ -45,10 +45,8 @@ func runBotServer() {
 	if err := db.EnsureBotAccountTable(); err != nil {
 		panic(fmt.Sprintf("ensure bot_accounts table failed: %v", err))
 	}
-	if config.BotCfg.GameClientMode == "grpc" {
-		if err := redis.Init(&config.BotCfg.RedisCfg); err != nil {
-			panic(fmt.Sprintf("init redis failed for grpc bot mode: %v", err))
-		}
+	if err := redis.Init(&config.BotCfg.RedisCfg); err != nil {
+		panic(fmt.Sprintf("init redis failed for bot registry: %v", err))
 	}
 	svr := botserver.NewBotServer(&config.BotCfg)
 	svr.Start()
