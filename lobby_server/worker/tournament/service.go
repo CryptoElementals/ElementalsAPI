@@ -98,15 +98,19 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 
 // GameResultSettlementHook advances the bracket when a tournament match ends. Invoke after queue battle settlement.
 func (s *TournamentQueueService) GameResultSettlementHook(event *types.GameCompletedEvent) error {
-	if event == nil || event.GameInfo == nil || event.GameInfo.Type != types.GameTypeTournament {
+	if event == nil {
+		log.Errorw("tournament: game result settlement hook: event is nil")
 		return nil
 	}
-	full, err := db.LoadGameByGameID(event.GameInfo.ID)
-	if err != nil {
-		return err
-	}
-	if full.Type != types.GameTypeTournament {
+	if event.GameInfo == nil {
+		log.Errorw("tournament: game result settlement hook: game info is nil", "game_id", event.GameInfo.ID, "game_info", event.GameInfo)
 		return nil
 	}
-	return s.coord.onGameCompleted(full)
+	if event.GameInfo.Type != types.GameTypeTournament {
+		log.Errorw("tournament: game result settlement hook: invalid game type", "game_id", event.GameInfo.ID, "game_type", event.GameInfo.Type)
+		return nil
+	}
+
+	log.Debugw("tournament: game result settlement hook", "game_id", event.GameInfo.ID)
+	return s.coord.onGameCompleted(event.GameInfo)
 }

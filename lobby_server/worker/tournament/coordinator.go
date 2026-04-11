@@ -4,8 +4,10 @@ package tournament
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/bits"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/db"
@@ -242,8 +244,23 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 		}
 	}
 
+	anyPlaying := tc.startGamesForNewMatches(newMatchIDs)
+
+	if createdRound && t.TournamentID != "" {
+		if r, rerr := db.TournamentGetRound(db.Get(), t.TournamentID, 1); rerr == nil {
+			if anyPlaying {
+				r.Status = dao.TournamentRoundStatusPlaying
+			}
+			_ = db.TournamentSaveRound(db.Get(), r)
+		}
+	}
+	return nil
+}
+
+// startGamesForNewMatches calls room worker for each match and persists game_id + playing status.
+func (tc *coordinator) startGamesForNewMatches(matchIDs []uint) bool {
 	anyPlaying := false
-	for _, matchID := range newMatchIDs {
+	for _, matchID := range matchIDs {
 		var m dao.TournamentMatch
 		if err := db.Get().First(&m, matchID).Error; err != nil {
 			log.Errorw("tournament: load match failed", "match_id", matchID, "err", err)
@@ -258,7 +275,7 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 			{Id: m.Player1ID, TemporaryAddress: m.Player1TempAddress},
 			{Id: m.Player2ID, TemporaryAddress: m.Player2TempAddress},
 		}
-		gameID, gerr := tc.gameCreator.CreateGameAndRun(players, types.GameTypeTournament, 0) //todo: if failed, how to handle?
+		gameID, gerr := tc.gameCreator.CreateGameAndRun(players, types.GameTypeTournament, 0)
 		if gerr != nil {
 			log.Errorw("tournament: create game failed", "match_id", matchID, "err", gerr)
 			continue
@@ -273,16 +290,7 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 		}
 		anyPlaying = true
 	}
-
-	if createdRound && t.TournamentID != "" {
-		if r, rerr := db.TournamentGetRound(db.Get(), t.TournamentID, 1); rerr == nil {
-			if anyPlaying {
-				r.Status = dao.TournamentRoundStatusPlaying
-			}
-			_ = db.TournamentSaveRound(db.Get(), r)
-		}
-	}
-	return nil
+	return anyPlaying
 }
 
 func floorPow2(n int) int {
@@ -304,22 +312,229 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 		return nil
 	}
 
-	m, err := db.TournamentGetMatchByGameID(gameInfo.ID)
+	full, err := db.LoadGameByGameID(gameInfo.ID)
+	if err != nil {
+		return err
+	}
+
+	m0, err := db.TournamentGetMatchByGameID(gameInfo.ID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}
+		log.Errorw("tournament: get match by game id failed", "game_id", gameInfo.ID, "err", err)
 		return err
 	}
-	if m.WinnerPlayerID != nil && *m.WinnerPlayerID != 0 {
+	if m0.WinnerPlayerID != nil && *m0.WinnerPlayerID != 0 {
 		return nil
 	}
-	if m.WinnerTempAddress != nil && *m.WinnerTempAddress != "" {
+	if m0.WinnerTempAddress != nil && *m0.WinnerTempAddress != "" {
 		return nil
 	}
+
+	var (
+		unlockLosers   []types.PlayerAddress
+		unlockChampion []types.PlayerAddress
+		postNewIDs     []uint
+		postNextRound  uint32
+		postTournID    string
+	)
+
+	err = db.Get().Transaction(func(tx *gorm.DB) error {
+		var locked dao.TournamentMatch
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("game_id = ?", gameInfo.ID).First(&locked).Error; err != nil {
+			return err
+		}
+		if locked.WinnerPlayerID != nil && *locked.WinnerPlayerID != 0 {
+			return nil
+		}
+		if locked.WinnerTempAddress != nil && *locked.WinnerTempAddress != "" {
+			return nil
+		}
+
+		winPID, winTemp, err := pickTournamentWinner(&locked, full)
+		if err != nil {
+			return err
+		}
+		winTempNorm := strings.ToLower(strings.TrimSpace(winTemp))
+		wp := winPID
+		wt := winTempNorm
+		locked.WinnerPlayerID = &wp
+		locked.WinnerTempAddress = &wt
+		locked.Status = dao.TournamentMatchStatusCompleted
+		if err := tx.Save(&locked).Error; err != nil {
+			return err
+		}
+
+		var loserPID int64
+		var loserTemp string
+		if winPID == locked.Player1ID && strings.EqualFold(winTempNorm, strings.TrimSpace(locked.Player1TempAddress)) {
+			loserPID, loserTemp = locked.Player2ID, locked.Player2TempAddress
+		} else if winPID == locked.Player2ID && strings.EqualFold(winTempNorm, strings.TrimSpace(locked.Player2TempAddress)) {
+			loserPID, loserTemp = locked.Player1ID, locked.Player1TempAddress
+		} else {
+			if winPID == locked.Player1ID {
+				loserPID, loserTemp = locked.Player2ID, locked.Player2TempAddress
+			} else {
+				loserPID, loserTemp = locked.Player1ID, locked.Player1TempAddress
+			}
+		}
+
+		loserPart, err := db.TournamentGetParticipantByPlayerTx(tx, locked.TournamentID, loserPID, loserTemp)
+		if err != nil {
+			return fmt.Errorf("tournament loser participant: %w", err)
+		}
+		loserPart.Status = dao.TournamentParticipantStatusEliminated
+		if err := tx.Save(loserPart).Error; err != nil {
+			return err
+		}
+		unlockLosers = append(unlockLosers, types.PlayerAddress{
+			Id:               loserPID,
+			TemporaryAddress: strings.ToLower(strings.TrimSpace(loserTemp)),
+		})
+
+		roundMatches, err := db.TournamentListMatchesForRound(tx, locked.TournamentID, locked.RoundNo)
+		if err != nil {
+			return err
+		}
+		for _, rm := range roundMatches {
+			if rm.Status != dao.TournamentMatchStatusCompleted {
+				return nil
+			}
+		}
+
+		roundRow, err := db.TournamentGetRound(tx, locked.TournamentID, locked.RoundNo)
+		if err != nil {
+			return err
+		}
+		roundRow.Status = dao.TournamentRoundStatusCompleted
+		if err := db.TournamentSaveRound(tx, roundRow); err != nil {
+			return err
+		}
+
+		survivors, err := db.TournamentListParticipantsByStatus(tx, locked.TournamentID, dao.TournamentParticipantStatusInProgress)
+		if err != nil {
+			return err
+		}
+		n := len(survivors)
+		if n == 0 {
+			return fmt.Errorf("tournament %s: no in_progress participants after round", locked.TournamentID)
+		}
+		if n == 1 {
+			var tour dao.Tournament
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tournament_id = ?", locked.TournamentID).First(&tour).Error; err != nil {
+				return err
+			}
+			tour.Status = dao.TournamentStatusFinished
+			if err := tx.Save(&tour).Error; err != nil {
+				return err
+			}
+			ch := &survivors[0]
+			ch.Status = dao.TournamentParticipantStatusChampion
+			if err := tx.Save(ch).Error; err != nil {
+				return err
+			}
+			unlockChampion = append(unlockChampion, types.PlayerAddress{
+				Id:               ch.PlayerID,
+				TemporaryAddress: strings.ToLower(strings.TrimSpace(ch.TempAddress)),
+			})
+			return nil
+		}
+		if n%2 != 0 {
+			return fmt.Errorf("tournament %s: odd in_progress count %d", locked.TournamentID, n)
+		}
+
+		nextNo := locked.RoundNo + 1
+		newRound := &dao.TournamentRound{
+			TournamentID: locked.TournamentID,
+			RoundNo:      nextNo,
+			Status:       dao.TournamentRoundStatusMatched,
+		}
+		if err := db.TournamentCreateRound(tx, newRound); err != nil {
+			return err
+		}
+		for i := 0; i < n; i += 2 {
+			a, b := survivors[i], survivors[i+1]
+			match := &dao.TournamentMatch{
+				TournamentID:       locked.TournamentID,
+				RoundNo:            nextNo,
+				MatchNo:            uint32(i/2 + 1),
+				Player1ID:          a.PlayerID,
+				Player1TempAddress: a.TempAddress,
+				Player2ID:          b.PlayerID,
+				Player2TempAddress: b.TempAddress,
+				Status:             dao.TournamentMatchStatusMatched,
+			}
+			if err := db.TournamentCreateMatch(tx, match); err != nil {
+				return err
+			}
+			postNewIDs = append(postNewIDs, match.ID)
+		}
+		postNextRound = nextNo
+		postTournID = locked.TournamentID
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, p := range unlockLosers {
+		if err := db.UnlockUserToken(tc.ctx, p.Id, p.TemporaryAddress, true); err != nil {
+			log.Warnw("tournament: unlock loser token failed", "player_id", p.Id, "temp_address", p.TemporaryAddress, "err", err)
+		}
+	}
+	for _, p := range unlockChampion {
+		if err := db.UnlockUserToken(tc.ctx, p.Id, p.TemporaryAddress, true); err != nil {
+			log.Warnw("tournament: unlock champion token failed", "player_id", p.Id, "temp_address", p.TemporaryAddress, "err", err)
+		}
+	}
+
+	if len(postNewIDs) > 0 {
+		anyPlaying := tc.startGamesForNewMatches(postNewIDs)
+		if anyPlaying && postTournID != "" {
+			if r, rerr := db.TournamentGetRound(db.Get(), postTournID, postNextRound); rerr == nil {
+				r.Status = dao.TournamentRoundStatusPlaying
+				_ = db.TournamentSaveRound(db.Get(), r)
+			}
+		}
+	}
+
 	return nil
 }
 
-func pickTournamentWinner(_ *dao.TournamentMatch, _ *dao.Game) (uint, error) {
-	return 0, errors.New("not implemented")
+// pickTournamentWinner resolves winner player id and temp address from game result (for bracket update).
+func pickTournamentWinner(m *dao.TournamentMatch, g *dao.Game) (winnerPID int64, winnerTemp string, err error) {
+	if g == nil || g.GameResult == nil {
+		return 0, "", errors.New("game result missing")
+	}
+	gr := g.GameResult
+	p1id, p1t := m.Player1ID, m.Player1TempAddress
+	p2id, p2t := m.Player2ID, m.Player2TempAddress
+
+	addrMatch := func(pid int64, temp string, wid int64, wtemp string) bool {
+		return pid == wid && strings.EqualFold(strings.TrimSpace(temp), strings.TrimSpace(wtemp))
+	}
+
+	switch gr.GameResultType {
+	case proto.GameResultType_GAME_TIE:
+		if p1id <= p2id {
+			return p1id, p1t, nil
+		}
+		return p2id, p2t, nil
+	case proto.GameResultType_GAME_NORMAL, proto.GameResultType_GAME_KO:
+		wid := gr.WinnerPlayerId
+		wt := gr.WinnerTemporaryAddress
+		if addrMatch(p1id, p1t, wid, wt) {
+			return p1id, p1t, nil
+		}
+		if addrMatch(p2id, p2t, wid, wt) {
+			return p2id, p2t, nil
+		}
+		if p1id <= p2id {
+			return p1id, p1t, nil
+		}
+		return p2id, p2t, nil
+	default:
+		return 0, "", fmt.Errorf("unsupported game result type: %v", gr.GameResultType)
+	}
 }

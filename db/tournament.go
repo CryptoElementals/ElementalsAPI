@@ -128,6 +128,17 @@ func TournamentGetParticipantByPlayer(tournamentBusinessID string, playerID int6
 	return &p, nil
 }
 
+// TournamentGetParticipantByPlayerTx loads a participant row inside tx.
+func TournamentGetParticipantByPlayerTx(tx *gorm.DB, tournamentBusinessID string, playerID int64, tempAddr string) (*dao.TournamentParticipant, error) {
+	var p dao.TournamentParticipant
+	err := tx.Where("tournament_id = ? AND player_id = ? AND LOWER(temp_address) = LOWER(?)",
+		tournamentBusinessID, playerID, tempAddr).First(&p).Error
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // TournamentGetParticipantByBusinessTournamentIDAndTemp loads a participant by business tournament_id and temp address.
 func TournamentGetParticipantByBusinessTournamentIDAndTemp(tournamentBusinessID string, tempAddr string) (*dao.TournamentParticipant, error) {
 	var p dao.TournamentParticipant
@@ -192,6 +203,15 @@ func TournamentGetMatchByGameID(gameID int64) (*dao.TournamentMatch, error) {
 	var m dao.TournamentMatch
 	err := Get().Where("game_id = ?", gameID).First(&m).Error
 	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// TournamentGetMatchByGameIDTx loads a tournament match by game_id using tx (e.g. with FOR UPDATE).
+func TournamentGetMatchByGameIDTx(tx *gorm.DB, gameID int64) (*dao.TournamentMatch, error) {
+	var m dao.TournamentMatch
+	if err := tx.Where("game_id = ?", gameID).First(&m).Error; err != nil {
 		return nil, err
 	}
 	return &m, nil

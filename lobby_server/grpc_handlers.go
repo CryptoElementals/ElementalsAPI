@@ -7,6 +7,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc/codes"
@@ -89,7 +90,8 @@ func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	if s.tournamentSvc == nil {
 		return nil
 	}
-	return s.tournamentSvc.GameResultSettlementHook(ev)
+
+	return nil
 }
 
 func playerAddressesFromRegisterBotsRequest(req *proto.RegisterBotsForLobbyRequest) []*types.PlayerAddress {
@@ -107,4 +109,19 @@ func playerAddressesFromRegisterBotsRequest(req *proto.RegisterBotsForLobbyReque
 
 func (s *GRPCServices) JoinTournament(ctx context.Context, req *proto.JoinTournamentRequest) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, s.tournamentSvc.HandleJoinTournamentEvent(req.TournamentID, req.PlayerAddress)
+}
+
+// HandleGameCompletedFromRoom runs queue and tournament settlement after the room publishes TYPE_GAME_COMPLETED (game id only; full row loaded here).
+func (s *GRPCServices) HandleGameCompletedFromTournamentStream(gameID int64) error {
+	if gameID == 0 {
+		return nil
+	}
+	log.Debugw("lobby: handle game completed from tournament stream", "game_id", gameID)
+	g, err := db.LoadGameByGameID(gameID)
+	if err != nil {
+		log.Errorw("lobby, HandleGameCompletedFromTournamentStream: load game %d: %w", "game_id", gameID, "err", err)
+		return fmt.Errorf("load game %d: %w", gameID, err)
+	}
+	ev := &types.GameCompletedEvent{GameID: gameID, GameInfo: g}
+	return s.tournamentSvc.GameResultSettlementHook(ev)
 }
