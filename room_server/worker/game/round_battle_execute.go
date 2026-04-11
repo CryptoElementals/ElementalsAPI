@@ -75,11 +75,7 @@ func (r *round) isServerTimeout() bool {
 
 func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
 	relation := getElementalRelation(card1, card2, p1.player.PlayerId, p2.player.PlayerId)
-	var d1, d2 int
-	if relation.P1Type != RelationEven {
-		d1 = hpDeltaForElementalPlayerType(relation.P1Type, card1, card2)
-		d2 = hpDeltaForElementalPlayerType(relation.P2Type, card2, card1)
-	}
+	d1, d2 := hpDeltasForElementalRelation(relation.P1Type, card1, card2)
 
 	p1BeforeHP := p1.currentHP
 	p2BeforeHP := p2.currentHP
@@ -91,16 +87,19 @@ func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
 	r.updateCardStats(p2.getLastSubmittedCard(), int(p2BeforeHP), int(p2.currentHP), relation.P2Type, relation.P2Description)
 }
 
-// hpDeltaForElementalPlayerType returns the HP change for selfCard's player (negative = damage, positive = heal).
-func hpDeltaForElementalPlayerType(playerType string, selfCard, opponentCard *dao.Card) int {
-	switch playerType {
-	case RelationOverpower, RelationOverpowered:
-		v := max(opponentCard.Attack-selfCard.Defense, 0)
-		return -v
-	case RelationNurture, RelationNurtured:
-		return max(selfCard.LifeForce, 0)
+// hpDeltasForElementalRelation returns HP deltas for (p1, p2) from p1's relation to p2.
+func hpDeltasForElementalRelation(p1Relation string, p1Card, p2Card *dao.Card) (int, int) {
+	switch p1Relation {
+	case RelationOverpower:
+		return 0, -max(p1Card.Attack-p2Card.Defense, 0)
+	case RelationOverpowered:
+		return -max(p2Card.Attack-p1Card.Defense, 0), 0
+	case RelationNurture:
+		return 0, max(p1Card.LifeForce, 0)
+	case RelationNurtured:
+		return max(p2Card.LifeForce, 0), 0
 	default:
-		return 0
+		return 0, 0
 	}
 }
 

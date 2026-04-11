@@ -36,19 +36,16 @@ STAT_MAIN = ./cmd/ele-stat
 TOOLS_BIN = ele-tools
 TOOLS_MAIN = ./cmd/ele-tools
 
-STRESS_BIN = ele-stress
-STRESS_MAIN = ./cmd/ele-stress
-
 REDISSTREAM_BIN = ele-redis-stream
 REDISSTREAM_MAIN = ./cmd/ele-redis-stream
 
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner roomserver lobbyserver botserver stat tools stress redisstream clean deps lint check-persist help
+.PHONY: all build apiserver scanner roomserver lobbyserver botserver stat tools redisstream clean deps lint check-persist help
 
 all: build
 
-build: apiserver scanner roomserver lobbyserver botserver stat tools stress redisstream
+build: apiserver scanner roomserver lobbyserver botserver stat tools redisstream
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -85,11 +82,6 @@ tools: $(BIN_DIR)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(TOOLS_BIN) $(TOOLS_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(TOOLS_BIN)"
 
-stress: $(BIN_DIR)
-	@echo "Building $(STRESS_BIN)..."
-	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(STRESS_BIN) $(STRESS_MAIN)
-	@echo "Build completed: $(BIN_DIR)/$(STRESS_BIN)"
-
 redisstream: $(BIN_DIR)
 	@echo "Building $(REDISSTREAM_BIN)..."
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(REDISSTREAM_BIN) $(REDISSTREAM_MAIN)
@@ -100,7 +92,7 @@ $(BIN_DIR):
 
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(LOBBYSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(STRESS_BIN) $(BIN_DIR)/$(REDISSTREAM_BIN)
+	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(LOBBYSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(REDISSTREAM_BIN)
 	@echo "Clean completed"
 
 deps:
@@ -129,8 +121,7 @@ help:
 	@echo "  roomserver    - Build ele-roomserver only"
 	@echo "  botserver     - Build ele-botserver only"
 	@echo "  stat          - Build ele-stat only"
-	@echo "  tools         - Build ele-tools only"
-	@echo "  stress        - Build ele-stress only"
+	@echo "  tools         - Build ele-tools (includes stress run subcommand)"
 	@echo "  redisstream   - Build ele-redis-stream only (Redis Stream test tool)"
 	@echo ""
 	@echo "Other:"
