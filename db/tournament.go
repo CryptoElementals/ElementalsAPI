@@ -46,6 +46,16 @@ func TournamentGetByID(id uint) (*dao.Tournament, error) {
 	return &t, nil
 }
 
+// TournamentGetByTournamentID loads a tournament by business tournament_id (string).
+func TournamentGetByTournamentID(tournamentID string) (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().Where("tournament_id = ?", tournamentID).First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // TournamentGetLatestRegistrationOpen returns latest registration_open tournament by scheduled_start_at.
 func TournamentGetLatestRegistrationOpen() (*dao.Tournament, error) {
 	var t dao.Tournament

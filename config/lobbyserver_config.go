@@ -27,6 +27,7 @@ type LobbyServerConfig struct {
 
 type TournamentConfig struct {
 	EntryFee           int32  `mapstructure:"entry-fee"`
+	MinPlayersRequired uint32 `mapstructure:"min-players-required"`
 	IntervalSeconds    uint32 `mapstructure:"interval-seconds"`
 	BeforeStartSeconds uint32 `mapstructure:"before-start-seconds"`
 }

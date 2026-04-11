@@ -29,17 +29,19 @@ type coordinator struct {
 	cancel             context.CancelFunc
 	gameCreator        GameCreator
 	entryFee           int32
+	minPlayersRequired uint32
 	intervalSeconds    uint32
 	beforeStartSeconds uint32
 }
 
-func newCoordinator(parent context.Context, gameCreator GameCreator, entryFee int32, intervalSeconds uint32, beforeStartSeconds uint32) *coordinator {
+func newCoordinator(parent context.Context, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *coordinator {
 	ctx, cancel := context.WithCancel(parent)
 	return &coordinator{
 		ctx:                ctx,
 		cancel:             cancel,
 		gameCreator:        gameCreator,
 		entryFee:           entryFee,
+		minPlayersRequired: minPlayersRequired,
 		intervalSeconds:    intervalSeconds,
 		beforeStartSeconds: beforeStartSeconds,
 	}
@@ -72,7 +74,7 @@ func (tc *coordinator) loop() {
 func (tc *coordinator) tick() {
 	now := time.Now().UTC()
 	unitDuration := time.Duration(tc.intervalSeconds) * time.Second
-	log.Debugw("tournament: tick", "unitDuration", unitDuration)
+	//log.Debugw("tournament: tick", "unitDuration", unitDuration)
 
 	if err := tc.ensureNextTournaments(now); err != nil {
 		log.Errorw("tournament: ensure next tournaments", "err", err)
@@ -84,7 +86,7 @@ func (tc *coordinator) tick() {
 	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithSlot(currentSlotTime)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Debugw("tournament: no tournament to begin at current slot", "currentSlotTime", currentSlotTime)
+			//log.Debugw("tournament: no tournament to begin at current slot", "currentSlotTime", currentSlotTime)
 			return
 		}
 		log.Errorw("tournament: get latest tournament to begin", "err", err)
@@ -159,13 +161,14 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 
 		total := len(queued)
 		capN := minInt(floorPow2(total), 8192)
-		if capN < 2 {
+		if capN < int(tc.minPlayersRequired) {
 			cur.Status = dao.TournamentStatusCancelled
 			if err := tx.Save(&cur).Error; err != nil {
 				return err
 			}
 
-			log.Debugw("tournament: cancel tournament because not enough players", "tournament_id", cur.TournamentID, "total players", total)
+			log.Infow("tournament: cancel tournament because not enough players",
+				"tournament_id", cur.TournamentID, "total players", total, "minPlayersRequired", tc.minPlayersRequired)
 			for i := range queued {
 				p := &queued[i]
 				p.Status = dao.TournamentParticipantStatusKickedNotEnough
@@ -207,10 +210,11 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 		}
 
 		// Pair for round1 (no bye because cap is power of 2).
+		firstRoundMatchNo := uint32(1)
 		for i := 0; i < capN; i += 2 {
 			match := &dao.TournamentMatch{
 				TournamentID:       cur.TournamentID,
-				RoundNo:            1,
+				RoundNo:            firstRoundMatchNo,
 				MatchNo:            uint32(i/2 + 1),
 				Player1ID:          queued[i].PlayerID,
 				Player1TempAddress: queued[i].TempAddress,
@@ -221,11 +225,14 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 			if err := db.TournamentCreateMatch(tx, match); err != nil {
 				return err
 			}
+			log.Infow("tournament: create match", "TournamentID", match.TournamentID, "round_no", match.RoundNo,
+				"match_no", match.MatchNo, "match_id", match.ID, "player1_id", match.Player1ID, "player2_id", match.Player2ID)
 			newMatchIDs = append(newMatchIDs, match.ID)
 		}
 		return nil
 	})
 	if err != nil {
+		log.Errorw("tournament: create tournament first round failed", "tournament_id", t.TournamentID, "err", err)
 		return err
 	}
 
@@ -243,6 +250,8 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 			continue
 		}
 		if m.Player1ID == 0 || m.Player2ID == 0 || m.Player1TempAddress == "" || m.Player2TempAddress == "" {
+			log.Errorw("tournament: match player1 or player2 is empty", "match_id", matchID,
+				"Player1ID", m.Player1ID, "Player1TempAddress", m.Player1TempAddress, "Player2ID", m.Player2ID, "Player2TempAddress", m.Player2TempAddress)
 			continue
 		}
 		players := []types.PlayerAddress{
@@ -254,6 +263,8 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 			log.Errorw("tournament: create game failed", "match_id", matchID, "err", gerr)
 			continue
 		}
+		log.Infow("tournament: create game success", "TournamentID", m.TournamentID, "round_no", m.RoundNo,
+			"match_no", m.MatchNo, "match_id", m.ID, "game_id", gameID, "players", types.ToJsonLoggable(players))
 		m.GameID = &gameID
 		m.Status = dao.TournamentMatchStatusPlaying
 		if err := db.TournamentSaveMatch(db.Get(), &m); err != nil {
