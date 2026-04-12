@@ -94,3 +94,18 @@ type TournamentMatch struct {
 }
 
 func (TournamentMatch) TableName() string { return "tournament_matches" }
+
+// TournamentReward records per-match token/point deltas for bracket play (separate from PVP player_rewards / battle_rewards).
+type TournamentReward struct {
+	BaseModel
+
+	TournamentID string `gorm:"not null;size:64;uniqueIndex:uq_tournament_reward_player,priority:1;index" json:"tournament_id"`
+	RoundNo      uint32 `gorm:"not null;uniqueIndex:uq_tournament_reward_player,priority:2" json:"round_no"`
+	MatchNo      uint32 `gorm:"not null;uniqueIndex:uq_tournament_reward_player,priority:3" json:"match_no"`
+	PlayerID     int64  `gorm:"not null;uniqueIndex:uq_tournament_reward_player,priority:4;index" json:"player_id"`
+	TempAddress  string `gorm:"not null;size:128;uniqueIndex:uq_tournament_reward_player,priority:5;index" json:"temp_address"`
+	TokenChange  int32  `gorm:"not null" json:"token_change"`
+	PointChange  int32  `gorm:"not null" json:"point_change"`
+}
+
+func (TournamentReward) TableName() string { return "tournament_rewards" }

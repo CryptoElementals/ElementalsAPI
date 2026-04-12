@@ -78,7 +78,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	}
 	s.queueSvc = queueSvc
 
-	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, gc,
+	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, eventPub, gc,
 		cfg.TournamentCfg.EntryFee,
 		cfg.TournamentCfg.MinPlayersRequired,
 		cfg.TournamentCfg.IntervalSeconds,

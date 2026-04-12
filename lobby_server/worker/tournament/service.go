@@ -10,6 +10,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
@@ -22,10 +23,10 @@ type TournamentQueueService struct {
 }
 
 // NewTournamentQueueService constructs the tournament worker. Call Start after DB is ready.
-func NewTournamentQueueService(ctx context.Context, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *TournamentQueueService {
+func NewTournamentQueueService(ctx context.Context, publisher pubsub.Publisher, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *TournamentQueueService {
 	return &TournamentQueueService{
 		ctx:   ctx,
-		coord: newCoordinator(ctx, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds),
+		coord: newCoordinator(ctx, publisher, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds),
 	}
 }
 
@@ -96,7 +97,7 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 	return db.Get().Create(p).Error
 }
 
-// GameResultSettlementHook advances the bracket when a tournament match ends. Invoke after queue battle settlement.
+// GameResultSettlementHook applies tournament match rewards (tournament_rewards + wallet) and advances the bracket when a tournament match ends.
 func (s *TournamentQueueService) GameResultSettlementHook(event *types.GameCompletedEvent) error {
 	if event == nil {
 		log.Errorw("tournament: game result settlement hook: event is nil")
@@ -108,6 +109,11 @@ func (s *TournamentQueueService) GameResultSettlementHook(event *types.GameCompl
 	}
 	if event.GameInfo.Type != types.GameTypeTournament {
 		log.Errorw("tournament: game result settlement hook: invalid game type", "game_id", event.GameInfo.ID, "game_type", event.GameInfo.Type)
+		return nil
+	}
+
+	if event.GameInfo.GameResult == nil {
+		log.Errorw("tournament: game result settlement hook: game result is nil", "game_id", event.GameInfo.ID, "game_result", event.GameInfo.GameResult)
 		return nil
 	}
 

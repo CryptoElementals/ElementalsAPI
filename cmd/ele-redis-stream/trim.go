@@ -25,7 +25,7 @@ func init() {
 	rootCmd.AddCommand(trimCmd)
 	trimCmd.Flags().StringVarP(&configPath, "config", "c", "config.yaml", "config file path")
 	trimCmd.Flags().DurationVarP(&trimMaxAge, "max-age", "m", time.Hour, "remove entries older than this (e.g. 1h, 30m, 10s)")
-	trimCmd.Flags().StringVarP(&trimStream, "stream", "s", defaultStreamName, "stream name")
+	trimCmd.Flags().StringVarP(&trimStream, "stream", "s", StreamRoomEvents, "stream name")
 	trimCmd.Flags().BoolVarP(&trimDryRun, "dry-run", "n", false, "show what would be trimmed without deleting")
 }
 
