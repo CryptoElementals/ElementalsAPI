@@ -56,6 +56,64 @@ func TournamentGetByTournamentID(tournamentID string) (*dao.Tournament, error) {
 	return &t, nil
 }
 
+// TournamentGetLatestInProgress returns the newest in_progress tournament by scheduled_start_at.
+func TournamentGetLatestInProgress() (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().Where("status = ?", dao.TournamentStatusInProgress).
+		Order("scheduled_start_at DESC").First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// TournamentPlayerInActiveBracket is true when the player is still tied to the latest
+// in-progress tournament bracket only (queued before first match or currently in a match).
+// This intentionally ignores older in_progress rows (possible dirty historical data).
+func TournamentPlayerInActiveBracket(playerID int64, tempAddress string) (bool, error) {
+	latestInProgress, err := TournamentGetLatestInProgress()
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	if !time.Now().UTC().Before(latestInProgress.ScheduledEndDeadline) {
+		return false, nil
+	}
+
+	var n int64
+	err = Get().Raw(`
+		SELECT COUNT(1) FROM tournament_participants p
+		WHERE p.player_id = ? AND LOWER(p.temp_address) = LOWER(?)
+		AND p.tournament_id = ?
+		AND p.status IN (?, ?)`,
+		playerID, tempAddress,
+		latestInProgress.TournamentID,
+		dao.TournamentParticipantStatusQueued,
+		dao.TournamentParticipantStatusInProgress,
+	).Scan(&n).Error
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// TournamentCountParticipantsForPool counts participants whose entry still counts toward the displayed prize pool
+// (excludes kicked_not_enough and kicked_overflow).
+func TournamentCountParticipantsForPool(tournamentBusinessID string) (int64, error) {
+	var n int64
+	err := Get().Model(&dao.TournamentParticipant{}).
+		Where("tournament_id = ? AND status NOT IN ?",
+			tournamentBusinessID,
+			[]string{
+				string(dao.TournamentParticipantStatusKickedNotEnough),
+				string(dao.TournamentParticipantStatusKickedOverflow),
+			}).
+		Count(&n).Error
+	return n, err
+}
+
 // TournamentGetLatestRegistrationOpen returns latest registration_open tournament by scheduled_start_at.
 func TournamentGetLatestRegistrationOpen() (*dao.Tournament, error) {
 	var t dao.Tournament

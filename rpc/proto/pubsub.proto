@@ -208,6 +208,11 @@ message GameStat {
   uint32 CurrentTurnNum = 5;
 }
 
+// TournamentRosterUpdate signals that tournament signup changed (e.g. new join); payload is for logging only.
+message TournamentRosterUpdate {
+  string TournamentID = 1;
+}
+
 enum EventType {
   TYPE_KNOWN = 0;
   TYPE_MATCHED = 1;
@@ -224,6 +229,8 @@ enum EventType {
   TYPE_GAME_SETTLEMENT_RESULT = 12;
   TYPE_GAME_COMPLETED = 13;
   TYPE_TOURNAMENT_MATCH_OUTCOME = 14;
+  // Broadcast on tournament_roster_events: a player joined; clients refresh snapshot (empty receivers).
+  TYPE_TOURNAMENT_ROSTER_UPDATE = 15;
 }
 
 message Event {
@@ -245,5 +252,6 @@ message Event {
     GameSettlementResult GameSettlementResult = 12;
     GameCompletedNotice GameCompletedNotice = 14;
     TournamentMatchOutcome TournamentMatchOutcome = 16;
+    TournamentRosterUpdate TournamentRosterUpdate = 17;
   }
 }

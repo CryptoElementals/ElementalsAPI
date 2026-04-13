@@ -20,15 +20,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LobbyService_JoinQueue_FullMethodName       = "/rpc.LobbyService/JoinQueue"
-	LobbyService_ExitQueue_FullMethodName       = "/rpc.LobbyService/ExitQueue"
-	LobbyService_ConfirmMatch_FullMethodName    = "/rpc.LobbyService/ConfirmMatch"
-	LobbyService_CancelMatch_FullMethodName     = "/rpc.LobbyService/CancelMatch"
-	LobbyService_GetPlayerStatus_FullMethodName = "/rpc.LobbyService/GetPlayerStatus"
-	LobbyService_GetPlayerToken_FullMethodName  = "/rpc.LobbyService/GetPlayerToken"
-	LobbyService_RegisterBots_FullMethodName    = "/rpc.LobbyService/RegisterBots"
-	LobbyService_UnregisterBots_FullMethodName  = "/rpc.LobbyService/UnregisterBots"
-	LobbyService_JoinTournament_FullMethodName  = "/rpc.LobbyService/JoinTournament"
+	LobbyService_JoinQueue_FullMethodName                                   = "/rpc.LobbyService/JoinQueue"
+	LobbyService_ExitQueue_FullMethodName                                   = "/rpc.LobbyService/ExitQueue"
+	LobbyService_ConfirmMatch_FullMethodName                                = "/rpc.LobbyService/ConfirmMatch"
+	LobbyService_CancelMatch_FullMethodName                                 = "/rpc.LobbyService/CancelMatch"
+	LobbyService_GetPlayerStatus_FullMethodName                             = "/rpc.LobbyService/GetPlayerStatus"
+	LobbyService_GetPlayerToken_FullMethodName                              = "/rpc.LobbyService/GetPlayerToken"
+	LobbyService_RegisterBots_FullMethodName                                = "/rpc.LobbyService/RegisterBots"
+	LobbyService_UnregisterBots_FullMethodName                              = "/rpc.LobbyService/UnregisterBots"
+	LobbyService_JoinTournament_FullMethodName                              = "/rpc.LobbyService/JoinTournament"
+	LobbyService_GetLatestRegistrationOpenTournamentSnapshot_FullMethodName = "/rpc.LobbyService/GetLatestRegistrationOpenTournamentSnapshot"
 )
 
 // LobbyServiceClient is the client API for LobbyService service.
@@ -49,6 +50,8 @@ type LobbyServiceClient interface {
 	UnregisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// todo: tournament related rpc
 	JoinTournament(ctx context.Context, in *JoinTournamentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Latest registration-open tournament snapshot for clients.
+	GetLatestRegistrationOpenTournamentSnapshot(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error)
 }
 
 type lobbyServiceClient struct {
@@ -149,6 +152,16 @@ func (c *lobbyServiceClient) JoinTournament(ctx context.Context, in *JoinTournam
 	return out, nil
 }
 
+func (c *lobbyServiceClient) GetLatestRegistrationOpenTournamentSnapshot(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLatestRegistrationOpenTournamentSnapshotResponse)
+	err := c.cc.Invoke(ctx, LobbyService_GetLatestRegistrationOpenTournamentSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LobbyServiceServer is the server API for LobbyService service.
 // All implementations must embed UnimplementedLobbyServiceServer
 // for forward compatibility.
@@ -167,6 +180,8 @@ type LobbyServiceServer interface {
 	UnregisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error)
 	// todo: tournament related rpc
 	JoinTournament(context.Context, *JoinTournamentRequest) (*emptypb.Empty, error)
+	// Latest registration-open tournament snapshot for clients.
+	GetLatestRegistrationOpenTournamentSnapshot(context.Context, *PlayerAddress) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error)
 	mustEmbedUnimplementedLobbyServiceServer()
 }
 
@@ -203,6 +218,9 @@ func (UnimplementedLobbyServiceServer) UnregisterBots(context.Context, *Register
 }
 func (UnimplementedLobbyServiceServer) JoinTournament(context.Context, *JoinTournamentRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method JoinTournament not implemented")
+}
+func (UnimplementedLobbyServiceServer) GetLatestRegistrationOpenTournamentSnapshot(context.Context, *PlayerAddress) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLatestRegistrationOpenTournamentSnapshot not implemented")
 }
 func (UnimplementedLobbyServiceServer) mustEmbedUnimplementedLobbyServiceServer() {}
 func (UnimplementedLobbyServiceServer) testEmbeddedByValue()                      {}
@@ -387,6 +405,24 @@ func _LobbyService_JoinTournament_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LobbyService_GetLatestRegistrationOpenTournamentSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlayerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LobbyServiceServer).GetLatestRegistrationOpenTournamentSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LobbyService_GetLatestRegistrationOpenTournamentSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LobbyServiceServer).GetLatestRegistrationOpenTournamentSnapshot(ctx, req.(*PlayerAddress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LobbyService_ServiceDesc is the grpc.ServiceDesc for LobbyService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -429,6 +465,10 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "JoinTournament",
 			Handler:    _LobbyService_JoinTournament_Handler,
+		},
+		{
+			MethodName: "GetLatestRegistrationOpenTournamentSnapshot",
+			Handler:    _LobbyService_GetLatestRegistrationOpenTournamentSnapshot_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

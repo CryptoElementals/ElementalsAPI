@@ -94,7 +94,11 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 		TempAddress:  temp,
 		Status:       dao.TournamentParticipantStatusQueued,
 	}
-	return db.Get().Create(p).Error
+	if err := db.Get().Create(p).Error; err != nil {
+		return err
+	}
+	s.coord.publishTournamentRosterUpdate(t.TournamentID)
+	return nil
 }
 
 // GameResultSettlementHook applies tournament match rewards (tournament_rewards + wallet) and advances the bracket when a tournament match ends.

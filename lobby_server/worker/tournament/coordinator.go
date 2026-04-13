@@ -133,6 +133,7 @@ func (tc *coordinator) createTournamentIfNotExists(at time.Time) error {
 		TournamentID:         strconv.FormatInt(dao.GenerateSnowflakeID(), 10),
 		Status:               dao.TournamentStatusRegistrationOpen,
 		ScheduledStartAt:     at,
+		ScheduledEndDeadline: at.Add(time.Duration(tc.intervalSeconds) * time.Second),
 		RegistrationDeadline: at.Add(-time.Duration(tc.beforeStartSeconds) * time.Second),
 		EntryFee:             tc.entryFee,
 	}
@@ -321,7 +322,7 @@ type tournamentMatchOutcomeToPublish struct {
 	loserPID                       int64
 	loserTemp                      string
 	tournamentFinished             bool
-	roundFinished                  bool // all matches in roundNo completed after this game
+	roundFinished                  bool                // all matches in roundNo completed after this game
 	cumulativeBattleReward         *proto.BattleReward // SUM(tournament_rewards) per player; PlayerRewards order winner, loser
 	winnerCumulationIfNextMatchWin *proto.PlayerReward // set when tournament not finished
 	nextRoundNo                    *uint32             // set when tournament not finished
@@ -342,12 +343,12 @@ func (tc *coordinator) publishTournamentMatchOutcome(o *tournamentMatchOutcomeTo
 		},
 		Event: &proto.Event_TournamentMatchOutcome{
 			TournamentMatchOutcome: &proto.TournamentMatchOutcome{
-				GameId:                     o.gameID,
-				TournamentId:               o.tournamentID,
-				RoundNo:                    o.roundNo,
-				MatchNo:                    o.matchNo,
-				Winner:                     w,
-				Loser:                      l,
+				GameId:                         o.gameID,
+				TournamentId:                   o.tournamentID,
+				RoundNo:                        o.roundNo,
+				MatchNo:                        o.matchNo,
+				Winner:                         w,
+				Loser:                          l,
 				TournamentFinished:             o.tournamentFinished,
 				RoundFinished:                  o.roundFinished,
 				CumulativeBattleReward:         o.cumulativeBattleReward,
@@ -358,6 +359,21 @@ func (tc *coordinator) publishTournamentMatchOutcome(o *tournamentMatchOutcomeTo
 	}
 	if err := pubsub.Publish(tc.ctx, tc.publisher, pubsub.TopicLobby, evt); err != nil {
 		log.Errorw("tournament: publish match outcome failed", "game_id", o.gameID, "err", err)
+	}
+}
+
+func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) {
+	if tc == nil || tc.publisher == nil || tournamentID == "" {
+		return
+	}
+	evt := &proto.Event{
+		Type: proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE,
+		Event: &proto.Event_TournamentRosterUpdate{
+			TournamentRosterUpdate: &proto.TournamentRosterUpdate{TournamentID: tournamentID},
+		},
+	}
+	if err := pubsub.Publish(tc.ctx, tc.publisher, pubsub.TopicTournamentRoster, evt); err != nil {
+		log.Errorw("tournament: publish roster update failed", "tournament_id", tournamentID, "err", err)
 	}
 }
 

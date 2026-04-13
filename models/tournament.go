@@ -17,6 +17,7 @@ type Tournament struct {
 	TournamentID         string           `gorm:"not null;uniqueIndex;size:64" json:"tournament_id"`
 	Status               TournamentStatus `gorm:"type:varchar(32);not null;index" json:"status"`
 	ScheduledStartAt     time.Time        `gorm:"not null;uniqueIndex" json:"scheduled_start_at"`
+	ScheduledEndDeadline time.Time        `gorm:"not null;index" json:"scheduled_end_deadline"`
 	RegistrationDeadline time.Time        `gorm:"not null;index" json:"registration_deadline"`
 	EntryFee             int32            `gorm:"default:0" json:"entry_fee"`
 

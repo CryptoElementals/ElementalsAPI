@@ -17,11 +17,12 @@ import (
 type EventType string
 
 const (
-	EventTypeNotification EventType = "notification"
-	EventTypeDataChange   EventType = "data_change"
-	EventTypeStatusUpdate EventType = "status_update"
-	EventTypeError        EventType = "error"
-	EventTypeHeartbeat    EventType = "heartbeat"
+	EventTypeNotification       EventType = "notification"
+	EventTypeDataChange         EventType = "data_change"
+	EventTypeTournamentSnapshot EventType = "tournament_snapshot"
+	EventTypeStatusUpdate       EventType = "status_update"
+	EventTypeError              EventType = "error"
+	EventTypeHeartbeat          EventType = "heartbeat"
 )
 
 // Event 事件结构

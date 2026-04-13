@@ -21,6 +21,8 @@ service LobbyService {
   rpc UnregisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
   //todo: tournament related rpc
   rpc JoinTournament(JoinTournamentRequest) returns (google.protobuf.Empty);
+  // Latest registration-open tournament snapshot for clients.
+  rpc GetLatestRegistrationOpenTournamentSnapshot(PlayerAddress) returns (GetLatestRegistrationOpenTournamentSnapshotResponse);
 }
 
 message RegisterBotsForLobbyRequest {
@@ -30,4 +32,20 @@ message RegisterBotsForLobbyRequest {
 message JoinTournamentRequest {
   PlayerAddress PlayerAddress = 1;
   string TournamentID = 2;
+}
+
+// GetLatestRegistrationOpenTournamentSnapshotResponse describes the latest registration-open tournament row.
+message GetLatestRegistrationOpenTournamentSnapshotResponse {
+  bool HasTournament = 1;
+  string TournamentID = 2;
+  string TournamentStatus = 3;
+  int64 ScheduledStartUnixSec = 4;
+  int64 RegistrationDeadlineUnixSec = 5;
+  int32 EntryFee = 6;
+  int64 ParticipantCount = 7;
+  bool PlayerRegistered = 8;
+  string PlayerParticipantStatus = 9;
+  repeated int32 TopFourRewardTokens = 10;
+  int64 PrizePoolTokens = 11;
+  int64 SecondsUntilScheduledStart = 12;
 }

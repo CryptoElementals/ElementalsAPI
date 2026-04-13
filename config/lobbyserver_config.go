@@ -27,10 +27,12 @@ type LobbyServerConfig struct {
 }
 
 type TournamentConfig struct {
-	EntryFee           int32  `mapstructure:"entry-fee"`
-	MinPlayersRequired uint32 `mapstructure:"min-players-required"`
-	IntervalSeconds    uint32 `mapstructure:"interval-seconds"`
-	BeforeStartSeconds uint32 `mapstructure:"before-start-seconds"`
+	EntryFee           int32   `mapstructure:"entry-fee"`
+	MinPlayersRequired uint32  `mapstructure:"min-players-required"`
+	IntervalSeconds    uint32  `mapstructure:"interval-seconds"`
+	BeforeStartSeconds uint32  `mapstructure:"before-start-seconds"`
+	// TopFourPrizeTokens is rank 1..4 fixed prize amounts (tokens) shown to clients; pool is entry_fee * participants.
+	TopFourPrizeTokens []int32 `mapstructure:"top-four-prize-tokens"`
 }
 
 // InitLSConfig loads lobby server config from a YAML file (viper).

@@ -32,6 +32,7 @@ func NewPubSubClient(st stream.Stream) *PubSubClient {
 			pubsub.NewStreamSubscriber(st),
 			pubsub.TopicRoom,
 			pubsub.TopicLobby,
+			pubsub.TopicTournamentRoster,
 		)
 	}
 	return c
