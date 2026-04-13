@@ -155,6 +155,8 @@ func corsMiddleware() gin.HandlerFunc {
 			"https://beast-royale-fe.prj-console.svc.a4.u4/",
 			"https://d.elementra.xyz",
 			"http://d.elementra.xyz",
+			"https://a.elementra.xyz",
+			"http://a.elementra.xyz",
 			"https://elementra.xyz",
 			"http://elementra.xyz",
 		}
