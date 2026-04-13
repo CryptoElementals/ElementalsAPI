@@ -300,7 +300,7 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 			}
 			if msg.GetTopic() == pubsub.TopicTournamentRoster && msg.GetEvent() != nil &&
 				msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
-				if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetEvent().GetMessageId()); err != nil {
+				if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetMessageId()); err != nil {
 					log.Errorf("send tournament snapshot from roster update failed: %v", err)
 				}
 				continue

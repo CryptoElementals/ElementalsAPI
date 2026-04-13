@@ -36,6 +36,7 @@ const (
 
 	// 匹配与对战
 	JOIN_QUEUE_LABEL               = "JoinQueue"
+	JOIN_TOURNAMENT_LABEL          = "JoinTournament"
 	EXIT_QUEUE_LABEL               = "ExitQueue"
 	CONFIRM_MATCH_LABEL            = "ConfirmMatch"
 	CANCEL_MATCH_LABEL             = "CancelMatch"
