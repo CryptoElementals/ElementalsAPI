@@ -125,7 +125,8 @@ message NotMatchable {
 // Sent by the lobby after token/points settlement (BattleResultSettlement). Reward is not included on TurnCompleted.GameResult.
 message GameSettlementResult {
   int64 GameId = 1;
-  battle.BattleReward Reward = 2;
+  int32 SystemFee = 2;
+  repeated battle.PlayerReward PlayerRewards = 3;
 }
 
 // Sent by the room on topic room_settlement when a game ends. Lobby subscribes and loads full state from DB.
