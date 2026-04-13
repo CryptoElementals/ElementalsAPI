@@ -290,10 +290,8 @@ func (q *Queue) publishGameSettlementResult(game *dao.Game) {
 	if game == nil || game.GameResult == nil || game.GameResult.BattleReward == nil {
 		return
 	}
-	protoReward := conversion.DbBattleRewardToProtoBattleReward(game.GameResult.BattleReward)
-	if protoReward == nil {
-		return
-	}
+	br := game.GameResult.BattleReward
+	playerRewards := conversion.DbPlayerRewardsToProto(br.PlayerRewards)
 	receivers := make([]*pb.PlayerAddress, 0, len(game.Players))
 	for _, p := range game.Players {
 		if p == nil {
@@ -306,8 +304,9 @@ func (q *Queue) publishGameSettlementResult(game *dao.Game) {
 		Receivers: receivers,
 		Event: &pb.Event_GameSettlementResult{
 			GameSettlementResult: &pb.GameSettlementResult{
-				GameId: game.ID,
-				Reward: protoReward,
+				GameId:        game.ID,
+				SystemFee:     br.SystemFee,
+				PlayerRewards: playerRewards,
 			},
 		},
 	}

@@ -133,9 +133,8 @@ func (c *GameContext) Run() error {
 				}
 				c.gameID = gr.GetGameId()
 				log.Infow("game created", "game id", c.gameID)
-				if err := c.confirmBattle(); err != nil {
-					log.Errorw("failed to confirm battle after game created", "error", err)
-				}
+				c.currentRound = 1
+				c.currentTurn = 1
 			case proto.EventType_TYPE_ROUND_READY:
 				roundReady := evt.GetRoundReady()
 				if roundReady == nil {
@@ -251,7 +250,7 @@ func (c *GameContext) Run() error {
 			case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
 				gsr := evt.GetGameSettlementResult()
 				if gsr != nil {
-					log.Infow("game settlement result", "game id", gsr.GetGameId(), "reward", types.ToJsonLoggable(gsr.GetReward()))
+					log.Infow("game settlement result", "game id", gsr.GetGameId(), "system_fee", gsr.GetSystemFee(), "player_rewards", types.ToJsonLoggable(gsr.GetPlayerRewards()))
 				}
 			}
 		}

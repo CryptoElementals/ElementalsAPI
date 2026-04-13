@@ -620,6 +620,49 @@ func parseGameMatchedFromSSEMap(msg map[string]interface{}) *proto.GameMatched {
 	return gm
 }
 
+// parseGameSettlementResultFromSSEMap builds GameSettlementResult from SubscribeGameInfo SSE "Message" object.
+func parseGameSettlementResultFromSSEMap(msg map[string]interface{}) *proto.GameSettlementResult {
+	gsr := &proto.GameSettlementResult{}
+	if gameId, ok := msg["GameId"].(float64); ok {
+		gsr.GameId = int64(gameId)
+	}
+	if sf, ok := msg["SystemFee"].(float64); ok {
+		gsr.SystemFee = int32(sf)
+	}
+	if arr, ok := msg["PlayerRewards"].([]interface{}); ok {
+		for _, item := range arr {
+			m, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			pr := &proto.PlayerReward{}
+			if v, ok := m["PlayerId"].(float64); ok {
+				pr.PlayerId = int64(v)
+			}
+			if v, ok := m["TemporaryAddress"].(string); ok {
+				pr.TemporaryAddress = v
+			}
+			if v, ok := m["TokenChange"].(float64); ok {
+				pr.TokenChange = int32(v)
+			}
+			if v, ok := m["PointChange"].(float64); ok {
+				pr.PointChange = int32(v)
+			}
+			if v, ok := m["Offline"].(bool); ok {
+				pr.Offline = v
+			}
+			if v, ok := m["Surrendered"].(bool); ok {
+				pr.Surrendered = v
+			}
+			if v, ok := m["PlayerGameResultStatus"].(float64); ok {
+				pr.PlayerGameResultStatus = proto.PlayerGameResultStatus(int32(v))
+			}
+			gsr.PlayerRewards = append(gsr.PlayerRewards, pr)
+		}
+	}
+	return gsr
+}
+
 // parseSSEEvent parses SSE event and converts it to proto.Event
 func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 	var sseEvent struct {
@@ -724,10 +767,7 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 	case "gameSettlementResult":
 		protoEvent.Type = proto.EventType_TYPE_GAME_SETTLEMENT_RESULT
 		if msg, ok := sseEvent.Data["Message"].(map[string]interface{}); ok {
-			gsr := &proto.GameSettlementResult{}
-			if gameId, ok := msg["GameId"].(float64); ok {
-				gsr.GameId = int64(gameId)
-			}
+			gsr := parseGameSettlementResultFromSSEMap(msg)
 			protoEvent.Event = &proto.Event_GameSettlementResult{GameSettlementResult: gsr}
 		}
 	default:
