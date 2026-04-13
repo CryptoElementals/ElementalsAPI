@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func init() {
@@ -208,7 +209,14 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 		_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
-	task.sendTournamentSnapshotSSE(c, self, lobbyClient, "")
+
+	log.Debugf("before send tournament snapshot sse")
+	if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, ""); err != nil {
+		log.Errorf("send tournament snapshot failed: %v", err)
+	} else {
+		log.Debugf("after send tournament snapshot sse")
+	}
+
 	statusResp, err := lobbyClient.GetPlayerStatus(context.Background(), self)
 	if err != nil {
 		log.Errorf("failed to get player status from lobby: %v", err)
@@ -292,7 +300,9 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 			}
 			if msg.GetTopic() == pubsub.TopicTournamentRoster && msg.GetEvent() != nil &&
 				msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
-				task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetEvent().GetMessageId())
+				if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetEvent().GetMessageId()); err != nil {
+					log.Errorf("send tournament snapshot from roster update failed: %v", err)
+				}
 				continue
 			}
 			sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
@@ -776,30 +786,28 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 
 // sendTournamentSnapshotSSE pushes tournament_snapshot when the player is not still in an active bracket
 // of an in-progress tournament (so we do not distract them from finishing the current event).
-func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, self *proto.PlayerAddress, lobbyClient proto.LobbyServiceClient, sourceMessageID string) {
+func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, self *proto.PlayerAddress, lobbyClient proto.LobbyServiceClient, sourceMessageID string) error {
 	if lobbyClient == nil || self == nil || task == nil {
-		return
+		return fmt.Errorf("invalid tournament snapshot args")
 	}
 	busy, err := db.TournamentPlayerInActiveBracket(self.Id, self.TemporaryAddress)
 	if err != nil {
-		log.Warnf("TournamentPlayerInActiveBracket: %v", err)
-		return
+		return fmt.Errorf("TournamentPlayerInActiveBracket: %w", err)
 	}
 	if busy {
-		return
+		return nil
 	}
 	ctx := c.Request.Context()
 	snapResp, snapErr := lobbyClient.GetLatestRegistrationOpenTournamentSnapshot(ctx, self)
 	if snapErr != nil {
-		log.Warnf("lobby GetLatestRegistrationOpenTournamentSnapshot failed (continuing): %v", snapErr)
-		return
+		return fmt.Errorf("lobby GetLatestRegistrationOpenTournamentSnapshot failed: %w", snapErr)
 	}
 	if snapResp == nil || !snapResp.GetHasTournament() {
-		return
+		return nil
 	}
 	// Subscribe API only pushes not-started tournaments (registration open).
 	if snapResp.GetTournamentStatus() != string(dao.TournamentStatusRegistrationOpen) {
-		return
+		return nil
 	}
 	if sourceMessageID == "" {
 		sourceMessageID = pubsub.BuildEventMessageID(&proto.Event{
@@ -811,17 +819,33 @@ func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, sel
 			},
 		})
 	}
+	snapshotJSON, err := protojson.MarshalOptions{
+		UseProtoNames:   true,
+		EmitUnpopulated: true,
+	}.Marshal(snapResp)
+	if err != nil {
+		log.Errorf("marshal tournament snapshot: %v", err)
+		return fmt.Errorf("marshal tournament snapshot: %w", err)
+	}
+	var snapshotMessage map[string]interface{}
+	if err := json.Unmarshal(snapshotJSON, &snapshotMessage); err != nil {
+		log.Errorf("decode tournament snapshot: %v", err)
+		return fmt.Errorf("decode tournament snapshot: %w", err)
+	}
 	snapEvent := events.Event{
 		Type: events.EventTypeStatusUpdate,
 		Data: map[string]interface{}{
 			"MessageID": sourceMessageID,
 			"EventType": "tournamentSnapshot",
-			"Message":   snapResp,
+			"Message":   snapshotMessage,
 		},
 		Timestamp:   time.Now(),
 		RequestUUID: task.Request.RequestUUID,
 	}
-	_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), snapEvent)
+	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), snapEvent); err != nil {
+		return fmt.Errorf("sendSSEEvent tournament snapshot: %w", err)
+	}
+	return nil
 }
 
 // sendSSEEvent 发送 SSE 事件

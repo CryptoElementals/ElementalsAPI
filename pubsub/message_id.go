@@ -7,16 +7,16 @@ import (
 )
 
 var eventTypeNumber = map[proto.EventType]int{
-	proto.EventType_TYPE_GAME_CREATED:           1,
-	proto.EventType_TYPE_PART_CONFIRMED:         2,
-	proto.EventType_TYPE_ROUND_READY:            3,
-	proto.EventType_TYPE_TURN_READY:             4,
-	proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:   5,
-	proto.EventType_TYPE_TURN_COMPLETE:          6,
-	proto.EventType_TYPE_GAME_SETTLEMENT_RESULT: 7,
-	proto.EventType_TYPE_NOT_MATCHABLE:          8,
-	proto.EventType_TYPE_MATCHED:                9,
-	proto.EventType_TYPE_MATCH_CANCELED:         10,
+	proto.EventType_TYPE_GAME_CREATED:             1,
+	proto.EventType_TYPE_PART_CONFIRMED:           2,
+	proto.EventType_TYPE_ROUND_READY:              3,
+	proto.EventType_TYPE_TURN_READY:               4,
+	proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:     5,
+	proto.EventType_TYPE_TURN_COMPLETE:            6,
+	proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:   7,
+	proto.EventType_TYPE_NOT_MATCHABLE:            8,
+	proto.EventType_TYPE_MATCHED:                  9,
+	proto.EventType_TYPE_MATCH_CANCELED:           10,
 	proto.EventType_TYPE_TOURNAMENT_MATCH_OUTCOME: 11,
 	proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE: 12,
 }
@@ -88,7 +88,7 @@ func BuildEventMessageID(evt *proto.Event) string {
 		for _, c := range tid {
 			h = (h << 5) + h + uint64(c)
 		}
-		primaryID = int64(h)
+		primaryID = int64(h & 0x7fffffffffffffff)
 	}
 
 	mm := eventTypeNumber[evt.GetType()]
