@@ -10,45 +10,28 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// abortedGameResult creates a game result for an aborted game
+// abortedGameResult creates a game result for an aborted game (economy rows are not created in room).
 func (g *Game) abortedGameResult() *dao.GameResult {
 	gameRes := &dao.GameResult{
-		GameResultType: proto.GameResultType_GAME_ABORTED,
-		BattleReward: &dao.BattleReward{
-			PlayerRewards: []*dao.PlayerReward{},
-		},
+		GameType:          proto.GameType(g.gameInfo.Type),
+		GameResultType:    proto.GameResultType_GAME_ABORTED,
+		PlayerResultInfos: []*dao.PlayerResultInfo{},
 	}
 	for _, player := range g.currentRound.gamePlayers {
-		playerReward := &dao.PlayerReward{
-			PlayerId:         player.player.PlayerId,
-			TemporaryAddress: player.player.TemporaryAddress,
-		}
-		gameRes.BattleReward.PlayerRewards = append(gameRes.BattleReward.PlayerRewards, playerReward)
+		gameRes.PlayerResultInfos = append(gameRes.PlayerResultInfos, &dao.PlayerResultInfo{
+			PlayerId:               player.player.PlayerId,
+			TemporaryAddress:       player.player.TemporaryAddress,
+			PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_ABORTED,
+		})
 	}
 	return gameRes
-}
-
-// sendGameCompletedEventAndStop sends game completed event and stops the game
-// Used by abort handlers that need to trigger game result settlement
-func (g *Game) sendGameCompletedEventAndStop() {
-	completeEvt := &types.GameCompletedEvent{
-		GameID:   g.gameInfo.ID,
-		GameInfo: g.gameInfo,
-	}
-	if err := g.completeGameAndNotify(completeEvt); err != nil {
-		log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
-	}
-	g.stopGame()
 }
 
 // runAfterAbortPersisted runs PubSub + settlement after game rows are committed.
 func (g *Game) runAfterAbortPersisted() error {
 	return g.afterTx(func() error {
 		g.sendTurnCompletedEventForAbort()
-		completeEvt := &types.GameCompletedEvent{
-			GameID:   g.gameInfo.ID,
-			GameInfo: g.gameInfo,
-		}
+		completeEvt := &types.GameCompletedEvent{GameID: g.gameInfo.ID, GameType: g.gameInfo.Type}
 		if err := g.completeGameAndNotify(completeEvt); err != nil {
 			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 			return err
@@ -113,7 +96,7 @@ func (g *Game) handleGameAbortInit() error {
 		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
 	}
 	g.currentRound.isLastRound = true
-	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
+	g.gameInfo.Status = proto.GameStatus_GAME_END
 	g.gameInfo.GameResult = g.abortedGameResult()
 	if err := g.persistAbortInit(); err != nil {
 		return err
@@ -128,7 +111,7 @@ func (g *Game) handleGameAbortInternalError() error {
 	g.currentRound.isLastRound = true
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_ROUND_COMPLETED)
 
-	g.gameInfo.Status = proto.GameStatus_GAME_ABORTED
+	g.gameInfo.Status = proto.GameStatus_GAME_END
 	g.gameInfo.GameResult = g.abortedGameResult()
 	if err := g.persistAbortInternal(); err != nil {
 		return err

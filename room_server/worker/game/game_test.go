@@ -149,17 +149,13 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 	waitGameEnd := make(chan struct{}, 2)
 	mockPlayer1.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.GameCompletedEvent{})).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
 		evt := event.Data.(*types.GameCompletedEvent)
-		gid := evt.GameID
-		require.Equal(t, gid, evt.GameID)
-		require.Equal(t, proto.GameStatus_GAME_END, evt.GameInfo.Status)
+		require.NotZero(t, evt.GameID)
 		waitGameEnd <- struct{}{}
 		return nil
 	})
 	mockPlayer2.EXPECT().Handle(gomock.Any(), tt.NewEventTypeMatcher(&types.GameCompletedEvent{})).Times(1).DoAndReturn(func(ctx context.Context, event *types.Event) error {
 		evt := event.Data.(*types.GameCompletedEvent)
-		gid := evt.GameID
-		require.Equal(t, gid, evt.GameID)
-		require.Equal(t, proto.GameStatus_GAME_END, evt.GameInfo.Status)
+		require.NotZero(t, evt.GameID)
 		waitGameEnd <- struct{}{}
 		return nil
 	})

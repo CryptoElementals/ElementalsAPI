@@ -97,16 +97,16 @@ func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool,
 }
 
 // tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished human-vs-human game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Caller must hold q.lock; do not call when the game included bots.
-func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game) {
-	if len(game.Players) != 2 {
+func (q *Queue) tryStartContinueRematchAfterGame(gameID int64, gr *dao.GameResult) {
+	if gr == nil || len(gr.PlayerResultInfos) != 2 {
 		return
 	}
 	players := make([]types.PlayerAddress, 0, 2)
-	for _, p := range game.Players {
-		if p == nil {
+	for _, pri := range gr.PlayerResultInfos {
+		if pri == nil {
 			return
 		}
-		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+		addr := types.NewPlayerAddress(pri.PlayerId, pri.TemporaryAddress)
 		players = append(players, *addr)
 	}
 	var locked []types.PlayerAddress
@@ -115,17 +115,17 @@ func (q *Queue) tryStartContinueRematchAfterGame(game *dao.Game) {
 			for _, u := range locked {
 				_ = q.unlockToken(&u)
 			}
-			log.Errorw("continue rematch lock token failed", "game_id", game.ID, "player", pl.String(), "err", err)
+			log.Errorw("continue rematch lock token failed", "game_id", gameID, "player", pl.String(), "err", err)
 			return
 		}
 		locked = append(locked, pl)
 	}
-	matchID, err := q.createContinueRematchMatch(players, game.ID)
+	matchID, err := q.createContinueRematchMatch(players, gameID)
 	if err != nil {
 		for _, u := range locked {
 			_ = q.unlockToken(&u)
 		}
-		log.Errorw("continue rematch create failed", "game_id", game.ID, "err", err)
+		log.Errorw("continue rematch create failed", "game_id", gameID, "err", err)
 		return
 	}
 	q.schedulePendingMatchConfirmationTimeout(matchID, q.continueRematchCancelTimeoutSec, q.continueRematchCancelRedundancySec)

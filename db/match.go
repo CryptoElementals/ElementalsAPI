@@ -21,9 +21,35 @@ func LoadGameByGameID(gameID int64) (*dao.Game, error) {
 	return &game, nil
 }
 
+
+// LoadGameResultByGameID loads game_results by game_id with PlayerResultInfos (no games row).
+func LoadGameResultByGameID(gameID int64) (*dao.GameResult, error) {
+	var gr dao.GameResult
+	err := Get().Where("game_id = ?", gameID).
+		Preload("PlayerResultInfos").
+		First(&gr).Error
+	if err != nil {
+		return nil, err
+	}
+	return &gr, nil
+}
+
+// LoadGameArgsByGameIDTx loads game_args for a game via games.game_args_id (no turns/players/result preloads).
+func LoadGameArgsByGameIDTx(tx *gorm.DB, gameID int64) (*dao.GameArgs, error) {
+	var g dao.Game
+	if err := tx.Select("game_args_id").Where("id = ?", gameID).First(&g).Error; err != nil {
+		return nil, err
+	}
+	var ga dao.GameArgs
+	if err := tx.First(&ga, g.GameArgsID).Error; err != nil {
+		return nil, err
+	}
+	return &ga, nil
+}
+
 func GetAllActiveGames() ([]*dao.Game, error) {
 	var games []*dao.Game
-	tx := Get().Where("status != ? and status != ?", proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED)
+	tx := Get().Where("status != ?", proto.GameStatus_GAME_END)
 	err := preloadGameInfo(tx).Find(&games).Error
 	if err != nil {
 		return nil, err
@@ -38,8 +64,7 @@ func GetActiveGameByPlayer(playerID int64, tempAddr string) (*dao.Game, error) {
 		Joins("JOIN game_player_infos ON game_player_infos.game_id = games.id").
 		Where("game_player_infos.player_id = ? AND LOWER(game_player_infos.temporary_address) = LOWER(?)",
 			playerID, tempAddr).
-		Where("games.status != ? AND games.status != ?",
-			proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED)
+		Where("games.status != ?", proto.GameStatus_GAME_END)
 
 	if err := tx.First(&game).Error; err != nil {
 		return nil, err
@@ -52,8 +77,7 @@ func preloadGameInfo(tx *gorm.DB) *gorm.DB {
 		Preload("GameArgs").
 		Preload("Players").
 		Preload("GameResult").
-		Preload("GameResult.BattleReward").
-		Preload("GameResult.BattleReward.PlayerRewards").
+		Preload("GameResult.PlayerResultInfos").
 		Preload("Turns", func(db *gorm.DB) *gorm.DB {
 			return db.Order("round_number ASC, turn_number ASC")
 		}).

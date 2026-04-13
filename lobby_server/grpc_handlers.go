@@ -2,9 +2,7 @@ package lobbyserver
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
 	"github.com/CryptoElementals/common/log"
@@ -74,17 +72,12 @@ func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerT
 	return s.queueSvc.GetPlayerToken(req.Id)
 }
 
-// HandleGameCompletedFromRoom runs queue and tournament settlement after the room publishes TYPE_GAME_COMPLETED (game id only; full row loaded here).
+// HandleGameCompletedFromRoom runs queue settlement after the room publishes TYPE_GAME_COMPLETED (game id only).
 func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	if gameID == 0 {
 		return nil
 	}
-	g, err := db.LoadGameByGameID(gameID)
-	if err != nil {
-		return fmt.Errorf("load game %d: %w", gameID, err)
-	}
-	ev := &types.GameCompletedEvent{GameID: gameID, GameInfo: g}
-	if err := s.queueSvc.GameResultSettlement(ev); err != nil {
+	if err := s.queueSvc.GameResultSettlement(&types.GameCompletedEvent{GameID: gameID, GameType: types.GameTypePVP}); err != nil {
 		return err
 	}
 	if s.tournamentSvc == nil {
@@ -111,17 +104,11 @@ func (s *GRPCServices) JoinTournament(ctx context.Context, req *proto.JoinTourna
 	return &emptypb.Empty{}, s.tournamentSvc.HandleJoinTournamentEvent(req.TournamentID, req.PlayerAddress)
 }
 
-// HandleGameCompletedFromRoom runs queue and tournament settlement after the room publishes TYPE_GAME_COMPLETED (game id only; full row loaded here).
+// HandleGameCompletedFromTournamentStream runs tournament settlement (game id only).
 func (s *GRPCServices) HandleGameCompletedFromTournamentStream(gameID int64) error {
 	if gameID == 0 {
 		return nil
 	}
 	log.Debugw("lobby: handle game completed from tournament stream", "game_id", gameID)
-	g, err := db.LoadGameByGameID(gameID)
-	if err != nil {
-		log.Errorw("lobby, HandleGameCompletedFromTournamentStream: load game %d: %w", "game_id", gameID, "err", err)
-		return fmt.Errorf("load game %d: %w", gameID, err)
-	}
-	ev := &types.GameCompletedEvent{GameID: gameID, GameInfo: g}
-	return s.tournamentSvc.GameResultSettlementHook(ev)
+	return s.tournamentSvc.GameResultSettlementHook(&types.GameCompletedEvent{GameID: gameID, GameType: types.GameTypeTournament})
 }

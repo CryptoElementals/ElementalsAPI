@@ -7,7 +7,19 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// round_battle_resolve: game-over detection, rewards, and timeout tie result.
+// loserPlayerGameResultStatus maps in-round player status to persisted proto status for non-winners.
+func loserPlayerGameResultStatus(status playerStatus) proto.PlayerGameResultStatus {
+	switch status {
+	case playerStatusOffline:
+		return proto.PlayerGameResultStatus_PLAYER_OFFLINE
+	case playerStatusSurrendered:
+		return proto.PlayerGameResultStatus_PLAYER_SURRENDER
+	default:
+		return proto.PlayerGameResultStatus_PLAYER_LOSE
+	}
+}
+
+// round_battle_resolve: game-over detection and timeout tie result. Economy rows are created at lobby settlement.
 
 func (r *round) buildGameEndStates() []*gameEndState {
 	spread := r.hpSpreadMultiplier()
@@ -74,17 +86,59 @@ func (r *round) buildGameResult(grType gameResultType, winnerPlayerId int64, tem
 	for _, player := range r.gamePlayers {
 		playerStatuses[player.player.TemporaryAddress] = player.status
 	}
+	return r.buildGameResultWithStatuses(grType, winnerPlayerId, temporaryAddress, finalMul, playerStatuses)
+}
 
-	battleReward := r.calculateBattleRewardFromGamePlayers(r.gamePlayers, grType, winnerPlayerId, temporaryAddress, playerStatuses)
-
+func (r *round) buildGameResultWithStatuses(grType gameResultType, winnerPlayerId int64, temporaryAddress string, finalMul uint32, playerStatuses map[string]playerStatus) *dao.GameResult {
+	infos := r.buildPlayerResultInfos(grType, winnerPlayerId, temporaryAddress, playerStatuses)
 	return &dao.GameResult{
-		GameID:                 r.game.ID,
-		Multiplier:             int32(finalMul),
-		WinnerPlayerId:         winnerPlayerId,
-		WinnerTemporaryAddress: temporaryAddress,
-		GameResultType:         proto.GameResultType(grType),
-		BattleReward:           battleReward,
+		GameID:            r.game.ID,
+		GameType:          proto.GameType(r.game.Type),
+		Multiplier:        int32(finalMul),
+		GameResultType:    proto.GameResultType(grType),
+		PlayerResultInfos: infos,
 	}
+}
+
+func (r *round) buildPlayerResultInfos(grType gameResultType, winnerPlayerId int64, temporaryAddress string, playerStatuses map[string]playerStatus) []*dao.PlayerResultInfo {
+	var infos []*dao.PlayerResultInfo
+
+	switch grType {
+	case gameResultTie:
+		infos = make([]*dao.PlayerResultInfo, 0, len(r.gamePlayers))
+		for _, player := range r.gamePlayers {
+			infos = append(infos, &dao.PlayerResultInfo{
+				PlayerId:               player.player.PlayerId,
+				TemporaryAddress:       player.player.TemporaryAddress,
+				IsWinner:               false,
+				PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
+			})
+		}
+
+	case gameResultNormal, gameResultKO:
+		if winnerPlayerId == 0 || temporaryAddress == "" {
+			return nil
+		}
+		infos = make([]*dao.PlayerResultInfo, 0, len(r.gamePlayers))
+		for _, player := range r.gamePlayers {
+			status := playerStatuses[player.player.TemporaryAddress]
+			isWinner := player.player.TemporaryAddress == temporaryAddress
+			var st proto.PlayerGameResultStatus
+			if isWinner {
+				st = proto.PlayerGameResultStatus_PLAYER_WIN
+			} else {
+				st = loserPlayerGameResultStatus(status)
+			}
+			infos = append(infos, &dao.PlayerResultInfo{
+				PlayerId:               player.player.PlayerId,
+				TemporaryAddress:       player.player.TemporaryAddress,
+				IsWinner:               isWinner,
+				PlayerGameResultStatus: st,
+			})
+		}
+	}
+
+	return infos
 }
 
 func (r *round) checkGameOverFromGamePlayersPreExecution() (bool, *dao.GameResult) {
@@ -245,78 +299,23 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 	return true, gType, winnerPlayerId, winnerTemp, finalMultiplier
 }
 
-// buildBattleRewardMetadata persists per-player outcome flags for lobby settlement.
-// TokenChange, PointChange, and SystemFee are computed in the lobby (battlereward.ComputeBattleRewardAmounts) and written in the same transaction as wallet settlement.
-func (r *round) calculateBattleRewardFromGamePlayers(players map[string]*gamePlayer, grType gameResultType, winnerPlayerId int64, temporaryAddress string, playerStatuses map[string]playerStatus) *dao.BattleReward {
-	var playerRewards []*dao.PlayerReward
-
-	switch grType {
-	case gameResultTie:
-		playerRewards = make([]*dao.PlayerReward, 0, len(players))
-		for _, player := range players {
-			status := playerStatuses[player.player.TemporaryAddress]
-			playerRewards = append(playerRewards, &dao.PlayerReward{
-				PlayerId:               player.player.PlayerId,
-				TemporaryAddress:       player.player.TemporaryAddress,
-				IsOffline:              status == playerStatusOffline,
-				Surrendered:            status == playerStatusSurrendered,
-				PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
-			})
-		}
-
-	case gameResultNormal, gameResultKO:
-		if winnerPlayerId != 0 && temporaryAddress != "" {
-			playerRewards = make([]*dao.PlayerReward, 0, len(players))
-			for _, player := range players {
-				status := playerStatuses[player.player.TemporaryAddress]
-				isWinner := player.player.TemporaryAddress == temporaryAddress
-				var gameResultStatus proto.PlayerGameResultStatus
-				if isWinner {
-					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_WIN
-				} else {
-					gameResultStatus = proto.PlayerGameResultStatus_PLAYER_LOSE
-				}
-				playerRewards = append(playerRewards, &dao.PlayerReward{
-					PlayerId:               player.player.PlayerId,
-					TemporaryAddress:       player.player.TemporaryAddress,
-					IsOffline:              status == playerStatusOffline,
-					Surrendered:            status == playerStatusSurrendered,
-					PlayerGameResultStatus: gameResultStatus,
-				})
-			}
-		}
-	}
-
-	return &dao.BattleReward{
-		PlayerRewards: playerRewards,
-	}
-}
-
 func (r *round) handleServerTimeout() (bool, *dao.GameResult, error) {
-	var playerRewards []*dao.PlayerReward
-
+	infos := make([]*dao.PlayerResultInfo, 0, len(r.gamePlayers))
 	for _, gamePlayer := range r.gamePlayers {
-		submittedCard := gamePlayer.getLastSubmittedCard()
-		hasCommitment := len(submittedCard.CommitmentHash) > 0
-		playerRewards = append(playerRewards, &dao.PlayerReward{
+		infos = append(infos, &dao.PlayerResultInfo{
 			PlayerId:               gamePlayer.player.PlayerId,
 			TemporaryAddress:       gamePlayer.player.TemporaryAddress,
-			IsOffline:              !hasCommitment,
-			Surrendered:            gamePlayer.isSurrendered(),
+			IsWinner:               false,
 			PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_TIE,
 		})
 	}
 
 	gameResult := &dao.GameResult{
-		GameID:                 r.game.ID,
-		Multiplier:             0,
-		WinnerPlayerId:         0,
-		WinnerTemporaryAddress: "",
-		GameResultType:         proto.GameResultType_GAME_TIE,
-		BattleReward: &dao.BattleReward{
-			PlayerRewards: playerRewards,
-			SystemFee:     0,
-		},
+		GameID:            r.game.ID,
+		GameType:          proto.GameType(r.game.Type),
+		Multiplier:        0,
+		GameResultType:    proto.GameResultType_GAME_TIE,
+		PlayerResultInfos: infos,
 	}
 
 	return true, gameResult, nil

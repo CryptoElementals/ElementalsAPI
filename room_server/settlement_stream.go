@@ -21,7 +21,7 @@ func newSettlementStreamPublisher(ctx context.Context, pub game.Publisher) *sett
 }
 
 func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameCompletedEvent) error {
-	if p.pub == nil || evt == nil {
+	if p.pub == nil || evt == nil || evt.GameID == 0 {
 		return nil
 	}
 	out := &proto.Event{
@@ -30,13 +30,18 @@ func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameComplete
 			GameCompletedNotice: &proto.GameCompletedNotice{GameId: evt.GameID},
 		},
 	}
-	switch evt.GameInfo.Type {
-	case types.GameTypePVP:
-		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementPVP, out)
+	gt := evt.GameType
+	if gt == 0 {
+		gt = types.GameTypePVP
+	}
+	switch gt {
 	case types.GameTypeTournament:
 		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementTournament, out)
+	case types.GameTypePVP:
+		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementPVP, out)
+	default:
+		return fmt.Errorf("unknown game type: %d", evt.GameType)
 	}
-	return fmt.Errorf("unknown game type: %d", evt.GameInfo.Type)
 }
 
 var _ game.GameResultSettler = (*settlementStreamPublisher)(nil)

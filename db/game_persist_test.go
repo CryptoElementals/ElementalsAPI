@@ -6,6 +6,7 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func setupGamePersistMemDB(t *testing.T) {
@@ -98,25 +99,28 @@ func TestGamePersist_InsertAndGranularUpdates(t *testing.T) {
 	require.Equal(t, []byte{1, 2, 3}, found.TurnSubmittedCard.CommitmentHash)
 
 	gr := &dao.GameResult{
-		Multiplier:             2,
-		WinnerPlayerId:         101,
-		WinnerTemporaryAddress: "0xaaa",
-		GameResultType:         proto.GameResultType_GAME_KO,
-		BattleReward: &dao.BattleReward{
-			SystemFee: 1,
-			PlayerRewards: []*dao.PlayerReward{
-				{PlayerId: 101, TemporaryAddress: "0xaaa", TokenChange: 1},
-				{PlayerId: 102, TemporaryAddress: "0xbbb", TokenChange: -1},
-			},
+		Multiplier:     2,
+		GameResultType: proto.GameResultType_GAME_KO,
+		PlayerResultInfos: []*dao.PlayerResultInfo{
+			{PlayerId: 101, TemporaryAddress: "0xaaa", IsWinner: true, PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_WIN},
+			{PlayerId: 102, TemporaryAddress: "0xbbb", IsWinner: false, PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_LOSE},
 		},
 	}
-	require.NoError(t, SaveGameResultTreeCommit(game.ID, gr))
+	loaded2.GameResult = gr
+	require.NoError(t, SaveGameResultTreeCommit(loaded2))
 
 	loaded3, err := LoadGameByGameID(game.ID)
 	require.NoError(t, err)
 	require.NotNil(t, loaded3.GameResult)
-	require.NotNil(t, loaded3.GameResult.BattleReward)
-	require.Len(t, loaded3.GameResult.BattleReward.PlayerRewards, 2)
+	require.Len(t, loaded3.GameResult.PlayerResultInfos, 2)
+
+	require.NoError(t, Get().Transaction(func(tx *gorm.DB) error {
+		_, err := EnsureBattleRewardPVPLoadedOrCreated(tx, loaded3.ID, loaded3.GameResult)
+		return err
+	}))
+	brLoaded, err := LoadBattleRewardPVPByGameID(game.ID)
+	require.NoError(t, err)
+	require.Len(t, brLoaded.PlayerRewards, 2)
 }
 
 func attachSampleTurnForPersistTest(g *dao.Game) {

@@ -377,22 +377,23 @@ func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) {
 	}
 }
 
-func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
-	if gameInfo.Status == proto.GameStatus_GAME_ABORTED {
-		return nil
-	}
-
-	full, err := db.LoadGameByGameID(gameInfo.ID)
-	if err != nil {
-		return err
-	}
-
-	m0, err := db.TournamentGetMatchByGameID(gameInfo.ID)
+func (tc *coordinator) onGameCompleted(gameID int64) error {
+	gr, err := db.LoadGameResultByGameID(gameID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}
-		log.Errorw("tournament: get match by game id failed", "game_id", gameInfo.ID, "err", err)
+		return err
+	}
+	if gr.GameResultType == proto.GameResultType_GAME_ABORTED {
+		return nil
+	}
+	m0, err := db.TournamentGetMatchByGameID(gameID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		log.Errorw("tournament: get match by game id failed", "game_id", gameID, "err", err)
 		return err
 	}
 	if m0.WinnerPlayerID != nil && *m0.WinnerPlayerID != 0 {
@@ -414,7 +415,7 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 
 	err = db.Get().Transaction(func(tx *gorm.DB) error {
 		var locked dao.TournamentMatch
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("game_id = ?", gameInfo.ID).First(&locked).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("game_id = ?", gameID).First(&locked).Error; err != nil {
 			return err
 		}
 		if locked.WinnerPlayerID != nil && *locked.WinnerPlayerID != 0 {
@@ -424,7 +425,7 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 			return nil
 		}
 
-		winPID, winTemp, err := pickTournamentWinnerTx(tx, &locked, full)
+		winPID, winTemp, err := pickTournamentWinnerTx(tx, &locked, gr)
 		if err != nil {
 			return err
 		}
@@ -466,24 +467,21 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 			TemporaryAddress: loserTempNorm,
 		})
 
-		if full.GameResult == nil {
-			return errors.New("game result missing for tournament rewards")
-		}
-		gr := full.GameResult
+		rwPID, rwTemp, _ := db.WinnerFromPlayerResultInfos(gr.PlayerResultInfos)
 		log.Infow("tournament: game completed - room GameResult vs bracket winner (reward branch follows game_result_type)",
-			"game_id", gameInfo.ID,
+			"game_id", gameID,
 			"tournament_id", locked.TournamentID,
 			"round_no", locked.RoundNo,
 			"match_no", locked.MatchNo,
 			"game_result_type", gr.GameResultType.String(),
-			"room_winner_player_id", gr.WinnerPlayerId,
-			"room_winner_temp", gr.WinnerTemporaryAddress,
+			"room_winner_player_id", rwPID,
+			"room_winner_temp", rwTemp,
 			"bracket_winner_player_id", winPID,
 			"bracket_winner_temp", winTempNorm,
 			"bracket_loser_player_id", loserPID,
 			"bracket_loser_temp", loserTempNorm,
 		)
-		if _, rerr := db.TournamentApplyMatchRewardsTx(tx, full.GameResult.GameResultType, locked.TournamentID, locked.RoundNo, locked.MatchNo,
+		if _, rerr := db.TournamentApplyMatchRewardsTx(tx, gr.GameResultType, locked.TournamentID, locked.RoundNo, locked.MatchNo,
 			locked.Player1ID, locked.Player1TempAddress,
 			locked.Player2ID, locked.Player2TempAddress,
 			winPID, winTempNorm, loserPID, loserTempNorm); rerr != nil {
@@ -507,7 +505,7 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 					return werr
 				}
 				publishOutcome = &tournamentMatchOutcomeToPublish{
-					gameID:                         gameInfo.ID,
+					gameID:                         gameID,
 					tournamentID:                   locked.TournamentID,
 					roundNo:                        locked.RoundNo,
 					matchNo:                        locked.MatchNo,
@@ -561,7 +559,7 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 				TemporaryAddress: strings.ToLower(strings.TrimSpace(ch.TempAddress)),
 			})
 			publishOutcome = &tournamentMatchOutcomeToPublish{
-				gameID:                 gameInfo.ID,
+				gameID:                 gameID,
 				tournamentID:           locked.TournamentID,
 				roundNo:                locked.RoundNo,
 				matchNo:                locked.MatchNo,
@@ -612,7 +610,7 @@ func (tc *coordinator) onGameCompleted(gameInfo *dao.Game) error {
 			return werr
 		}
 		publishOutcome = &tournamentMatchOutcomeToPublish{
-			gameID:                         gameInfo.ID,
+			gameID:                         gameID,
 			tournamentID:                   locked.TournamentID,
 			roundNo:                        locked.RoundNo,
 			matchNo:                        locked.MatchNo,
@@ -677,11 +675,10 @@ func winnerCumulationIfNextMatchWinProto(tx *gorm.DB, tournamentID string, winPI
 
 // pickTournamentWinnerTx resolves winner player id and temp address from game result (for bracket update).
 // On GAME_TIE, the player who joined the tournament earlier (participants.created_at) advances; the other is eliminated.
-func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, g *dao.Game) (winnerPID int64, winnerTemp string, err error) {
-	if g == nil || g.GameResult == nil {
+func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, gr *dao.GameResult) (winnerPID int64, winnerTemp string, err error) {
+	if gr == nil {
 		return 0, "", errors.New("game result missing")
 	}
-	gr := g.GameResult
 	p1id, p1t := m.Player1ID, m.Player1TempAddress
 	p2id, p2t := m.Player2ID, m.Player2TempAddress
 
@@ -710,8 +707,10 @@ func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, g *dao.Game) (w
 		}
 		return p2id, p2t, nil
 	case proto.GameResultType_GAME_NORMAL, proto.GameResultType_GAME_KO:
-		wid := gr.WinnerPlayerId
-		wt := gr.WinnerTemporaryAddress
+		wid, wt, wok := db.WinnerFromPlayerResultInfos(gr.PlayerResultInfos)
+		if !wok {
+			wid, wt = 0, ""
+		}
 		if addrMatch(p1id, p1t, wid, wt) {
 			return p1id, p1t, nil
 		}

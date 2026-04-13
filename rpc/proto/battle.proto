@@ -63,6 +63,8 @@ enum PlayerGameResultStatus {
     PLAYER_WIN = 1;
     PLAYER_LOSE = 2;
     PLAYER_TIE = 3;
+    PLAYER_OFFLINE = 4;
+    PLAYER_SURRENDER = 5;
 }
 
 message GameResult {
