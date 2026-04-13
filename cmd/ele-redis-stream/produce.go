@@ -96,7 +96,7 @@ func runProduce(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("marshal failed: %w", err)
 		}
 
-		_, err = st.Publish(ctx, defaultStreamName, msg.Topic, b, msg.Timestamp)
+		_, err = st.Publish(ctx, StreamRoomEvents, msg.Topic, b, msg.Timestamp)
 		if err != nil {
 			return fmt.Errorf("publish failed: %w", err)
 		}

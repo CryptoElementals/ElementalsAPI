@@ -16,4 +16,36 @@ service LobbyService {
   rpc CancelMatch(CancelMatchRequest) returns (google.protobuf.Empty);
   rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
   rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
+  // Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
+  rpc RegisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
+  rpc UnregisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
+  //todo: tournament related rpc
+  rpc JoinTournament(JoinTournamentRequest) returns (google.protobuf.Empty);
+  // Latest registration-open tournament snapshot for clients.
+  rpc GetLatestRegistrationOpenTournamentSnapshot(PlayerAddress) returns (GetLatestRegistrationOpenTournamentSnapshotResponse);
+}
+
+message RegisterBotsForLobbyRequest {
+  repeated PlayerAddress Addresses = 1;
+}
+
+message JoinTournamentRequest {
+  PlayerAddress PlayerAddress = 1;
+  string TournamentID = 2;
+}
+
+// GetLatestRegistrationOpenTournamentSnapshotResponse describes the latest registration-open tournament row.
+message GetLatestRegistrationOpenTournamentSnapshotResponse {
+  bool HasTournament = 1;
+  string TournamentID = 2;
+  string TournamentStatus = 3;
+  int64 ScheduledStartUnixSec = 4;
+  int64 RegistrationDeadlineUnixSec = 5;
+  int32 EntryFee = 6;
+  int64 ParticipantCount = 7;
+  bool PlayerRegistered = 8;
+  string PlayerParticipantStatus = 9;
+  repeated int32 TopFourRewardTokens = 10;
+  int64 PrizePoolTokens = 11;
+  int64 SecondsUntilScheduledStart = 12;
 }

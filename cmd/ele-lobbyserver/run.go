@@ -9,9 +9,9 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
+	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
-	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/spf13/cobra"
 )
 
@@ -36,14 +36,16 @@ var runCmd = &cobra.Command{
 		if err := redis.Init(&config.LSGConf.RedisCfg); err != nil {
 			log.Fatalf("init redis failed (required for event streams): %v", err)
 		}
+		log.Debugw("db and redis initialized")
 		svr, err := lobbyserver.New(context.Background(), &config.LSGConf)
 		if err != nil {
 			log.Fatalf("init lobby server failed: %v", err)
 		}
+		log.Debugw("lobby server initialized")
 		if err := svr.Start(); err != nil {
 			log.Fatalf("start lobby server failed: %v", err)
 		}
-		log.Info("lobby server started")
+		log.Debugw("lobby server started")
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan

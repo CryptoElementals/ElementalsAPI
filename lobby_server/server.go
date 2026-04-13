@@ -10,7 +10,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
-	"github.com/CryptoElementals/common/lobby_server/worker/turnament"
+	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/middleware"
@@ -23,14 +23,14 @@ import (
 
 // Service is the lobby process: queue, tournament worker, gRPC to room, and Redis event streams.
 type Service struct {
-	ctx          context.Context
-	cfg          *config.LobbyServerConfig
-	grpcServer   *grpc.Server
-	queueSvc     *queue.Service
-	tournSvc     *turnament.TournamentQueueService
-	grpcHandlers *GRPCServices
-	roomConn     *grpc.ClientConn
-	eventStream  stream.Stream
+	ctx           context.Context
+	cfg           *config.LobbyServerConfig
+	grpcServer    *grpc.Server
+	queueSvc      *queue.Service
+	tournamentSvc *tournament.TournamentQueueService
+	grpcHandlers  *GRPCServices
+	roomConn      *grpc.ClientConn
+	eventStream   stream.Stream
 }
 
 // New constructs a lobby server. Call Start after DB/redis are initialized.
@@ -77,8 +77,14 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 		return nil, fmt.Errorf("queue service: %w", err)
 	}
 	s.queueSvc = queueSvc
-	s.tournSvc = turnament.NewTournamentQueueService(ctx, gc, cfg.MinTokenToJoinQueue)
-	s.grpcHandlers = NewGRPCServices(s.queueSvc, s.tournSvc, rw)
+
+	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, eventPub, gc,
+		cfg.TournamentCfg.EntryFee,
+		cfg.TournamentCfg.MinPlayersRequired,
+		cfg.TournamentCfg.IntervalSeconds,
+		cfg.TournamentCfg.BeforeStartSeconds,
+	)
+	s.grpcHandlers = NewGRPCServices(s.queueSvc, s.tournamentSvc, rw)
 
 	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	proto.RegisterLobbyServiceServer(s.grpcServer, s.grpcHandlers)
@@ -108,10 +114,15 @@ func dialRoomWorkerWithRetry(ctx context.Context, addr string, opts []grpc.DialO
 // Start queue, tournament coordinator, and gRPC listener.
 func (s *Service) Start() error {
 	timer.InitTimer(timer.ScopeLobby)
+	log.Debugw("lobby server timer initialized")
 	if err := s.queueSvc.Start(); err != nil {
+		log.Errorw("queue service start failed", "err", err)
 		return err
 	}
-	s.tournSvc.Start()
+	log.Debugw("queue service started")
+
+	s.tournamentSvc.Start()
+	log.Debugw("tournament tournament service started")
 	s.runRoomSettlementSubscriber()
 	return s.startListener()
 }
@@ -131,7 +142,7 @@ func (s *Service) startListener() error {
 
 // Stop shuts down background workers and gRPC.
 func (s *Service) Stop() {
-	s.tournSvc.Stop()
+	s.tournamentSvc.Stop()
 	s.queueSvc.Stop()
 	timer.StopTimer(timer.ScopeLobby)
 	s.grpcServer.GracefulStop()

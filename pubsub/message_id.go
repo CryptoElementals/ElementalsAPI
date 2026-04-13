@@ -17,6 +17,8 @@ var eventTypeNumber = map[proto.EventType]int{
 	proto.EventType_TYPE_NOT_MATCHABLE:          8,
 	proto.EventType_TYPE_MATCHED:                9,
 	proto.EventType_TYPE_MATCH_CANCELED:         10,
+	proto.EventType_TYPE_TOURNAMENT_MATCH_OUTCOME: 11,
+	proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE: 12,
 }
 
 // BuildEventMessageID returns rr-tt-mm-i for room/lobby facing events.
@@ -72,6 +74,21 @@ func BuildEventMessageID(evt *proto.Event) string {
 		primaryID = gameID
 		rr = 99
 		tt = 99
+	case proto.EventType_TYPE_TOURNAMENT_MATCH_OUTCOME:
+		o := evt.GetTournamentMatchOutcome()
+		if o != nil {
+			gameID = o.GetGameId()
+			primaryID = gameID
+			rr = o.GetRoundNo()
+			tt = o.GetMatchNo()
+		}
+	case proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE:
+		tid := evt.GetTournamentRosterUpdate().GetTournamentID()
+		var h uint64 = 5381
+		for _, c := range tid {
+			h = (h << 5) + h + uint64(c)
+		}
+		primaryID = int64(h)
 	}
 
 	mm := eventTypeNumber[evt.GetType()]

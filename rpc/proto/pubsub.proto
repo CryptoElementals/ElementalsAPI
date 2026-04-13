@@ -134,6 +134,25 @@ message GameCompletedNotice {
   int64 GameId = 1;
 }
 
+// Sent by the lobby after a tournament bracket match ends (winner/loser for this game; optional whole-tournament decided).
+// round_finished: true when every match in round_no has completed (including this one).
+// cumulative_battle_reward: cumulative token/point totals for this tournament after this match (sum of tournament_rewards). PlayerRewards: winner first, loser second; TokenChange/PointChange are totals to date.
+// winner_cumulation_if_next_match_win: winner's cumulative totals if they also win their next match (current cumulative plus one match-win bonus). Omitted when tournament_finished.
+// next_round_no: next bracket round number when tournament_finished is false.
+message TournamentMatchOutcome {
+  int64 game_id = 1;
+  string tournament_id = 2;
+  uint32 round_no = 3;
+  uint32 match_no = 4;
+  rpc.PlayerAddress winner = 5;
+  rpc.PlayerAddress loser = 6;
+  bool round_finished = 7;
+  bool tournament_finished = 8;
+  battle.BattleReward cumulative_battle_reward = 9;
+  optional battle.PlayerReward winner_cumulation_if_next_match_win = 10;
+  optional uint32 next_round_no = 11;
+}
+
 message GameReady {
   int64 GameId = 1;
   uint32 InitialHP = 2;
@@ -190,6 +209,11 @@ message GameStat {
   uint32 CurrentTurnNum = 5;
 }
 
+// TournamentRosterUpdate signals that tournament signup changed (e.g. new join); payload is for logging only.
+message TournamentRosterUpdate {
+  string TournamentID = 1;
+}
+
 enum EventType {
   TYPE_KNOWN = 0;
   TYPE_MATCHED = 1;
@@ -205,6 +229,9 @@ enum EventType {
   TYPE_NOT_MATCHABLE = 11;
   TYPE_GAME_SETTLEMENT_RESULT = 12;
   TYPE_GAME_COMPLETED = 13;
+  TYPE_TOURNAMENT_MATCH_OUTCOME = 14;
+  // Broadcast on tournament_roster_events: a player joined; clients refresh snapshot (empty receivers).
+  TYPE_TOURNAMENT_ROSTER_UPDATE = 15;
 }
 
 message Event {
@@ -225,5 +252,7 @@ message Event {
     NotMatchable NotMatchable = 11;
     GameSettlementResult GameSettlementResult = 12;
     GameCompletedNotice GameCompletedNotice = 14;
+    TournamentMatchOutcome TournamentMatchOutcome = 16;
+    TournamentRosterUpdate TournamentRosterUpdate = 17;
   }
 }

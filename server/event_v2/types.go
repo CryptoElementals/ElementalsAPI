@@ -129,6 +129,10 @@ func (b *eventBus) start() {
 
 func (b *eventBus) dispatch(msg *proto.Message) {
 	ev := msg.GetEvent()
+	if msg.GetTopic() == pubsub.TopicTournamentRoster {
+		b.dispatchBroadcast(msg)
+		return
+	}
 	receivers := ev.GetReceivers()
 
 	if len(receivers) == 0 {
@@ -160,6 +164,20 @@ func (b *eventBus) dispatch(msg *proto.Message) {
 		for _, sub := range targets {
 			b.sendToSubscriber(sub, msg)
 		}
+	}
+}
+
+func (b *eventBus) dispatchBroadcast(msg *proto.Message) {
+	b.mu.RLock()
+	targets := make([]*subscriberState, 0)
+	for _, group := range b.subscribers {
+		for _, sub := range group {
+			targets = append(targets, sub)
+		}
+	}
+	b.mu.RUnlock()
+	for _, sub := range targets {
+		b.sendToSubscriber(sub, msg)
 	}
 }
 

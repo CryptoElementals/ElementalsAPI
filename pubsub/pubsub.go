@@ -18,7 +18,7 @@ func Publish(ctx context.Context, pub Publisher, topic string, evt *proto.Event)
 	if pub == nil || evt == nil {
 		return nil
 	}
-	if topic == TopicRoom || topic == TopicLobby {
+	if topic == TopicRoom || topic == TopicLobby || topic == TopicTournamentRoster {
 		if evt.MessageId == "" {
 			evt.MessageId = BuildEventMessageID(evt)
 		}
