@@ -64,7 +64,7 @@ func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward, infos []*dao.Playe
 		out := &proto.PlayerReward{
 			PlayerId:    pr.PlayerId,
 			TokenChange: int32(pr.TokenChange),
-			PointChange:   int32(pr.PointChange),
+			PointChange: int32(pr.PointChange),
 		}
 		if pri, ok := byID[pr.PlayerId]; ok && pri != nil {
 			out.TemporaryAddress = pri.TemporaryAddress
@@ -238,6 +238,51 @@ func TurnSubmittedCardToProtoPlayerCardStat(cardNumber int, card *dao.TurnSubmit
 	}
 }
 
+// playerTurnInfoInTurn returns this player's row for the given persisted turn, if present.
+func playerTurnInfoInTurn(turn *dao.Turn, playerID int64, temporaryAddress string) *dao.PlayerTurnInfo {
+	if turn == nil {
+		return nil
+	}
+	for _, pti := range turn.PlayerTurnInfos {
+		if pti == nil {
+			continue
+		}
+		if pti.PlayerID == playerID && pti.TemporaryAddress == temporaryAddress {
+			return pti
+		}
+	}
+	return nil
+}
+
+// cardPlayingInfosForRoundPlayer builds one CardPlayingInfo per turn in the round with TurnNumber <= activeTurn,
+// including the active turn (compare CardPlayingInfo.TurnNumber to GamePhase.TurnNumber on the client).
+func cardPlayingInfosForRoundPlayer(round *RoundView, activeTurn uint32, playerID int64, temporaryAddress string) []*proto.CardPlayingInfo {
+	if round == nil {
+		return nil
+	}
+	var out []*proto.CardPlayingInfo
+	for _, turn := range round.Turns {
+		if turn == nil || turn.TurnNumber > activeTurn {
+			break
+		}
+		cpi := &proto.CardPlayingInfo{TurnNumber: turn.TurnNumber}
+		pti := playerTurnInfoInTurn(turn, playerID, temporaryAddress)
+		if pti != nil && pti.TurnSubmittedCard != nil {
+			c := pti.TurnSubmittedCard
+			if len(c.CommitmentHash) > 0 {
+				h := make([]byte, len(c.CommitmentHash))
+				copy(h, c.CommitmentHash)
+				cpi.Commitment = append(cpi.Commitment, h)
+			}
+			if c.CardID != 0 {
+				cpi.Card = append(cpi.Card, c.CardID)
+			}
+		}
+		out = append(out, cpi)
+	}
+	return out
+}
+
 func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber uint32, turnStartAt int64) *proto.GamePhase {
 	if game == nil || currentRound == nil {
 		return nil
@@ -281,20 +326,6 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 
 			// Get turn status from PlayerTurnInfo
 			turnStatus := playerTurnInfo.PlayerStatus
-			var commitment *[]byte
-			var card *uint32
-
-			// Get card info from TurnSubmittedCard if available
-			if playerTurnInfo.TurnSubmittedCard != nil {
-				if playerTurnInfo.TurnSubmittedCard.CardID != 0 {
-					cardVal := playerTurnInfo.TurnSubmittedCard.CardID
-					card = &cardVal
-				}
-				if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) > 0 {
-					commitmentVal := playerTurnInfo.TurnSubmittedCard.CommitmentHash
-					commitment = &commitmentVal
-				}
-			}
 
 			// Current HP: after battle use HealthAfter; before resolution the stub only has HealthBefore (HealthAfter is still zero).
 			var currentHP uint32
@@ -309,16 +340,10 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 			}
 
 			player := &proto.GamePhasePlayer{
-				Address:    addr,
-				TurnStatus: turnStatus,
-				CurrentHP:  currentHP,
-			}
-
-			if commitment != nil {
-				player.Commitment = *commitment
-			}
-			if card != nil {
-				player.Card = card
+				Address:          addr,
+				TurnStatus:       turnStatus,
+				CurrentHP:        currentHP,
+				CardPlayingInfos: cardPlayingInfosForRoundPlayer(currentRound, turnNumber, playerTurnInfo.PlayerID, playerTurnInfo.TemporaryAddress),
 			}
 
 			gamePhase.Players = append(gamePhase.Players, player)
