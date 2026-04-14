@@ -291,6 +291,18 @@ func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress, false)
 }
 
+func winnerPlayerIDFromGameResult(gr *dao.GameResult) int64 {
+	if gr == nil {
+		return 0
+	}
+	for _, pri := range gr.PlayerResultInfos {
+		if pri != nil && pri.IsWinner {
+			return pri.PlayerId
+		}
+	}
+	return 0
+}
+
 func (q *Queue) publishGameSettlementResult(gameID int64, gr *dao.GameResult) {
 	if gr == nil {
 		return
@@ -313,9 +325,11 @@ func (q *Queue) publishGameSettlementResult(gameID int64, gr *dao.GameResult) {
 		Receivers: receivers,
 		Event: &pb.Event_GameSettlementResult{
 			GameSettlementResult: &pb.GameSettlementResult{
-				GameId:        gameID,
-				SystemFee:     br.SystemFee,
-				PlayerRewards: playerRewards,
+				GameId:          gameID,
+				SystemFee:       br.SystemFee,
+				PlayerRewards:   playerRewards,
+				Multiplier:      gr.Multiplier,
+				WinnerPlayerId:  winnerPlayerIDFromGameResult(gr),
 			},
 		},
 	}

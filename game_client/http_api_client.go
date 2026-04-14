@@ -629,6 +629,12 @@ func parseGameSettlementResultFromSSEMap(msg map[string]interface{}) *proto.Game
 	if sf, ok := msg["SystemFee"].(float64); ok {
 		gsr.SystemFee = int32(sf)
 	}
+	if v, ok := msg["Multiplier"].(float64); ok {
+		gsr.Multiplier = int32(v)
+	}
+	if v, ok := msg["WinnerPlayerId"].(float64); ok {
+		gsr.WinnerPlayerId = int64(v)
+	}
 	if arr, ok := msg["PlayerRewards"].([]interface{}); ok {
 		for _, item := range arr {
 			m, ok := item.(map[string]interface{})
