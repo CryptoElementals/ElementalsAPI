@@ -15,6 +15,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // TournamentQueueService runs tournament schedules, registration, bracket lock, and match progression.
@@ -58,47 +59,57 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 
 	now := time.Now().UTC()
 
-	t, err := db.TournamentGetByTournamentID(TournamentID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("TournamentID %s invalid, no tournament found", TournamentID)
+	if err := db.Get().Transaction(func(tx *gorm.DB) error {
+		var lockedT dao.Tournament
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tournament_id = ?", TournamentID).
+			First(&lockedT).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("TournamentID %s invalid, no tournament found", TournamentID)
+			}
+			return err
 		}
-		return fmt.Errorf("load tournament %s: %w", TournamentID, err)
-	}
-
-	if t.Status != dao.TournamentStatusRegistrationOpen {
-		return fmt.Errorf("tournament %s is not open for registration (status: %s)", TournamentID, t.Status)
-	}
-
-	if existing, err := db.TournamentGetParticipantByPlayer(t.TournamentID, address.Id, temp); err == nil && existing != nil {
-		return fmt.Errorf("Already joined the tournament %s", TournamentID)
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-
-	if !now.Before(t.RegistrationDeadline) {
-		return fmt.Errorf(
-			"registration deadline has passed for tournament %s (deadline: %s, now: %s)",
-			TournamentID,
-			t.RegistrationDeadline.UTC().Format(time.RFC3339),
-			now.UTC().Format(time.RFC3339),
+		if lockedT.Status != dao.TournamentStatusRegistrationOpen {
+			return fmt.Errorf("tournament %s is not open for registration (status: %s)", TournamentID, lockedT.Status)
+		}
+		if !now.Before(lockedT.RegistrationDeadline) {
+			return fmt.Errorf(
+				"registration deadline has passed for tournament %s (deadline: %s, now: %s)",
+				TournamentID,
+				lockedT.RegistrationDeadline.UTC().Format(time.RFC3339),
+				now.UTC().Format(time.RFC3339),
+			)
+		}
+		if existing, err := db.TournamentGetParticipantByPlayerTx(tx, lockedT.TournamentID, address.Id, temp); err == nil && existing != nil {
+			return fmt.Errorf("Already joined the tournament %s", TournamentID)
+		} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err := db.DeductUserTokenForTournamentEntryTx(tx, address.Id, lockedT.EntryFee); err != nil {
+			return err
+		}
+		p := &dao.TournamentParticipant{
+			TournamentID: lockedT.TournamentID,
+			PlayerID:     address.Id,
+			TempAddress:  temp,
+			Status:       dao.TournamentParticipantStatusQueued,
+		}
+		if err := tx.Create(p).Error; err != nil {
+			return err
+		}
+		return db.RecordTournamentEntryLedgerTx(
+			tx,
+			lockedT.TournamentID,
+			address.Id,
+			temp,
+			lockedT.EntryFee,
+			dao.TournamentEntryLedgerDirectionEntryDeduct,
+			"join",
 		)
-	}
-
-	if err := db.LockUserToken(s.ctx, address.Id, temp, t.EntryFee, TournamentID); err != nil {
+	}); err != nil {
 		return err
 	}
-
-	p := &dao.TournamentParticipant{
-		TournamentID: t.TournamentID,
-		PlayerID:     address.Id,
-		TempAddress:  temp,
-		Status:       dao.TournamentParticipantStatusQueued,
-	}
-	if err := db.Get().Create(p).Error; err != nil {
-		return err
-	}
-	s.coord.publishTournamentRosterUpdate(t.TournamentID)
+	s.coord.publishTournamentRosterUpdate(TournamentID)
 	return nil
 }
 

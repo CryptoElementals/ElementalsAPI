@@ -110,3 +110,23 @@ type TournamentReward struct {
 }
 
 func (TournamentReward) TableName() string { return "tournament_rewards" }
+
+type TournamentEntryLedgerDirection string
+
+const (
+	TournamentEntryLedgerDirectionEntryDeduct TournamentEntryLedgerDirection = "entry_deduct"
+	TournamentEntryLedgerDirectionEntryRefund TournamentEntryLedgerDirection = "entry_refund"
+)
+
+type TournamentEntryLedger struct {
+	BaseModel
+
+	TournamentID string                         `gorm:"not null;size:64;index;uniqueIndex:uq_tournament_entry_ledger,priority:1" json:"tournament_id"`
+	PlayerID     int64                          `gorm:"not null;index;uniqueIndex:uq_tournament_entry_ledger,priority:2" json:"player_id"`
+	TempAddress  string                         `gorm:"not null;size:128;index;uniqueIndex:uq_tournament_entry_ledger,priority:3" json:"temp_address"`
+	Amount       int32                          `gorm:"not null" json:"amount"`
+	Direction    TournamentEntryLedgerDirection `gorm:"type:varchar(16);not null;index;uniqueIndex:uq_tournament_entry_ledger,priority:4" json:"direction"`
+	Reason       string                         `gorm:"type:varchar(64);not null;index;uniqueIndex:uq_tournament_entry_ledger,priority:5" json:"reason"`
+}
+
+func (TournamentEntryLedger) TableName() string { return "tournament_entry_ledgers" }

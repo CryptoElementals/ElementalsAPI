@@ -65,10 +65,16 @@ func TestHandleJoinTournamentEvent_Success(t *testing.T) {
 	require.Equal(t, dao.TournamentParticipantStatusQueued, p.Status)
 	require.Equal(t, "0xabcdef", p.TempAddress)
 
-	var locked dao.LockedUserToken
-	require.NoError(t, db.Get().Where("temporary_address = ?", "0xabcdef").First(&locked).Error)
-	require.Equal(t, "tour-success", locked.TournamentID)
-	require.EqualValues(t, 1000, locked.TokenAmount)
+	var ut dao.UserToken
+	require.NoError(t, db.Get().Where("player_id = ?", int64(5001)).First(&ut).Error)
+	require.EqualValues(t, 4000, ut.TokenAmount)
+
+	var ledger dao.TournamentEntryLedger
+	require.NoError(t, db.Get().
+		Where("tournament_id = ? AND player_id = ? AND reason = ?", "tour-success", int64(5001), "join").
+		First(&ledger).Error)
+	require.Equal(t, dao.TournamentEntryLedgerDirectionEntryDeduct, ledger.Direction)
+	require.EqualValues(t, 1000, ledger.Amount)
 }
 
 func TestHandleJoinTournamentEvent_DuplicateJoinRejected(t *testing.T) {
