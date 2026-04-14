@@ -108,7 +108,7 @@ func (g *Game) persistTurnEndGameOver() error {
 			return err
 		}
 		if g.gameInfo.GameResult != nil {
-			if err := db.SaveGameResultTreeTx(tx, g.gameInfo.ID, g.gameInfo.GameResult); err != nil {
+			if err := db.SaveGameResultTreeTx(tx, g.gameInfo); err != nil {
 				return err
 			}
 		}
@@ -155,13 +155,13 @@ func (g *Game) persistCompletedTurnAndNewTurn(completed, fresh *dao.Turn) error 
 
 // persistAbortInit sets game to aborted and stores the result tree (no turn row update).
 func (g *Game) persistAbortInit() error {
-	st := proto.GameStatus_GAME_ABORTED
+	st := proto.GameStatus_GAME_END
 	return g.runGamePersist(func(tx *gorm.DB) error {
 		if err := db.UpdateGameFieldsTx(tx, g.gameInfo.ID, db.GameFieldsUpdate{Status: &st}); err != nil {
 			return err
 		}
 		if g.gameInfo.GameResult != nil {
-			return db.SaveGameResultTreeTx(tx, g.gameInfo.ID, g.gameInfo.GameResult)
+			return db.SaveGameResultTreeTx(tx, g.gameInfo)
 		}
 		return nil
 	})
@@ -169,7 +169,7 @@ func (g *Game) persistAbortInit() error {
 
 // persistAbortInternal saves current turn, game aborted status, and result tree.
 func (g *Game) persistAbortInternal() error {
-	st := proto.GameStatus_GAME_ABORTED
+	st := proto.GameStatus_GAME_END
 	return g.runGamePersist(func(tx *gorm.DB) error {
 		cur := g.currentRound.getCurrentTurn()
 		if cur != nil {
@@ -181,7 +181,7 @@ func (g *Game) persistAbortInternal() error {
 			return err
 		}
 		if g.gameInfo.GameResult != nil {
-			return db.SaveGameResultTreeTx(tx, g.gameInfo.ID, g.gameInfo.GameResult)
+			return db.SaveGameResultTreeTx(tx, g.gameInfo)
 		}
 		return nil
 	})

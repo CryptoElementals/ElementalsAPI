@@ -91,11 +91,18 @@ func UpdateUserStatByPlayerIds(playerIDs []int64) ([]*dao.UserStat, error) {
 					maxRewardID = reward.ID
 				}
 
-				// 根据游戏结果状态统计
-				switch reward.PlayerGameResultStatus {
+				pri, err := playerResultInfoForPlayerReward(tx, &reward)
+				if err != nil {
+					return fmt.Errorf("player_result_info for reward id %d: %w", reward.ID, err)
+				}
+
+				// 根据游戏结果状态统计（outcome lives on player_result_infos）
+				switch pri.PlayerGameResultStatus {
 				case proto.PlayerGameResultStatus_PLAYER_WIN:
 					winCount++
-				case proto.PlayerGameResultStatus_PLAYER_LOSE:
+				case proto.PlayerGameResultStatus_PLAYER_LOSE,
+					proto.PlayerGameResultStatus_PLAYER_OFFLINE,
+					proto.PlayerGameResultStatus_PLAYER_SURRENDER:
 					loseCount++
 				case proto.PlayerGameResultStatus_PLAYER_TIE:
 					tieCount++
@@ -153,4 +160,20 @@ func GetUserStatByPlayerID(playerID string) (*dao.UserStat, error) {
 		return nil, err
 	}
 	return userStat, nil
+}
+
+func playerResultInfoForPlayerReward(tx *gorm.DB, pr *dao.PlayerReward) (*dao.PlayerResultInfo, error) {
+	var br dao.BattleRewardPVP
+	if err := tx.Where("id = ?", pr.BattleRewardID).First(&br).Error; err != nil {
+		return nil, err
+	}
+	var gr dao.GameResult
+	if err := tx.Where("game_id = ?", br.GameID).First(&gr).Error; err != nil {
+		return nil, err
+	}
+	var pri dao.PlayerResultInfo
+	if err := tx.Where("game_result_id = ? AND player_id = ?", gr.ID, pr.PlayerId).First(&pri).Error; err != nil {
+		return nil, err
+	}
+	return &pri, nil
 }

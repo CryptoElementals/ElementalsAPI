@@ -76,7 +76,7 @@ type Game struct {
 
 type Turn struct {
 	BaseModel
-	GameID      int64 `gorm:"not null;uniqueIndex:uq_game_turn,priority:1" json:"game_id"`
+	GameID      int64  `gorm:"not null;uniqueIndex:uq_game_turn,priority:1" json:"game_id"`
 	RoundNumber uint32 `gorm:"not null;uniqueIndex:uq_game_turn,priority:2" json:"round_number"`
 	TurnNumber  uint32 `gorm:"not null;uniqueIndex:uq_game_turn,priority:3" json:"turn_number"`
 
@@ -111,37 +111,44 @@ type TurnSubmittedCard struct {
 
 type GamePlayerInfo struct {
 	BaseModel
-	GameID           int64 `gorm:"index" json:"game_id"`
+	GameID           int64  `gorm:"index" json:"game_id"`
 	PlayerId         int64  `gorm:"not null;index:address" json:"player_id"`
 	TemporaryAddress string `gorm:"not null;index:address" json:"temporary_address"`
 }
 
 type PlayerReward struct {
 	BaseModel
-	BattleRewardID   uint  `gorm:"index"`
-	PlayerId         int64 `gorm:"not null;index:wallet_address" json:"player_id"`
-	TemporaryAddress string
+	BattleRewardID uint  `gorm:"index"`
+	PlayerId       int64 `gorm:"not null;index:wallet_address" json:"player_id"`
 	// TokenChange and PointChange are computed in lobby settlement (see battlereward.ComputeBattleRewardAmounts); room persists zeros until then.
-	TokenChange            int32
-	PointChange            int32
-	PlayerGameResultStatus proto.PlayerGameResultStatus
-	IsOffline              bool
-	Surrendered            bool
+	TokenChange int32
+	PointChange int32
 }
 
-type BattleReward struct {
+type BattleRewardPVP struct {
 	BaseModel
-	GameResultID  uint `gorm:"index"`
+	GameID        int64 `gorm:"index"`
 	SystemFee     int32
-	PlayerRewards []*PlayerReward
+	PlayerRewards []*PlayerReward `gorm:"foreignKey:BattleRewardID"`
+}
+
+// TableName keeps the legacy table name used when the type was BattleReward.
+func (BattleRewardPVP) TableName() string { return "battle_rewards" }
+
+type PlayerResultInfo struct {
+	BaseModel
+	GameResultID           uint  `gorm:"index"`
+	PlayerId               int64 `gorm:"not null;index:idx_player_result_player_id" json:"player_id"`
+	TemporaryAddress       string
+	IsWinner               bool
+	PlayerGameResultStatus proto.PlayerGameResultStatus
 }
 
 type GameResult struct {
 	BaseModel
-	GameID                 int64 `gorm:"index"`
-	Multiplier             int32
-	WinnerPlayerId         int64
-	WinnerTemporaryAddress string
-	GameResultType         proto.GameResultType
-	BattleReward           *BattleReward
+	GameID            int64 `gorm:"index"`
+	GameType          proto.GameType
+	Multiplier        int32
+	GameResultType    proto.GameResultType
+	PlayerResultInfos []*PlayerResultInfo `gorm:"foreignKey:GameResultID"`
 }

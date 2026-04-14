@@ -1,7 +1,5 @@
 package types
 
-import dao "github.com/CryptoElementals/common/models"
-
 type RequireGameCreationEvent struct {
 	GameID         int64
 	InitialHP      int64
@@ -30,9 +28,10 @@ type GameCreatedEvent struct {
 	MatchID             int64
 }
 
+// GameCompletedEvent is published when a match ends. GameType is GameTypePVP or GameTypeTournament (0 treated as PVP).
 type GameCompletedEvent struct {
 	GameID   int64
-	GameInfo *dao.Game
+	GameType uint
 }
 
 type GameMatchedEvent struct {

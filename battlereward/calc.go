@@ -3,28 +3,21 @@ package battlereward
 import (
 	"cmp"
 	"slices"
-	"strings"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-// ComputeBattleRewardAmounts fills TokenChange, PointChange on each PlayerReward and SystemFee on BattleReward
-// from persisted game outcome metadata. The room server persists per-player flags (offline, surrendered, status)
-// and leaves token/point amounts and system fee at zero; lobby settlement runs this before writing amounts and applying wallets.
-// Call only when gr.BattleReward and PlayerRewards are non-empty (settlement validates this).
-func ComputeBattleRewardAmounts(gr *dao.GameResult, baseStake int) {
-	br := gr.BattleReward
-	if br == nil || len(br.PlayerRewards) == 0 {
+// ComputeBattleRewardAmounts fills TokenChange, PointChange on each PlayerReward and SystemFee on BattleRewardPVP
+// using GameResult.PlayerResultInfos for winner and forfeit (offline/surrender). Room persists zero amounts until settlement.
+func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, baseStake int) {
+	if gr == nil || br == nil || len(br.PlayerRewards) == 0 {
 		return
 	}
 	prs := br.PlayerRewards
 
 	slices.SortFunc(prs, func(a, b *dao.PlayerReward) int {
-		if c := cmp.Compare(a.PlayerId, b.PlayerId); c != 0 {
-			return c
-		}
-		return strings.Compare(strings.ToLower(a.TemporaryAddress), strings.ToLower(b.TemporaryAddress))
+		return cmp.Compare(a.PlayerId, b.PlayerId)
 	})
 
 	// Server timeout tie: Multiplier 0, no token/point movement (matches former room_server handleServerTimeout).
@@ -48,8 +41,8 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, baseStake int) {
 		}
 
 	case proto.GameResultType_GAME_NORMAL, proto.GameResultType_GAME_KO:
-		winnerTemp := gr.WinnerTemporaryAddress
-		if winnerTemp == "" || gr.WinnerPlayerId == 0 {
+		winnerPID, _, wok := winnerFromPlayerResultInfos(gr.PlayerResultInfos)
+		if !wok || winnerPID == 0 {
 			return
 		}
 		loserCount := len(prs) - 1
@@ -76,10 +69,10 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, baseStake int) {
 
 		bonusPointsForWinner := 0
 		for _, pr := range prs {
-			if strings.EqualFold(pr.TemporaryAddress, winnerTemp) {
+			if pr.PlayerId == winnerPID {
 				continue
 			}
-			if pr.Surrendered || pr.IsOffline {
+			if playerForfeited(gr, pr.PlayerId) {
 				bonusPointsForWinner += loserPointPerPlayer
 			}
 		}
@@ -87,12 +80,12 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, baseStake int) {
 		br.SystemFee = int32(int(float64(totalPool) * 0.016))
 
 		for _, pr := range prs {
-			if strings.EqualFold(pr.TemporaryAddress, winnerTemp) {
+			if pr.PlayerId == winnerPID {
 				pr.TokenChange = int32(winnerTokenPerPlayer)
 				pr.PointChange = int32(winnerPointPerPlayer + bonusPointsForWinner)
 			} else {
 				pr.TokenChange = int32(-loserTokenPerPlayer)
-				if pr.Surrendered || pr.IsOffline {
+				if playerForfeited(gr, pr.PlayerId) {
 					pr.PointChange = 0
 				} else {
 					pr.PointChange = int32(loserPointPerPlayer)
@@ -100,4 +93,31 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, baseStake int) {
 			}
 		}
 	}
+}
+
+func winnerFromPlayerResultInfos(infos []*dao.PlayerResultInfo) (playerId int64, temp string, ok bool) {
+	for _, p := range infos {
+		if p == nil {
+			continue
+		}
+		if p.IsWinner || p.PlayerGameResultStatus == proto.PlayerGameResultStatus_PLAYER_WIN {
+			return p.PlayerId, p.TemporaryAddress, true
+		}
+	}
+	return 0, "", false
+}
+
+func playerForfeited(gr *dao.GameResult, playerID int64) bool {
+	for _, p := range gr.PlayerResultInfos {
+		if p == nil || p.PlayerId != playerID {
+			continue
+		}
+		switch p.PlayerGameResultStatus {
+		case proto.PlayerGameResultStatus_PLAYER_OFFLINE, proto.PlayerGameResultStatus_PLAYER_SURRENDER:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }

@@ -70,7 +70,7 @@ func LockUserToken(ctx context.Context, playerId int64, tempAddress string, toke
 					// already locked by some game
 					// check if game is still running
 					gameInfo := &dao.Game{}
-					err := tx.Where("id = ? and status != ? and status != ?", locked.GameID, proto.GameStatus_GAME_END, proto.GameStatus_GAME_ABORTED).Find(gameInfo).Error
+					err := tx.Where("id = ? and status != ?", locked.GameID, proto.GameStatus_GAME_END).Find(gameInfo).Error
 					if err == nil {
 						// game still running
 						return errors.New("user token is locked")
@@ -237,52 +237,77 @@ func UnlockUserTokenByGameID(ctx context.Context, gameID int64) error {
 	})
 }
 
-func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{}) error {
-	// game aborted when init
-	if game.Status == proto.GameStatus_GAME_ABORTED {
-		log.Debugw("unlock player token caused by abort", "game id", game.ID)
-		return UnlockUserTokenByGameID(context.Background(), game.ID)
+// BattleResultSettlement applies PVP economy updates for gr.GameID. gr must be non-nil (caller loads it).
+// Inside the transaction: lock games row, load game_args only (via games.game_args_id), not turns/players.
+func BattleResultSettlement(gr *dao.GameResult, bots map[types.PlayerAddress]struct{}) error {
+	if gr == nil {
+		return errors.New("battle result settlement: game result is nil")
 	}
-	if game.GameArgs == nil {
-		return errors.New("game args is nil")
+	gameID := gr.GameID
+	if gameID == 0 {
+		return nil
 	}
-	baseStake := game.GameArgs.BaseStake
-	if baseStake <= 0 {
-		return fmt.Errorf("game_args.base_stake must be positive (game id %d)", game.ID)
+	if gr.GameResultType == proto.GameResultType_GAME_ABORTED {
+		log.Debugw("unlock player token caused by abort outcome", "game id", gameID)
+		return UnlockUserTokenByGameID(context.Background(), gameID)
 	}
-	if game.GameResult == nil {
-		return errors.New("game result is nil")
-	}
-	reward := game.GameResult.BattleReward
-	if reward == nil {
-		return errors.New("game result battle reward is nil")
-	}
-	battlereward.ComputeBattleRewardAmounts(game.GameResult, int(baseStake))
-
-	type playerReward struct {
-		playerId    int64
-		tempAddr    string
-		tokenChange int32
-		pointChange int32
-	}
-	var toProcess []playerReward
-	for _, pr := range reward.PlayerRewards {
-		if _, ok := bots[types.PlayerAddress{
-			Id:               pr.PlayerId,
-			TemporaryAddress: pr.TemporaryAddress,
-		}]; ok {
-			continue
-		}
-		toProcess = append(toProcess, playerReward{
-			playerId:    pr.PlayerId,
-			tempAddr:    pr.TemporaryAddress,
-			tokenChange: pr.TokenChange,
-			pointChange: pr.PointChange,
-		})
-	}
-
 	if err := Get().Transaction(func(tx *gorm.DB) error {
+		if err := LockGameForUpdateTx(tx, gameID); err != nil {
+			return err
+		}
+		ga, err := LoadGameArgsByGameIDTx(tx, gameID)
+		if err != nil {
+			return err
+		}
+		baseStake := ga.BaseStake
+		if baseStake <= 0 {
+			return fmt.Errorf("game_args.base_stake must be positive (game id %d)", gameID)
+		}
+		exists, err := BattleRewardPVPExistsForGame(tx, gameID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			log.Debugw("battle settlement skipped: battle_rewards row already exists for game", "game_id", gameID)
+			return nil
+		}
+		reward, err := EnsureBattleRewardPVPLoadedOrCreated(tx, gameID, gr)
+		if err != nil {
+			return err
+		}
+		battlereward.ComputeBattleRewardAmounts(gr, reward, int(baseStake))
+
+		type playerReward struct {
+			playerId    int64
+			tempAddr    string
+			tokenChange int32
+			pointChange int32
+		}
+		var toProcess []playerReward
+		infos := gr.PlayerResultInfos
 		for _, pr := range reward.PlayerRewards {
+			if pr == nil {
+				continue
+			}
+			tempAddr := TemporaryAddressForPlayer(infos, pr.PlayerId)
+			if _, ok := bots[types.PlayerAddress{
+				Id:               pr.PlayerId,
+				TemporaryAddress: tempAddr,
+			}]; ok {
+				continue
+			}
+			toProcess = append(toProcess, playerReward{
+				playerId:    pr.PlayerId,
+				tempAddr:    tempAddr,
+				tokenChange: pr.TokenChange,
+				pointChange: pr.PointChange,
+			})
+		}
+
+		for _, pr := range reward.PlayerRewards {
+			if pr == nil {
+				continue
+			}
 			if err := tx.Model(&dao.PlayerReward{}).Where("id = ?", pr.ID).
 				Updates(map[string]any{
 					"token_change": pr.TokenChange,
@@ -291,7 +316,7 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 				return fmt.Errorf("update player_reward id %d: %w", pr.ID, err)
 			}
 		}
-		if err := tx.Model(&dao.BattleReward{}).Where("id = ?", reward.ID).
+		if err := tx.Model(&dao.BattleRewardPVP{}).Where("id = ?", reward.ID).
 			Update("system_fee", reward.SystemFee).Error; err != nil {
 			return fmt.Errorf("update battle_reward id %d: %w", reward.ID, err)
 		}
@@ -305,12 +330,12 @@ func BattleResultSettlement(game *dao.Game, bots map[types.PlayerAddress]struct{
 					"token_amount": gorm.Expr("token_amount + ?", pr.tokenChange),
 					"points":       gorm.Expr("points + ?", pr.pointChange),
 				}).Error; err != nil {
-				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", game.ID, pr.playerId, err)
+				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", gameID, pr.playerId, err)
 			}
 		}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("battle result settlement: game id: %d: %w", game.ID, err)
+		return fmt.Errorf("battle result settlement: game id: %d: %w", gameID, err)
 	}
 
 	return nil

@@ -1,6 +1,7 @@
 package conversion
 
 import (
+	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -30,39 +31,49 @@ func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 	if result == nil {
 		return nil
 	}
+	wid, wt, _ := db.WinnerFromPlayerResultInfos(result.PlayerResultInfos)
 	return &proto.GameResult{
 		Multiplier:             int32(result.Multiplier),
-		WinnerPlayerId:         result.WinnerPlayerId,
-		WinnerTemporaryAddress: result.WinnerTemporaryAddress,
+		WinnerPlayerId:         wid,
+		WinnerTemporaryAddress: wt,
 		GameResultType:         result.GameResultType,
 	}
 }
 
-func DbBattleRewardToProtoBattleReward(battleReward *dao.BattleReward) *proto.BattleReward {
-	if battleReward == nil {
+func DbBattleRewardToProtoBattleReward(br *dao.BattleRewardPVP, infos []*dao.PlayerResultInfo) *proto.BattleReward {
+	if br == nil {
 		return nil
 	}
 	return &proto.BattleReward{
-		PlayerRewards: DbPlayerRewardsToProto(battleReward.PlayerRewards),
-		SystemFee:     int32(battleReward.SystemFee),
+		PlayerRewards: DbPlayerRewardsToProto(br.PlayerRewards, infos),
+		SystemFee:     int32(br.SystemFee),
 	}
 }
 
-func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward) []*proto.PlayerReward {
+// DbPlayerRewardsToProto joins wallet rows with PlayerResultInfos for addresses and outcome enums.
+func DbPlayerRewardsToProto(playerReward []*dao.PlayerReward, infos []*dao.PlayerResultInfo) []*proto.PlayerReward {
 	if len(playerReward) == 0 {
 		return nil
 	}
+	byID := db.PlayerResultInfoByPlayerID(infos)
 	var playerRewards []*proto.PlayerReward
-	for _, playerReward := range playerReward {
-		playerRewards = append(playerRewards, &proto.PlayerReward{
-			PlayerId:               playerReward.PlayerId,
-			TemporaryAddress:       playerReward.TemporaryAddress,
-			TokenChange:            int32(playerReward.TokenChange),
-			PointChange:            int32(playerReward.PointChange),
-			Offline:                playerReward.IsOffline,
-			Surrendered:            playerReward.Surrendered,
-			PlayerGameResultStatus: playerReward.PlayerGameResultStatus,
-		})
+	for _, pr := range playerReward {
+		if pr == nil {
+			continue
+		}
+		out := &proto.PlayerReward{
+			PlayerId:    pr.PlayerId,
+			TokenChange: int32(pr.TokenChange),
+			PointChange:   int32(pr.PointChange),
+		}
+		if pri, ok := byID[pr.PlayerId]; ok && pri != nil {
+			out.TemporaryAddress = pri.TemporaryAddress
+			st := pri.PlayerGameResultStatus
+			out.PlayerGameResultStatus = st
+			out.Offline = st == proto.PlayerGameResultStatus_PLAYER_OFFLINE
+			out.Surrendered = st == proto.PlayerGameResultStatus_PLAYER_SURRENDER
+		}
+		playerRewards = append(playerRewards, out)
 	}
 	return playerRewards
 }
@@ -201,7 +212,7 @@ func DbRoundToRoundResult(round *RoundView, game *dao.Game) *proto.RoundResult {
 		maxR = dao.MaxRoundNumberFromTurns(game.Turns)
 	}
 	isGameOver := game != nil &&
-		(game.Status == proto.GameStatus_GAME_END || game.Status == proto.GameStatus_GAME_ABORTED) &&
+		game.Status == proto.GameStatus_GAME_END &&
 		maxR > 0 && round.RoundNumber == maxR
 
 	return &proto.RoundResult{

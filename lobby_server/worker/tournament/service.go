@@ -102,25 +102,21 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 }
 
 // GameResultSettlementHook applies tournament match rewards (tournament_rewards + wallet) and advances the bracket when a tournament match ends.
+// Uses game_id + tournament_matches + game_results only (no full games row load).
 func (s *TournamentQueueService) GameResultSettlementHook(event *types.GameCompletedEvent) error {
 	if event == nil {
 		log.Errorw("tournament: game result settlement hook: event is nil")
 		return nil
 	}
-	if event.GameInfo == nil {
-		log.Errorw("tournament: game result settlement hook: game info is nil", "game_id", event.GameInfo.ID, "game_info", event.GameInfo)
+	if event.GameID == 0 {
 		return nil
 	}
-	if event.GameInfo.Type != types.GameTypeTournament {
-		log.Errorw("tournament: game result settlement hook: invalid game type", "game_id", event.GameInfo.ID, "game_type", event.GameInfo.Type)
-		return nil
+	if _, err := db.TournamentGetMatchByGameID(event.GameID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
 	}
-
-	if event.GameInfo.GameResult == nil {
-		log.Errorw("tournament: game result settlement hook: game result is nil", "game_id", event.GameInfo.ID, "game_result", event.GameInfo.GameResult)
-		return nil
-	}
-
-	log.Debugw("tournament: game result settlement hook", "game_id", event.GameInfo.ID)
-	return s.coord.onGameCompleted(event.GameInfo)
+	log.Debugw("tournament: game result settlement hook", "game_id", event.GameID)
+	return s.coord.onGameCompleted(event.GameID)
 }

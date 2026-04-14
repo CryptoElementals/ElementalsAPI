@@ -99,39 +99,35 @@ func SavePlayerTurnInfoTx(tx *gorm.DB, pti *dao.PlayerTurnInfo) error {
 	return tx.Session(&gorm.Session{FullSaveAssociations: false}).Save(pti).Error
 }
 
-// SaveGameResultTreeTx inserts or updates game_results and nested battle_rewards / player_rewards.
-// For insert (result.ID == 0), builds the tree explicitly to avoid broad association side effects.
-func SaveGameResultTreeTx(tx *gorm.DB, gameID int64, result *dao.GameResult) error {
+// SaveGameResultTreeTx inserts or updates game_results and player_result_infos.
+// Battle rewards are created in the lobby at settlement (see EnsureBattleRewardPVPLoadedOrCreated).
+func SaveGameResultTreeTx(tx *gorm.DB, game *dao.Game) error {
+	if game == nil || game.GameResult == nil {
+		return nil
+	}
+	gameID := game.ID
+	result := game.GameResult
+
 	result.GameID = gameID
 	if result.ID != 0 {
 		return tx.Session(&gorm.Session{FullSaveAssociations: true}).Save(result).Error
 	}
-	br := result.BattleReward
-	result.BattleReward = nil
-	if err := tx.Omit("BattleReward").Create(result).Error; err != nil {
+
+	prii := result.PlayerResultInfos
+	result.PlayerResultInfos = nil
+	if err := tx.Omit("PlayerResultInfos").Create(result).Error; err != nil {
 		return err
 	}
-	if br == nil {
-		result.BattleReward = nil
-		return nil
-	}
-	br.GameResultID = result.ID
-	prs := br.PlayerRewards
-	br.PlayerRewards = nil
-	if err := tx.Omit("PlayerRewards").Create(br).Error; err != nil {
-		return err
-	}
-	for _, pr := range prs {
-		if pr == nil {
+	for _, pri := range prii {
+		if pri == nil {
 			continue
 		}
-		pr.BattleRewardID = br.ID
-		if err := tx.Create(pr).Error; err != nil {
+		pri.GameResultID = result.ID
+		if err := tx.Create(pri).Error; err != nil {
 			return err
 		}
 	}
-	br.PlayerRewards = prs
-	result.BattleReward = br
+	result.PlayerResultInfos = prii
 	return nil
 }
 
@@ -166,9 +162,9 @@ func SavePlayerTurnInfoCommit(pti *dao.PlayerTurnInfo) error {
 }
 
 // SaveGameResultTreeCommit runs SaveGameResultTreeTx in a transaction.
-func SaveGameResultTreeCommit(gameID int64, result *dao.GameResult) error {
+func SaveGameResultTreeCommit(game *dao.Game) error {
 	return GamePersistTx(func(tx *gorm.DB) error {
-		return SaveGameResultTreeTx(tx, gameID, result)
+		return SaveGameResultTreeTx(tx, game)
 	})
 }
 

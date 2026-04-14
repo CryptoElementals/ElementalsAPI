@@ -181,37 +181,45 @@ func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
 }
 
 func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
+	if event == nil || event.GameID == 0 {
+		return nil
+	}
+	gameID := event.GameID
+	gr, err := db.LoadGameResultByGameID(gameID)
+	if err != nil {
+		return fmt.Errorf("queue settlement: load game result %d: %w", gameID, err)
+	}
+
 	bots := Set[types.PlayerAddress]{}
 	q.lock.Lock()
-	for _, p := range event.GameInfo.Players {
-		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+	forEachSettlementParticipant(gr, func(playerID int64, temporaryAddress string) {
+		addr := types.NewPlayerAddress(playerID, temporaryAddress)
 		q.markPlayerOutOfGameLocked(*addr)
 		isBot := q.releaseInGameBotLocked(*addr)
 		if isBot {
 			bots.Add(*addr)
 		}
-	}
+	})
 	q.lock.Unlock()
-	err := db.BattleResultSettlement(event.GameInfo, bots)
-	if err != nil {
+	if err := db.BattleResultSettlement(gr, bots); err != nil {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
-	if event.GameInfo.Status == pb.GameStatus_GAME_ABORTED {
+	if gr.GameResultType == pb.GameResultType_GAME_ABORTED {
 		return nil
 	}
 
-	q.publishGameSettlementResult(event.GameInfo)
+	q.publishGameSettlementResult(gameID, gr)
 
 	if len(bots) > 0 {
-		log.Infow("skipping continue rematch: game included bots", "game_id", event.GameInfo.ID)
-		q.publishNotMatchableForHumans(event.GameInfo, event.GameInfo.ID, bots)
-	} else if q.anyHumanPlayerBelowQueueThreshold(event.GameInfo, bots) {
-		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", event.GameInfo.ID)
-		q.publishNotMatchableForHumans(event.GameInfo, event.GameInfo.ID, bots)
+		log.Infow("skipping continue rematch: game included bots", "game_id", gameID)
+		q.publishNotMatchableForHumans(gr, gameID, bots)
+	} else if q.anyHumanPlayerBelowQueueThreshold(gr, bots) {
+		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", gameID)
+		q.publishNotMatchableForHumans(gr, gameID, bots)
 	} else {
 		q.lock.Lock()
-		q.tryStartContinueRematchAfterGame(event.GameInfo)
+		q.tryStartContinueRematchAfterGame(gameID, gr)
 		q.lock.Unlock()
 	}
 
@@ -219,10 +227,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		if q.statSvcClient == nil {
 			return
 		}
-		playerIDs := make([]int64, 0, len(event.GameInfo.Players))
-		for _, p := range event.GameInfo.Players {
-			playerIDs = append(playerIDs, p.PlayerId)
-		}
+		playerIDs := settlementPlayerIDs(gr)
 		resp, err := q.statSvcClient.UpdatePlayerStats(q.ctx, &proto.UpdatePlayerStatsRequest{
 			PlayerIds: playerIDs,
 		})
@@ -286,47 +291,62 @@ func (q *Queue) unlockToken(address *types.PlayerAddress) error {
 	return db.UnlockUserToken(q.ctx, address.Id, address.TemporaryAddress, false)
 }
 
-func (q *Queue) publishGameSettlementResult(game *dao.Game) {
-	if game == nil || game.GameResult == nil || game.GameResult.BattleReward == nil {
+func winnerPlayerIDFromGameResult(gr *dao.GameResult) int64 {
+	if gr == nil {
+		return 0
+	}
+	for _, pri := range gr.PlayerResultInfos {
+		if pri != nil && pri.IsWinner {
+			return pri.PlayerId
+		}
+	}
+	return 0
+}
+
+func (q *Queue) publishGameSettlementResult(gameID int64, gr *dao.GameResult) {
+	if gr == nil {
 		return
 	}
-	br := game.GameResult.BattleReward
-	playerRewards := conversion.DbPlayerRewardsToProto(br.PlayerRewards)
-	receivers := make([]*pb.PlayerAddress, 0, len(game.Players))
-	for _, p := range game.Players {
-		if p == nil {
+	br, err := db.LoadBattleRewardPVPByGameID(gameID)
+	if err != nil {
+		log.Errorw("load battle reward for settlement pub", "game_id", gameID, "err", err)
+		return
+	}
+	playerRewards := conversion.DbPlayerRewardsToProto(br.PlayerRewards, gr.PlayerResultInfos)
+	receivers := make([]*pb.PlayerAddress, 0, len(gr.PlayerResultInfos))
+	for _, pri := range gr.PlayerResultInfos {
+		if pri == nil {
 			continue
 		}
-		receivers = append(receivers, types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress).ToProto())
+		receivers = append(receivers, types.NewPlayerAddress(pri.PlayerId, pri.TemporaryAddress).ToProto())
 	}
 	out := &pb.Event{
 		Type:      pb.EventType_TYPE_GAME_SETTLEMENT_RESULT,
 		Receivers: receivers,
 		Event: &pb.Event_GameSettlementResult{
 			GameSettlementResult: &pb.GameSettlementResult{
-				GameId:        game.ID,
-				SystemFee:     br.SystemFee,
-				PlayerRewards: playerRewards,
+				GameId:          gameID,
+				SystemFee:       br.SystemFee,
+				PlayerRewards:   playerRewards,
+				Multiplier:      gr.Multiplier,
+				WinnerPlayerId:  winnerPlayerIDFromGameResult(gr),
 			},
 		},
 	}
 	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
-		log.Errorw("publish game settlement result failed", "topic", pubsub.TopicLobby, "game_id", game.ID, "err", err)
+		log.Errorw("publish game settlement result failed", "topic", pubsub.TopicLobby, "game_id", gameID, "err", err)
 	}
 }
 
-func (q *Queue) publishNotMatchableForHumans(game *dao.Game, lastGameID int64, bots Set[types.PlayerAddress]) {
-	receivers := make([]*pb.PlayerAddress, 0, len(game.Players))
-	for _, p := range game.Players {
-		if p == nil {
-			continue
-		}
-		addr := types.NewPlayerAddress(p.PlayerId, p.TemporaryAddress)
+func (q *Queue) publishNotMatchableForHumans(gr *dao.GameResult, lastGameID int64, bots Set[types.PlayerAddress]) {
+	receivers := make([]*pb.PlayerAddress, 0, 4)
+	forEachSettlementParticipant(gr, func(playerID int64, temporaryAddress string) {
+		addr := types.NewPlayerAddress(playerID, temporaryAddress)
 		if bots.Contains(*addr) {
-			continue
+			return
 		}
 		receivers = append(receivers, addr.ToProto())
-	}
+	})
 	evt := &pb.Event{
 		Type:      pb.EventType_TYPE_NOT_MATCHABLE,
 		Receivers: receivers,
