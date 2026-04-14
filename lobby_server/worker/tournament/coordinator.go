@@ -138,7 +138,11 @@ func (tc *coordinator) createTournamentIfNotExists(at time.Time) error {
 		RegistrationDeadline: at.Add(-time.Duration(tc.beforeStartSeconds) * time.Second),
 		EntryFee:             tc.entryFee,
 	}
-	return db.TournamentCreate(t)
+	if err := db.TournamentCreate(t); err != nil {
+		return err
+	}
+	tc.publishTournamentRosterUpdate(t.TournamentID)
+	return nil
 }
 
 func (tc *coordinator) beginTournament(t *dao.Tournament) error {
