@@ -76,12 +76,16 @@ enum PlayerTurnStatus {
     PLAYER_TURN_CARD_SUBMITTED = 3;
 }
 
+message CardPlayingInfo {
+    uint32 TurnNumber = 1;
+    repeated bytes Commitment = 2;
+    repeated uint32 Card = 3;
+}
+
 message GamePhasePlayer {
     PlayerAddress Address = 1;
-    PlayerTurnStatus TurnStatus = 2;
-    uint32 CurrentHP = 3;
-    optional bytes Commitment = 4;
-    optional uint32 Card = 5;
+    uint32 CurrentHP = 2;
+    repeated CardPlayingInfo CardPlayingInfos = 3;
 }
 
 message GamePhase {
@@ -90,7 +94,9 @@ message GamePhase {
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
-    repeated GamePhasePlayer Players = 6;
+    TurnStatus TurnStatus = 6;
+    PlayerTurnStatus PlayerTurnStatus = 7;
+    repeated GamePhasePlayer Players = 8;
 }
 
 message ConfirmBattleRequest {

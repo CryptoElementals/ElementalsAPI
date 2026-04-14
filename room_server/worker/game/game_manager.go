@@ -319,7 +319,7 @@ func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhas
 		turnStartAt = gameInfo.CreatedAt.Unix()
 	}
 
-	gamePhase := conversion.DbGameToProtoGamePhase(gameInfo, roundView, turnNumber, turnStartAt)
+	gamePhase := conversion.DbGameToProtoGamePhase(gameInfo, roundView, turnNumber, turnStartAt, address)
 	return gamePhase, nil
 }
 
