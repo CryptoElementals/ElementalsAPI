@@ -318,8 +318,9 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 		Players:          make([]*proto.GamePhasePlayer, 0, playerCount),
 	}
 
-	// Only the SyncGamePhase caller's status (not other players').
 	if currentTurn != nil {
+		gamePhase.TurnStatus = proto.TurnStatus(currentTurn.TurnStatus)
+		// Only the SyncGamePhase caller's per-player status (not other players').
 		if pti := playerTurnInfoInTurn(currentTurn, caller.Id, caller.TemporaryAddress); pti != nil {
 			gamePhase.PlayerTurnStatus = pti.PlayerStatus
 		}

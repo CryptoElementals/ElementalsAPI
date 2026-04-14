@@ -94,8 +94,9 @@ message GamePhase {
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
-    PlayerTurnStatus PlayerTurnStatus = 6;
-    repeated GamePhasePlayer Players = 7;
+    TurnStatus TurnStatus = 6;
+    PlayerTurnStatus PlayerTurnStatus = 7;
+    repeated GamePhasePlayer Players = 8;
 }
 
 message ConfirmBattleRequest {
