@@ -243,6 +243,7 @@ func (tc *coordinator) createTournamentIfNotExists(at time.Time) error {
 func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 	var newMatchIDs []uint
 	var createdRound bool
+	var releaseCandidates []types.PlayerAddress
 
 	err := db.Get().Transaction(func(tx *gorm.DB) error {
 		var cur dao.Tournament
@@ -294,6 +295,7 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 				); err != nil {
 					return err
 				}
+				releaseCandidates = append(releaseCandidates, types.PlayerAddress{Id: p.PlayerID, TemporaryAddress: p.TempAddress})
 			}
 			return nil
 		}
@@ -334,6 +336,7 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 				); err != nil {
 					return err
 				}
+				releaseCandidates = append(releaseCandidates, types.PlayerAddress{Id: p.PlayerID, TemporaryAddress: p.TempAddress})
 			}
 			if err := tx.Save(p).Error; err != nil {
 				return err
@@ -366,6 +369,7 @@ func (tc *coordinator) beginTournament(t *dao.Tournament) error {
 		log.Errorw("tournament: create tournament first round failed", "tournament_id", t.TournamentID, "err", err)
 		return err
 	}
+	tc.releaseBotsIfNeeded(tc.filterBotsForRelease(releaseCandidates))
 
 	anyPlaying := tc.startGamesForNewMatches(newMatchIDs)
 
@@ -531,11 +535,12 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 	}
 
 	var (
-		postNewIDs     []uint
-		postNextRound  uint32
-		postTournID    string
-		publishOutcome *tournamentMatchOutcomeToPublish
-		cumReward      *proto.BattleReward
+		releaseCandidates []types.PlayerAddress
+		postNewIDs        []uint
+		postNextRound     uint32
+		postTournID       string
+		publishOutcome    *tournamentMatchOutcomeToPublish
+		cumReward         *proto.BattleReward
 	)
 
 	err = db.Get().Transaction(func(tx *gorm.DB) error {
@@ -587,6 +592,10 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			return err
 		}
 		loserTempNorm := strings.ToLower(strings.TrimSpace(loserTemp))
+		releaseCandidates = append(releaseCandidates, types.PlayerAddress{
+			Id:               loserPID,
+			TemporaryAddress: loserTempNorm,
+		})
 
 		rwPID, rwTemp, _ := db.WinnerFromPlayerResultInfos(gr.PlayerResultInfos)
 		log.Infow("tournament: game completed - room GameResult vs bracket winner (reward branch follows game_result_type)",
@@ -675,6 +684,10 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			if err := tx.Save(ch).Error; err != nil {
 				return err
 			}
+			releaseCandidates = append(releaseCandidates, types.PlayerAddress{
+				Id:               ch.PlayerID,
+				TemporaryAddress: strings.ToLower(strings.TrimSpace(ch.TempAddress)),
+			})
 			publishOutcome = &tournamentMatchOutcomeToPublish{
 				gameID:                 gameID,
 				tournamentID:           locked.TournamentID,
@@ -746,6 +759,7 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 	if err != nil {
 		return err
 	}
+	tc.releaseBotsIfNeeded(tc.filterBotsForRelease(releaseCandidates))
 
 	if publishOutcome != nil {
 		tc.publishTournamentMatchOutcome(publishOutcome)
@@ -762,6 +776,42 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 	}
 
 	return nil
+}
+
+func (tc *coordinator) filterBotsForRelease(addrs []types.PlayerAddress) []types.PlayerAddress {
+	if tc == nil || tc.botStore == nil || len(addrs) == 0 {
+		return nil
+	}
+	bots := make([]types.PlayerAddress, 0, len(addrs))
+	for _, addr := range addrs {
+		isBot, err := tc.botStore.IsBot(addr)
+		if err != nil {
+			log.Warnw("tournament: bot check before collect failed", "player", addr.String(), "err", err)
+			continue
+		}
+		if isBot {
+			bots = append(bots, addr)
+		}
+	}
+	return bots
+}
+
+func (tc *coordinator) releaseBotsIfNeeded(addrs []types.PlayerAddress) {
+	if tc == nil || tc.botStore == nil || len(addrs) == 0 {
+		return
+	}
+	nowMs := time.Now().UnixMilli()
+	freshMs := tc.botFreshness.Milliseconds()
+	for _, addr := range addrs {
+		ok, err := tc.botStore.ReleaseInGameBot(addr, nowMs, freshMs)
+		if err != nil {
+			log.Warnw("tournament: release bot failed", "player", addr.String(), "err", err)
+			continue
+		}
+		if ok {
+			log.Debugw("tournament: bot released", "player", addr.String())
+		}
+	}
 }
 
 // winnerCumulationIfNextMatchWinProto returns winner cumulative token/point totals if they also win their next match (current sum + one match-win bonus).
