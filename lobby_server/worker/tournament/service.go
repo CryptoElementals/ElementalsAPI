@@ -25,11 +25,15 @@ type TournamentQueueService struct {
 }
 
 // NewTournamentQueueService constructs the tournament worker. Call Start after DB is ready.
-func NewTournamentQueueService(ctx context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *TournamentQueueService {
-	return &TournamentQueueService{
+func NewTournamentQueueService(ctx context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFreshnessSec int64) *TournamentQueueService {
+	svc := &TournamentQueueService{
 		ctx:   ctx,
-		coord: newCoordinator(ctx, publisher, botStore, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds),
+		coord: newCoordinator(ctx, publisher, botStore, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds, botFreshnessSec),
 	}
+	svc.coord.joinTournamentFunc = func(tournamentID string, req *proto.PlayerAddress) error {
+		return svc.handleJoinTournamentEvent(tournamentID, req, true)
+	}
+	return svc
 }
 
 func (s *TournamentQueueService) Start() {
@@ -43,6 +47,10 @@ func (s *TournamentQueueService) Stop() {
 
 // HandleJoinTournament registers for the open tournament on the given schedule (same token lock as PVP queue).
 func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, req *proto.PlayerAddress) error {
+	return s.handleJoinTournamentEvent(TournamentID, req, false)
+}
+
+func (s *TournamentQueueService) handleJoinTournamentEvent(TournamentID string, req *proto.PlayerAddress, allowAfterDeadline bool) error {
 	var address types.PlayerAddress
 	address.FromProto(req)
 	temp := strings.ToLower(strings.TrimSpace(address.TemporaryAddress))
@@ -72,7 +80,7 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 		if lockedT.Status != dao.TournamentStatusRegistrationOpen {
 			return fmt.Errorf("tournament %s is not open for registration (status: %s)", TournamentID, lockedT.Status)
 		}
-		if !now.Before(lockedT.RegistrationDeadline) {
+		if !allowAfterDeadline && !now.Before(lockedT.RegistrationDeadline) {
 			return fmt.Errorf(
 				"registration deadline has passed for tournament %s (deadline: %s, now: %s)",
 				TournamentID,
@@ -109,7 +117,11 @@ func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, 
 	}); err != nil {
 		return err
 	}
-	s.coord.publishTournamentRosterUpdate(TournamentID)
+	if err := s.coord.publishTournamentRosterUpdate(TournamentID); err != nil {
+		log.Errorw("tournament: publish roster update failed", "tournament_id", TournamentID, "player_id", address.Id, "temp_address", temp, "err", err)
+		return err
+	}
+	log.Debugw("tournament: publish roster update success", "tournament_id", TournamentID, "player_id", address.Id, "temp_address", temp)
 	return nil
 }
 

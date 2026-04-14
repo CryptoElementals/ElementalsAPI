@@ -174,6 +174,16 @@ func TournamentListRegistrationOpenPastScheduled(before time.Time) ([]dao.Tourna
 	return rows, err
 }
 
+// TournamentListRegistrationOpenReachedDeadline lists registration_open tournaments whose registration deadline has arrived.
+func TournamentListRegistrationOpenReachedDeadline(now time.Time) ([]dao.Tournament, error) {
+	var rows []dao.Tournament
+	err := Get().
+		Where("status = ? AND registration_deadline <= ?", dao.TournamentStatusRegistrationOpen, now).
+		Order("scheduled_start_at ASC, id ASC").
+		Find(&rows).Error
+	return rows, err
+}
+
 // TournamentGetLatestRegistrationOpenWithinStartGrace returns one latest registration_open tournament
 // whose scheduled_start_at is within [now-grace, now]. This allows small scheduler/restart delays.
 func TournamentGetLatestRegistrationOpenWithinStartGrace(now time.Time, grace time.Duration) (*dao.Tournament, error) {

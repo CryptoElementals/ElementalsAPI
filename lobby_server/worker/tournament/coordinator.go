@@ -33,14 +33,17 @@ type coordinator struct {
 	cancel             context.CancelFunc
 	publisher          pubsub.Publisher
 	botStore           *bot_manager.RedisStore
+	joinTournamentFunc func(tournamentID string, req *proto.PlayerAddress) error
 	gameCreator        GameCreator
 	entryFee           int32
 	minPlayersRequired uint32
 	intervalSeconds    uint32
 	beforeStartSeconds uint32
+
+	botFreshness time.Duration
 }
 
-func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *coordinator {
+func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFreshnessSec int64) *coordinator {
 	ctx, cancel := context.WithCancel(parent)
 	return &coordinator{
 		ctx:                ctx,
@@ -52,6 +55,7 @@ func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore
 		minPlayersRequired: minPlayersRequired,
 		intervalSeconds:    intervalSeconds,
 		beforeStartSeconds: beforeStartSeconds,
+		botFreshness:       time.Duration(botFreshnessSec) * time.Second,
 	}
 }
 
@@ -87,6 +91,10 @@ func (tc *coordinator) tick() {
 		return
 	}
 
+	if err := tc.fillRegistrationOpenTournamentsWithBots(now); err != nil {
+		log.Errorw("tournament: fill bots before begin failed", "err", err)
+	}
+
 	//2. 待匹配players
 	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
 	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
@@ -101,6 +109,91 @@ func (tc *coordinator) tick() {
 	if err := tc.beginTournament(tournamentToBegin); err != nil {
 		log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
 	}
+}
+
+func (tc *coordinator) fillRegistrationOpenTournamentsWithBots(now time.Time) error {
+	if tc.botStore == nil {
+		return nil
+	}
+	rows, err := db.TournamentListRegistrationOpenReachedDeadline(now)
+	if err != nil {
+		return err
+	}
+	for _, t := range rows {
+		if err := tc.fillTournamentWithBotsIfNeeded(now, t.TournamentID); err != nil {
+			log.Warnw("tournament: fill bots for tournament failed", "tournament_id", t.TournamentID, "err", err)
+		}
+	}
+	return nil
+}
+
+func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentID string) error {
+	if tournamentID == "" {
+		return nil
+	}
+	need := 0
+	err := db.Get().Transaction(func(tx *gorm.DB) error {
+		var t dao.Tournament
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("tournament_id = ?", tournamentID).
+			First(&t).Error; err != nil {
+			return err
+		}
+		if t.Status != dao.TournamentStatusRegistrationOpen {
+			return nil
+		}
+		if now.Before(t.RegistrationDeadline) {
+			return nil
+		}
+		queued, err := db.TournamentListParticipantsByStatus(tx, t.TournamentID, dao.TournamentParticipantStatusQueued)
+		if err != nil {
+			return err
+		}
+		target := int(tc.minPlayersRequired)
+		if target%2 != 0 {
+			target++
+		}
+		if len(queued) >= target {
+			return nil
+		}
+		need = target - len(queued)
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if need <= 0 {
+		return nil
+	}
+
+	for i := 0; i < need; i++ {
+		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
+		if err != nil {
+			return err
+		}
+		if bot == nil {
+			return nil
+		}
+		if tc.joinTournamentFunc == nil {
+			return fmt.Errorf("nil tournament join function")
+		}
+		if err := tc.joinTournamentFunc(tournamentID, &proto.PlayerAddress{
+			Id:               bot.Id,
+			TemporaryAddress: bot.TemporaryAddress,
+		}); err != nil {
+			_, rerr := tc.botStore.ReleaseInGameBot(*bot, now.UnixMilli(), tc.botFreshness.Milliseconds())
+			if rerr != nil {
+				log.Warnw("tournament: release bot after failed join failed", "bot", bot.String(), "err", rerr)
+			}
+			log.Warnw("tournament: bot join tournament failed", "tournament_id", tournamentID, "bot", bot.String(), "err", err)
+			continue
+		}
+		log.Debugw("tournament: bot join tournament success", "tournament_id", tournamentID, "bot", bot.String())
+	}
+	return nil
 }
 
 func (tc *coordinator) ensureNextTournaments(now time.Time) error {
@@ -141,7 +234,9 @@ func (tc *coordinator) createTournamentIfNotExists(at time.Time) error {
 	if err := db.TournamentCreate(t); err != nil {
 		return err
 	}
-	tc.publishTournamentRosterUpdate(t.TournamentID)
+	if err := tc.publishTournamentRosterUpdate(t.TournamentID); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -386,9 +481,15 @@ func (tc *coordinator) publishTournamentMatchOutcome(o *tournamentMatchOutcomeTo
 	}
 }
 
-func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) {
-	if tc == nil || tc.publisher == nil || tournamentID == "" {
-		return
+func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) error {
+	if tc == nil {
+		return fmt.Errorf("nil coordinator")
+	}
+	if tc.publisher == nil {
+		return fmt.Errorf("nil publisher")
+	}
+	if tournamentID == "" {
+		return fmt.Errorf("empty tournament id")
 	}
 	evt := &proto.Event{
 		Type: proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE,
@@ -398,7 +499,9 @@ func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) {
 	}
 	if err := pubsub.Publish(tc.ctx, tc.publisher, pubsub.TopicTournamentRoster, evt); err != nil {
 		log.Errorw("tournament: publish roster update failed", "tournament_id", tournamentID, "err", err)
+		return err
 	}
+	return nil
 }
 
 func (tc *coordinator) onGameCompleted(gameID int64) error {
