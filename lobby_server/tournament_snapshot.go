@@ -30,7 +30,7 @@ func (s *GRPCServices) GetLatestRegistrationOpenTournamentSnapshot(ctx context.C
 		return nil, status.Error(codes.InvalidArgument, "nil player address")
 	}
 	now := time.Now().UTC()
-	t, err := db.TournamentGetLatestRegistrationOpenBeforeDeadline(now)
+	t, err := db.TournamentGetLatestRegistrationOpenBeforeStart(now)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return &proto.GetLatestRegistrationOpenTournamentSnapshotResponse{HasTournament: false}, nil

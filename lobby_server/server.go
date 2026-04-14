@@ -8,6 +8,7 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/lobby_server/bot_manager"
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
@@ -64,7 +65,12 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	eventPub := pubsub.NewStreamPublisher(st)
 	s.eventStream = st
 
-	queueSvc, err := queue.NewService(ctx, eventPub, gc,
+	botStore, err := bot_manager.NewRedisStore("")
+	if err != nil {
+		return nil, fmt.Errorf("lobby redis bots: %w", err)
+	}
+
+	queueSvc, err := queue.NewService(ctx, eventPub, botStore, gc,
 		cfg.MinTokenToJoinQueue,
 		argsTemplate.ConfirmationTimeout,
 		argsTemplate.GameContinueTimeout,
@@ -78,7 +84,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	}
 	s.queueSvc = queueSvc
 
-	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, eventPub, gc,
+	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, eventPub, botStore, gc,
 		cfg.TournamentCfg.EntryFee,
 		cfg.TournamentCfg.MinPlayersRequired,
 		cfg.TournamentCfg.IntervalSeconds,

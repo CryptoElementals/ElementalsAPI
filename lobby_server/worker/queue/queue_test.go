@@ -68,7 +68,7 @@ func TestJoinExitQueue(t *testing.T) {
 	testMiniRedis.FlushAll()
 	gameCreator := tt.NewMockGameCreator(gomock.NewController(t))
 	var err error
-	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, 0, "")
+	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, nil, gameCreator, 0, 60, 0, 0, 0, 0, "")
 	require.NoError(t, err)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event
@@ -92,7 +92,7 @@ func TestGameMatched(t *testing.T) {
 	gameCreator := tt.NewMockGameCreator(ctrl)
 	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
 	var err error
-	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, gameCreator, 0, 60, 0, 0, 0, 0, "")
+	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, nil, gameCreator, 0, 60, 0, 0, 0, 0, "")
 	require.NoError(t, err)
 	require.NoError(t, globalTestQueueService.Start())
 	// send join queue event

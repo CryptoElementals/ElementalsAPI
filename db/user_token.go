@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/battlereward"
@@ -21,6 +22,71 @@ const maxPlayerPerAddress = 3
 
 func SaveUserToken(tokens ...dao.UserToken) error {
 	return Get().Save(&tokens).Error
+}
+
+// DeductUserTokenForTournamentEntry deducts tokenAmount directly from user_tokens for tournament registration.
+// Returns "user token amount is not enough" when balance is insufficient (or row missing).
+func DeductUserTokenForTournamentEntry(ctx context.Context, playerID int64, tokenAmount int32) error {
+	if tokenAmount <= 0 {
+		return nil
+	}
+	return Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return DeductUserTokenForTournamentEntryTx(tx, playerID, tokenAmount)
+	})
+}
+
+// DeductUserTokenForTournamentEntryTx deducts tokenAmount directly from user_tokens in an existing tx.
+func DeductUserTokenForTournamentEntryTx(tx *gorm.DB, playerID int64, tokenAmount int32) error {
+	if tokenAmount <= 0 {
+		return nil
+	}
+	res := tx.Model(&dao.UserToken{}).
+		Where("player_id = ? AND token_amount >= ?", playerID, tokenAmount).
+		Update("token_amount", gorm.Expr("token_amount - ?", tokenAmount))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("user token amount is not enough")
+	}
+	return nil
+}
+
+// RefundUserTokenForTournamentEntryTx refunds tokenAmount back to user_tokens in an existing tx.
+func RefundUserTokenForTournamentEntryTx(tx *gorm.DB, playerID int64, tokenAmount int32) error {
+	if tokenAmount <= 0 {
+		return nil
+	}
+	res := tx.Model(&dao.UserToken{}).
+		Where("player_id = ?", playerID).
+		Update("token_amount", gorm.Expr("token_amount + ?", tokenAmount))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("user token not found")
+	}
+	return nil
+}
+
+func RecordTournamentEntryLedgerTx(
+	tx *gorm.DB,
+	tournamentID string,
+	playerID int64,
+	tempAddress string,
+	amount int32,
+	direction dao.TournamentEntryLedgerDirection,
+	reason string,
+) error {
+	row := &dao.TournamentEntryLedger{
+		TournamentID: tournamentID,
+		PlayerID:     playerID,
+		TempAddress:  strings.ToLower(strings.TrimSpace(tempAddress)),
+		Amount:       amount,
+		Direction:    direction,
+		Reason:       reason,
+	}
+	return tx.Create(row).Error
 }
 
 func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32, tournamentID string) (err error) {
