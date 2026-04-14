@@ -60,10 +60,11 @@ func BuildEventMessageID(evt *proto.Event) string {
 		gameID = evt.GetGameReady().GetGameId()
 		primaryID = gameID
 	case proto.EventType_TYPE_GAME_PHASE_SYNC:
-		gameID = evt.GetGamePhase().GetGameID()
+		gp := evt.GetGamePhase()
+		gameID = gp.GetGameID()
 		primaryID = gameID
-		rr = evt.GetGamePhase().GetRoundNumber()
-		tt = evt.GetGamePhase().GetTurnNumber()
+		rr = gp.GetRoundNumber()
+		tt = gp.GetTurnNumber()
 	case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
 		gameID = evt.GetGameSettlementResult().GetGameId()
 		primaryID = gameID

@@ -84,9 +84,8 @@ message CardPlayingInfo {
 
 message GamePhasePlayer {
     PlayerAddress Address = 1;
-    PlayerTurnStatus TurnStatus = 2;
-    uint32 CurrentHP = 3;
-    repeated CardPlayingInfo CardPlayingInfos = 4;
+    uint32 CurrentHP = 2;
+    repeated CardPlayingInfo CardPlayingInfos = 3;
 }
 
 message GamePhase {
@@ -95,7 +94,8 @@ message GamePhase {
     uint32 RoundNumber = 3;
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
-    repeated GamePhasePlayer Players = 6;
+    PlayerTurnStatus PlayerTurnStatus = 6;
+    repeated GamePhasePlayer Players = 7;
 }
 
 message ConfirmBattleRequest {

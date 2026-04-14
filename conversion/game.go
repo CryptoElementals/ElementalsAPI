@@ -1,6 +1,8 @@
 package conversion
 
 import (
+	"strings"
+
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -243,11 +245,12 @@ func playerTurnInfoInTurn(turn *dao.Turn, playerID int64, temporaryAddress strin
 	if turn == nil {
 		return nil
 	}
+	wantAddr := strings.ToLower(temporaryAddress)
 	for _, pti := range turn.PlayerTurnInfos {
 		if pti == nil {
 			continue
 		}
-		if pti.PlayerID == playerID && pti.TemporaryAddress == temporaryAddress {
+		if pti.PlayerID == playerID && strings.ToLower(pti.TemporaryAddress) == wantAddr {
 			return pti
 		}
 	}
@@ -283,7 +286,7 @@ func cardPlayingInfosForRoundPlayer(round *RoundView, activeTurn uint32, playerI
 	return out
 }
 
-func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber uint32, turnStartAt int64) *proto.GamePhase {
+func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber uint32, turnStartAt int64, caller types.PlayerAddress) *proto.GamePhase {
 	if game == nil || currentRound == nil {
 		return nil
 	}
@@ -306,12 +309,20 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 	}
 
 	gamePhase := &proto.GamePhase{
-		GameType:    proto.GameType(game.Type),
-		GameID:      game.ID,
-		RoundNumber: uint32(currentRound.RoundNumber),
-		TurnNumber:  turnNumber,
-		TurnStartAt: turnStartAt,
-		Players:     make([]*proto.GamePhasePlayer, 0, playerCount),
+		GameType:         proto.GameType(game.Type),
+		GameID:           game.ID,
+		RoundNumber:      uint32(currentRound.RoundNumber),
+		TurnNumber:       turnNumber,
+		TurnStartAt:      turnStartAt,
+		PlayerTurnStatus: proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
+		Players:          make([]*proto.GamePhasePlayer, 0, playerCount),
+	}
+
+	// Only the SyncGamePhase caller's status (not other players').
+	if currentTurn != nil {
+		if pti := playerTurnInfoInTurn(currentTurn, caller.Id, caller.TemporaryAddress); pti != nil {
+			gamePhase.PlayerTurnStatus = pti.PlayerStatus
+		}
 	}
 
 	initialHP := uint32(game.GameArgs.InitialHP)
@@ -323,9 +334,6 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 				playerTurnInfo.PlayerID,
 				playerTurnInfo.TemporaryAddress,
 			).ToProto()
-
-			// Get turn status from PlayerTurnInfo
-			turnStatus := playerTurnInfo.PlayerStatus
 
 			// Current HP: after battle use HealthAfter; before resolution the stub only has HealthBefore (HealthAfter is still zero).
 			var currentHP uint32
@@ -341,7 +349,6 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 
 			player := &proto.GamePhasePlayer{
 				Address:          addr,
-				TurnStatus:       turnStatus,
 				CurrentHP:        currentHP,
 				CardPlayingInfos: cardPlayingInfosForRoundPlayer(currentRound, turnNumber, playerTurnInfo.PlayerID, playerTurnInfo.TemporaryAddress),
 			}
