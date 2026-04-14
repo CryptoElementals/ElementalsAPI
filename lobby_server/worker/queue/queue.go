@@ -52,6 +52,7 @@ type GameCreator interface {
 func NewQueue(
 	ctx context.Context,
 	pub EventPublisher,
+	botStore *bot_manager.RedisStore,
 	gameCreator GameCreator,
 	matchConfirmationTimeout int64,
 	continueTimeout int64,
@@ -81,9 +82,11 @@ func NewQueue(
 		return nil, fmt.Errorf("lobby redis state: %w", err)
 	}
 	q.lobbyState = lobbyState
-	botStore, err := bot_manager.NewRedisStore("")
-	if err != nil {
-		return nil, fmt.Errorf("lobby redis bots: %w", err)
+	if botStore == nil {
+		botStore, err = bot_manager.NewRedisStore("")
+		if err != nil {
+			return nil, fmt.Errorf("lobby redis bots: %w", err)
+		}
 	}
 	q.botStore = botStore
 	q.registerPendingMatchConfirmationTimeoutHandler()
@@ -325,11 +328,11 @@ func (q *Queue) publishGameSettlementResult(gameID int64, gr *dao.GameResult) {
 		Receivers: receivers,
 		Event: &pb.Event_GameSettlementResult{
 			GameSettlementResult: &pb.GameSettlementResult{
-				GameId:          gameID,
-				SystemFee:       br.SystemFee,
-				PlayerRewards:   playerRewards,
-				Multiplier:      gr.Multiplier,
-				WinnerPlayerId:  winnerPlayerIDFromGameResult(gr),
+				GameId:         gameID,
+				SystemFee:      br.SystemFee,
+				PlayerRewards:  playerRewards,
+				Multiplier:     gr.Multiplier,
+				WinnerPlayerId: winnerPlayerIDFromGameResult(gr),
 			},
 		},
 	}

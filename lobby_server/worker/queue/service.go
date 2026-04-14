@@ -6,6 +6,7 @@ import (
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/lobby_server/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -19,6 +20,7 @@ type Service struct {
 
 func NewService(ctx context.Context,
 	pub EventPublisher,
+	botStore *bot_manager.RedisStore,
 	gameCreator GameCreator,
 	minTokenToJoinQueue int32,
 	matchConfirmationTimeout int64,
@@ -28,7 +30,7 @@ func NewService(ctx context.Context,
 	botFreshnessSec int64,
 	statServiceEndpoint string,
 ) (*Service, error) {
-	q, err := NewQueue(ctx, pub, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, botFreshnessSec, minTokenToJoinQueue, statServiceEndpoint)
+	q, err := NewQueue(ctx, pub, botStore, gameCreator, matchConfirmationTimeout, continueTimeout, continueTimeoutRedundancy, botWaitTime, botFreshnessSec, minTokenToJoinQueue, statServiceEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("queue: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/lobby_server/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
@@ -31,6 +32,7 @@ type coordinator struct {
 	ctx                context.Context
 	cancel             context.CancelFunc
 	publisher          pubsub.Publisher
+	botStore           *bot_manager.RedisStore
 	gameCreator        GameCreator
 	entryFee           int32
 	minPlayersRequired uint32
@@ -38,12 +40,13 @@ type coordinator struct {
 	beforeStartSeconds uint32
 }
 
-func newCoordinator(parent context.Context, publisher pubsub.Publisher, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *coordinator {
+func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *coordinator {
 	ctx, cancel := context.WithCancel(parent)
 	return &coordinator{
 		ctx:                ctx,
 		cancel:             cancel,
 		publisher:          publisher,
+		botStore:           botStore,
 		gameCreator:        gameCreator,
 		entryFee:           entryFee,
 		minPlayersRequired: minPlayersRequired,
@@ -78,8 +81,6 @@ func (tc *coordinator) loop() {
 // 1. 超过整数倍单元时间(支持配置，如1小时, 10分钟)，创建下一个tournament
 func (tc *coordinator) tick() {
 	now := time.Now().UTC()
-	unitDuration := time.Duration(tc.intervalSeconds) * time.Second
-	//log.Debugw("tournament: tick", "unitDuration", unitDuration)
 
 	if err := tc.ensureNextTournaments(now); err != nil {
 		log.Errorw("tournament: ensure next tournaments", "err", err)
@@ -87,17 +88,17 @@ func (tc *coordinator) tick() {
 	}
 
 	//2. 待匹配players
-	currentSlotTime := now.Truncate(unitDuration)
-	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithSlot(currentSlotTime)
+	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
+	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			//log.Debugw("tournament: no tournament to begin at current slot", "currentSlotTime", currentSlotTime)
+			//log.Debugw("tournament: no tournament to begin in grace window", "now", now)
 			return
 		}
 		log.Errorw("tournament: get latest tournament to begin", "err", err)
 		return
 	}
-	if err := tc.beginTournament(tournamentToBegin); err != nil { //这个逻辑待看。。。。。
+	if err := tc.beginTournament(tournamentToBegin); err != nil {
 		log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
 	}
 }

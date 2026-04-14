@@ -139,6 +139,20 @@ func TournamentGetLatestRegistrationOpenBeforeDeadline(now time.Time) (*dao.Tour
 	return &t, nil
 }
 
+// TournamentGetLatestRegistrationOpenBeforeStart returns latest registration_open tournament
+// whose scheduled_start_at is still in the future.
+func TournamentGetLatestRegistrationOpenBeforeStart(now time.Time) (*dao.Tournament, error) {
+	var t dao.Tournament
+	err := Get().
+		Where("status = ? AND scheduled_start_at > ?", dao.TournamentStatusRegistrationOpen, now).
+		Order("scheduled_start_at DESC").
+		First(&t).Error
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // TournamentGetRegistrationOpenByTournamentIDBeforeDeadline returns a specific tournament
 // by business tournament_id when registration is still open and not expired.
 func TournamentGetRegistrationOpenByTournamentIDBeforeDeadline(tournamentID string, now time.Time) (*dao.Tournament, error) {
@@ -160,12 +174,17 @@ func TournamentListRegistrationOpenPastScheduled(before time.Time) ([]dao.Tourna
 	return rows, err
 }
 
-// TournamentGetLatestRegistrationOpenPastScheduled returns one latest registration_open tournament
-// whose scheduled_start_at has arrived.
-func TournamentGetLatestRegistrationOpenWithSlot(slot time.Time) (*dao.Tournament, error) {
+// TournamentGetLatestRegistrationOpenWithinStartGrace returns one latest registration_open tournament
+// whose scheduled_start_at is within [now-grace, now]. This allows small scheduler/restart delays.
+func TournamentGetLatestRegistrationOpenWithinStartGrace(now time.Time, grace time.Duration) (*dao.Tournament, error) {
+	if grace < 0 {
+		grace = 0
+	}
+	startFrom := now.Add(-grace)
 	var t dao.Tournament
 	err := Get().
-		Where("status = ? AND scheduled_start_at = ?", dao.TournamentStatusRegistrationOpen, slot).
+		Where("status = ? AND scheduled_start_at >= ? AND scheduled_start_at <= ?",
+			dao.TournamentStatusRegistrationOpen, startFrom, now).
 		Order("scheduled_start_at DESC, id DESC").
 		First(&t).Error
 	if err != nil {

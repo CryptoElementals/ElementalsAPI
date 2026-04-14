@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/lobby_server/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
@@ -23,10 +24,10 @@ type TournamentQueueService struct {
 }
 
 // NewTournamentQueueService constructs the tournament worker. Call Start after DB is ready.
-func NewTournamentQueueService(ctx context.Context, publisher pubsub.Publisher, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *TournamentQueueService {
+func NewTournamentQueueService(ctx context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32) *TournamentQueueService {
 	return &TournamentQueueService{
 		ctx:   ctx,
-		coord: newCoordinator(ctx, publisher, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds),
+		coord: newCoordinator(ctx, publisher, botStore, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds),
 	}
 }
 
