@@ -460,6 +460,17 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
+	case proto.EventType_TYPE_TOURNAMENT_MATCH_OUTCOME:
+		return events.Event{
+			Type: events.EventTypeStatusUpdate,
+			Data: map[string]interface{}{
+				"MessageID": messageID,
+				"EventType": "tournamentMatchOutcome",
+				"Message":   msg.Event.GetTournamentMatchOutcome(),
+			},
+			Timestamp:   time.Now(),
+			RequestUUID: requestUUID,
+		}
 	case proto.EventType_TYPE_KNOWN:
 		fallthrough
 	default:
