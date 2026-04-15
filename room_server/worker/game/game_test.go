@@ -192,8 +192,13 @@ func setupGameTest(ctx context.Context, expectedRoundNumber int, t *testing.T) {
 func TestGameManagerNewGameAndRecover(t *testing.T) {
 	setupMemDb(t)
 	ga := newTestGameArgsRow(t, 3000)
-	contractClient := tt.NewMockContractClient(gomock.NewController(t))
-	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
+	mockChain := tt.NewMockRoomChain(gomock.NewController(t))
+	mockChain.EXPECT().AddCreateRoom(gomock.Any()).AnyTimes()
+	mockChain.EXPECT().AddSetTurnReady(gomock.Any()).AnyTimes()
+	mockChain.EXPECT().AddCommitment(gomock.Any()).Return(nil).AnyTimes()
+	mockChain.EXPECT().AddCard(gomock.Any()).Return(nil).AnyTimes()
+	mockChain.EXPECT().ClearGameInfo(gomock.Any()).AnyTimes()
+	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
 	registerGameManagerWorker(gameManager)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
@@ -244,7 +249,12 @@ func TestGameStateMachine(t *testing.T) {
 	t.Skip("TODO: rework harness — GameCreated is delivered via Publisher, not player workers; DbRoundToRoundResult IsGameOver uses game end state")
 	setupMemDb(t)
 	prepareCards(t)
-	contractClient := tt.NewMockContractClient(gomock.NewController(t))
+	mockChain := tt.NewMockRoomChain(gomock.NewController(t))
+	mockChain.EXPECT().AddCreateRoom(gomock.Any()).AnyTimes()
+	mockChain.EXPECT().AddSetTurnReady(gomock.Any()).AnyTimes()
+	mockChain.EXPECT().AddCommitment(gomock.Any()).Return(nil).AnyTimes()
+	mockChain.EXPECT().AddCard(gomock.Any()).Return(nil).AnyTimes()
+	mockChain.EXPECT().ClearGameInfo(gomock.Any()).AnyTimes()
 	compareRound := func(svc *Service, roundNumber int, isLast bool) {
 		rr, gr, err := svc.LoadBattleInfoFromDB(1, uint32(roundNumber))
 		require.NoError(t, err)
@@ -260,7 +270,7 @@ func TestGameStateMachine(t *testing.T) {
 	}
 	t.Run("1 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 1000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -270,7 +280,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 	t.Run("2 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 3000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -281,7 +291,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 	t.Run("3 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 10000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, contractClient, 0, 0)
+		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

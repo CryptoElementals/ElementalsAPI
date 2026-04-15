@@ -24,10 +24,10 @@ func TestRound_isExtraRound(t *testing.T) {
 func TestCheckGameOverByHP_overtimeHPSpreadEndsImmediately(t *testing.T) {
 	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
 	g := &dao.Game{
-		Type:               dao.GameTypeTournament,
-		GameArgs:           ga,
-		RegulationRounds:   3,
-		OvertimeRoundsCap:  3,
+		Type:              dao.GameTypeTournament,
+		GameArgs:          ga,
+		RegulationRounds:  3,
+		OvertimeRoundsCap: 3,
 	}
 	// First OT round (4), single turn — not last overall round.
 	r := &round{game: g, roundNumber: 4, turnNumber: 1}

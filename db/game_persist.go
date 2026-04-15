@@ -38,6 +38,7 @@ func UpdateGameFieldsTx(tx *gorm.DB, gameID int64, u GameFieldsUpdate) error {
 
 // InsertNewGameGraph inserts games, game_player_infos, turns, and player_turn_infos in FK order.
 // game.GameArgs must be non-nil and point at an existing game_args row (non-zero id); that row is not created here.
+// game_chain_ids rows are written by the chain worker when processing create-room (see SaveGameChainIDForGame).
 func InsertNewGameGraph(tx *gorm.DB, game *dao.Game) error {
 	game.GameArgsID = game.GameArgs.ID
 	if err := tx.Omit("GameArgs", "Players", "Turns", "GameResult").Create(game).Error; err != nil {
@@ -74,6 +75,35 @@ func InsertNewGameGraph(tx *gorm.DB, game *dao.Game) error {
 		}
 	}
 	return nil
+}
+
+// SaveGameChainIDForGame inserts one game_id → chain_id row. Called from the chain package when handling create-room.
+func SaveGameChainIDForGame(gameID, chainID int64) error {
+	row := &dao.GameChainID{GameID: gameID, ChainID: chainID}
+	return Get().Create(row).Error
+}
+
+// GetChainIDForGame returns the chain id for a game from game_chain_ids.
+func GetChainIDForGame(gameID int64) (int64, error) {
+	var row dao.GameChainID
+	err := Get().Where("game_id = ?", gameID).First(&row).Error
+	if err != nil {
+		return 0, err
+	}
+	return row.ChainID, nil
+}
+
+// LoadAllGameChainIDMap returns all game_id -> chain_id rows (for room server registry preload).
+func LoadAllGameChainIDMap() (map[int64]int64, error) {
+	var rows []dao.GameChainID
+	if err := Get().Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	m := make(map[int64]int64, len(rows))
+	for i := range rows {
+		m[rows[i].GameID] = rows[i].ChainID
+	}
+	return m, nil
 }
 
 // SaveTurnTx inserts a new turn (omit PTIs) or updates turn_status and turn_start_at only.

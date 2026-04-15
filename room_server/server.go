@@ -16,7 +16,6 @@ import (
 	rpc "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/stream"
 	"github.com/CryptoElementals/common/wallet"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"google.golang.org/grpc"
 )
 
@@ -33,19 +32,10 @@ type Service struct {
 func New(ctx context.Context,
 	cfg *config.RoomServerConfig,
 	isDevelop ...bool) (*Service, error) {
-	_ = isDevelop
 	s := &Service{
 		ctx: ctx,
 		cfg: cfg,
 		mgr: worker.NewWorkerManager(ctx),
-	}
-	client, err := ethclient.DialContext(ctx, cfg.ChainCfg.HttpRpc)
-	if err != nil {
-		return nil, err
-	}
-	chainID, err := client.ChainID(ctx)
-	if err != nil {
-		return nil, err
 	}
 	wallets := make([]*wallet.Wallet, 0, len(cfg.WalletPaths))
 	for _, path := range cfg.WalletPaths {
@@ -55,7 +45,7 @@ func New(ctx context.Context,
 		}
 		wallets = append(wallets, w)
 	}
-	chainSvc, err := chain.NewChain(ctx, s.mgr, chainID.Int64(), client, cfg.ChainCfg.RoomV3ContractAddress, wallets)
+	chainSvc, err := chain.NewChain(ctx, cfg, wallets, isDevelop...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +55,7 @@ func New(ctx context.Context,
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
 	eventPub := pubsub.NewStreamPublisher(st)
-	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, cfg.GameArgsID, chainSvc, cfg.PoolBatchSize, cfg.PoolProcessingInterval)
+	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, cfg.GameArgsID, chainSvc)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	// game.Service implements chain/player/game handlers.
