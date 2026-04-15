@@ -120,10 +120,44 @@ var migrateDbCmd = &cobra.Command{
 	},
 }
 
+// configureTournamentReward represents explicit tier-reward seed command
+var configureTournamentReward = &cobra.Command{
+	Use:   "configure-tournament-reward",
+	Short: "Seed tournament tier reward config table",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := loadDbConfig()
+		if err != nil {
+			fmt.Printf("Failed to load config: %v\n", err)
+			os.Exit(1)
+		}
+
+		logCfg := &log.Config{
+			Level:       "info",
+			Development: false,
+		}
+		if err := log.InitGlobalLogger(logCfg); err != nil {
+			fmt.Printf("Failed to initialize logger: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := db.Init(cfg); err != nil {
+			fmt.Printf("Failed to initialize database: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := db.SeedTournamentTierRewardConfigs(); err != nil {
+			fmt.Printf("Failed to seed tournament tier reward configs: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Tournament tier reward config seed completed successfully")
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(createDbCmd)
 	rootCmd.AddCommand(migrateDbCmd)
 	rootCmd.AddCommand(dropFksCmd)
+	rootCmd.AddCommand(configureTournamentReward)
 
 	createDbCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	createDbCmd.MarkFlagRequired("config")
@@ -133,6 +167,9 @@ func init() {
 
 	dropFksCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	dropFksCmd.MarkFlagRequired("config")
+
+	configureTournamentReward.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
+	configureTournamentReward.MarkFlagRequired("config")
 }
 
 // loadDbConfig loads database configuration from YAML file
