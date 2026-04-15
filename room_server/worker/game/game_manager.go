@@ -28,9 +28,9 @@ type GameManager struct {
 	gameResultSettler GameResultSettler
 	// argsTemplateID is the default game_args id for new matches.
 	argsTemplateID uint
-	gameArgsMu   sync.RWMutex
-	gameArgsByID map[uint]*dao.GameArgs
-	stopped      bool
+	gameArgsMu     sync.RWMutex
+	gameArgsByID   map[uint]*dao.GameArgs
+	stopped        bool
 
 	// Event pools for commitment and card submissions
 	txPool *txPool
@@ -267,11 +267,15 @@ func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType u
 	if r.stopped {
 		return 0, errors.New("server stopping, drop queue match finalize")
 	}
-	gameID, err := r.createGameAndNotify(players, gameType, completedMatchID)
+	matchID := completedMatchID
+	if completedMatchID == 0 {
+		matchID = dao.GenerateSnowflakeID()
+	}
+	gameID, err := r.createGameAndNotify(players, gameType, matchID)
 	if err != nil {
 		return 0, err
 	}
-	log.Infow("queueMatchGameCreated", "game id", gameID, "match id", completedMatchID, "players", types.ToJsonLoggable(players))
+	log.Infow("queueMatchGameCreated", "game id", gameID, "match id", completedMatchID, "players", types.ToJsonLoggable(players), "game type", gameType)
 	return gameID, nil
 }
 
