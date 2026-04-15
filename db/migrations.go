@@ -32,6 +32,7 @@ func Migrate() error {
 		&dao.TournamentMatch{},
 		&dao.TournamentReward{},
 		&dao.TournamentEntryLedger{},
+		&dao.TournamentTierRewardConfig{},
 		&dao.GameMatch{},
 		&dao.BotAccount{},
 		&dao.GameChainID{},
@@ -69,6 +70,7 @@ func MigrateMemDb() error {
 		&dao.TournamentMatch{},
 		&dao.TournamentReward{},
 		&dao.TournamentEntryLedger{},
+		&dao.TournamentTierRewardConfig{},
 		&dao.GameMatch{},
 		&dao.BotAccount{},
 		&dao.GameChainID{},
@@ -82,6 +84,9 @@ func MigrateMemDb() error {
 		if !exist {
 			return fmt.Errorf("table not found: %T", table)
 		}
+	}
+	if err := SeedTournamentTierRewardConfigs(); err != nil {
+		return err
 	}
 	return nil
 }

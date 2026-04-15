@@ -130,3 +130,18 @@ type TournamentEntryLedger struct {
 }
 
 func (TournamentEntryLedger) TableName() string { return "tournament_entry_ledgers" }
+
+// TournamentTierRewardConfig stores tournament reward/point templates by tier.
+type TournamentTierRewardConfig struct {
+	BaseModel
+
+	TotalPlayerCount int32 `gorm:"not null;index;uniqueIndex:uq_tournament_tier_reward_cfg,priority:1" json:"total_player_count"`
+	EntryFee         int32 `gorm:"not null;default:0;uniqueIndex:uq_tournament_tier_reward_cfg,priority:2" json:"entry_fee"`
+	Commission       int32 `gorm:"not null;default:0" json:"commission"`
+	TotalTierCount   int32 `gorm:"not null" json:"total_tier_count"`
+	TierNo           int32 `gorm:"not null;index;uniqueIndex:uq_tournament_tier_reward_cfg,priority:3" json:"tier_no"`
+	RewardToken      int32 `gorm:"not null;default:0" json:"reward_token"`
+	Point            int32 `gorm:"not null;default:0" json:"point"`
+}
+
+func (TournamentTierRewardConfig) TableName() string { return "tournament_tier_reward_configs" }
