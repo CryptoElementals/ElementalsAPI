@@ -2,46 +2,35 @@ package chain
 
 import (
 	"context"
-	"encoding/hex"
+	"crypto/rand"
 	"errors"
+	"math/big"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-type batchTxEvent struct {
-	txs       *proto.TransactionBatch
-	blockNum  uint64
-	blockHash []byte
-}
-
-type Chain struct {
-	ctx                   context.Context
-	workerManager         *worker.WorkerManager
+// chainRuntime is one L2 + RoomV3 client used for submissions.
+type chainRuntime struct {
+	chainID               int64
 	roomV3Client          *concurrentRoomV3Client
 	roomV2ContractAddress string
-
-	// track chain tx handling time from submission to on-chain completion
-	txTimes     map[string]time.Time
-	txTimesLock sync.Mutex
 }
 
-func NewChain(
+func newChainRuntime(
 	ctx context.Context,
-	workerManager *worker.WorkerManager,
 	chainID int64,
 	client *ethclient.Client,
 	roomV3ContractAddressHex string,
 	wallets []*wallet.Wallet,
 	isDevelop ...bool,
-) (*Chain, error) {
+) (*chainRuntime, error) {
 	if roomV3ContractAddressHex == "" {
 		return nil, errors.New("room contract address is required")
 	}
@@ -50,103 +39,176 @@ func NewChain(
 		log.Errorf("newConcurrentRoomV3Client: create room v3 client failed: %s", err.Error())
 		return nil, err
 	}
-	return &Chain{
-		ctx:                   ctx,
-		workerManager:         workerManager,
+	return &chainRuntime{
+		chainID:               chainID,
 		roomV3Client:          roomV3Cli,
 		roomV2ContractAddress: strings.ToLower(roomV3ContractAddressHex),
-		txTimes:               make(map[string]time.Time),
 	}, nil
 }
 
-// SubmitTasks submits a batch of pre-encoded RoomV3 tasks to the chain.
-// Tasks are ABI-encoded payloads compatible with RoomV3.batchSubmitTasks.
-func (c *Chain) SubmitTasks(tasks []types.RoomContractTask) error {
-	if c.roomV3Client == nil {
+// SubmitTasks submits a batch of tasks to this chain's RoomV3 contract.
+func (r *chainRuntime) SubmitTasks(tasks []types.RoomContractTask) error {
+	if r.roomV3Client == nil {
 		return errors.New("room v3 client not initialized")
 	}
 	if len(tasks) == 0 {
 		return nil
 	}
-
 	indexes := make([]uint8, 0, len(tasks))
 	payloads := make([][]byte, 0, len(tasks))
 	for _, t := range tasks {
 		indexes = append(indexes, t.Index)
 		payloads = append(payloads, t.Task)
 	}
+	_, err := r.roomV3Client.submitTasks(indexes, payloads)
+	return err
+}
 
-	txHash, err := c.roomV3Client.submitTasks(indexes, payloads)
+// Chain is the room server chain facade: multiple L2 clients, tx pools, and game→chain routing.
+type Chain struct {
+	ctx context.Context
+
+	runtimes map[int64]*chainRuntime
+	pools    map[int64]*txPool
+
+	chainIDs []int64 // configured chain ids (for random pick)
+
+	gameToChainMu sync.RWMutex
+	gameToChainID map[int64]int64
+
+	poolBatchSize          int
+	poolProcessingInterval int
+}
+
+// NewChain builds chain runtimes from room server config (EffectiveChains).
+func NewChain(
+	ctx context.Context,
+	cfg *config.RoomServerConfig,
+	wallets []*wallet.Wallet,
+	isDevelop ...bool,
+) (*Chain, error) {
+	entries := cfg.EffectiveChains()
+	if len(entries) == 0 {
+		return nil, errors.New("no chains configured (set chains[] or legacy chain)")
+	}
+	batch := cfg.PoolBatchSize
+	interval := cfg.PoolProcessingInterval
+	h := &Chain{
+		ctx:                    ctx,
+		runtimes:               make(map[int64]*chainRuntime),
+		pools:                  make(map[int64]*txPool),
+		gameToChainID:          make(map[int64]int64),
+		poolBatchSize:          batch,
+		poolProcessingInterval: interval,
+	}
+	for _, e := range entries {
+		if e.HttpRpc == "" {
+			return nil, errors.New("chain http-rpc is required for each chain")
+		}
+		client, err := ethclient.DialContext(ctx, e.HttpRpc)
+		if err != nil {
+			return nil, err
+		}
+		chainID := e.ChainID
+		if chainID == 0 {
+			cid, err := client.ChainID(ctx)
+			if err != nil {
+				return nil, err
+			}
+			chainID = cid.Int64()
+		}
+		if _, dup := h.runtimes[chainID]; dup {
+			return nil, errors.New("duplicate chain id in configuration")
+		}
+		rt, err := newChainRuntime(ctx, chainID, client, e.RoomV3ContractAddress, wallets, isDevelop...)
+		if err != nil {
+			return nil, err
+		}
+		h.runtimes[chainID] = rt
+		h.chainIDs = append(h.chainIDs, chainID)
+		p := newTxPool(rt, batch, interval)
+		h.pools[chainID] = p
+	}
+	return h, nil
+}
+
+// PickChainIDForNewGame returns a random configured chain id.
+func (h *Chain) PickChainIDForNewGame() int64 {
+	if len(h.chainIDs) == 1 {
+		return h.chainIDs[0]
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(h.chainIDs))))
+	if err != nil {
+		return h.chainIDs[0]
+	}
+	return h.chainIDs[int(n.Int64())]
+}
+
+// RegisterGameChain records game→chain in memory after db.SaveGameChainIDForGame (create-room path).
+func (h *Chain) RegisterGameChain(gameID, chainID int64) {
+	h.gameToChainMu.Lock()
+	h.gameToChainID[gameID] = chainID
+	h.gameToChainMu.Unlock()
+}
+
+// AddCreateRoom picks a random configured chain, persists game_chain_ids, updates the registry, then enqueues for that chain's pool.
+func (h *Chain) AddCreateRoom(evt *types.RequireGameCreationEvent) {
+	if evt == nil {
+		return
+	}
+	chainID := h.PickChainIDForNewGame()
+	if err := db.SaveGameChainIDForGame(evt.GameID, chainID); err != nil {
+		log.Errorw("AddCreateRoom: save game_chain_ids", "gameID", evt.GameID, "chain_id", chainID, "err", err)
+		return
+	}
+	h.RegisterGameChain(evt.GameID, chainID)
+	p, ok := h.pools[chainID]
+	if !ok {
+		log.Errorw("AddCreateRoom: no tx pool for chain", "chain_id", chainID)
+		return
+	}
+	p.addCreateRoom(evt)
+}
+
+func (h *Chain) chainIDForGame(gameID int64) (int64, error) {
+	h.gameToChainMu.RLock()
+	cid, ok := h.gameToChainID[gameID]
+	h.gameToChainMu.RUnlock()
+	if ok {
+		return cid, nil
+	}
+	dbCID, err := db.GetChainIDForGame(gameID)
+	if err != nil {
+		return 0, err
+	}
+	h.gameToChainMu.Lock()
+	h.gameToChainID[gameID] = dbCID
+	h.gameToChainMu.Unlock()
+	return dbCID, nil
+}
+
+// PreloadGameChainRegistry loads game→chain from DB into memory.
+func (h *Chain) PreloadGameChainRegistry() error {
+	m, err := db.LoadAllGameChainIDMap()
 	if err != nil {
 		return err
 	}
-	c.recordTxStart(txHash, "submitTasks", len(tasks))
+	h.gameToChainMu.Lock()
+	for gid, cid := range m {
+		h.gameToChainID[gid] = cid
+	}
+	h.gameToChainMu.Unlock()
 	return nil
 }
 
-func (c *Chain) recordTxStart(txHash string, eventName string, taskCount int) {
-	if txHash == "" {
-		return
+// Start preloads registry and runs one tx pool ticker per chain.
+func (h *Chain) Start() error {
+	if err := h.PreloadGameChainRegistry(); err != nil {
+		return err
 	}
-	now := time.Now()
-	c.txTimesLock.Lock()
-	c.txTimes[txHash] = now
-	c.txTimesLock.Unlock()
-	log.Debugw("chain tx sent",
-		"event", eventName,
-		"tx_hash", txHash,
-		"task_count", taskCount,
-	)
-}
-
-func (c *Chain) Start() error {
-	// No longer needed - transaction tables removed
+	for _, p := range h.pools {
+		pp := p
+		go pp.processPools(h.ctx)
+	}
 	return nil
-}
-
-func (c *Chain) logTxCompletionIfTracked(hash string, gid int64, blockHash string, blockNumber uint64, eventName string) {
-	// If we have a recorded submission time for this tx, log the end-to-end latency
-	c.txTimesLock.Lock()
-	start, ok := c.txTimes[hash]
-	if ok {
-		delete(c.txTimes, hash)
-	}
-	c.txTimesLock.Unlock()
-	if !ok {
-		return
-	}
-
-	elapsed := time.Since(start)
-	log.Debugw("chain tx completed",
-		"tx_hash", hash,
-		"game_id", gid,
-		"block_hash", blockHash,
-		"block_number", blockNumber,
-		"event", eventName,
-		"duration_ms", elapsed.Milliseconds(),
-	)
-}
-
-// NotifyTxsCompleted logs completion latency for tx hashes that were previously tracked by SubmitTasks.
-// This is used when tx handling ingress is outside chain service (e.g. game manager).
-func (c *Chain) NotifyTxsCompleted(txs *proto.TransactionBatch) {
-	if txs == nil {
-		return
-	}
-	blockHash := strings.ToLower("0x" + hex.EncodeToString(txs.BlockHash))
-	blockNumber := txs.BlockNumber
-	for _, protoTx := range txs.Transactions {
-		hash := strings.ToLower("0x" + hex.EncodeToString(protoTx.TxHash))
-		gid := protoTx.GameId
-		switch protoTx.Tx.(type) {
-		case *proto.Transaction_GameCreated:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameCreated")
-		case *proto.Transaction_GameTurnSetupReady:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "gameTurnSetupReady")
-		case *proto.Transaction_CommitmentOnChain:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "commitmentOnChain")
-		case *proto.Transaction_CardOnChain:
-			c.logTxCompletionIfTracked(hash, gid, blockHash, blockNumber, "cardOnChain")
-		}
-	}
 }

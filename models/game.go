@@ -74,6 +74,14 @@ type Game struct {
 	GameArgs *GameArgs `json:"game_args,omitempty"`
 }
 
+type GameChainID struct {
+	BaseModel
+	GameID  int64 `gorm:"not null;uniqueIndex:uq_game_chain_game" json:"game_id"`
+	ChainID int64 `gorm:"not null" json:"chain_id"`
+}
+
+func (GameChainID) TableName() string { return "game_chain_ids" }
+
 type Turn struct {
 	BaseModel
 	GameID      int64  `gorm:"not null;uniqueIndex:uq_game_turn,priority:1" json:"game_id"`

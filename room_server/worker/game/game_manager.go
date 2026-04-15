@@ -24,16 +24,13 @@ type GameManager struct {
 	gameLocks         map[int64]*sync.Mutex
 	workerManager     *worker.WorkerManager
 	publisher         Publisher
-	chainSvc          ContractClient
+	roomChain         RoomChain
 	gameResultSettler GameResultSettler
 	// argsTemplateID is the default game_args id for new matches.
 	argsTemplateID uint
 	gameArgsMu     sync.RWMutex
 	gameArgsByID   map[uint]*dao.GameArgs
 	stopped        bool
-
-	// Event pools for commitment and card submissions
-	txPool *txPool
 }
 
 func (r *GameManager) getGameLock(gameID int64) *sync.Mutex {
@@ -64,7 +61,7 @@ func (r *GameManager) withGameMutation(gameID int64, handler func(g *Game) error
 			return err
 		}
 		gameInfo.GameArgs = gameArgs
-		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameInfo)
+		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.roomChain, r.gameResultSettler, gameInfo)
 		g.mutateTx = tx
 		g.queueAfterTxCommit = func(fn func() error) {
 			afterCommit = append(afterCommit, fn)
@@ -125,21 +122,17 @@ func NewGameManager(ctx context.Context,
 	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	argsTemplateID uint,
-	chainSvc ContractClient,
-	poolBatchSize int,
-	poolProcessingInterval int,
+	roomChain RoomChain,
 ) *GameManager {
-	m := &GameManager{
+	return &GameManager{
 		ctx:            ctx,
 		gameLocks:      make(map[int64]*sync.Mutex),
 		workerManager:  workerManagerService,
 		publisher:      pub,
-		chainSvc:       chainSvc,
+		roomChain:      roomChain,
 		argsTemplateID: argsTemplateID,
 		gameArgsByID:   make(map[uint]*dao.GameArgs),
 	}
-	m.txPool = newTxPool(chainSvc, poolBatchSize, poolProcessingInterval)
-	return m
 }
 
 func (r *GameManager) cloneGameArgs() (*dao.GameArgs, error) {
@@ -193,9 +186,6 @@ func (r *GameManager) Start() error {
 		return err
 	}
 
-	// Start background goroutine for pool processing
-	go r.txPool.processPools(r.ctx)
-
 	// On startup, abort any games that were left active (non-ended/non-aborted).
 	// This matches the "stateless" model: we do not attempt to recover/resume games after restart.
 	games, err := db.GetAllActiveGames()
@@ -237,7 +227,7 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	if err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.txPool, r.gameResultSettler, gameType, gameArgs)
+	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.roomChain, r.gameResultSettler, gameType, gameArgs)
 	game.gameInfo.ID = completedMatchID
 	game.gameInfo.QueueMatchID = completedMatchID
 	if gameType == types.GameTypeTournament {
@@ -344,7 +334,6 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 		return nil
 	}
 	log.Info("receive tx batch, block number: ", txs.BlockNumber)
-	defer r.chainSvc.NotifyTxsCompleted(txs)
 	blockTime := int64(txs.Timestamp)
 	for _, protoTx := range txs.Transactions {
 		gameID := protoTx.GameId

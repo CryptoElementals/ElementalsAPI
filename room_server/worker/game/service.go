@@ -16,9 +16,9 @@ import (
 // Publisher publishes game events (e.g. [pubsub.StreamPublisher] on Redis). Must be non-nil for production.
 type Publisher = pubsub.Publisher
 
-type ContractClient interface {
-	SubmitTasks(tasks []types.RoomContractTask) error
-	NotifyTxsCompleted(txs *proto.TransactionBatch)
+// RoomChain is implemented by the chain worker: tx pools and per-game chain assignment.
+type RoomChain interface {
+	TxPoolEnqueuer
 }
 
 type TxPoolEnqueuer interface {
@@ -48,11 +48,9 @@ func NewService(
 	workerManager *worker.WorkerManager,
 	pub Publisher,
 	gameArgsTemplateID uint,
-	chainSvc ContractClient,
-	poolBatchSize int,
-	poolProcessingInterval int,
+	roomChain RoomChain,
 ) *Service {
-	mgr := NewGameManager(ctx, workerManager, pub, gameArgsTemplateID, chainSvc, poolBatchSize, poolProcessingInterval)
+	mgr := NewGameManager(ctx, workerManager, pub, gameArgsTemplateID, roomChain)
 	return &Service{
 		ctx:         ctx,
 		gameManager: mgr,
