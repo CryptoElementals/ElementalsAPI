@@ -89,6 +89,14 @@ func (r *round) isExtraRound() bool {
 	return r.roundNumber > reg
 }
 
+// isNextRoundExtra is true when the round that will start after completing the current one is an extra (overtime) round.
+func (r *round) isNextRoundExtra() bool {
+	if r == nil {
+		return false
+	}
+	return (&round{game: r.game, roundNumber: r.roundNumber + 1}).isExtraRound()
+}
+
 func (r *round) turnsPerRound() uint32 {
 	if r == nil || r.game == nil {
 		return 0
