@@ -45,6 +45,20 @@ func (s *TournamentQueueService) Stop() {
 	s.coord.stop()
 }
 
+func (s *TournamentQueueService) SetTournamentSchedulingEnabled(enabled bool) {
+	if s == nil || s.coord == nil {
+		return
+	}
+	s.coord.setTournamentCreationEnabled(enabled)
+}
+
+func (s *TournamentQueueService) IsTournamentSchedulingEnabled() bool {
+	if s == nil || s.coord == nil {
+		return false
+	}
+	return s.coord.isTournamentCreationEnabled()
+}
+
 // HandleJoinTournament registers for the open tournament on the given schedule (same token lock as PVP queue).
 func (s *TournamentQueueService) HandleJoinTournamentEvent(TournamentID string, req *proto.PlayerAddress) error {
 	return s.handleJoinTournamentEvent(TournamentID, req, false)

@@ -23,6 +23,9 @@ service LobbyService {
   rpc JoinTournament(JoinTournamentRequest) returns (google.protobuf.Empty);
   // Latest registration-open tournament snapshot for clients.
   rpc GetLatestRegistrationOpenTournamentSnapshot(PlayerAddress) returns (GetLatestRegistrationOpenTournamentSnapshotResponse);
+  // Toggle/query tournament scheduling (creation of new tournaments).
+  rpc SetTournamentScheduling(SetTournamentSchedulingRequest) returns (TournamentSchedulingStatus);
+  rpc GetTournamentSchedulingStatus(google.protobuf.Empty) returns (TournamentSchedulingStatus);
 }
 
 message RegisterBotsForLobbyRequest {
@@ -48,4 +51,12 @@ message GetLatestRegistrationOpenTournamentSnapshotResponse {
   repeated int32 TopFourRewardTokens = 10;
   int64 PrizePoolTokens = 11;
   int64 SecondsUntilScheduledStart = 12;
+}
+
+message SetTournamentSchedulingRequest {
+  bool Enabled = 1;
+}
+
+message TournamentSchedulingStatus {
+  bool Enabled = 1;
 }
