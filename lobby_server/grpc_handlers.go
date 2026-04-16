@@ -112,3 +112,27 @@ func (s *GRPCServices) HandleGameCompletedFromTournamentStream(gameID int64) err
 	log.Debugw("lobby: handle game completed from tournament stream", "game_id", gameID)
 	return s.tournamentSvc.GameResultSettlementHook(&types.GameCompletedEvent{GameID: gameID, GameType: types.GameTypeTournament})
 }
+
+func (s *GRPCServices) SetTournamentScheduling(ctx context.Context, req *proto.SetTournamentSchedulingRequest) (*proto.TournamentSchedulingStatus, error) {
+	_ = ctx
+	if s.tournamentSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "tournament service not initialized")
+	}
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	s.tournamentSvc.SetTournamentSchedulingEnabled(req.GetEnabled())
+	return &proto.TournamentSchedulingStatus{
+		Enabled: s.tournamentSvc.IsTournamentSchedulingEnabled(),
+	}, nil
+}
+
+func (s *GRPCServices) GetTournamentSchedulingStatus(ctx context.Context, _ *emptypb.Empty) (*proto.TournamentSchedulingStatus, error) {
+	_ = ctx
+	if s.tournamentSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "tournament service not initialized")
+	}
+	return &proto.TournamentSchedulingStatus{
+		Enabled: s.tournamentSvc.IsTournamentSchedulingEnabled(),
+	}, nil
+}
