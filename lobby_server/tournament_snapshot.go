@@ -15,25 +15,7 @@ import (
 )
 
 func topFourRewardTokensFromTierTable(participantCount int64) ([]int32, error) {
-	totalPlayerCount := int32(64)
-	switch {
-	case participantCount < 128:
-		totalPlayerCount = 64
-	case participantCount < 256:
-		totalPlayerCount = 128
-	case participantCount < 512:
-		totalPlayerCount = 256
-	case participantCount < 1024:
-		totalPlayerCount = 512
-	case participantCount < 2048:
-		totalPlayerCount = 1024
-	case participantCount < 4096:
-		totalPlayerCount = 2048
-	case participantCount < 8192:
-		totalPlayerCount = 4096
-	default:
-		totalPlayerCount = 8192
-	}
+	totalPlayerCount := tournamentTierBracketSize(participantCount)
 
 	var rows []dao.TournamentTierRewardConfig
 	if err := db.Get().
@@ -55,6 +37,65 @@ func topFourRewardTokensFromTierTable(participantCount int64) ([]int32, error) {
 	}
 	if len(rows) > 2 {
 		out[3] = rows[2].RewardToken
+	}
+	return out, nil
+}
+
+type roundConfig struct {
+	TotalPlayerCount          int32 `json:"TotalPlayerCount"`
+	TokenChange               int32 `json:"TokenChange"`
+	PointChange               int32 `json:"PointChange"`
+	RemainingParticipantCount int32 `json:"RemainingParticipantCount"`
+}
+
+func (r roundConfig) toProto() *proto.TournamentRoundConfig {
+	return &proto.TournamentRoundConfig{
+		TotalPlayerCount:          r.TotalPlayerCount,
+		TokenChange:               r.TokenChange,
+		PointChange:               r.PointChange,
+		RemainingParticipantCount: r.RemainingParticipantCount,
+	}
+}
+
+func tournamentTierBracketSize(participantCount int64) int32 {
+	switch {
+	case participantCount < 128:
+		return 64
+	case participantCount < 256:
+		return 128
+	case participantCount < 512:
+		return 256
+	case participantCount < 1024:
+		return 512
+	case participantCount < 2048:
+		return 1024
+	case participantCount < 4096:
+		return 2048
+	case participantCount < 8192:
+		return 4096
+	default:
+		return 8192
+	}
+}
+
+func readRoundConfigFromTierTable(participantCount int64) (map[int32]roundConfig, error) {
+	totalPlayerCount := tournamentTierBracketSize(participantCount)
+	rows, err := db.TournamentTierRewardConfigListByBracketSize(totalPlayerCount)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int32]roundConfig, len(rows))
+	for _, row := range rows {
+		remainingParticipantCount := row.TotalPlayerCount >> row.TierNo
+		if remainingParticipantCount < 1 {
+			remainingParticipantCount = 1
+		}
+		out[row.TierNo] = roundConfig{
+			TotalPlayerCount:          row.TotalPlayerCount,
+			TokenChange:               row.RewardToken,
+			PointChange:               row.Point,
+			RemainingParticipantCount: remainingParticipantCount,
+		}
 	}
 	return out, nil
 }
@@ -109,6 +150,14 @@ func (s *GRPCServices) GetLatestRegistrationOpenTournamentSnapshot(ctx context.C
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "tier reward config: %v", err)
 	}
+	mapRoundConfig, err := readRoundConfigFromTierTable(count)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "round config: %v", err)
+	}
+	mapRoundConfigProto := make(map[int32]*proto.TournamentRoundConfig, len(mapRoundConfig))
+	for tierNo, cfg := range mapRoundConfig {
+		mapRoundConfigProto[tierNo] = cfg.toProto()
+	}
 
 	return &proto.GetLatestRegistrationOpenTournamentSnapshotResponse{
 		HasTournament:               true,
@@ -124,5 +173,6 @@ func (s *GRPCServices) GetLatestRegistrationOpenTournamentSnapshot(ctx context.C
 		PrizePoolTokens:             pool,
 		SecondsUntilScheduledStart:  secs,
 		MinPlayersRequired:          minPlayersRequiredFromConfig(),
+		MapRoundConfig:              mapRoundConfigProto,
 	}, nil
 }
