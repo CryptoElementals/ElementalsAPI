@@ -20,6 +20,17 @@ func TestRound_isExtraRound(t *testing.T) {
 	require.True(t, tourOT.isExtraRound())
 }
 
+func TestRound_isNextRoundExtra(t *testing.T) {
+	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
+	pvp := &round{game: &dao.Game{GameArgs: ga, Type: types.GameTypePVP}, roundNumber: 2}
+	require.False(t, pvp.isNextRoundExtra())
+
+	gTour := &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}
+	require.False(t, (&round{game: gTour, roundNumber: 1}).isNextRoundExtra())
+	require.True(t, (&round{game: gTour, roundNumber: 3}).isNextRoundExtra())
+	require.True(t, (&round{game: gTour, roundNumber: 4}).isNextRoundExtra())
+}
+
 // Overtime used to keep playing when HP differed before the final scheduled round; tie-break should end as soon as HP splits.
 func TestCheckGameOverByHP_overtimeHPSpreadEndsImmediately(t *testing.T) {
 	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}

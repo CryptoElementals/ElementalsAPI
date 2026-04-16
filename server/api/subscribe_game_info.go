@@ -80,6 +80,7 @@ type TurnCompletedDTO struct {
 	TurnNum             uint32                       `json:"TurnNum"`
 	IsRoundComplete     bool                         `json:"IsRoundComplete"`
 	IsGameComplete      bool                         `json:"IsGameComplete"`
+	IsNextRoundExtra    bool                         `json:"IsNextRoundExtra"`
 	GameResult          *proto.GameResult            `json:"GameResult,omitempty"`
 	PlayerTurnInfos     []TurnCompletedPlayerInfoDTO `json:"PlayerTurnInfos"`
 }
@@ -678,6 +679,7 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 		TurnNum:             tc.GetTurnNum(),
 		IsRoundComplete:     tc.GetIsRoundComplete(),
 		IsGameComplete:      tc.GetIsGameComplete(),
+		IsNextRoundExtra:    tc.GetIsNextRoundExtra(),
 	}
 
 	// 只有在游戏结束时才挂上 GameResult，其它情况下完全不下发该字段

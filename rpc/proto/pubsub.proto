@@ -197,10 +197,11 @@ message TurnCompleted {
   uint32 TurnNum = 3;
   bool IsRoundComplete = 4;
   bool IsGameComplete = 5;
-  repeated PlayerTurnInfo PlayerTurnInfos = 6;
-  optional battle.GameResult GameResult = 7;
-  optional int64 ConfirmationTimeout = 8;
-  optional int64 GameContinueTimeout = 9;
+  bool IsNextRoundExtra = 6;
+  repeated PlayerTurnInfo PlayerTurnInfos = 7;
+  optional battle.GameResult GameResult = 8;
+  optional int64 ConfirmationTimeout = 9;
+  optional int64 GameContinueTimeout = 10;
 }
 
 message GameStat {

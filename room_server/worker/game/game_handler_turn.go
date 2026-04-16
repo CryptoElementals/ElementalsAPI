@@ -171,8 +171,10 @@ func (g *Game) handleTurnEnd() error {
 
 	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_COMPLETED)
 
+	isNextRoundExtra := isRoundComplete && !isGameComplete && g.currentRound.isNextRoundExtra()
+
 	// Build proto TurnCompleted directly
-	turnCompletedEvt := g.buildTurnCompletedEvent(roundNumber, turnNumber, isRoundComplete, isGameComplete, gameResult)
+	turnCompletedEvt := g.buildTurnCompletedEvent(roundNumber, turnNumber, isRoundComplete, isGameComplete, isNextRoundExtra, gameResult)
 	confirmationTimeout := g.gameInfo.GameArgs.ConfirmationTimeout
 	gameContinueTimeout := g.gameInfo.GameArgs.GameContinueTimeout
 	turnCompletedEvt.GetTurnCompleted().ConfirmationTimeout = &confirmationTimeout
@@ -233,7 +235,7 @@ func (g *Game) handleTurnEnd() error {
 }
 
 // buildTurnCompletedEvent constructs a proto.Event for TYPE_TURN_COMPLETE from current game state.
-func (g *Game) buildTurnCompletedEvent(roundNumber uint32, turnNumber uint32, isRoundComplete, isGameComplete bool, gameResult interface{}) *proto.Event {
+func (g *Game) buildTurnCompletedEvent(roundNumber uint32, turnNumber uint32, isRoundComplete, isGameComplete, isNextRoundExtra bool, gameResult interface{}) *proto.Event {
 	playerTurnInfos := make([]*proto.PlayerTurnInfo, 0, len(g.currentRound.gamePlayers))
 	for _, p := range g.currentRound.gamePlayers {
 		playerTurnInfo := p.getCurrentPlayerTurnInfo()
@@ -247,12 +249,13 @@ func (g *Game) buildTurnCompletedEvent(roundNumber uint32, turnNumber uint32, is
 	}
 
 	turnCompleted := &proto.TurnCompleted{
-		GameId:          g.gameInfo.ID,
-		RoundNum:        roundNumber,
-		TurnNum:         turnNumber,
-		IsRoundComplete: isRoundComplete,
-		IsGameComplete:  isGameComplete,
-		PlayerTurnInfos: playerTurnInfos,
+		GameId:             g.gameInfo.ID,
+		RoundNum:           roundNumber,
+		TurnNum:            turnNumber,
+		IsRoundComplete:    isRoundComplete,
+		IsGameComplete:     isGameComplete,
+		IsNextRoundExtra:   isNextRoundExtra,
+		PlayerTurnInfos:    playerTurnInfos,
 	}
 
 	if isGameComplete && g.gameInfo.GameResult != nil {
