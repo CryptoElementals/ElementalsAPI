@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
@@ -25,12 +24,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const SERVER_WAIT_GROUP_LABEL = "x-gin-waitgroup"
-
 type Server struct {
 	e      *gin.Engine
 	server *http.Server
-	wg     *sync.WaitGroup
 	cfg    *config.ServerConfig
 }
 
@@ -75,7 +71,6 @@ func New(cfg *config.ServerConfig, store sessions.Store, refreshTokenCache cache
 		log.Fatal("nil refresh token cache")
 	}
 	cfg = handleDefaultValue(cfg)
-	wg := &sync.WaitGroup{}
 	sessionName := "dill"
 	if cfg.ServiceName != "" {
 		sessionName = cfg.ServiceName
@@ -84,11 +79,10 @@ func New(cfg *config.ServerConfig, store sessions.Store, refreshTokenCache cache
 	if err != nil {
 		log.Fatal("login api initiation failed: %s", err.Error())
 	}
-	r := newRouter(wg, cfg, sessionName, store)
+	r := newRouter(cfg, sessionName, store)
 	return &Server{
 		cfg: cfg,
 		e:   r,
-		wg:  wg,
 	}
 }
 
@@ -101,13 +95,10 @@ func (s *Server) Run() {
 }
 
 func (s *Server) Stop() error {
-	err := s.server.Shutdown(context.Background())
-	// whether the err is nil, we should wait for wait group
-	s.wg.Wait()
-	return err
+	return s.server.Shutdown(context.Background())
 }
 
-func newRouter(wg *sync.WaitGroup, cfg *config.ServerConfig, serviceName string, store sessions.Store) *gin.Engine {
+func newRouter(cfg *config.ServerConfig, serviceName string, store sessions.Store) *gin.Engine {
 	mode := strings.ToLower(cfg.ServerMode)
 	switch mode {
 	case "release":
@@ -123,7 +114,6 @@ func newRouter(wg *sync.WaitGroup, cfg *config.ServerConfig, serviceName string,
 	r := gin.New()
 	r.Use(ginLogger())
 	r.Use(gin.Recovery())
-	r.Use(ginWaitGroup(wg))
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// 添加CORS中间件
@@ -193,12 +183,6 @@ func corsMiddleware() gin.HandlerFunc {
 		}
 
 		c.Next()
-	}
-}
-
-func ginWaitGroup(wg *sync.WaitGroup) gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		ctx.Set(SERVER_WAIT_GROUP_LABEL, wg)
 	}
 }
 
