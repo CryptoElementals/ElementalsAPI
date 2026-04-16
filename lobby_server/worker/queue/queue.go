@@ -204,7 +204,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		}
 	})
 	q.lock.Unlock()
-	if err := db.BattleResultSettlement(gr, bots); err != nil {
+	if err := db.BattleResultSettlement(gr); err != nil {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
