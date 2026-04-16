@@ -649,7 +649,7 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 					winnerCumulationIfNextMatchWin: winNext,
 					nextRoundNo:                    &nextRN,
 				}
-				return nil
+				return nil // return to wait for the match to be finished
 			}
 		}
 
@@ -766,13 +766,16 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 	}
 
 	if len(postNewIDs) > 0 {
-		anyPlaying := tc.startGamesForNewMatches(postNewIDs)
-		if anyPlaying && postTournID != "" {
-			if r, rerr := db.TournamentGetRound(db.Get(), postTournID, postNextRound); rerr == nil {
-				r.Status = dao.TournamentRoundStatusPlaying
-				_ = db.TournamentSaveRound(db.Get(), r)
+		go func(newIDs []uint, tournID string, nextRound uint32) {
+			time.Sleep(5 * time.Second) //todo: optimized by distributed timer later
+			anyPlaying := tc.startGamesForNewMatches(newIDs)
+			if anyPlaying && tournID != "" {
+				if r, rerr := db.TournamentGetRound(db.Get(), tournID, nextRound); rerr == nil {
+					r.Status = dao.TournamentRoundStatusPlaying
+					_ = db.TournamentSaveRound(db.Get(), r)
+				}
 			}
-		}
+		}(postNewIDs, postTournID, postNextRound)
 	}
 
 	return nil
