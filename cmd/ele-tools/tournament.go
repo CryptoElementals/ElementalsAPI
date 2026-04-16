@@ -90,7 +90,7 @@ var tournamentListCmd = &cobra.Command{
 
 		var rows []dao.Tournament
 		if err := db.Get().
-			Where("scheduled_start_at >= ? AND scheduled_start_at <= ?", from, now).
+			Where("created_at >= ? AND created_at <= ?", from, now).
 			Order("scheduled_start_at desc").
 			Find(&rows).Error; err != nil {
 			fmt.Printf("List tournaments failed: %v\n", err)
