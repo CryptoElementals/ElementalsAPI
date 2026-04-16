@@ -61,6 +61,11 @@ message PlayerAddress {
     string temporary_address = 2;
 }
 
+message RankedPlayer {
+    PlayerAddress Address = 1;
+    uint32 Rank = 2;
+}
+
 enum PlayerStatus {
     PLAYER_UNKNOWN = 0;
     PLAYER_IN_QUEUE = 1;

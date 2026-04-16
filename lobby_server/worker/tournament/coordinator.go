@@ -476,8 +476,10 @@ type tournamentMatchOutcomeToPublish struct {
 	matchNo                        uint32
 	winnerPID                      int64
 	winnerTemp                     string
+	winnerRank                     uint32
 	loserPID                       int64
 	loserTemp                      string
+	loserRank                      uint32
 	tournamentFinished             bool
 	roundFinished                  bool                // all matches in roundNo completed after this game
 	cumulativeBattleReward         *proto.BattleReward // SUM(tournament_rewards) per player; PlayerRewards order winner, loser
@@ -491,6 +493,14 @@ func (tc *coordinator) publishTournamentMatchOutcome(o *tournamentMatchOutcomeTo
 	}
 	winner := types.NewPlayerAddress(o.winnerPID, o.winnerTemp)
 	loser := types.NewPlayerAddress(o.loserPID, o.loserTemp)
+	rankedWinner := &proto.RankedPlayer{
+		Address: winner.ToProto(),
+		Rank:    o.winnerRank,
+	}
+	rankedLoser := &proto.RankedPlayer{
+		Address: loser.ToProto(),
+		Rank:    o.loserRank,
+	}
 	w := winner.ToProto()
 	l := loser.ToProto()
 	evt := &proto.Event{
@@ -504,8 +514,8 @@ func (tc *coordinator) publishTournamentMatchOutcome(o *tournamentMatchOutcomeTo
 				TournamentId:                   o.tournamentID,
 				RoundNo:                        o.roundNo,
 				MatchNo:                        o.matchNo,
-				Winner:                         w,
-				Loser:                          l,
+				Winner:                         rankedWinner,
+				Loser:                          rankedLoser,
 				TournamentFinished:             o.tournamentFinished,
 				RoundFinished:                  o.roundFinished,
 				CumulativeBattleReward:         o.cumulativeBattleReward,
@@ -651,16 +661,28 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			winPID, winTempNorm, loserPID, loserTempNorm); rerr != nil {
 			return rerr
 		}
-		var cerr error
-		cumReward, cerr = db.TournamentCumulativeBattleRewardProtoTx(tx, locked.TournamentID, winPID, winTempNorm, loserPID, loserTempNorm)
-		if cerr != nil {
-			return cerr
-		}
 
 		roundMatches, err := db.TournamentListMatchesForRound(tx, locked.TournamentID, locked.RoundNo)
 		if err != nil {
 			return err
 		}
+		currentRoundPlayers := uint32(len(roundMatches) * 2)
+		if currentRoundPlayers == 0 {
+			return fmt.Errorf("tournament %s round %d has no players", locked.TournamentID, locked.RoundNo)
+		}
+		winnerRank := currentRoundPlayers / 2
+		if winnerRank == 0 {
+			winnerRank = 1
+		}
+		loserRank := currentRoundPlayers
+
+		var cerr error
+		cumReward, cerr = db.TournamentCumulativeBattleRewardProtoTx(tx, locked.TournamentID,
+			winPID, winTempNorm, loserPID, loserTempNorm, locked.RoundNo)
+		if cerr != nil {
+			return cerr
+		}
+
 		for _, rm := range roundMatches {
 			if rm.Status != dao.TournamentMatchStatusCompleted { // one match not completed yet, then round not completed
 				nextRN := locked.RoundNo + 1
@@ -675,8 +697,10 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 					matchNo:                        locked.MatchNo,
 					winnerPID:                      winPID,
 					winnerTemp:                     winTempNorm,
+					winnerRank:                     winnerRank,
 					loserPID:                       loserPID,
 					loserTemp:                      loserTempNorm,
+					loserRank:                      loserRank,
 					tournamentFinished:             false,
 					roundFinished:                  false,
 					cumulativeBattleReward:         cumReward,
@@ -729,8 +753,10 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 				matchNo:                locked.MatchNo,
 				winnerPID:              winPID,
 				winnerTemp:             winTempNorm,
+				winnerRank:             winnerRank,
 				loserPID:               loserPID,
 				loserTemp:              loserTempNorm,
+				loserRank:              loserRank,
 				tournamentFinished:     true,
 				roundFinished:          true,
 				cumulativeBattleReward: cumReward,
@@ -780,8 +806,10 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			matchNo:                        locked.MatchNo,
 			winnerPID:                      winPID,
 			winnerTemp:                     winTempNorm,
+			winnerRank:                     winnerRank,
 			loserPID:                       loserPID,
 			loserTemp:                      loserTempNorm,
+			loserRank:                      loserRank,
 			tournamentFinished:             false,
 			roundFinished:                  true,
 			cumulativeBattleReward:         cumReward,

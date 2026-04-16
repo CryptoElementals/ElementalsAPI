@@ -146,8 +146,8 @@ message TournamentMatchOutcome {
   string tournament_id = 2;
   uint32 round_no = 3;
   uint32 match_no = 4;
-  rpc.PlayerAddress winner = 5;
-  rpc.PlayerAddress loser = 6;
+  rpc.RankedPlayer winner = 5;
+  rpc.RankedPlayer loser = 6;
   bool round_finished = 7;
   bool tournament_finished = 8;
   battle.BattleReward cumulative_battle_reward = 9;

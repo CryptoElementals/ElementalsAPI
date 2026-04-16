@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
@@ -147,17 +147,54 @@ func TournamentSumPlayerRewardTotalsTx(tx *gorm.DB, tournamentID string, playerI
 }
 
 // TournamentCumulativeBattleRewardProtoTx builds a BattleReward with winner then loser cumulative tournament totals (after current tx writes).
-func TournamentCumulativeBattleRewardProtoTx(tx *gorm.DB, tournamentID string, winPID int64, winTemp string, losePID int64, loseTemp string) (*proto.BattleReward, error) {
+func TournamentCumulativeBattleRewardProtoTx(tx *gorm.DB, tournamentID string, winPID int64, winTemp string, losePID int64, loseTemp string, roundNo uint32) (*proto.BattleReward, error) {
 	winTemp = strings.ToLower(strings.TrimSpace(winTemp))
 	loseTemp = strings.ToLower(strings.TrimSpace(loseTemp))
-	wt, wp, err := TournamentSumPlayerRewardTotalsTx(tx, tournamentID, winPID, winTemp)
+	totalParticipants, err := TournamentCountParticipantsForPool(tournamentID)
 	if err != nil {
 		return nil, err
 	}
-	lt, lp, err := TournamentSumPlayerRewardTotalsTx(tx, tournamentID, losePID, loseTemp)
-	if err != nil {
+	totalPlayerCount := int32(64)
+	switch {
+	case totalParticipants < 128:
+		totalPlayerCount = 64
+	case totalParticipants < 256:
+		totalPlayerCount = 128
+	case totalParticipants < 512:
+		totalPlayerCount = 256
+	case totalParticipants < 1024:
+		totalPlayerCount = 512
+	case totalParticipants < 2048:
+		totalPlayerCount = 1024
+	case totalParticipants < 4096:
+		totalPlayerCount = 2048
+	case totalParticipants < 8192:
+		totalPlayerCount = 4096
+	default:
+		totalPlayerCount = 8192
+	}
+
+	lt, lp := int32(0), int32(0)
+	wt, wp := int32(0), int32(0)
+	var tierCfg dao.TournamentTierRewardConfig
+	if err := tx.Where("total_player_count = ? AND tier_no = ?", totalPlayerCount, int32(roundNo)).
+		First(&tierCfg).Error; err != nil {
 		return nil, err
 	}
+	wt, wp = tierCfg.RewardToken, tierCfg.Point
+	if roundNo > 1 {
+		oldRoundNo := roundNo - 1
+		oldTierCfg := dao.TournamentTierRewardConfig{
+			TotalPlayerCount: totalPlayerCount,
+			TierNo:           int32(oldRoundNo),
+		}
+		if err := tx.Where("total_player_count = ? AND tier_no = ?", totalPlayerCount, int32(oldRoundNo)).
+			First(&oldTierCfg).Error; err != nil {
+			return nil, err
+		}
+		lt, lp = oldTierCfg.RewardToken, oldTierCfg.Point
+	}
+
 	return &proto.BattleReward{
 		SystemFee: 0,
 		PlayerRewards: []*proto.PlayerReward{
