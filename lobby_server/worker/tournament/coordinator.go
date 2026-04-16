@@ -8,6 +8,7 @@ import (
 	"math/bits"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/CryptoElementals/common/db"
@@ -21,7 +22,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const tickInterval = 1 * time.Second
+const tickInterval = 500 * time.Millisecond
+const disabledCreationLogInterval = 1 * time.Minute
 
 // GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
@@ -41,11 +43,14 @@ type coordinator struct {
 	beforeStartSeconds uint32
 
 	botFreshness time.Duration
+
+	tournamentCreationEnabled atomic.Bool
+	lastDisabledLogUnixSec    atomic.Int64
 }
 
 func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFreshnessSec int64) *coordinator {
 	ctx, cancel := context.WithCancel(parent)
-	return &coordinator{
+	tc := &coordinator{
 		ctx:                ctx,
 		cancel:             cancel,
 		publisher:          publisher,
@@ -57,6 +62,8 @@ func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore
 		beforeStartSeconds: beforeStartSeconds,
 		botFreshness:       time.Duration(botFreshnessSec) * time.Second,
 	}
+	tc.tournamentCreationEnabled.Store(true)
+	return tc
 }
 
 func (tc *coordinator) start() {
@@ -86,9 +93,13 @@ func (tc *coordinator) loop() {
 func (tc *coordinator) tick() {
 	now := time.Now().UTC()
 
-	if err := tc.ensureNextTournaments(now); err != nil {
-		log.Errorw("tournament: ensure next tournaments", "err", err)
-		return
+	if tc.tournamentCreationEnabled.Load() {
+		if err := tc.ensureNextTournaments(now); err != nil {
+			log.Errorw("tournament: ensure next tournaments", "err", err)
+			return
+		}
+	} else {
+		tc.logTournamentCreationDisabled(now)
 	}
 
 	if err := tc.fillRegistrationOpenTournamentsWithBots(now); err != nil {
@@ -109,6 +120,29 @@ func (tc *coordinator) tick() {
 	if err := tc.beginTournament(tournamentToBegin); err != nil {
 		log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
 	}
+}
+
+func (tc *coordinator) setTournamentCreationEnabled(enabled bool) {
+	tc.tournamentCreationEnabled.Store(enabled)
+	if enabled {
+		tc.lastDisabledLogUnixSec.Store(0)
+		return
+	}
+	log.Infow("tournament: creation disabled by control")
+}
+
+func (tc *coordinator) isTournamentCreationEnabled() bool {
+	return tc.tournamentCreationEnabled.Load()
+}
+
+func (tc *coordinator) logTournamentCreationDisabled(now time.Time) {
+	nowSec := now.Unix()
+	lastSec := tc.lastDisabledLogUnixSec.Load()
+	if lastSec != 0 && nowSec-lastSec < int64(disabledCreationLogInterval/time.Second) {
+		return
+	}
+	tc.lastDisabledLogUnixSec.Store(nowSec)
+	log.Infow("tournament: creation is disabled")
 }
 
 func (tc *coordinator) fillRegistrationOpenTournamentsWithBots(now time.Time) error {
