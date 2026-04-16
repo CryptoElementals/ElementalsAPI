@@ -51,6 +51,7 @@ message GetLatestRegistrationOpenTournamentSnapshotResponse {
   repeated int32 TopFourRewardTokens = 10;
   int64 PrizePoolTokens = 11;
   int64 SecondsUntilScheduledStart = 12;
+  int32 MinPlayersRequired = 13;
 }
 
 message SetTournamentSchedulingRequest {
