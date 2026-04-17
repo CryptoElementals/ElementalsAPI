@@ -11,7 +11,6 @@ import (
 	"github.com/CryptoElementals/common/battlereward"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
@@ -305,7 +304,7 @@ func UnlockUserTokenByGameID(ctx context.Context, gameID int64) error {
 
 // BattleResultSettlement applies PVP economy updates for gr.GameID. gr must be non-nil (caller loads it).
 // Inside the transaction: lock games row, load game_args only (via games.game_args_id), not turns/players.
-func BattleResultSettlement(gr *dao.GameResult, bots map[types.PlayerAddress]struct{}) error {
+func BattleResultSettlement(gr *dao.GameResult) error {
 	if gr == nil {
 		return errors.New("battle result settlement: game result is nil")
 	}
@@ -356,12 +355,6 @@ func BattleResultSettlement(gr *dao.GameResult, bots map[types.PlayerAddress]str
 				continue
 			}
 			tempAddr := TemporaryAddressForPlayer(infos, pr.PlayerId)
-			if _, ok := bots[types.PlayerAddress{
-				Id:               pr.PlayerId,
-				TemporaryAddress: tempAddr,
-			}]; ok {
-				continue
-			}
 			toProcess = append(toProcess, playerReward{
 				playerId:    pr.PlayerId,
 				tempAddr:    tempAddr,
