@@ -154,6 +154,40 @@ func TournamentCumulativeBattleRewardProtoTx(tx *gorm.DB, tournamentID string, w
 	if err != nil {
 		return nil, err
 	}
+
+	lt, lp := int32(0), int32(0)
+	wt, wp := int32(0), int32(0)
+	if roundNo > 0 {
+		lastRoundNo := roundNo - 1
+		lt, lp, err = TournamentRoundReward(tx, int32(totalParticipants), lastRoundNo)
+		if err != nil {
+			return nil, err
+		}
+	}
+	wt, wp, err = TournamentRoundReward(tx, int32(totalParticipants), roundNo)
+	if err != nil {
+		return nil, err
+	}
+
+	return &proto.BattleReward{
+		SystemFee: 0,
+		PlayerRewards: []*proto.PlayerReward{
+			{PlayerId: winPID, TemporaryAddress: winTemp, TokenChange: wt, PointChange: wp},
+			{PlayerId: losePID, TemporaryAddress: loseTemp, TokenChange: lt, PointChange: lp},
+		},
+	}, nil
+}
+
+// TournamentOneMatchWinRewardDelta returns token/point deltas for one match win (for projecting winner totals after a hypothetical next win).
+func TournamentOneMatchWinRewardDelta() (token int32, point int32) {
+	return tournamentRewardWinToken, tournamentRewardWinPoint
+}
+
+func TournamentRoundReward(tx *gorm.DB, totalParticipants int32, roundNo uint32) (token int32, point int32, err error) {
+	if roundNo == 0 {
+		return 0, 0, nil
+	}
+
 	totalPlayerCount := int32(64)
 	switch {
 	case totalParticipants < 128:
@@ -174,37 +208,10 @@ func TournamentCumulativeBattleRewardProtoTx(tx *gorm.DB, tournamentID string, w
 		totalPlayerCount = 8192
 	}
 
-	lt, lp := int32(0), int32(0)
-	wt, wp := int32(0), int32(0)
 	var tierCfg dao.TournamentTierRewardConfig
 	if err := tx.Where("total_player_count = ? AND tier_no = ?", totalPlayerCount, int32(roundNo)).
 		First(&tierCfg).Error; err != nil {
-		return nil, err
+		return 0, 0, err
 	}
-	wt, wp = tierCfg.RewardToken, tierCfg.Point
-	if roundNo > 1 {
-		oldRoundNo := roundNo - 1
-		oldTierCfg := dao.TournamentTierRewardConfig{
-			TotalPlayerCount: totalPlayerCount,
-			TierNo:           int32(oldRoundNo),
-		}
-		if err := tx.Where("total_player_count = ? AND tier_no = ?", totalPlayerCount, int32(oldRoundNo)).
-			First(&oldTierCfg).Error; err != nil {
-			return nil, err
-		}
-		lt, lp = oldTierCfg.RewardToken, oldTierCfg.Point
-	}
-
-	return &proto.BattleReward{
-		SystemFee: 0,
-		PlayerRewards: []*proto.PlayerReward{
-			{PlayerId: winPID, TemporaryAddress: winTemp, TokenChange: wt, PointChange: wp},
-			{PlayerId: losePID, TemporaryAddress: loseTemp, TokenChange: lt, PointChange: lp},
-		},
-	}, nil
-}
-
-// TournamentOneMatchWinRewardDelta returns token/point deltas for one match win (for projecting winner totals after a hypothetical next win).
-func TournamentOneMatchWinRewardDelta() (token int32, point int32) {
-	return tournamentRewardWinToken, tournamentRewardWinPoint
+	return tierCfg.RewardToken, tierCfg.Point, nil
 }

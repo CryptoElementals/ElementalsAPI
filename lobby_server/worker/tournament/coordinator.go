@@ -686,7 +686,7 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 		for _, rm := range roundMatches {
 			if rm.Status != dao.TournamentMatchStatusCompleted { // one match not completed yet, then round not completed
 				nextRN := locked.RoundNo + 1
-				winNext, werr := winnerCumulationIfNextMatchWinProto(tx, locked.TournamentID, winPID, winTempNorm)
+				winNext, werr := winnerCumulationReward(tx, locked.TournamentID, winPID, winTempNorm, nextRN)
 				if werr != nil {
 					return werr
 				}
@@ -795,7 +795,7 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 		}
 		postNextRound = nextNo
 		postTournID = locked.TournamentID
-		winNext, werr := winnerCumulationIfNextMatchWinProto(tx, locked.TournamentID, winPID, winTempNorm)
+		winNext, werr := winnerCumulationReward(tx, locked.TournamentID, winPID, winTempNorm, nextNo)
 		if werr != nil {
 			return werr
 		}
@@ -879,18 +879,23 @@ func (tc *coordinator) releaseBotsIfNeeded(addrs []types.PlayerAddress) {
 	}
 }
 
-// winnerCumulationIfNextMatchWinProto returns winner cumulative token/point totals if they also win their next match (current sum + one match-win bonus).
-func winnerCumulationIfNextMatchWinProto(tx *gorm.DB, tournamentID string, winPID int64, winTempNorm string) (*proto.PlayerReward, error) {
-	wtok, wpt, err := db.TournamentSumPlayerRewardTotalsTx(tx, tournamentID, winPID, winTempNorm)
+// winnerCumulationReward returns winner cumulative token/point totals if they also win their next match (current sum + one match-win bonus).
+func winnerCumulationReward(tx *gorm.DB, tournamentID string, winPID int64, winTempNorm string, roundNo uint32) (*proto.PlayerReward, error) {
+
+	totalParticipants, err := db.TournamentCountParticipantsForPool(tournamentID)
 	if err != nil {
 		return nil, err
 	}
-	dtok, dpt := db.TournamentOneMatchWinRewardDelta()
+
+	t, p, err := db.TournamentRoundReward(tx, int32(totalParticipants), roundNo)
+	if err != nil {
+		return nil, err
+	}
 	return &proto.PlayerReward{
 		PlayerId:         winPID,
 		TemporaryAddress: winTempNorm,
-		TokenChange:      wtok + dtok,
-		PointChange:      wpt + dpt,
+		TokenChange:      t,
+		PointChange:      p,
 	}, nil
 }
 
