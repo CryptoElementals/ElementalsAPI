@@ -93,6 +93,26 @@ func (tc *coordinator) loop() {
 func (tc *coordinator) tick() {
 	now := time.Now().UTC()
 
+	if err := tc.fillRegistrationOpenTournamentsWithBots(now); err != nil {
+		log.Errorw("tournament: fill bots before begin failed", "err", err)
+	}
+
+	//1. 之前的比赛待匹配players
+	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
+	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Debugw("tournament: no tournament to begin in grace window", "now", now)
+		} else {
+			log.Errorw("tournament: get latest tournament to begin", "err", err)
+		}
+	} else {
+		if err := tc.beginTournament(tournamentToBegin); err != nil {
+			log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
+		}
+	}
+
+	//2. 创建下一个tournament
 	if tc.tournamentCreationEnabled.Load() {
 		if err := tc.ensureNextTournaments(now); err != nil {
 			log.Errorw("tournament: ensure next tournaments", "err", err)
@@ -102,24 +122,6 @@ func (tc *coordinator) tick() {
 		tc.logTournamentCreationDisabled(now)
 	}
 
-	if err := tc.fillRegistrationOpenTournamentsWithBots(now); err != nil {
-		log.Errorw("tournament: fill bots before begin failed", "err", err)
-	}
-
-	//2. 待匹配players
-	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
-	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			//log.Debugw("tournament: no tournament to begin in grace window", "now", now)
-			return
-		}
-		log.Errorw("tournament: get latest tournament to begin", "err", err)
-		return
-	}
-	if err := tc.beginTournament(tournamentToBegin); err != nil {
-		log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
-	}
 }
 
 func (tc *coordinator) setTournamentCreationEnabled(enabled bool) {
