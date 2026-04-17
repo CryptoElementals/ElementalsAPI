@@ -101,9 +101,12 @@ func (tc *coordinator) tick() {
 	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
 	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Debugw("tournament: no tournament to begin in grace window", "now", now)
-		} else {
+		//if errors.Is(err, gorm.ErrRecordNotFound) {
+		//	log.Debugw("tournament: no tournament to begin in grace window", "now", now)
+		//} else {
+		//	log.Errorw("tournament: get latest tournament to begin", "err", err)
+		//}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Errorw("tournament: get latest tournament to begin", "err", err)
 		}
 	} else {

@@ -302,24 +302,27 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 				log.Infof("event stream closed - RequestUUID: %s", task.Request.RequestUUID)
 				return task.Response, nil
 			}
-			playerInTournament, err := db.TournamentPlayerInActiveBracket(self.Id, self.TemporaryAddress)
-			if err != nil {
-				log.Errorf("failed to check if player is in tournament: %v", err)
-				continue
-			}
-			if msg.GetTopic() == pubsub.TopicTournamentRoster && msg.GetEvent() != nil &&
-				msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
-				if playerInTournament {
-					continue // 如果玩家在上一场进行的tournament中，则不发送tournament snapshot
+
+			if msg.GetTopic() == pubsub.TopicTournamentRoster {
+				playerInTournament, err := db.TournamentPlayerInActiveBracket(self.Id, self.TemporaryAddress)
+				if err != nil {
+					log.Errorf("failed to check if player is in tournament: %v", err)
+					continue
 				}
-				if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetMessageId()); err != nil {
-					log.Errorf("send tournament snapshot from roster update failed: %v", err)
+				if msg.GetEvent() != nil &&
+					msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
+					if playerInTournament {
+						continue // 如果玩家在上一场进行的tournament中，则不发送tournament snapshot
+					}
+					if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetMessageId()); err != nil {
+						log.Errorf("send tournament snapshot from roster update failed: %v", err)
+					}
 				}
-				continue
-			}
-			sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
-			if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
-				log.Errorf("failed to send SSE event: %v", err)
+			} else {
+				sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
+				if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
+					log.Errorf("failed to send SSE event: %v", err)
+				}
 			}
 		case err, ok := <-errCh:
 			if !ok {
