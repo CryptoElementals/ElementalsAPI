@@ -1005,10 +1005,15 @@ func readRoundConfigFromTierTable(participantCount int64) (map[int32]*proto.Tour
 	}
 	out := make(map[int32]*proto.TournamentRoundConfig, len(rows))
 	for _, row := range rows {
-		remainingParticipantCount := row.TotalPlayerCount >> row.TierNo
+		remainingParticipantCount := row.TotalPlayerCount //当前round剩余玩家数
+		if row.TierNo > 1 {
+			remainingParticipantCount = row.TotalPlayerCount >> (row.TierNo - 1)
+		}
 		if remainingParticipantCount < 1 {
+			log.Errorf("remaining participant count is less than 1: %d", remainingParticipantCount)
 			remainingParticipantCount = 1
 		}
+
 		out[row.TierNo] = &proto.TournamentRoundConfig{
 			TotalPlayerCount:          row.TotalPlayerCount,
 			TokenChange:               row.RewardToken,
