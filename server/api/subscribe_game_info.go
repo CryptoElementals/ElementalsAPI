@@ -307,11 +307,11 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 				log.Errorf("failed to check if player is in tournament: %v", err)
 				continue
 			}
-			if playerInTournament {
-				continue // 如果玩家在上一场进行的tournament中，则不发送tournament snapshot
-			}
 			if msg.GetTopic() == pubsub.TopicTournamentRoster && msg.GetEvent() != nil &&
 				msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
+				if playerInTournament {
+					continue // 如果玩家在上一场进行的tournament中，则不发送tournament snapshot
+				}
 				if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetMessageId()); err != nil {
 					log.Errorf("send tournament snapshot from roster update failed: %v", err)
 				}
