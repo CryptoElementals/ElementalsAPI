@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -26,7 +24,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/protobuf/encoding/protojson"
-	"gorm.io/gorm"
 )
 
 func init() {
@@ -811,8 +808,7 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 	return dto
 }
 
-// sendTournamentSnapshotSSE pushes tournament_snapshot when the player is not still in an active bracket
-// of an in-progress tournament (so we do not distract them from finishing the current event).
+// sendTournamentSnapshotSSE pushes tournament_snapshot sourced from lobby RPC.
 func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, self *proto.PlayerAddress, lobbyClient proto.LobbyServiceClient, sourceMessageID string) error {
 	if lobbyClient == nil || self == nil || task == nil {
 		return fmt.Errorf("invalid tournament snapshot args")
@@ -821,42 +817,31 @@ func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, sel
 	if err != nil {
 		return fmt.Errorf("TournamentPlayerInActiveBracket: %w", err)
 	}
-
-	var snapResp *proto.GetLatestRegistrationOpenTournamentSnapshotResponse
+	ctx := c.Request.Context()
+	var latestResp *proto.GetLatestRegistrationOpenTournamentSnapshotResponse
+	var snapErr error
 	if busy {
-		now := time.Now().UTC()
-		inProgress, inProgressErr := db.TournamentGetLatestInProgress()
-		if inProgressErr != nil {
-			if inProgressErr == gorm.ErrRecordNotFound {
-				return nil
-			}
-			return fmt.Errorf("TournamentGetLatestInProgress: %w", inProgressErr)
-		}
-		// When player is still tied to an already-running tournament, push that snapshot
-		// so reconnect clients keep context of the current event instead of next registration-open.
-		snapResp, err = buildTournamentSnapshotResponse(inProgress, self, now)
-		if err != nil {
-			return fmt.Errorf("build in-progress tournament snapshot: %w", err)
+		latestResp, snapErr = lobbyClient.GetLatestInProgressTournamentSnapshot(ctx, self)
+		if snapErr != nil {
+			return fmt.Errorf("lobby GetLatestInProgressTournamentSnapshot failed: %w", snapErr)
 		}
 	} else {
-		ctx := c.Request.Context()
-		latestResp, snapErr := lobbyClient.GetLatestRegistrationOpenTournamentSnapshot(ctx, self)
+		latestResp, snapErr = lobbyClient.GetLatestRegistrationOpenTournamentSnapshot(ctx, self)
 		if snapErr != nil {
 			return fmt.Errorf("lobby GetLatestRegistrationOpenTournamentSnapshot failed: %w", snapErr)
 		}
-		if latestResp == nil || !latestResp.GetHasTournament() {
-			return nil
-		}
-		// For non-busy players, keep existing behavior: only show latest registration-open snapshot.
-		if latestResp.GetTournamentStatus() != string(dao.TournamentStatusRegistrationOpen) {
-			return nil
-		}
-		snapResp = latestResp
 	}
-
-	if snapResp == nil || !snapResp.GetHasTournament() {
+	if latestResp == nil || !latestResp.GetHasTournament() {
 		return nil
 	}
+	// Keep tournamentSnapshot SSE aligned with the selected snapshot source.
+	if busy && latestResp.GetTournamentStatus() != string(dao.TournamentStatusInProgress) {
+		return nil
+	}
+	if !busy && latestResp.GetTournamentStatus() != string(dao.TournamentStatusRegistrationOpen) {
+		return nil
+	}
+	snapResp := latestResp
 	if sourceMessageID == "" {
 		sourceMessageID = pubsub.BuildEventMessageID(&proto.Event{
 			Type: proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE,
@@ -894,142 +879,6 @@ func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, sel
 		return fmt.Errorf("sendSSEEvent tournament snapshot: %w", err)
 	}
 	return nil
-}
-
-func buildTournamentSnapshotResponse(t *dao.Tournament, self *proto.PlayerAddress, now time.Time) (*proto.GetLatestRegistrationOpenTournamentSnapshotResponse, error) {
-	if t == nil || self == nil {
-		return nil, fmt.Errorf("invalid snapshot build args")
-	}
-	count, err := db.TournamentCountParticipantsForPool(t.TournamentID)
-	if err != nil {
-		return nil, fmt.Errorf("participant count: %w", err)
-	}
-
-	entryFee := t.EntryFee
-	pool := int64(entryFee) * count
-
-	var playerReg bool
-	var partStatus string
-	p, perr := db.TournamentGetParticipantByPlayer(t.TournamentID, self.Id, self.TemporaryAddress)
-	if perr == nil {
-		playerReg = true
-		partStatus = string(p.Status)
-	} else if !errors.Is(perr, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("participant lookup: %w", perr)
-	}
-
-	secs := int64(t.ScheduledStartAt.Sub(now).Seconds())
-	if secs < 0 {
-		secs = 0
-	}
-	topFourRewardTokens, err := topFourRewardTokensFromTierTable(count)
-	if err != nil {
-		return nil, fmt.Errorf("tier reward config: %w", err)
-	}
-	mapRoundConfig, err := readRoundConfigFromTierTable(count)
-	if err != nil {
-		return nil, fmt.Errorf("round config: %w", err)
-	}
-	mapRoundConfigProto := mapRoundConfig
-	return &proto.GetLatestRegistrationOpenTournamentSnapshotResponse{
-		HasTournament:               true,
-		TournamentID:                t.TournamentID,
-		TournamentStatus:            string(t.Status),
-		ScheduledStartUnixSec:       t.ScheduledStartAt.Unix(),
-		RegistrationDeadlineUnixSec: t.RegistrationDeadline.Unix(),
-		EntryFee:                    entryFee,
-		ParticipantCount:            count,
-		PlayerRegistered:            playerReg,
-		PlayerParticipantStatus:     partStatus,
-		TopFourRewardTokens:         topFourRewardTokens,
-		PrizePoolTokens:             pool,
-		SecondsUntilScheduledStart:  secs,
-		MinPlayersRequired:          minPlayersRequiredFromConfig(),
-		MapRoundConfig:              mapRoundConfigProto,
-	}, nil
-}
-
-func tournamentTierBracketSize(participantCount int64) int32 {
-	switch {
-	case participantCount < 128:
-		return 64
-	case participantCount < 256:
-		return 128
-	case participantCount < 512:
-		return 256
-	case participantCount < 1024:
-		return 512
-	case participantCount < 2048:
-		return 1024
-	case participantCount < 4096:
-		return 2048
-	case participantCount < 8192:
-		return 4096
-	default:
-		return 8192
-	}
-}
-
-func topFourRewardTokensFromTierTable(participantCount int64) ([]int32, error) {
-	totalPlayerCount := tournamentTierBracketSize(participantCount)
-
-	var rows []dao.TournamentTierRewardConfig
-	if err := db.Get().
-		Where("total_player_count = ?", totalPlayerCount).
-		Order("tier_no desc").
-		Limit(3).
-		Find(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	// [highest, second-highest, second-highest, third-highest]
-	out := make([]int32, 4)
-	if len(rows) > 0 {
-		out[0] = rows[0].RewardToken
-	}
-	if len(rows) > 1 {
-		out[1] = rows[1].RewardToken
-		out[2] = rows[1].RewardToken
-	}
-	if len(rows) > 2 {
-		out[3] = rows[2].RewardToken
-	}
-	return out, nil
-}
-
-func readRoundConfigFromTierTable(participantCount int64) (map[int32]*proto.TournamentRoundConfig, error) {
-	totalPlayerCount := tournamentTierBracketSize(participantCount)
-	rows, err := db.TournamentTierRewardConfigListByBracketSize(totalPlayerCount)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[int32]*proto.TournamentRoundConfig, len(rows))
-	for _, row := range rows {
-		remainingParticipantCount := row.TotalPlayerCount //当前round剩余玩家数
-		if row.TierNo > 1 {
-			remainingParticipantCount = row.TotalPlayerCount >> (row.TierNo - 1)
-		}
-		if remainingParticipantCount < 1 {
-			log.Errorf("remaining participant count is less than 1: %d", remainingParticipantCount)
-			remainingParticipantCount = 1
-		}
-
-		out[row.TierNo] = &proto.TournamentRoundConfig{
-			TotalPlayerCount:          row.TotalPlayerCount,
-			TokenChange:               row.RewardToken,
-			PointChange:               row.Point,
-			RemainingParticipantCount: remainingParticipantCount,
-		}
-	}
-	return out, nil
-}
-
-func minPlayersRequiredFromConfig() int32 {
-	v := int32(config.LSGConf.TournamentCfg.MinPlayersRequired)
-	if v <= 0 {
-		return 64
-	}
-	return v
 }
 
 // sendSSEEvent 发送 SSE 事件
