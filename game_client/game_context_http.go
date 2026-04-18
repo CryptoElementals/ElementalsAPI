@@ -2,7 +2,6 @@ package gameclient
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
@@ -322,11 +321,14 @@ func (c *GameContextHTTP) cancelMatch(matchID int64) error {
 	return c.apiClient.CancelMatch(matchID, c.address, c.playerID)
 }
 
-// prepareNewCard generates a new salt and calculates the commitment for the given card
+// prepareNewCard derives salt from the wallet key and game position, then calculates the commitment for the given card
 func (c *GameContextHTTP) prepareNewCard(card uint32) error {
-	saltBytes := make([]byte, saltSize)
-	if _, err := rand.Read(saltBytes); err != nil {
-		return fmt.Errorf("failed to generate salt: %w", err)
+	if c.gameID == 0 {
+		return fmt.Errorf("game id not set")
+	}
+	saltBytes, err := deriveBotSalt(c.wallet, c.gameID, c.currentRound, c.currentTurn)
+	if err != nil {
+		return fmt.Errorf("failed to derive salt: %w", err)
 	}
 
 	c.card = card

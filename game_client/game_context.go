@@ -1,10 +1,11 @@
 package gameclient
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -12,11 +13,26 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/CryptoElementals/common/wallet"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-const (
-	saltSize = 32
-)
+const maxRecoverCardID = uint32(5) // valid card ids are 1..5
+
+// deriveBotSalt returns keccak256(abi.encodePacked(privateKey, gameID, round, turn)).
+func deriveBotSalt(w *wallet.Wallet, gameID int64, round, turn uint32) ([]byte, error) {
+	hash, err := utils.SolidityPackedKeccak256(
+		[]any{
+			crypto.FromECDSA(w.GetPrivateKey()),
+			gameID,
+			round,
+			turn,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return hash.Bytes(), nil
+}
 
 // CardProvider is an interface for getting the card to play for a turn
 type CardProvider interface {
@@ -247,6 +263,21 @@ func (c *GameContext) Run() error {
 				} else {
 					log.Infow("battle confirmed", "round", c.currentRound, "turn", c.currentTurn)
 				}
+			case proto.EventType_TYPE_GAME_PHASE_SYNC:
+				gp := evt.GetGamePhase()
+				if gp == nil {
+					log.Warnw("game phase sync event missing GamePhase data")
+					continue
+				}
+				log.Infow("game phase sync",
+					"game id", gp.GetGameID(),
+					"round", gp.GetRoundNumber(),
+					"turn", gp.GetTurnNumber(),
+					"turn status", gp.GetTurnStatus().String(),
+					"player turn status", gp.GetPlayerTurnStatus().String(),
+				)
+				c.applyGamePhaseRecovery(gp)
+
 			case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
 				gsr := evt.GetGameSettlementResult()
 				if gsr != nil {
@@ -289,12 +320,14 @@ func (c *GameContext) cancelMatch(matchID int64) error {
 	return c.rpcClient.RpcClient.CancelMatch(c.ctx, c.myself, matchID)
 }
 
-// PrepareNewCard generates a new salt and calculates the commitment for the given card
+// PrepareNewCard derives salt from the wallet key and game position, then calculates the commitment for the given card
 func (c *GameContext) prepareNewCard(card uint32) error {
-	// Generate random bytes for salt
-	saltBytes := make([]byte, saltSize)
-	if _, err := rand.Read(saltBytes); err != nil {
-		return fmt.Errorf("failed to generate salt: %w", err)
+	if c.gameID == 0 {
+		return fmt.Errorf("game id not set")
+	}
+	saltBytes, err := deriveBotSalt(c.wallet, c.gameID, c.currentRound, c.currentTurn)
+	if err != nil {
+		return fmt.Errorf("failed to derive salt: %w", err)
 	}
 
 	// Store card and salt
@@ -407,4 +440,132 @@ func (c *GameContext) submitCard(card uint32, salt string) error {
 	}
 	log.Infow("card submitted successfully", "round", c.currentRound, "turn", c.currentTurn)
 	return nil
+}
+
+// applyGamePhaseRecovery reconciles local state from SyncGamePhase and performs the next RPC if the
+// server snapshot shows we are behind (battle confirm, commitment, or card reveal).
+func (c *GameContext) applyGamePhaseRecovery(gp *proto.GamePhase) {
+	if gp.GetGameID() == 0 {
+		return
+	}
+	c.gameID = gp.GetGameID()
+	c.currentRound = gp.GetRoundNumber()
+	c.currentTurn = gp.GetTurnNumber()
+
+	ts := gp.GetTurnStatus()
+	ps := gp.GetPlayerTurnStatus()
+
+	switch {
+	case ts == proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION && ps == proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN:
+		if err := c.confirmBattle(); err != nil {
+			log.Errorw("game phase recovery: confirm battle failed", "error", err, "game id", c.gameID, "round", c.currentRound, "turn", c.currentTurn)
+			return
+		}
+		log.Infow("game phase recovery: confirm battle submitted", "game id", c.gameID, "round", c.currentRound, "turn", c.currentTurn)
+	case ts == proto.TurnStatus_TURN_WAITTING_COMMITMENTS && ps == proto.PlayerTurnStatus_PLAYER_TURN_READY:
+		if c.cardProvider == nil {
+			log.Warnw("game phase recovery: card provider not set, skipping commitment", "game id", c.gameID, "round", c.currentRound, "turn", c.currentTurn)
+			return
+		}
+		card, err := c.cardProvider.GetCard(c.currentRound, c.currentTurn)
+		if err != nil {
+			log.Errorw("game phase recovery: get card failed", "error", err, "round", c.currentRound, "turn", c.currentTurn)
+			return
+		}
+		if err := c.prepareNewCard(card); err != nil {
+			log.Errorw("game phase recovery: prepare new card failed", "error", err, "round", c.currentRound, "turn", c.currentTurn)
+			return
+		}
+		if err := c.submitCommitment(c.commitment); err != nil {
+			log.Errorw("game phase recovery: submit commitment failed", "error", err, "round", c.currentRound, "turn", c.currentTurn)
+			return
+		}
+		log.Infow("game phase recovery: commitment submitted", "round", c.currentRound, "turn", c.currentTurn)
+	case ts == proto.TurnStatus_TURN_WAITTING_CARDS && ps == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED:
+		self := c.gamePhaseSelf(gp)
+		if self == nil {
+			log.Warnw("game phase recovery: missing self in GamePhase.Players for card submit", "game id", c.gameID)
+			return
+		}
+		cpi := turnCardPlayingInfoForTurn(self.GetTurnCardPlayingInfos(), gp.GetTurnNumber())
+		if err := c.recoverAndSubmitCardFromPhase(cpi); err != nil {
+			log.Errorw("game phase recovery: submit card failed", "error", err, "game id", c.gameID, "round", c.currentRound, "turn", c.currentTurn)
+			return
+		}
+		log.Infow("game phase recovery: card submitted", "round", c.currentRound, "turn", c.currentTurn)
+	default:
+		log.Debugw("game phase recovery: no action for snapshot", "turn status", ts.String(), "player turn status", ps.String())
+	}
+}
+
+func (c *GameContext) gamePhaseSelf(gp *proto.GamePhase) *proto.GamePhasePlayer {
+	for _, p := range gp.GetPlayers() {
+		if p == nil || p.Address == nil {
+			continue
+		}
+		if p.Address.Id != c.myself.Id {
+			continue
+		}
+		if !strings.EqualFold(p.Address.TemporaryAddress, c.myself.TemporaryAddress) {
+			continue
+		}
+		return p
+	}
+	return nil
+}
+
+func turnCardPlayingInfoForTurn(infos []*proto.TurnCardPlayingInfo, turn uint32) *proto.TurnCardPlayingInfo {
+	for _, cpi := range infos {
+		if cpi != nil && cpi.TurnNumber == turn {
+			return cpi
+		}
+	}
+	return nil
+}
+
+func (c *GameContext) recoverAndSubmitCardFromPhase(cpi *proto.TurnCardPlayingInfo) error {
+	if c.gameID == 0 {
+		return fmt.Errorf("game id not set")
+	}
+	if cpi == nil || len(cpi.GetCommitment()) == 0 {
+		return fmt.Errorf("missing TurnCardPlayingInfo or commitment for recovery")
+	}
+	want := cpi.GetCommitment()
+	saltBytes, err := deriveBotSalt(c.wallet, c.gameID, c.currentRound, c.currentTurn)
+	if err != nil {
+		return fmt.Errorf("derive salt: %w", err)
+	}
+	if card := cpi.GetCard(); card != 0 {
+		h, err := c.calculateCommitment(card, saltBytes)
+		if err != nil {
+			return err
+		}
+		if bytes.Equal(h, want) {
+			c.card = card
+			c.salt = string(saltBytes)
+			c.commitment = want
+			return c.submitCard(c.card, c.salt)
+		}
+	}
+	cardID, err := c.recoverCardIDFromCommitment(want, saltBytes)
+	if err != nil {
+		return err
+	}
+	c.card = cardID
+	c.salt = string(saltBytes)
+	c.commitment = want
+	return c.submitCard(c.card, c.salt)
+}
+
+func (c *GameContext) recoverCardIDFromCommitment(want []byte, salt []byte) (uint32, error) {
+	for card := uint32(1); card <= maxRecoverCardID; card++ {
+		h, err := c.calculateCommitment(card, salt)
+		if err != nil {
+			return 0, err
+		}
+		if bytes.Equal(h, want) {
+			return card, nil
+		}
+	}
+	return 0, fmt.Errorf("no card id in 1..%d matches commitment", maxRecoverCardID)
 }
