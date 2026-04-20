@@ -90,6 +90,7 @@ func NewService(
 	bots := make([]*Bot, 0, len(playerWallets))
 	addresses := make([]*types.PlayerAddress, 0, len(playerWallets))
 	ctx, ccl := context.WithCancel(ctx)
+	log.Debugw("set fixed card order players", "ids", cfg.FixedCardOpponentPlayerIds, "cards", cfg.FixedCardSequence)
 	for _, p := range playerWallets {
 		b := NewBot(ctx, p, rpcClient, chainID, mode, cfg.ApiServerEndpoint, cfg.FixedCardOpponentPlayerIds, cfg.FixedCardSequence)
 		bots = append(bots, b)

@@ -116,6 +116,12 @@ func (c *RpcClient) SubmitTransactions(ctx context.Context, in *proto.Transactio
 	return err
 }
 
+// SyncGamePhase asks the room server to publish the current game phase on the pubsub stream for this player.
+func (c *RpcClient) SyncGamePhase(ctx context.Context, addr *types.PlayerAddress) error {
+	_, err := c.room.SyncGamePhase(ctx, addr.ToProto())
+	return err
+}
+
 func (c *RpcClient) GetPlayerToken(ctx context.Context, playerId int64) (*proto.GetPlayerTokenResponse, error) {
 	if err := c.lobbyRequired(); err != nil {
 		return nil, err
