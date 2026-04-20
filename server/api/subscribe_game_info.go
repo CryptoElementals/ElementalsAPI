@@ -299,16 +299,27 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 				log.Infof("event stream closed - RequestUUID: %s", task.Request.RequestUUID)
 				return task.Response, nil
 			}
-			if msg.GetTopic() == pubsub.TopicTournamentRoster && msg.GetEvent() != nil &&
-				msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
-				if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetMessageId()); err != nil {
-					log.Errorf("send tournament snapshot from roster update failed: %v", err)
+
+			if msg.GetTopic() == pubsub.TopicTournamentRoster {
+				playerInTournament, err := db.TournamentPlayerInActiveBracket(self.Id, self.TemporaryAddress)
+				if err != nil {
+					log.Errorf("failed to check if player is in tournament: %v", err)
+					continue
 				}
-				continue
-			}
-			sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
-			if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
-				log.Errorf("failed to send SSE event: %v", err)
+				if msg.GetEvent() != nil &&
+					msg.GetEvent().GetType() == proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE {
+					if playerInTournament {
+						continue // 如果玩家在上一场进行的tournament中，则不发送tournament snapshot
+					}
+					if err := task.sendTournamentSnapshotSSE(c, self, lobbyClient, msg.GetMessageId()); err != nil {
+						log.Errorf("send tournament snapshot from roster update failed: %v", err)
+					}
+				}
+			} else {
+				sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
+				if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
+					log.Errorf("failed to send SSE event: %v", err)
+				}
 			}
 		case err, ok := <-errCh:
 			if !ok {
@@ -797,8 +808,7 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 	return dto
 }
 
-// sendTournamentSnapshotSSE pushes tournament_snapshot when the player is not still in an active bracket
-// of an in-progress tournament (so we do not distract them from finishing the current event).
+// sendTournamentSnapshotSSE pushes tournament_snapshot sourced from lobby RPC.
 func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, self *proto.PlayerAddress, lobbyClient proto.LobbyServiceClient, sourceMessageID string) error {
 	if lobbyClient == nil || self == nil || task == nil {
 		return fmt.Errorf("invalid tournament snapshot args")
@@ -807,21 +817,31 @@ func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, sel
 	if err != nil {
 		return fmt.Errorf("TournamentPlayerInActiveBracket: %w", err)
 	}
-	if busy {
-		return nil
-	}
 	ctx := c.Request.Context()
-	snapResp, snapErr := lobbyClient.GetLatestRegistrationOpenTournamentSnapshot(ctx, self)
-	if snapErr != nil {
-		return fmt.Errorf("lobby GetLatestRegistrationOpenTournamentSnapshot failed: %w", snapErr)
+	var latestResp *proto.GetLatestRegistrationOpenTournamentSnapshotResponse
+	var snapErr error
+	if busy {
+		latestResp, snapErr = lobbyClient.GetLatestInProgressTournamentSnapshot(ctx, self)
+		if snapErr != nil {
+			return fmt.Errorf("lobby GetLatestInProgressTournamentSnapshot failed: %w", snapErr)
+		}
+	} else {
+		latestResp, snapErr = lobbyClient.GetLatestRegistrationOpenTournamentSnapshot(ctx, self)
+		if snapErr != nil {
+			return fmt.Errorf("lobby GetLatestRegistrationOpenTournamentSnapshot failed: %w", snapErr)
+		}
 	}
-	if snapResp == nil || !snapResp.GetHasTournament() {
+	if latestResp == nil || !latestResp.GetHasTournament() {
 		return nil
 	}
-	// Subscribe API only pushes not-started tournaments (registration open).
-	if snapResp.GetTournamentStatus() != string(dao.TournamentStatusRegistrationOpen) {
+	// Keep tournamentSnapshot SSE aligned with the selected snapshot source.
+	if busy && latestResp.GetTournamentStatus() != string(dao.TournamentStatusInProgress) {
 		return nil
 	}
+	if !busy && latestResp.GetTournamentStatus() != string(dao.TournamentStatusRegistrationOpen) {
+		return nil
+	}
+	snapResp := latestResp
 	if sourceMessageID == "" {
 		sourceMessageID = pubsub.BuildEventMessageID(&proto.Event{
 			Type: proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE,

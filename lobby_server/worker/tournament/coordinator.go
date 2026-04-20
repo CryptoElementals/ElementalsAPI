@@ -93,6 +93,29 @@ func (tc *coordinator) loop() {
 func (tc *coordinator) tick() {
 	now := time.Now().UTC()
 
+	if err := tc.fillRegistrationOpenTournamentsWithBots(now); err != nil {
+		log.Errorw("tournament: fill bots before begin failed", "err", err)
+	}
+
+	//1. 之前的比赛待匹配players
+	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
+	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
+	if err != nil {
+		//if errors.Is(err, gorm.ErrRecordNotFound) {
+		//	log.Debugw("tournament: no tournament to begin in grace window", "now", now)
+		//} else {
+		//	log.Errorw("tournament: get latest tournament to begin", "err", err)
+		//}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Errorw("tournament: get latest tournament to begin", "err", err)
+		}
+	} else {
+		if err := tc.beginTournament(tournamentToBegin); err != nil {
+			log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
+		}
+	}
+
+	//2. 创建下一个tournament
 	if tc.tournamentCreationEnabled.Load() {
 		if err := tc.ensureNextTournaments(now); err != nil {
 			log.Errorw("tournament: ensure next tournaments", "err", err)
@@ -102,24 +125,6 @@ func (tc *coordinator) tick() {
 		tc.logTournamentCreationDisabled(now)
 	}
 
-	if err := tc.fillRegistrationOpenTournamentsWithBots(now); err != nil {
-		log.Errorw("tournament: fill bots before begin failed", "err", err)
-	}
-
-	//2. 待匹配players
-	// Grace window: if scheduler runs a little late (e.g. process restart at +1s), still begin this slot.
-	tournamentToBegin, err := db.TournamentGetLatestRegistrationOpenWithinStartGrace(now, 10*time.Second)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			//log.Debugw("tournament: no tournament to begin in grace window", "now", now)
-			return
-		}
-		log.Errorw("tournament: get latest tournament to begin", "err", err)
-		return
-	}
-	if err := tc.beginTournament(tournamentToBegin); err != nil {
-		log.Errorw("tournament: begin", "tournament_id", tournamentToBegin.ID, "err", err)
-	}
 }
 
 func (tc *coordinator) setTournamentCreationEnabled(enabled bool) {
@@ -655,10 +660,8 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			"bracket_loser_player_id", loserPID,
 			"bracket_loser_temp", loserTempNorm,
 		)
-		if _, rerr := db.TournamentApplyMatchRewardsTx(tx, gr.GameResultType, locked.TournamentID, locked.RoundNo, locked.MatchNo,
-			locked.Player1ID, locked.Player1TempAddress,
-			locked.Player2ID, locked.Player2TempAddress,
-			winPID, winTempNorm, loserPID, loserTempNorm); rerr != nil {
+		if rerr := db.TournamentApplyMatchRewardsTx(tx, locked.TournamentID, locked.RoundNo, locked.MatchNo,
+			winPID, winTempNorm); rerr != nil {
 			return rerr
 		}
 
@@ -935,6 +938,8 @@ func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, gr *dao.GameRes
 	case proto.GameResultType_GAME_NORMAL, proto.GameResultType_GAME_KO:
 		wid, wt, wok := db.WinnerFromPlayerResultInfos(gr.PlayerResultInfos)
 		if !wok {
+			log.Errorf("tournament: winner from player result infos failed: %v, %v, %v, judge tournament %v winner by comparing player ids: %v, %v",
+				gr.GameID, gr.GameResultType, gr.PlayerResultInfos, m.TournamentID, p1id, p2id)
 			wid, wt = 0, ""
 		}
 		if addrMatch(p1id, p1t, wid, wt) {
