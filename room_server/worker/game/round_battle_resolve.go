@@ -162,6 +162,23 @@ func (r *round) isGameEndsByRoundAndTurn() bool {
 	return r.roundNumber == r.maxConfiguredRounds() && r.getCurrentTurnNumber() == r.turnsPerRound()
 }
 
+// isGameEndsByRegulationRoundAndTurn is true on the last turn of the round (turnNumber == turnsPerRound)
+// when roundNumber is at least the final regulation round (regulation finale or any OT round).
+// maxConfiguredRounds is regulation+OT, so regulation end is not the same as last overall round.
+func (r *round) isGameEndsByRegulationRoundAndTurn() bool {
+	if r == nil || r.game == nil {
+		return false
+	}
+	reg := dao.RegulationRoundsForPub(r.game)
+	if reg < 1 {
+		return false
+	}
+	if r.getCurrentTurnNumber() != r.turnsPerRound() {
+		return false
+	}
+	return r.roundNumber >= reg
+}
+
 func (r *round) checkGameOver(states []*gameEndState, round uint32, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
 	surrenderedCount := 0
 	maxLoserMul := uint32(1)
@@ -274,8 +291,8 @@ func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffli
 		finalMultiplier = rewardSpreadMultiplier(hps)
 	} else {
 		endedBySchedule := checkRoundTurnLimit && r.isGameEndsByRoundAndTurn()
-		tieBrokenInOvertime := checkRoundTurnLimit && r.isExtraRound()
-		if !hasOffline && !endedBySchedule && !tieBrokenInOvertime {
+		endedRegulationOrOTRound := checkRoundTurnLimit && r.isGameEndsByRegulationRoundAndTurn()
+		if !hasOffline && !endedBySchedule && !endedRegulationOrOTRound {
 			return false, gameResultNormal, 0, "", 1
 		}
 
