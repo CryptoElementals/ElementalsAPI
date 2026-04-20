@@ -8,6 +8,7 @@ import (
 	"math/bits"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,12 +44,15 @@ type coordinator struct {
 	beforeStartSeconds uint32
 
 	botFreshness time.Duration
+	botFillWindow time.Duration
+	botFillInterval time.Duration
+	botFillLastJoinByTournament sync.Map // map[tournamentID]unixMilli
 
 	tournamentCreationEnabled atomic.Bool
 	lastDisabledLogUnixSec    atomic.Int64
 }
 
-func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFreshnessSec int64) *coordinator {
+func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFillWindowSeconds uint32, botFillIntervalSeconds uint32, botFreshnessSec int64) *coordinator {
 	ctx, cancel := context.WithCancel(parent)
 	tc := &coordinator{
 		ctx:                ctx,
@@ -61,6 +65,8 @@ func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore
 		intervalSeconds:    intervalSeconds,
 		beforeStartSeconds: beforeStartSeconds,
 		botFreshness:       time.Duration(botFreshnessSec) * time.Second,
+		botFillWindow:      time.Duration(botFillWindowSeconds) * time.Second,
+		botFillInterval:    time.Duration(botFillIntervalSeconds) * time.Second,
 	}
 	tc.tournamentCreationEnabled.Store(true)
 	return tc
@@ -154,7 +160,10 @@ func (tc *coordinator) fillRegistrationOpenTournamentsWithBots(now time.Time) er
 	if tc.botStore == nil {
 		return nil
 	}
-	rows, err := db.TournamentListRegistrationOpenReachedDeadline(now)
+	if tc.botFillWindow <= 0 || tc.botFillInterval <= 0 {
+		return nil
+	}
+	rows, err := db.TournamentListRegistrationOpenInBotFillWindow(now, tc.botFillWindow)
 	if err != nil {
 		return err
 	}
@@ -171,6 +180,7 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 		return nil
 	}
 	need := 0
+	var remainingToDeadline time.Duration
 	err := db.Get().Transaction(func(tx *gorm.DB) error {
 		var t dao.Tournament
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -179,9 +189,12 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 			return err
 		}
 		if t.Status != dao.TournamentStatusRegistrationOpen {
+			tc.botFillLastJoinByTournament.Delete(tournamentID)
 			return nil
 		}
-		if now.Before(t.RegistrationDeadline) {
+		fillStart := t.RegistrationDeadline.Add(-tc.botFillWindow)
+		if now.Before(fillStart) || !now.Before(t.RegistrationDeadline) {
+			tc.botFillLastJoinByTournament.Delete(tournamentID)
 			return nil
 		}
 		queued, err := db.TournamentListParticipantsByStatus(tx, t.TournamentID, dao.TournamentParticipantStatusQueued)
@@ -193,9 +206,11 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 			target++
 		}
 		if len(queued) >= target {
+			tc.botFillLastJoinByTournament.Delete(tournamentID)
 			return nil
 		}
 		need = target - len(queued)
+		remainingToDeadline = t.RegistrationDeadline.Sub(now)
 		return nil
 	})
 	if err != nil {
@@ -207,32 +222,84 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 	if need <= 0 {
 		return nil
 	}
-
-	for i := 0; i < need; i++ {
-		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
-		if err != nil {
-			return err
-		}
-		if bot == nil {
-			return nil
-		}
-		if tc.joinTournamentFunc == nil {
-			return fmt.Errorf("nil tournament join function")
-		}
-		if err := tc.joinTournamentFunc(tournamentID, &proto.PlayerAddress{
-			Id:               bot.Id,
-			TemporaryAddress: bot.TemporaryAddress,
-		}); err != nil {
-			_, rerr := tc.botStore.ReleaseInGameBot(*bot, now.UnixMilli(), tc.botFreshness.Milliseconds())
-			if rerr != nil {
-				log.Warnw("tournament: release bot after failed join failed", "bot", bot.String(), "err", rerr)
-			}
-			log.Warnw("tournament: bot join tournament failed", "tournament_id", tournamentID, "bot", bot.String(), "err", err)
-			continue
-		}
-		log.Debugw("tournament: bot join tournament success", "tournament_id", tournamentID, "bot", bot.String())
+	effectiveInterval := tc.predictiveBotFillInterval(need, remainingToDeadline)
+	if !tc.shouldAddBotNow(tournamentID, now, effectiveInterval) {
+		return nil
 	}
+
+	bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
+	if err != nil {
+		return err
+	}
+	if bot == nil {
+		return nil
+	}
+	if tc.joinTournamentFunc == nil {
+		return fmt.Errorf("nil tournament join function")
+	}
+	if err := tc.joinTournamentFunc(tournamentID, &proto.PlayerAddress{
+		Id:               bot.Id,
+		TemporaryAddress: bot.TemporaryAddress,
+	}); err != nil {
+		_, rerr := tc.botStore.ReleaseInGameBot(*bot, now.UnixMilli(), tc.botFreshness.Milliseconds())
+		if rerr != nil {
+			log.Warnw("tournament: release bot after failed join failed", "bot", bot.String(), "err", rerr)
+		}
+		log.Warnw("tournament: bot join tournament failed", "tournament_id", tournamentID, "bot", bot.String(), "err", err)
+		return nil
+	}
+	log.Debugw("tournament: bot join tournament success",
+		"tournament_id", tournamentID,
+		"bot", bot.String(),
+		"need_before_join", need,
+		"remaining_to_deadline_ms", remainingToDeadline.Milliseconds(),
+		"effective_interval_ms", effectiveInterval.Milliseconds())
 	return nil
+}
+
+func (tc *coordinator) shouldAddBotNow(tournamentID string, now time.Time, interval time.Duration) bool {
+	if interval <= 0 {
+		interval = time.Second
+	}
+	nowMs := now.UnixMilli()
+	if v, ok := tc.botFillLastJoinByTournament.Load(tournamentID); ok {
+		lastMs, _ := v.(int64)
+		if nowMs-lastMs < interval.Milliseconds() {
+			return false
+		}
+	}
+	tc.botFillLastJoinByTournament.Store(tournamentID, nowMs)
+	return true
+}
+
+// predictiveBotFillInterval computes a faster cadence when the current shortage
+// cannot be covered in time with the base interval.
+func (tc *coordinator) predictiveBotFillInterval(need int, remainingToDeadline time.Duration) time.Duration {
+	base := tc.botFillInterval
+	if base <= 0 {
+		base = time.Second
+	}
+	if need <= 0 || remainingToDeadline <= 0 {
+		return base
+	}
+	// Last-slot protection: when only 1 seat is missing and deadline is very near,
+	// tighten cadence to tick interval so we don't miss the final fill chance.
+	if need == 1 && remainingToDeadline < 5*time.Second {
+		if tickInterval < base {
+			return tickInterval
+		}
+		return base
+	}
+
+	// Average pace needed to fill all missing slots before deadline.
+	target := remainingToDeadline / time.Duration(need)
+	if target < time.Second {
+		target = time.Second
+	}
+	if target < base {
+		return target
+	}
+	return base
 }
 
 func (tc *coordinator) ensureNextTournaments(now time.Time) error {

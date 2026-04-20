@@ -89,6 +89,8 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 		cfg.TournamentCfg.MinPlayersRequired,
 		cfg.TournamentCfg.IntervalSeconds,
 		cfg.TournamentCfg.BeforeStartSeconds,
+		cfg.TournamentCfg.BotFillWindowSeconds,
+		cfg.TournamentCfg.BotFillIntervalSeconds,
 		cfg.BotRegistryFreshnessSec,
 	)
 	s.grpcHandlers = NewGRPCServices(s.queueSvc, s.tournamentSvc, rw)
