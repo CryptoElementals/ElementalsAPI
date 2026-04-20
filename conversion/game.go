@@ -257,28 +257,26 @@ func playerTurnInfoInTurn(turn *dao.Turn, playerID int64, temporaryAddress strin
 	return nil
 }
 
-// cardPlayingInfosForRoundPlayer builds one CardPlayingInfo per turn in the round with TurnNumber <= activeTurn,
-// including the active turn (compare CardPlayingInfo.TurnNumber to GamePhase.TurnNumber on the client).
-func cardPlayingInfosForRoundPlayer(round *RoundView, activeTurn uint32, playerID int64, temporaryAddress string) []*proto.CardPlayingInfo {
+// turnCardPlayingInfosForCurrentRound builds one TurnCardPlayingInfo per turn in the current round with
+// TurnNumber <= activeTurn (compare TurnCardPlayingInfo.TurnNumber to GamePhase.TurnNumber on the client).
+func turnCardPlayingInfosForCurrentRound(round *RoundView, activeTurn uint32, playerID int64, temporaryAddress string) []*proto.TurnCardPlayingInfo {
 	if round == nil {
 		return nil
 	}
-	var out []*proto.CardPlayingInfo
+	var out []*proto.TurnCardPlayingInfo
 	for _, turn := range round.Turns {
 		if turn == nil || turn.TurnNumber > activeTurn {
 			break
 		}
-		cpi := &proto.CardPlayingInfo{TurnNumber: turn.TurnNumber}
+		cpi := &proto.TurnCardPlayingInfo{TurnNumber: turn.TurnNumber}
 		pti := playerTurnInfoInTurn(turn, playerID, temporaryAddress)
 		if pti != nil && pti.TurnSubmittedCard != nil {
 			c := pti.TurnSubmittedCard
 			if len(c.CommitmentHash) > 0 {
-				h := make([]byte, len(c.CommitmentHash))
-				copy(h, c.CommitmentHash)
-				cpi.Commitment = append(cpi.Commitment, h)
+				cpi.Commitment = append([]byte(nil), c.CommitmentHash...)
 			}
 			if c.CardID != 0 {
-				cpi.Card = append(cpi.Card, c.CardID)
+				cpi.Card = c.CardID
 			}
 		}
 		out = append(out, cpi)
@@ -349,9 +347,9 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 			}
 
 			player := &proto.GamePhasePlayer{
-				Address:          addr,
-				CurrentHP:        currentHP,
-				CardPlayingInfos: cardPlayingInfosForRoundPlayer(currentRound, turnNumber, playerTurnInfo.PlayerID, playerTurnInfo.TemporaryAddress),
+				Address:              addr,
+				CurrentHP:            currentHP,
+				TurnCardPlayingInfos: turnCardPlayingInfosForCurrentRound(currentRound, turnNumber, playerTurnInfo.PlayerID, playerTurnInfo.TemporaryAddress),
 			}
 
 			gamePhase.Players = append(gamePhase.Players, player)

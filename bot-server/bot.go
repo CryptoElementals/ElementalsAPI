@@ -2,11 +2,9 @@ package botserver
 
 import (
 	"context"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
-	"math/rand/v2"
 	"time"
 
 	gameclient "github.com/CryptoElementals/common/game_client"
@@ -14,7 +12,6 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/utils"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
@@ -29,30 +26,47 @@ func (w *playerWallet) address() *types.PlayerAddress {
 }
 
 type roundInfo struct {
-	roundNum    uint
-	turnNumber  uint32 // Current turn number (1-3)
-	commitments [][]byte
-	cards       []uint32 // Store cards as array for easier access
-	salts       []string
+	wallet         *wallet.Wallet
+	roundNum       uint
+	cards          []uint32
+	fixedOpponents map[int64]struct{}
+	fixedCardOrder []uint32
+}
+
+func newRoundInfo(w *wallet.Wallet, fixedOpponentIDs []int64, fixedCards []uint32) *roundInfo {
+	fo := make(map[int64]struct{}, len(fixedOpponentIDs))
+	for _, id := range fixedOpponentIDs {
+		fo[id] = struct{}{}
+	}
+	seq := fixedCards
+	if len(seq) == 0 {
+		seq = []uint32{2, 3, 5}
+	}
+	return &roundInfo{
+		wallet:         w,
+		roundNum:       1,
+		fixedOpponents: fo,
+		fixedCardOrder: seq,
+	}
 }
 
 // GetCard makes roundInfo implement gameclient.CardProvider.
-// It selects a card for the given round/turn using its internally prepared cards.
-func (i *roundInfo) GetCard(round uint32, turn uint32) (uint32, error) {
-	// If this is a new round or cards are not prepared, prepare them.
-	if i.roundNum != uint(round) || len(i.cards) == 0 {
-		i.roundNum = uint(round)
-		i.turnNumber = 1
-		i.cards = nil
-		i.commitments = nil
-		i.salts = nil
-		i.prepareCards()
+func (i *roundInfo) GetCard(ctx gameclient.CardPickContext) (uint32, error) {
+	if ctx.Turn == 0 {
+		return 0, fmt.Errorf("invalid turn number: %d", ctx.Turn)
+	}
+	if ctx.GameID == 0 {
+		return 0, fmt.Errorf("game id not set")
 	}
 
-	if turn == 0 {
-		return 0, fmt.Errorf("invalid turn number: %d", turn)
+	if i.roundNum != uint(ctx.Round) || len(i.cards) == 0 {
+		i.roundNum = uint(ctx.Round)
+		if err := i.prepareRound(ctx); err != nil {
+			return 0, err
+		}
 	}
-	idx := int(turn - 1)
+
+	idx := int(ctx.Turn - 1)
 	if idx < 0 || idx >= len(i.cards) {
 		return 0, fmt.Errorf("turn index out of range: %d (len=%d)", idx, len(i.cards))
 	}
@@ -60,38 +74,18 @@ func (i *roundInfo) GetCard(round uint32, turn uint32) (uint32, error) {
 	return i.cards[idx], nil
 }
 
-// prepareCards prepares 3 cards, salts, and commitments for the current round
-func (i *roundInfo) prepareCards() {
-	// Select random cards
-	allCards := make([]uint32, 5)
-	for j := range allCards {
-		allCards[j] = uint32(j + 1)
+func (i *roundInfo) prepareRound(ctx gameclient.CardPickContext) error {
+	if _, useFixed := i.fixedOpponents[ctx.OpponentID]; useFixed {
+		log.Debugw("found whitelisted opponent player", "id", ctx.OpponentID)
+		i.cards = append([]uint32(nil), i.fixedCardOrder...)
+		return nil
 	}
-	rand.Shuffle(5, func(j, k int) {
-		allCards[j], allCards[k] = allCards[k], allCards[j]
-	})
-
-	// Store first 3 cards for this round
-	i.cards = allCards[:3]
-	i.commitments = make([][]byte, 3)
-	i.salts = make([]string, 3)
-
-	// Prepare commitment and salt for each card
-	for turnIdx := range 3 {
-		// Generate salt for this turn
-		salt := make([]byte, 32)
-		crand.Read(salt)
-		i.salts[turnIdx] = string(salt)
-
-		// Calculate commitment hash for this card using SolidityPackedKeccak256
-		hash, _ := utils.SolidityPackedKeccak256(
-			[]any{
-				i.cards[turnIdx],
-				salt,
-			},
-		)
-		i.commitments[turnIdx] = hash.Bytes()
+	cards, err := gameclient.DeriveRoundThreeCards(i.wallet, ctx.GameID, ctx.Round)
+	if err != nil {
+		return err
 	}
+	i.cards = cards
+	return nil
 }
 
 type Bot struct {
@@ -114,6 +108,8 @@ func NewBot(
 	chainID *big.Int,
 	mode string,
 	apiBaseURL string,
+	fixedOpponentPlayerIDs []int64,
+	fixedCardSequence []uint32,
 ) *Bot {
 	addr := types.NewPlayerAddress(playerWallet.playerId, playerWallet.tempWallet.GetAddrHex())
 	opt := &bind.TransactOpts{
@@ -129,10 +125,11 @@ func NewBot(
 		bindOpt: opt,
 		chanEvt: make(chan *proto.Event, 1),
 		chanErr: make(chan error, 1),
-		cardProvider: &roundInfo{
-			roundNum:   1,
-			turnNumber: 1,
-		},
+		cardProvider: newRoundInfo(
+			playerWallet.tempWallet,
+			fixedOpponentPlayerIDs,
+			fixedCardSequence,
+		),
 		mode:       mode,
 		apiBaseURL: apiBaseURL,
 	}

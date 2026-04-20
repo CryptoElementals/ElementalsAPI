@@ -27,6 +27,10 @@ type BotConfig struct {
 	GameClientMode                  string       `mapstructure:"game-client-mode"` // grpc | http
 	BotRegistryHeartbeatIntervalSec int          `mapstructure:"bot-registry-heartbeat-interval-sec"`
 	WalletInfos                     []WalletInfo `mapstructure:"wallet-infos"` // legacy fallback
+	// FixedCardOpponentPlayerIds: when the human opponent's player id is in this list, the bot plays
+	// FixedCardSequence for turns 1–3 each round (default sequence [2, 3, 4] if unset).
+	FixedCardOpponentPlayerIds []int64  `mapstructure:"fixed-card-opponent-player-ids"`
+	FixedCardSequence          []uint32 `mapstructure:"fixed-card-sequence"`
 }
 
 var BotCfg BotConfig
@@ -61,6 +65,17 @@ func InitBotConfig(configPath string) error {
 	}
 	if BotCfg.BotRegistryHeartbeatIntervalSec <= 0 {
 		BotCfg.BotRegistryHeartbeatIntervalSec = 8
+	}
+
+	if len(BotCfg.FixedCardSequence) > 0 {
+		if len(BotCfg.FixedCardSequence) != 3 {
+			return fmt.Errorf("fixed-card-sequence must have exactly 3 entries (got %d)", len(BotCfg.FixedCardSequence))
+		}
+		for i, c := range BotCfg.FixedCardSequence {
+			if c < 1 || c > 5 {
+				return fmt.Errorf("fixed-card-sequence[%d] must be between 1 and 5 (got %d)", i, c)
+			}
+		}
 	}
 
 	return nil

@@ -72,8 +72,8 @@ func NewInteractiveCardProvider(scanner *bufio.Scanner) *InteractiveCardProvider
 	return &InteractiveCardProvider{scanner: scanner}
 }
 
-func (p *InteractiveCardProvider) GetCard(round uint32, turn uint32) (uint32, error) {
-	fmt.Printf("Round %d, Turn %d: Please enter card number (1-5): ", round, turn)
+func (p *InteractiveCardProvider) GetCard(ctx gameclient.CardPickContext) (uint32, error) {
+	fmt.Printf("Round %d, Turn %d (opponent %d): Please enter card number (1-5): ", ctx.Round, ctx.Turn, ctx.OpponentID)
 	if !p.scanner.Scan() {
 		return 0, fmt.Errorf("failed to read input")
 	}
