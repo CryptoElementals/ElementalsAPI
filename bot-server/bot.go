@@ -11,7 +11,6 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
-	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
@@ -94,8 +93,6 @@ type Bot struct {
 	addr         *types.PlayerAddress
 	client       *rpc.Client
 	bindOpt      *bind.TransactOpts
-	chanEvt      chan *proto.Event
-	chanErr      chan error
 	cardProvider gameclient.CardProvider
 	mode         string
 	apiBaseURL   string
@@ -123,8 +120,6 @@ func NewBot(
 		addr:    addr,
 		client:  client,
 		bindOpt: opt,
-		chanEvt: make(chan *proto.Event, 1),
-		chanErr: make(chan error, 1),
 		cardProvider: newRoundInfo(
 			playerWallet.tempWallet,
 			fixedOpponentPlayerIDs,
@@ -207,6 +202,9 @@ func (b *Bot) runGameContext() error {
 	}
 	err = gameContext.Subscribe(b.formatBotID())
 	if err != nil {
+		return err
+	}
+	if err := gameContext.SyncGamePhaseIfInGame(); err != nil {
 		return err
 	}
 	for {

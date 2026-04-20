@@ -83,7 +83,7 @@ func opponentForPlayer(myself *types.PlayerAddress, players []*types.PlayerAddre
 		if p == nil {
 			continue
 		}
-		if p.Id == myself.Id && strings.EqualFold(p.TemporaryAddress, myself.TemporaryAddress) {
+		if p.Id == myself.Id {
 			continue
 		}
 		return p.Id, p.TemporaryAddress
@@ -147,6 +147,23 @@ func (c *GameContext) Subscribe(id ...string) error {
 	return nil
 }
 
+// SyncGamePhaseIfInGame asks the room server to republish game phase on the event stream only when
+// the lobby reports this player is in an active game.
+func (c *GameContext) SyncGamePhaseIfInGame() error {
+	st, err := c.rpcClient.GetPlayerStatus(c.ctx, c.myself)
+	if err != nil {
+		return fmt.Errorf("get player status: %w", err)
+	}
+	if st == nil || st.GetStatus() != proto.PlayerStatus_PLAYER_IN_GAME {
+		return nil
+	}
+	if err := c.rpcClient.SyncGamePhase(c.ctx, c.myself); err != nil {
+		return fmt.Errorf("sync game phase: %w", err)
+	}
+	log.Infow("sync_game_phase", "addr", c.myself.String())
+	return nil
+}
+
 func (c *GameContext) Run() error {
 	for {
 		select {
@@ -201,6 +218,10 @@ func (c *GameContext) Run() error {
 				}
 				c.gameID = gr.GetGameId()
 				log.Infow("game created", "game id", c.gameID)
+				c.players = c.players[:0] // Reuse slice, more efficient than nil
+				for _, pp := range gr.Players {
+					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
+				}
 				c.currentRound = 1
 				c.currentTurn = 1
 			case proto.EventType_TYPE_ROUND_READY:
