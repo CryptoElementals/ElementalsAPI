@@ -27,12 +27,14 @@ type LobbyServerConfig struct {
 }
 
 type TournamentConfig struct {
-	EntryFee           int32   `mapstructure:"entry-fee"`
-	MinPlayersRequired uint32  `mapstructure:"min-players-required"`
-	IntervalSeconds    uint32  `mapstructure:"interval-seconds"`
-	BeforeStartSeconds uint32  `mapstructure:"before-start-seconds"`
+	EntryFee                int32   `mapstructure:"entry-fee"`
+	MinPlayersRequired      uint32  `mapstructure:"min-players-required"`
+	IntervalSeconds         uint32  `mapstructure:"interval-seconds"`
+	BeforeStartSeconds      uint32  `mapstructure:"before-start-seconds"`
+	BotFillWindowSeconds    uint32  `mapstructure:"bot-fill-window-seconds"`
+	BotFillIntervalSeconds  uint32  `mapstructure:"bot-fill-interval-seconds"`
 	// TopFourPrizeTokens is rank 1..4 fixed prize amounts (tokens) shown to clients; pool is entry_fee * participants.
-	TopFourPrizeTokens []int32 `mapstructure:"top-four-prize-tokens"`
+	TopFourPrizeTokens       []int32 `mapstructure:"top-four-prize-tokens"`
 }
 
 // InitLSConfig loads lobby server config from a YAML file (viper).
@@ -49,6 +51,12 @@ func InitLSConfig(configPath string) error {
 	}
 	if LSGConf.BotRegistryFreshnessSec <= 0 {
 		LSGConf.BotRegistryFreshnessSec = 10
+	}
+	if LSGConf.TournamentCfg.BotFillWindowSeconds == 0 {
+		LSGConf.TournamentCfg.BotFillWindowSeconds = 180
+	}
+	if LSGConf.TournamentCfg.BotFillIntervalSeconds == 0 {
+		LSGConf.TournamentCfg.BotFillIntervalSeconds = 15
 	}
 	return nil
 }

@@ -184,6 +184,21 @@ func TournamentListRegistrationOpenReachedDeadline(now time.Time) ([]dao.Tournam
 	return rows, err
 }
 
+// TournamentListRegistrationOpenInBotFillWindow lists registration_open tournaments whose registration deadline
+// is within [now, now+window], used for progressive bot fill before deadline.
+func TournamentListRegistrationOpenInBotFillWindow(now time.Time, window time.Duration) ([]dao.Tournament, error) {
+	if window <= 0 {
+		return []dao.Tournament{}, nil
+	}
+	var rows []dao.Tournament
+	end := now.Add(window)
+	err := Get().
+		Where("status = ? AND registration_deadline >= ? AND registration_deadline <= ?", dao.TournamentStatusRegistrationOpen, now, end).
+		Order("registration_deadline ASC, id ASC").
+		Find(&rows).Error
+	return rows, err
+}
+
 // TournamentGetLatestRegistrationOpenWithinStartGrace returns one latest registration_open tournament
 // whose scheduled_start_at is within [now-grace, now]. This allows small scheduler/restart delays.
 func TournamentGetLatestRegistrationOpenWithinStartGrace(now time.Time, grace time.Duration) (*dao.Tournament, error) {
