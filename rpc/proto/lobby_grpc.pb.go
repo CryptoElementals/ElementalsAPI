@@ -30,6 +30,7 @@ const (
 	LobbyService_UnregisterBots_FullMethodName                              = "/rpc.LobbyService/UnregisterBots"
 	LobbyService_JoinTournament_FullMethodName                              = "/rpc.LobbyService/JoinTournament"
 	LobbyService_GetLatestRegistrationOpenTournamentSnapshot_FullMethodName = "/rpc.LobbyService/GetLatestRegistrationOpenTournamentSnapshot"
+	LobbyService_GetLatestInProgressTournamentSnapshot_FullMethodName       = "/rpc.LobbyService/GetLatestInProgressTournamentSnapshot"
 	LobbyService_SetTournamentScheduling_FullMethodName                     = "/rpc.LobbyService/SetTournamentScheduling"
 	LobbyService_GetTournamentSchedulingStatus_FullMethodName               = "/rpc.LobbyService/GetTournamentSchedulingStatus"
 )
@@ -54,6 +55,8 @@ type LobbyServiceClient interface {
 	JoinTournament(ctx context.Context, in *JoinTournamentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Latest registration-open tournament snapshot for clients.
 	GetLatestRegistrationOpenTournamentSnapshot(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error)
+	// Latest in-progress tournament snapshot for reconnect/busy clients.
+	GetLatestInProgressTournamentSnapshot(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error)
 	// Toggle/query tournament scheduling (creation of new tournaments).
 	SetTournamentScheduling(ctx context.Context, in *SetTournamentSchedulingRequest, opts ...grpc.CallOption) (*TournamentSchedulingStatus, error)
 	GetTournamentSchedulingStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TournamentSchedulingStatus, error)
@@ -167,6 +170,16 @@ func (c *lobbyServiceClient) GetLatestRegistrationOpenTournamentSnapshot(ctx con
 	return out, nil
 }
 
+func (c *lobbyServiceClient) GetLatestInProgressTournamentSnapshot(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLatestRegistrationOpenTournamentSnapshotResponse)
+	err := c.cc.Invoke(ctx, LobbyService_GetLatestInProgressTournamentSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *lobbyServiceClient) SetTournamentScheduling(ctx context.Context, in *SetTournamentSchedulingRequest, opts ...grpc.CallOption) (*TournamentSchedulingStatus, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TournamentSchedulingStatus)
@@ -207,6 +220,8 @@ type LobbyServiceServer interface {
 	JoinTournament(context.Context, *JoinTournamentRequest) (*emptypb.Empty, error)
 	// Latest registration-open tournament snapshot for clients.
 	GetLatestRegistrationOpenTournamentSnapshot(context.Context, *PlayerAddress) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error)
+	// Latest in-progress tournament snapshot for reconnect/busy clients.
+	GetLatestInProgressTournamentSnapshot(context.Context, *PlayerAddress) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error)
 	// Toggle/query tournament scheduling (creation of new tournaments).
 	SetTournamentScheduling(context.Context, *SetTournamentSchedulingRequest) (*TournamentSchedulingStatus, error)
 	GetTournamentSchedulingStatus(context.Context, *emptypb.Empty) (*TournamentSchedulingStatus, error)
@@ -249,6 +264,9 @@ func (UnimplementedLobbyServiceServer) JoinTournament(context.Context, *JoinTour
 }
 func (UnimplementedLobbyServiceServer) GetLatestRegistrationOpenTournamentSnapshot(context.Context, *PlayerAddress) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLatestRegistrationOpenTournamentSnapshot not implemented")
+}
+func (UnimplementedLobbyServiceServer) GetLatestInProgressTournamentSnapshot(context.Context, *PlayerAddress) (*GetLatestRegistrationOpenTournamentSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLatestInProgressTournamentSnapshot not implemented")
 }
 func (UnimplementedLobbyServiceServer) SetTournamentScheduling(context.Context, *SetTournamentSchedulingRequest) (*TournamentSchedulingStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTournamentScheduling not implemented")
@@ -457,6 +475,24 @@ func _LobbyService_GetLatestRegistrationOpenTournamentSnapshot_Handler(srv inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LobbyService_GetLatestInProgressTournamentSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlayerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LobbyServiceServer).GetLatestInProgressTournamentSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LobbyService_GetLatestInProgressTournamentSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LobbyServiceServer).GetLatestInProgressTournamentSnapshot(ctx, req.(*PlayerAddress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LobbyService_SetTournamentScheduling_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetTournamentSchedulingRequest)
 	if err := dec(in); err != nil {
@@ -539,6 +575,10 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLatestRegistrationOpenTournamentSnapshot",
 			Handler:    _LobbyService_GetLatestRegistrationOpenTournamentSnapshot_Handler,
+		},
+		{
+			MethodName: "GetLatestInProgressTournamentSnapshot",
+			Handler:    _LobbyService_GetLatestInProgressTournamentSnapshot_Handler,
 		},
 		{
 			MethodName: "SetTournamentScheduling",

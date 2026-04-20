@@ -660,10 +660,8 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			"bracket_loser_player_id", loserPID,
 			"bracket_loser_temp", loserTempNorm,
 		)
-		if _, rerr := db.TournamentApplyMatchRewardsTx(tx, gr.GameResultType, locked.TournamentID, locked.RoundNo, locked.MatchNo,
-			locked.Player1ID, locked.Player1TempAddress,
-			locked.Player2ID, locked.Player2TempAddress,
-			winPID, winTempNorm, loserPID, loserTempNorm); rerr != nil {
+		if rerr := db.TournamentApplyMatchRewardsTx(tx, locked.TournamentID, locked.RoundNo, locked.MatchNo,
+			winPID, winTempNorm); rerr != nil {
 			return rerr
 		}
 
@@ -940,6 +938,8 @@ func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, gr *dao.GameRes
 	case proto.GameResultType_GAME_NORMAL, proto.GameResultType_GAME_KO:
 		wid, wt, wok := db.WinnerFromPlayerResultInfos(gr.PlayerResultInfos)
 		if !wok {
+			log.Errorf("tournament: winner from player result infos failed: %v, %v, %v, judge tournament %v winner by comparing player ids: %v, %v",
+				gr.GameID, gr.GameResultType, gr.PlayerResultInfos, m.TournamentID, p1id, p2id)
 			wid, wt = 0, ""
 		}
 		if addrMatch(p1id, p1t, wid, wt) {
