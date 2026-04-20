@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 
 	"github.com/CryptoElementals/common/log"
@@ -34,9 +35,60 @@ func deriveBotSalt(w *wallet.Wallet, gameID int64, round, turn uint32) ([]byte, 
 	return hash.Bytes(), nil
 }
 
+// CardPickContext carries everything needed to choose a card for the current turn.
+type CardPickContext struct {
+	GameID          int64
+	Round           uint32
+	Turn            uint32
+	OpponentID      int64
+	OpponentAddress string // temporary address, lowercased (same convention as types.PlayerAddress)
+}
+
 // CardProvider is an interface for getting the card to play for a turn
 type CardProvider interface {
-	GetCard(round uint32, turn uint32) (uint32, error)
+	GetCard(ctx CardPickContext) (uint32, error)
+}
+
+// DeriveRoundThreeCards shuffles [1,2,3,4,5] using keccak256(abi.encodePacked(privateKey, gameID, round))
+// as the RNG seed, then returns the first three cards.
+func DeriveRoundThreeCards(w *wallet.Wallet, gameID int64, round uint32) ([]uint32, error) {
+	if w == nil {
+		return nil, fmt.Errorf("wallet is nil")
+	}
+	seedHash, err := utils.SolidityPackedKeccak256(
+		[]any{
+			crypto.FromECDSA(w.GetPrivateKey()),
+			gameID,
+			round,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	var seed [32]byte
+	copy(seed[:], seedHash.Bytes())
+	rng := rand.New(rand.NewChaCha8(seed))
+	deck := []uint32{1, 2, 3, 4, 5}
+	rng.Shuffle(5, func(i, j int) {
+		deck[i], deck[j] = deck[j], deck[i]
+	})
+	return []uint32{deck[0], deck[1], deck[2]}, nil
+}
+
+func opponentForPlayer(myself *types.PlayerAddress, players []*types.PlayerAddress) (id int64, addr string) {
+	if myself == nil {
+		return 0, ""
+	}
+	for _, p := range players {
+		if p == nil {
+			continue
+		}
+		if p.Id == myself.Id && strings.EqualFold(p.TemporaryAddress, myself.TemporaryAddress) {
+			continue
+		}
+		return p.Id, p.TemporaryAddress
+	}
+	return 0, ""
 }
 
 // RoundTurnInfo is an interface for event types that have round and turn numbers
@@ -183,7 +235,14 @@ func (c *GameContext) Run() error {
 					continue
 				}
 
-				card, err := c.cardProvider.GetCard(c.currentRound, c.currentTurn)
+				oppID, oppAddr := opponentForPlayer(c.myself, c.players)
+				card, err := c.cardProvider.GetCard(CardPickContext{
+					GameID:          c.gameID,
+					Round:           c.currentRound,
+					Turn:            c.currentTurn,
+					OpponentID:      oppID,
+					OpponentAddress: oppAddr,
+				})
 				if err != nil {
 					log.Errorw("failed to get card from provider", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 					continue
@@ -452,6 +511,16 @@ func (c *GameContext) applyGamePhaseRecovery(gp *proto.GamePhase) {
 	c.currentRound = gp.GetRoundNumber()
 	c.currentTurn = gp.GetTurnNumber()
 
+	if players := gp.GetPlayers(); len(players) > 0 {
+		c.players = c.players[:0]
+		for _, p := range players {
+			if p == nil || p.Address == nil {
+				continue
+			}
+			c.players = append(c.players, types.NewPlayerAddress(p.Address.Id, p.Address.TemporaryAddress))
+		}
+	}
+
 	ts := gp.GetTurnStatus()
 	ps := gp.GetPlayerTurnStatus()
 
@@ -467,7 +536,14 @@ func (c *GameContext) applyGamePhaseRecovery(gp *proto.GamePhase) {
 			log.Warnw("game phase recovery: card provider not set, skipping commitment", "game id", c.gameID, "round", c.currentRound, "turn", c.currentTurn)
 			return
 		}
-		card, err := c.cardProvider.GetCard(c.currentRound, c.currentTurn)
+		oppID, oppAddr := opponentForPlayer(c.myself, c.players)
+		card, err := c.cardProvider.GetCard(CardPickContext{
+			GameID:          c.gameID,
+			Round:           c.currentRound,
+			Turn:            c.currentTurn,
+			OpponentID:      oppID,
+			OpponentAddress: oppAddr,
+		})
 		if err != nil {
 			log.Errorw("game phase recovery: get card failed", "error", err, "round", c.currentRound, "turn", c.currentTurn)
 			return

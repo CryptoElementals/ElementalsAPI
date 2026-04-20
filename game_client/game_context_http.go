@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/log"
@@ -37,6 +38,9 @@ type GameContextHTTP struct {
 	eventChan <-chan *proto.Event
 	errChan   <-chan error
 	sseCancel context.CancelFunc
+
+	myself  *types.PlayerAddress
+	players []*types.PlayerAddress
 }
 
 // NewGameContextHTTP creates a new HTTP-based game context
@@ -60,6 +64,7 @@ func NewGameContextHTTP(
 		cardProvider: cardProvider,
 		address:      address,
 		playerID:     fmt.Sprintf("%d", playerId), // Will be updated after login
+		players:      make([]*types.PlayerAddress, 0, 4),
 	}, nil
 }
 
@@ -94,6 +99,12 @@ func (c *GameContextHTTP) SignIn() error {
 		return fmt.Errorf("user not logged in after login")
 	}
 	c.playerID = playerID
+
+	pid, err := strconv.ParseInt(c.playerID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse player id %q: %w", c.playerID, err)
+	}
+	c.myself = types.NewPlayerAddress(pid, c.address)
 
 	log.Infow("signed in successfully", "player_id", c.playerID, "address", c.address)
 	return nil
@@ -162,6 +173,10 @@ func (c *GameContextHTTP) Run() error {
 				} else {
 					log.Infow("game matched", "player_id", c.playerID, "match_id", matched.GetMatchId())
 				}
+				c.players = c.players[:0]
+				for _, pp := range matched.Players {
+					c.players = append(c.players, types.NewPlayerAddress(pp.Id, pp.TemporaryAddress))
+				}
 				c.currentRound = 1
 				c.currentTurn = 1
 				if matched.GetMatchId() != 0 {
@@ -211,7 +226,14 @@ func (c *GameContextHTTP) Run() error {
 					continue
 				}
 
-				card, err := c.cardProvider.GetCard(c.currentRound, c.currentTurn)
+				oppID, oppAddr := opponentForPlayer(c.myself, c.players)
+				card, err := c.cardProvider.GetCard(CardPickContext{
+					GameID:          c.gameID,
+					Round:           c.currentRound,
+					Turn:            c.currentTurn,
+					OpponentID:      oppID,
+					OpponentAddress: oppAddr,
+				})
 				if err != nil {
 					log.Errorw("failed to get card from provider", "player_id", c.playerID, "game_id", c.gameID, "round", c.currentRound, "turn", c.currentTurn, "error", err)
 					continue

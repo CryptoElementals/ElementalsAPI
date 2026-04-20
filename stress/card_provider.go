@@ -20,6 +20,7 @@ func NewRandomCardProvider() gameclient.CardProvider {
 }
 
 // GetCard returns a random card (1-5) for the given round and turn
-func (p *RandomCardProvider) GetCard(round uint32, turn uint32) (uint32, error) {
+func (p *RandomCardProvider) GetCard(ctx gameclient.CardPickContext) (uint32, error) {
+	_ = ctx
 	return uint32(p.rng.Intn(5) + 1), nil
 }
