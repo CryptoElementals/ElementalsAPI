@@ -9,19 +9,18 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
-// TournamentApplyMatchRewardsTx upserts the winner's tournament_rewards row for this bracket match
-// (token_change/point_change from tournament_tier_reward_configs for pool size + round tier),
-// then applies the wallet delta equal to (new reward - previous reward) for idempotent retries.
+// TournamentApplyMatchRewardsTx upserts one player's latest win reward snapshot in tournament_rewards
+// (token_change/point_change from tournament_tier_reward_configs for pool size + round tier).
+// Wallet is not updated here; settlement happens when eliminated/champion.
 func TournamentApplyMatchRewardsTx(tx *gorm.DB, tournamentID string, roundNo, matchNo uint32,
-	winnerID int64, winnerTemp string,
+	playerID int64, playerTemp string,
 ) error {
-	winnerTemp = strings.ToLower(strings.TrimSpace(winnerTemp))
+	playerTemp = strings.ToLower(strings.TrimSpace(playerTemp))
 
-	if winnerID == 0 || winnerTemp == "" {
-		return fmt.Errorf("tournament reward: invalid winner for %s r%d m%d", tournamentID, roundNo, matchNo)
+	if playerID == 0 || playerTemp == "" {
+		return fmt.Errorf("tournament reward: invalid player for %s r%d m%d", tournamentID, roundNo, matchNo)
 	}
 
 	totalParticipants, err := TournamentCountParticipantsForPool(tournamentID)
@@ -37,8 +36,8 @@ func TournamentApplyMatchRewardsTx(tx *gorm.DB, tournamentID string, roundNo, ma
 		TournamentID: tournamentID,
 		RoundNo:      roundNo,
 		MatchNo:      matchNo,
-		PlayerID:     winnerID,
-		TempAddress:  winnerTemp,
+		PlayerID:     playerID,
+		TempAddress:  playerTemp,
 		TokenChange:  rewardToken,
 		PointChange:  rewardPoint,
 	}
@@ -46,51 +45,73 @@ func TournamentApplyMatchRewardsTx(tx *gorm.DB, tournamentID string, roundNo, ma
 	deltaPoint := rewardPoint
 
 	var previous dao.TournamentReward
-	prevErr := tx.Where("tournament_id = ? AND round_no = ? AND match_no = ? AND player_id = ? AND temp_address = ?",
-		tournamentID, roundNo, matchNo, winnerID, winnerTemp).First(&previous).Error
+	prevErr := tx.Where("tournament_id = ? AND player_id = ? AND temp_address = ?",
+		tournamentID, playerID, playerTemp).
+		Order("round_no DESC, match_no DESC, id DESC").
+		First(&previous).Error
 	switch {
 	case prevErr == nil:
 		deltaToken = rewardToken - previous.TokenChange
 		deltaPoint = rewardPoint - previous.PointChange
+		previous.RoundNo = roundNo
+		previous.MatchNo = matchNo
+		previous.TokenChange = rewardToken
+		previous.PointChange = rewardPoint
+		if err := tx.Save(&previous).Error; err != nil {
+			return fmt.Errorf("tournament reward update latest snapshot: %w", err)
+		}
 	case errors.Is(prevErr, gorm.ErrRecordNotFound):
-		// first time reward write for this winner+match
+		if err := tx.Create(&rewardRow).Error; err != nil {
+			return fmt.Errorf("tournament reward insert latest snapshot: %w", err)
+		}
 	default:
 		return fmt.Errorf("tournament reward: load previous winner reward: %w", prevErr)
 	}
 
-	if err := tx.Clauses(clause.OnConflict{
-		Columns: []clause.Column{
-			{Name: "tournament_id"},
-			{Name: "round_no"},
-			{Name: "match_no"},
-			{Name: "player_id"},
-			{Name: "temp_address"},
-		},
-		DoUpdates: clause.AssignmentColumns([]string{"token_change", "point_change", "updated_at"}),
-	}).Create(&rewardRow).Error; err != nil {
-		return fmt.Errorf("tournament reward upsert: %w", err)
-	}
-
-	log.Infow("tournament: winner reward resolved from tier config",
+	log.Infow("tournament: player win reward snapshot updated",
 		"tournament_id", tournamentID, "round_no", roundNo, "match_no", matchNo,
-		"winner_id", winnerID, "winner_temp", winnerTemp,
+		"player_id", playerID, "player_temp", playerTemp,
 		"total_participants", totalParticipants, "reward_token", rewardToken, "reward_point", rewardPoint,
-		"delta_token", deltaToken, "delta_point", deltaPoint)
+		"delta_token_vs_previous_snapshot", deltaToken, "delta_point_vs_previous_snapshot", deltaPoint)
 
-	if deltaToken != 0 || deltaPoint != 0 {
-		res := tx.Model(&dao.UserToken{}).Where("player_id = ?", winnerID).
-			Updates(map[string]any{
-				"token_amount": gorm.Expr("token_amount + ?", deltaToken),
-				"points":       gorm.Expr("points + ?", deltaPoint),
-			})
-		if res.Error != nil {
-			return fmt.Errorf("tournament reward wallet player %d: %w", winnerID, res.Error)
-		}
-		if res.RowsAffected == 0 {
-			return fmt.Errorf("tournament reward: user_token missing for player_id %d", winnerID)
-		}
+	return nil
+}
+
+// TournamentSettlePlayerRewardToWalletTx pays the player's latest snapshot reward to wallet.
+// If player has no win snapshot, it is a no-op.
+func TournamentSettlePlayerRewardToWalletTx(tx *gorm.DB, tournamentID string, playerID int64, tempAddress string) error {
+	tempAddress = strings.ToLower(strings.TrimSpace(tempAddress))
+	if tournamentID == "" || playerID == 0 || tempAddress == "" {
+		return fmt.Errorf("invalid settlement args")
 	}
-
+	var row dao.TournamentReward
+	err := tx.Where("tournament_id = ? AND player_id = ? AND temp_address = ?", tournamentID, playerID, tempAddress).
+		Order("round_no DESC, match_no DESC, id DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if row.TokenChange == 0 && row.PointChange == 0 {
+		return nil
+	}
+	res := tx.Model(&dao.UserToken{}).Where("player_id = ?", playerID).
+		Updates(map[string]any{
+			"token_amount": gorm.Expr("token_amount + ?", row.TokenChange),
+			"points":       gorm.Expr("points + ?", row.PointChange),
+		})
+	if res.Error != nil {
+		return fmt.Errorf("tournament settle wallet player %d: %w", playerID, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("tournament settle: user_token missing for player_id %d", playerID)
+	}
+	log.Infow("tournament: player reward settled to wallet",
+		"tournament_id", tournamentID, "player_id", playerID, "temp_address", tempAddress,
+		"token_change", row.TokenChange, "point_change", row.PointChange,
+		"source_round_no", row.RoundNo, "source_match_no", row.MatchNo)
 	return nil
 }
 
@@ -112,24 +133,14 @@ func TournamentSumPlayerRewardTotalsTx(tx *gorm.DB, tournamentID string, playerI
 }
 
 // TournamentCumulativeBattleRewardProtoTx builds a BattleReward with winner then loser cumulative tournament totals (after current tx writes).
-func TournamentCumulativeBattleRewardProtoTx(tx *gorm.DB, tournamentID string, winPID int64, winTemp string, losePID int64, loseTemp string, roundNo uint32) (*proto.BattleReward, error) {
+func TournamentCumulativeBattleRewardProtoTx(tx *gorm.DB, tournamentID string, winPID int64, winTemp string, losePID int64, loseTemp string) (*proto.BattleReward, error) {
 	winTemp = strings.ToLower(strings.TrimSpace(winTemp))
 	loseTemp = strings.ToLower(strings.TrimSpace(loseTemp))
-	totalParticipants, err := TournamentCountParticipantsForPool(tournamentID)
+	wt, wp, err := TournamentSumPlayerRewardTotalsTx(tx, tournamentID, winPID, winTemp)
 	if err != nil {
 		return nil, err
 	}
-
-	lt, lp := int32(0), int32(0)
-	wt, wp := int32(0), int32(0)
-	if roundNo > 0 {
-		lastRoundNo := roundNo - 1
-		lt, lp, err = TournamentRoundReward(tx, int32(totalParticipants), lastRoundNo)
-		if err != nil {
-			return nil, err
-		}
-	}
-	wt, wp, err = TournamentRoundReward(tx, int32(totalParticipants), roundNo)
+	lt, lp, err := TournamentSumPlayerRewardTotalsTx(tx, tournamentID, losePID, loseTemp)
 	if err != nil {
 		return nil, err
 	}
