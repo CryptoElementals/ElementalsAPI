@@ -3,6 +3,7 @@ package dao
 import (
 	"time"
 
+	"github.com/CryptoElementals/common/snowflake"
 	"gorm.io/gorm"
 )
 
@@ -37,7 +38,7 @@ func (GameMatch) TableName() string { return "game_match" }
 // BeforeCreate assigns a snowflake primary key when missing.
 func (m *GameMatch) BeforeCreate(tx *gorm.DB) error {
 	if m.ID == 0 {
-		m.ID = GenerateSnowflakeID()
+		m.ID = snowflake.GenerateID()
 	}
 	if m.Status == "" {
 		m.Status = GameMatchStatusPending

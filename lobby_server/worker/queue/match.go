@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -11,6 +12,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
 )
 
 func normalizePairOrder(a, b types.PlayerAddress) (types.PlayerAddress, types.PlayerAddress) {
@@ -250,4 +252,14 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 func (q *Queue) IsPlayerPendingMatch(address types.PlayerAddress) bool {
 	_, ok := q.pendingMatchID(address)
 	return ok
+}
+
+func (q *Queue) schedulePendingMatchConfirmationTimeout(matchID int64, timeoutSec, redundancySec int64) {
+	if timeoutSec <= 0 {
+		return
+	}
+	d := time.Duration(timeoutSec+redundancySec) * time.Second
+	if err := timer.ProcessIn(timer.ScopeLobby, d, &pendingMatchConfirmationTimeoutEvent{MatchID: matchID}, true); err != nil {
+		log.Errorw("schedule pending match confirmation timeout failed", "match_id", matchID, "err", err)
+	}
 }

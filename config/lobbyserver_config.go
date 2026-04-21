@@ -15,6 +15,7 @@ type LobbyServerConfig struct {
 	LogCfg                  log.Config       `mapstructure:"log"`
 	RedisCfg                redis.Config     `mapstructure:"redis"`
 	DbCfg                   db.Config        `mapstructure:"database"`
+	Snowflake               SnowflakeConfig  `mapstructure:"snowflake"`
 	TournamentCfg           TournamentConfig `mapstructure:"tournament"`
 	ListenPort              int64            `mapstructure:"listen-port"`
 	RoomServerAddress       string           `mapstructure:"room-server-address"`

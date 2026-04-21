@@ -14,6 +14,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	roomserver "github.com/CryptoElementals/common/room_server"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +36,11 @@ var runCmd = &cobra.Command{
 			log.Fatal("init logger failed, err: %v", err)
 		}
 		log.Infof("config: %+v", config.RSGConf)
+		snowflakeNode, err := snowflake.InitFromConfig(config.RSGConf.Snowflake.NodeID)
+		if err != nil {
+			log.Fatalf("init snowflake failed, err: %v", err)
+		}
+		log.Infof("snowflake node id=%d", snowflakeNode)
 		err = db.Init(&config.RSGConf.DbCfg)
 		if err != nil {
 			log.Fatal("init db failed, err: %v", err)

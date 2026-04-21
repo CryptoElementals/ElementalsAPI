@@ -69,7 +69,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("lobby redis bots: %w", err)
 	}
-
+	timer.InitTimer(timer.ScopeLobby)
 	queueSvc, err := queue.NewService(ctx, eventPub, botStore, gc,
 		cfg.MinTokenToJoinQueue,
 		argsTemplate.ConfirmationTimeout,

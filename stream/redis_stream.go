@@ -24,19 +24,12 @@ func NewRedisStream() (Stream, error) {
 }
 
 func (r *RedisStream) Publish(ctx context.Context, stream string, topic string, payload []byte, ts int64) (string, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return "", err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
 	payloadB64 := base64.StdEncoding.EncodeToString(payload)
-	reply, err := redigo.String(conn.Do("XADD", stream, "*",
-		"topic", topic,
-		"payload", payloadB64,
-		"ts", ts,
-	))
+	reply, err := redis.XAdd(stream, "*", map[string]interface{}{
+		"topic":   topic,
+		"payload": payloadB64,
+		"ts":      ts,
+	})
 	if err != nil {
 		return "", fmt.Errorf("XADD failed: %w", err)
 	}
@@ -44,80 +37,105 @@ func (r *RedisStream) Publish(ctx context.Context, stream string, topic string, 
 }
 
 func (r *RedisStream) Read(ctx context.Context, streamName string, startID string, blockMs int) ([]Entry, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return nil, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
 	if blockMs < 0 {
 		blockMs = 0
 	}
 
-	args := []interface{}{"STREAMS", streamName, startID}
-	if blockMs > 0 {
-		args = append([]interface{}{"BLOCK", blockMs, "COUNT", 100}, args...)
-	} else {
-		args = append([]interface{}{"COUNT", 100}, args...)
-	}
-
-	reply, err := conn.Do("XREAD", args...)
+	reply, err := redis.XRead(streamName, startID, 100, blockMs)
 	if err != nil {
 		return nil, err
 	}
 	if reply == nil {
-		return nil, nil    
+		return nil, nil
 	}
 
 	return parseXReadReply(reply, streamName)
 }
 
 func (r *RedisStream) Len(ctx context.Context, stream string) (int, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return 0, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
-	return redigo.Int(conn.Do("XLEN", stream))
+	return redis.XLen(stream)
 }
 
 func (r *RedisStream) Range(ctx context.Context, stream string, startID, endID string) ([]Entry, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return nil, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
-	reply, err := redigo.Values(conn.Do("XRANGE", stream, startID, endID))
+	reply, err := redis.XRange(stream, startID, endID, 0)
 	if err != nil {
 		return nil, err
 	}
 	return parseRangeReply(reply)
 }
 
-func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Duration) (int, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return 0, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
+func (r *RedisStream) GroupCreate(ctx context.Context, stream, group, startID string, mkstream bool) error {
+	return redis.XGroupCreate(stream, group, startID, mkstream)
+}
 
+func (r *RedisStream) GroupDestroy(ctx context.Context, stream, group string) (int, error) {
+	return redis.XGroupDestroy(stream, group)
+}
+
+func (r *RedisStream) GroupDelConsumer(ctx context.Context, stream, group, consumer string) (int, error) {
+	return redis.XGroupDelConsumer(stream, group, consumer)
+}
+
+func (r *RedisStream) ReadGroup(ctx context.Context, streamName, group, consumer, readID string, count int, blockMs int) ([]Entry, error) {
+	if blockMs < 0 {
+		blockMs = 0
+	}
+	if count <= 0 {
+		count = 100
+	}
+
+	reply, err := redis.XReadGroup(group, consumer, streamName, readID, count, blockMs)
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil {
+		return nil, nil
+	}
+	return parseXReadReply(reply, streamName)
+}
+
+func (r *RedisStream) Ack(ctx context.Context, stream, group string, messageIDs ...string) (int, error) {
+	if len(messageIDs) == 0 {
+		return 0, nil
+	}
+	return redis.XAck(stream, group, messageIDs...)
+}
+
+func (r *RedisStream) Pending(ctx context.Context, stream, group string) (PendingSummary, error) {
+	reply, err := redis.XPending(stream, group)
+	if err != nil {
+		return PendingSummary{}, err
+	}
+	if reply == nil {
+		return PendingSummary{}, nil
+	}
+	return parsePendingSummary(reply)
+}
+
+func (r *RedisStream) Claim(ctx context.Context, stream, group, consumer string, minIdleMs int, messageIDs ...string) ([]Entry, error) {
+	if len(messageIDs) == 0 {
+		return nil, fmt.Errorf("claim: at least one message id is required")
+	}
+	reply, err := redis.XClaim(stream, group, consumer, minIdleMs, messageIDs...)
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil {
+		return nil, nil
+	}
+	return parseRangeReply(reply)
+}
+
+func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Duration) (int, error) {
 	cutoff := time.Now().Add(-maxAge)
 	minID := fmt.Sprintf("%d-0", cutoff.UnixMilli())
 
-	// XTRIM MINID requires Redis 6.2+; fall back to XDEL for older Redis
-	n, err := redigo.Int(conn.Do("XTRIM", stream, "MINID", minID))
+	n, err := redis.XTrimMinID(stream, minID)
 	if err == nil {
 		return n, nil
 	}
 
-	// Fallback: XRANGE + XDEL
-	reply, err := redigo.Values(conn.Do("XRANGE", stream, "-", minID))
+	reply, err := redis.XRange(stream, "-", minID, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -132,12 +150,36 @@ func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Durat
 		if msgID >= minID {
 			continue
 		}
-		n, e := redigo.Int(conn.Do("XDEL", stream, msgID))
+		n, e := redis.XDel(stream, msgID)
 		if e == nil {
 			deleted += n
 		}
 	}
 	return deleted, nil
+}
+
+func parsePendingSummary(reply []interface{}) (PendingSummary, error) {
+	out := PendingSummary{}
+	if len(reply) < 4 {
+		return out, nil
+	}
+	out.Count, _ = redigo.Int64(reply[0], nil)
+	out.MinID, _ = redigo.String(reply[1], nil)
+	out.MaxID, _ = redigo.String(reply[2], nil)
+	consumers, err := redigo.Values(reply[3], nil)
+	if err != nil {
+		return out, nil
+	}
+	for _, c := range consumers {
+		pair, err := redigo.Values(c, nil)
+		if err != nil || len(pair) < 2 {
+			continue
+		}
+		name, _ := redigo.String(pair[0], nil)
+		cnt, _ := redigo.Int64(pair[1], nil)
+		out.Consumers = append(out.Consumers, PendingConsumer{Name: name, Count: cnt})
+	}
+	return out, nil
 }
 
 func parseXReadReply(reply interface{}, streamName string) ([]Entry, error) {

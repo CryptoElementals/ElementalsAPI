@@ -90,6 +90,7 @@ func NewQueue(
 	}
 	q.botStore = botStore
 	q.registerPendingMatchConfirmationTimeoutHandler()
+	q.registerBotDispatchTickHandler()
 	return q, nil
 }
 

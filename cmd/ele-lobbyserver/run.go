@@ -12,6 +12,7 @@ import (
 	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/spf13/cobra"
 )
 
@@ -30,6 +31,11 @@ var runCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		log.Infof("lobby config: %+v", config.LSGConf)
+		snowflakeNode, err := snowflake.InitFromConfig(config.LSGConf.Snowflake.NodeID)
+		if err != nil {
+			log.Fatalf("init snowflake failed: %v", err)
+		}
+		log.Infof("snowflake node id=%d", snowflakeNode)
 		if err := db.Init(&config.LSGConf.DbCfg); err != nil {
 			log.Fatalf("init db failed: %v", err)
 		}
