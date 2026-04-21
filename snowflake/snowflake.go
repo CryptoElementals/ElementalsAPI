@@ -1,31 +1,32 @@
 // Package snowflake provides a process-wide Snowflake ID generator (github.com/bwmarrin/snowflake).
-// Call [Init] or [InitFromConfig] once during application bootstrap before [GenerateID].
+// Call [Init] or [InitFromConfig] once during application bootstrap before any [GenerateID] (typical single-threaded startup satisfies this).
 package snowflake
 
 import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"sync/atomic"
 
+	"github.com/CryptoElementals/common/log"
 	sf "github.com/bwmarrin/snowflake"
 )
 
 // maxNodeID is the inclusive upper bound for the default bwmarrin layout (10 node bits).
 const maxNodeID = 1023
 
-var node atomic.Pointer[sf.Node]
+var node *sf.Node
 
 // Init configures the snowflake worker id (0–1023 for the default bit layout). Safe to call more than once;
 // later calls are no-ops after the first successful init.
 func Init(nodeID int64) error {
+	if node != nil {
+		return nil
+	}
 	n, err := sf.NewNode(nodeID)
 	if err != nil {
 		return err
 	}
-	if !node.CompareAndSwap(nil, n) {
-		return nil
-	}
+	node = n
 	return nil
 }
 
@@ -60,9 +61,8 @@ func randomNodeID() (int64, error) {
 
 // GenerateID returns a new unique int64 snowflake id. Init must have completed successfully first.
 func GenerateID() int64 {
-	n := node.Load()
-	if n == nil {
-		panic("snowflake: Init must be called before GenerateID")
+	if node == nil {
+		log.Fatal("snowflake: Init must be called before GenerateID")
 	}
-	return n.Generate().Int64()
+	return node.Generate().Int64()
 }
