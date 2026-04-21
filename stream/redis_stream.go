@@ -24,19 +24,12 @@ func NewRedisStream() (Stream, error) {
 }
 
 func (r *RedisStream) Publish(ctx context.Context, stream string, topic string, payload []byte, ts int64) (string, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return "", err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
 	payloadB64 := base64.StdEncoding.EncodeToString(payload)
-	reply, err := redigo.String(conn.Do("XADD", stream, "*",
-		"topic", topic,
-		"payload", payloadB64,
-		"ts", ts,
-	))
+	reply, err := redis.XAdd(stream, "*", map[string]interface{}{
+		"topic":   topic,
+		"payload": payloadB64,
+		"ts":      ts,
+	})
 	if err != nil {
 		return "", fmt.Errorf("XADD failed: %w", err)
 	}
@@ -44,55 +37,27 @@ func (r *RedisStream) Publish(ctx context.Context, stream string, topic string, 
 }
 
 func (r *RedisStream) Read(ctx context.Context, streamName string, startID string, blockMs int) ([]Entry, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return nil, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
 	if blockMs < 0 {
 		blockMs = 0
 	}
 
-	args := []interface{}{"STREAMS", streamName, startID}
-	if blockMs > 0 {
-		args = append([]interface{}{"BLOCK", blockMs, "COUNT", 100}, args...)
-	} else {
-		args = append([]interface{}{"COUNT", 100}, args...)
-	}
-
-	reply, err := conn.Do("XREAD", args...)
+	reply, err := redis.XRead(streamName, startID, 100, blockMs)
 	if err != nil {
 		return nil, err
 	}
 	if reply == nil {
-		return nil, nil    
+		return nil, nil
 	}
 
 	return parseXReadReply(reply, streamName)
 }
 
 func (r *RedisStream) Len(ctx context.Context, stream string) (int, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return 0, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
-	return redigo.Int(conn.Do("XLEN", stream))
+	return redis.XLen(stream)
 }
 
 func (r *RedisStream) Range(ctx context.Context, stream string, startID, endID string) ([]Entry, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return nil, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
-	reply, err := redigo.Values(conn.Do("XRANGE", stream, startID, endID))
+	reply, err := redis.XRange(stream, startID, endID, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -100,24 +65,15 @@ func (r *RedisStream) Range(ctx context.Context, stream string, startID, endID s
 }
 
 func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Duration) (int, error) {
-	pool, err := redis.GetRedigoPool()
-	if err != nil {
-		return 0, err
-	}
-	conn := pool.Get()
-	defer conn.Close()
-
 	cutoff := time.Now().Add(-maxAge)
 	minID := fmt.Sprintf("%d-0", cutoff.UnixMilli())
 
-	// XTRIM MINID requires Redis 6.2+; fall back to XDEL for older Redis
-	n, err := redigo.Int(conn.Do("XTRIM", stream, "MINID", minID))
+	n, err := redis.XTrimMinID(stream, minID)
 	if err == nil {
 		return n, nil
 	}
 
-	// Fallback: XRANGE + XDEL
-	reply, err := redigo.Values(conn.Do("XRANGE", stream, "-", minID))
+	reply, err := redis.XRange(stream, "-", minID, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +88,7 @@ func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Durat
 		if msgID >= minID {
 			continue
 		}
-		n, e := redigo.Int(conn.Do("XDEL", stream, msgID))
+		n, e := redis.XDel(stream, msgID)
 		if e == nil {
 			deleted += n
 		}
