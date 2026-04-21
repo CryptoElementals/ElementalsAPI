@@ -304,18 +304,20 @@ func UnlockUserTokenByGameID(ctx context.Context, gameID int64) error {
 
 // BattleResultSettlement applies PVP economy updates for gr.GameID. gr must be non-nil (caller loads it).
 // Inside the transaction: lock games row, load game_args only (via games.game_args_id), not turns/players.
-func BattleResultSettlement(gr *dao.GameResult) error {
+// When skippedDuplicate is true, economy was already applied (battle_rewards row existed); callers may skip side effects that are not safe to repeat.
+func BattleResultSettlement(gr *dao.GameResult) (skippedDuplicate bool, err error) {
 	if gr == nil {
-		return errors.New("battle result settlement: game result is nil")
+		return false, errors.New("battle result settlement: game result is nil")
 	}
 	gameID := gr.GameID
 	if gameID == 0 {
-		return nil
+		return false, nil
 	}
 	if gr.GameResultType == proto.GameResultType_GAME_ABORTED {
 		log.Debugw("unlock player token caused by abort outcome", "game id", gameID)
-		return UnlockUserTokenByGameID(context.Background(), gameID)
+		return false, UnlockUserTokenByGameID(context.Background(), gameID)
 	}
+	var skipped bool
 	if err := Get().Transaction(func(tx *gorm.DB) error {
 		if err := LockGameForUpdateTx(tx, gameID); err != nil {
 			return err
@@ -334,6 +336,7 @@ func BattleResultSettlement(gr *dao.GameResult) error {
 		}
 		if exists {
 			log.Debugw("battle settlement skipped: battle_rewards row already exists for game", "game_id", gameID)
+			skipped = true
 			return nil
 		}
 		reward, err := EnsureBattleRewardPVPLoadedOrCreated(tx, gameID, gr)
@@ -394,10 +397,10 @@ func BattleResultSettlement(gr *dao.GameResult) error {
 		}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("battle result settlement: game id: %d: %w", gameID, err)
+		return false, fmt.Errorf("battle result settlement: game id: %d: %w", gameID, err)
 	}
 
-	return nil
+	return skipped, nil
 }
 
 func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error) {
