@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/CryptoElementals/common/timer"
 	"gorm.io/gorm"
 )
@@ -259,7 +260,7 @@ func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType u
 	}
 	matchID := completedMatchID
 	if completedMatchID == 0 {
-		matchID = dao.GenerateSnowflakeID()
+		matchID = snowflake.GenerateID()
 	}
 	gameID, err := r.createGameAndNotify(players, gameType, matchID)
 	if err != nil {

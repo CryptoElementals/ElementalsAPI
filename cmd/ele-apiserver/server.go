@@ -17,6 +17,7 @@ import (
 	"github.com/CryptoElementals/common/server"
 	"github.com/CryptoElementals/common/server/events"
 	"github.com/CryptoElementals/common/session"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/spf13/cobra"
 )
 
@@ -62,6 +63,12 @@ func startServer() error {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	log.Info("Logger system initialized successfully")
+
+	snowflakeNode, err := snowflake.InitFromConfig(cfg.Snowflake.NodeID)
+	if err != nil {
+		return fmt.Errorf("failed to initialize snowflake: %w", err)
+	}
+	log.Infof("snowflake node id=%d", snowflakeNode)
 
 	// Initialize Redis
 	if err := redis.Init(&cfg.RedisCfg); err != nil {

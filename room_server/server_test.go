@@ -17,6 +17,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/redis"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -129,6 +130,7 @@ func TestMain(m *testing.M) {
 }
 
 func setupMemDb(t *testing.T) {
+	require.NoError(t, snowflake.Init(1))
 	err := db.Init(&db.Config{Development: true})
 	require.NoError(t, err)
 	err = db.MigrateMemDb()
@@ -136,12 +138,14 @@ func setupMemDb(t *testing.T) {
 }
 
 func TestInsertCards(t *testing.T) {
+	require.NoError(t, snowflake.Init(1))
 	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
 	require.NoError(t, err)
 	prepareCards(t)
 }
 
 func TestInsertUserProfile(t *testing.T) {
+	require.NoError(t, snowflake.Init(1))
 	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
 	require.NoError(t, err)
 	userProfile1 := dao.UserProfile{

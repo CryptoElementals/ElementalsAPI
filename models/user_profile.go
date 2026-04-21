@@ -1,11 +1,9 @@
 package dao
 
 import (
-	"log"
-	"sync"
 	"time"
 
-	"github.com/bwmarrin/snowflake"
+	"github.com/CryptoElementals/common/snowflake"
 	"gorm.io/gorm"
 )
 
@@ -25,7 +23,7 @@ type UserProfile struct {
 // BeforeCreate 确保在创建记录时生成主键
 func (u *UserProfile) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.PlayerID == 0 {
-		u.PlayerID = GenerateSnowflakeID()
+		u.PlayerID = snowflake.GenerateID()
 	}
 	return nil
 }
@@ -44,28 +42,4 @@ func (UserProfile) TableName() string {
 
 func (DevTempKey) TableName() string {
 	return "dev_temp_keys"
-}
-
-// snowflakeNode 全局雪花ID生成器节点
-var (
-	snowflakeNode *snowflake.Node
-	snowflakeOnce sync.Once
-)
-
-// initSnowflakeNode 初始化雪花ID生成器节点
-func initSnowflakeNode() {
-	snowflakeOnce.Do(func() {
-		var err error
-		// 使用节点ID 1
-		snowflakeNode, err = snowflake.NewNode(1)
-		if err != nil {
-			log.Fatalf("初始化雪花ID生成器失败: %v", err)
-		}
-	})
-}
-
-// GenerateSnowflakeID returns a new snowflake id (shared by user_profiles, game_match, etc.).
-func GenerateSnowflakeID() int64 {
-	initSnowflakeNode()
-	return snowflakeNode.Generate().Int64()
 }

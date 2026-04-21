@@ -19,9 +19,10 @@ type RoomChainEntry struct {
 
 // RoomServerConfig represents the complete application configuration structure
 type RoomServerConfig struct {
-	LogCfg      log.Config   `mapstructure:"log"`
-	RedisCfg    redis.Config `mapstructure:"redis"`
-	DbCfg       db.Config    `mapstructure:"database"`
+	LogCfg      log.Config      `mapstructure:"log"`
+	RedisCfg    redis.Config  `mapstructure:"redis"`
+	DbCfg       db.Config     `mapstructure:"database"`
+	Snowflake   SnowflakeConfig `mapstructure:"snowflake"`
 	ChainCfg    ChainConfig  `mapstructure:"chain"`
 	// Chains is the preferred multi-chain list (http-rpc + room contract per entry).
 	// If empty, legacy ChainCfg is treated as a single entry (see EffectiveChains).

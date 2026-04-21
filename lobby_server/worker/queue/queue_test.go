@@ -7,6 +7,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/redis"
+	"github.com/CryptoElementals/common/snowflake"
 	tt "github.com/CryptoElementals/common/room_server/worker/testing"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -38,6 +39,9 @@ func (noopEventPublisher) Publish(ctx context.Context, req *proto.PublishRequest
 }
 
 func TestMain(m *testing.M) {
+	if err := snowflake.Init(1); err != nil {
+		panic(err)
+	}
 	if err := db.Init(&db.Config{Development: true}); err != nil {
 		panic(err)
 	}

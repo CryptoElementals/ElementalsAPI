@@ -64,6 +64,68 @@ func (r *RedisStream) Range(ctx context.Context, stream string, startID, endID s
 	return parseRangeReply(reply)
 }
 
+func (r *RedisStream) GroupCreate(ctx context.Context, stream, group, startID string, mkstream bool) error {
+	return redis.XGroupCreate(stream, group, startID, mkstream)
+}
+
+func (r *RedisStream) GroupDestroy(ctx context.Context, stream, group string) (int, error) {
+	return redis.XGroupDestroy(stream, group)
+}
+
+func (r *RedisStream) GroupDelConsumer(ctx context.Context, stream, group, consumer string) (int, error) {
+	return redis.XGroupDelConsumer(stream, group, consumer)
+}
+
+func (r *RedisStream) ReadGroup(ctx context.Context, streamName, group, consumer, readID string, count int, blockMs int) ([]Entry, error) {
+	if blockMs < 0 {
+		blockMs = 0
+	}
+	if count <= 0 {
+		count = 100
+	}
+
+	reply, err := redis.XReadGroup(group, consumer, streamName, readID, count, blockMs)
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil {
+		return nil, nil
+	}
+	return parseXReadReply(reply, streamName)
+}
+
+func (r *RedisStream) Ack(ctx context.Context, stream, group string, messageIDs ...string) (int, error) {
+	if len(messageIDs) == 0 {
+		return 0, nil
+	}
+	return redis.XAck(stream, group, messageIDs...)
+}
+
+func (r *RedisStream) Pending(ctx context.Context, stream, group string) (PendingSummary, error) {
+	reply, err := redis.XPending(stream, group)
+	if err != nil {
+		return PendingSummary{}, err
+	}
+	if reply == nil {
+		return PendingSummary{}, nil
+	}
+	return parsePendingSummary(reply)
+}
+
+func (r *RedisStream) Claim(ctx context.Context, stream, group, consumer string, minIdleMs int, messageIDs ...string) ([]Entry, error) {
+	if len(messageIDs) == 0 {
+		return nil, fmt.Errorf("claim: at least one message id is required")
+	}
+	reply, err := redis.XClaim(stream, group, consumer, minIdleMs, messageIDs...)
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil {
+		return nil, nil
+	}
+	return parseRangeReply(reply)
+}
+
 func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Duration) (int, error) {
 	cutoff := time.Now().Add(-maxAge)
 	minID := fmt.Sprintf("%d-0", cutoff.UnixMilli())
@@ -94,6 +156,30 @@ func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Durat
 		}
 	}
 	return deleted, nil
+}
+
+func parsePendingSummary(reply []interface{}) (PendingSummary, error) {
+	out := PendingSummary{}
+	if len(reply) < 4 {
+		return out, nil
+	}
+	out.Count, _ = redigo.Int64(reply[0], nil)
+	out.MinID, _ = redigo.String(reply[1], nil)
+	out.MaxID, _ = redigo.String(reply[2], nil)
+	consumers, err := redigo.Values(reply[3], nil)
+	if err != nil {
+		return out, nil
+	}
+	for _, c := range consumers {
+		pair, err := redigo.Values(c, nil)
+		if err != nil || len(pair) < 2 {
+			continue
+		}
+		name, _ := redigo.String(pair[0], nil)
+		cnt, _ := redigo.Int64(pair[1], nil)
+		out.Consumers = append(out.Consumers, PendingConsumer{Name: name, Count: cnt})
+	}
+	return out, nil
 }
 
 func parseXReadReply(reply interface{}, streamName string) ([]Entry, error) {

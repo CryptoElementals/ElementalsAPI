@@ -16,6 +16,7 @@ type ApiServerConfig struct {
 	LogCfg            log.Config      `mapstructure:"log"`
 	RedisCfg          redis.Config    `mapstructure:"redis"`
 	DbCfg             db.Config       `mapstructure:"database"`
+	Snowflake         SnowflakeConfig `mapstructure:"snowflake"`
 	ServerCfg           ServerConfig    `mapstructure:"server"`
 	RoomServerAddress   string          `mapstructure:"room-server-address"`
 	LobbyServerAddress  string          `mapstructure:"lobby-server-address"`
