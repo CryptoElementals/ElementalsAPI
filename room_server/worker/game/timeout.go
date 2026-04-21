@@ -123,7 +123,7 @@ func (g *Game) sendTimerEventByCurrentRound() {
 		"turn status", timerEvent.currentTurnStatus,
 		"timeout", timeout.Seconds(),
 	)
-	if err := timer.ProcessIn(timer.ScopeRoom, timeout, timerEvent); err != nil {
+	if err := timer.ProcessIn(timer.ScopeRoom, timeout, timerEvent, true); err != nil {
 		log.Errorw("schedule game timer failed", "game id", g.gameInfo.ID, "err", err)
 	}
 }

@@ -3,7 +3,6 @@ package queue
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"

@@ -2,6 +2,7 @@ package timer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -140,7 +141,13 @@ func RegisterHandler(scope Scope, evt TimerEvent, handler func(TimerEvent) error
 	return nil
 }
 
-func ProcessIn(scope Scope, duration time.Duration, evt TimerEvent) error {
+// ProcessIn schedules evt to run after duration. When unique is true and the Redis
+// asynq client is active, the task is enqueued with asynq.Unique so duplicate
+// type+payload+queue within the uniqueness window are rejected (see asynq docs).
+// Uniqueness TTL is max(duration, 1s) as required by asynq. ErrDuplicateTask is
+// treated as success when unique is true. The in-process timer fallback does not
+// enforce uniqueness.
+func ProcessIn(scope Scope, duration time.Duration, evt TimerEvent, unique bool) error {
 	if evt == nil {
 		return fmt.Errorf("process timer: event is nil")
 	}
@@ -163,11 +170,22 @@ func ProcessIn(scope Scope, duration time.Duration, evt TimerEvent) error {
 
 	if client != nil {
 		task := asynq.NewTask(eventType, evt.Marshal())
-		_, err := client.Enqueue(task,
+		opts := []asynq.Option{
 			asynq.ProcessIn(duration),
 			asynq.Queue(queueName(scope)),
 			asynq.MaxRetry(0),
-		)
+		}
+		if unique {
+			ttl := duration
+			if ttl < time.Second {
+				ttl = time.Second
+			}
+			opts = append(opts, asynq.Unique(ttl))
+		}
+		_, err := client.Enqueue(task, opts...)
+		if err != nil && unique && errors.Is(err, asynq.ErrDuplicateTask) {
+			return nil
+		}
 		return err
 	}
 
