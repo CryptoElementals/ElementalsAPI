@@ -8,7 +8,6 @@ import (
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/chain"
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/rpc/middleware"
@@ -22,7 +21,6 @@ import (
 type Service struct {
 	ctx       context.Context
 	cfg       *config.RoomServerConfig
-	mgr       *worker.WorkerManager
 	server    *grpc.Server
 	chainSvc  *chain.Chain
 	gameSvc   *game.Service
@@ -35,7 +33,6 @@ func New(ctx context.Context,
 	s := &Service{
 		ctx: ctx,
 		cfg: cfg,
-		mgr: worker.NewWorkerManager(ctx),
 	}
 	wallets := make([]*wallet.Wallet, 0, len(cfg.WalletPaths))
 	for _, path := range cfg.WalletPaths {
@@ -55,7 +52,7 @@ func New(ctx context.Context,
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
 	eventPub := pubsub.NewStreamPublisher(st)
-	s.gameSvc = game.NewService(ctx, s.mgr, eventPub, cfg.GameArgsID, chainSvc)
+	s.gameSvc = game.NewService(ctx, eventPub, cfg.GameArgsID, chainSvc)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	// game.Service implements chain/player/game handlers.

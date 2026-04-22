@@ -24,7 +24,7 @@ func normalizePairOrder(a, b types.PlayerAddress) (types.PlayerAddress, types.Pl
 	return b, a
 }
 
-// createPvpMatchFromQueue inserts game_match and notifies players (caller must hold q.lock).
+// createPvpMatchFromQueue inserts game_match and notifies players.
 func (q *Queue) createPvpMatchFromQueue(players []types.PlayerAddress) error {
 	if len(players) != 2 {
 		return fmt.Errorf("match requires 2 players, got %d", len(players))
@@ -56,7 +56,7 @@ func (q *Queue) createPvpMatchFromQueue(players []types.PlayerAddress) error {
 	return nil
 }
 
-// createContinueRematchMatch inserts game_match (with last_game_id), registers pending confirmations, and publishes TYPE_MATCHED (GameMatched with LastGameId) per player. Caller must hold q.lock.
+// createContinueRematchMatch inserts game_match (with last_game_id), registers pending confirmations, and publishes TYPE_MATCHED (GameMatched with LastGameId) per player.
 func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGameID int64) (int64, error) {
 	if len(players) != 2 {
 		return 0, fmt.Errorf("continue rematch requires 2 players, got %d", len(players))
@@ -151,8 +151,6 @@ func (q *Queue) HandleCancelMatch(req *pb.CancelMatchRequest) error {
 	if !ok || mapID != matchID {
 		return fmt.Errorf("no pending match for player")
 	}
-	q.lock.Lock()
-	defer q.lock.Unlock()
 	m, err := db.GetGameMatchByID(q.ctx, matchID)
 	if err != nil {
 		return err
@@ -163,7 +161,7 @@ func (q *Queue) HandleCancelMatch(req *pb.CancelMatchRequest) error {
 	if !addressInGameMatch(m, addr) {
 		return fmt.Errorf("player not in match")
 	}
-	q.abortPendingMatchLocked(matchID, true, false)
+	q.abortPendingMatch(matchID, true, false)
 	return nil
 }
 
@@ -238,7 +236,7 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 		return fmt.Errorf("finalize confirmed pair conflict for match_id=%d", m.ID)
 	}
 	for _, p := range players {
-		if q.isBotLocked(p) {
+		if q.isPlayerBot(p) {
 			continue
 		}
 		if err := db.SetLockedTokenGameID(q.ctx, p.Id, p.TemporaryAddress, gid); err != nil {
@@ -248,7 +246,7 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 	return nil
 }
 
-// IsPlayerPendingMatch reports whether the player is waiting on game_match confirmations (caller should not hold q.lock).
+// IsPlayerPendingMatch reports whether the player is waiting on game_match confirmations.
 func (q *Queue) IsPlayerPendingMatch(address types.PlayerAddress) bool {
 	_, ok := q.pendingMatchID(address)
 	return ok

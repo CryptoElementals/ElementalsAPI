@@ -21,7 +21,7 @@ func (s Set[T]) Contains(value T) bool {
 	return exists
 }
 
-func (q *Queue) isBotLocked(addr types.PlayerAddress) bool {
+func (q *Queue) isPlayerBot(addr types.PlayerAddress) bool {
 	isBot, err := q.botStore.IsBot(addr)
 	if err != nil {
 		log.Errorw("redis is bot check failed", "player", addr.String(), "err", err)
@@ -30,7 +30,7 @@ func (q *Queue) isBotLocked(addr types.PlayerAddress) bool {
 	return isBot
 }
 
-func (q *Queue) popBotForMatchLocked() (types.PlayerAddress, bool) {
+func (q *Queue) popBotForMatch() (types.PlayerAddress, bool) {
 	addr, err := q.botStore.PopFreshIdleBotForMatch(time.Now().UnixMilli(), q.botFreshness.Milliseconds())
 	if err != nil {
 		log.Errorw("redis pop fresh idle bot failed", "err", err)
@@ -42,7 +42,7 @@ func (q *Queue) popBotForMatchLocked() (types.PlayerAddress, bool) {
 	return *addr, true
 }
 
-func (q *Queue) releaseInGameBotLocked(addr types.PlayerAddress) bool {
+func (q *Queue) releaseInGameBot(addr types.PlayerAddress) bool {
 	ok, err := q.botStore.ReleaseInGameBot(addr, time.Now().UnixMilli(), q.botFreshness.Milliseconds())
 	if err != nil {
 		log.Errorw("redis release in-game bot failed", "player", addr.String(), "err", err)
@@ -51,7 +51,7 @@ func (q *Queue) releaseInGameBotLocked(addr types.PlayerAddress) bool {
 	return ok
 }
 
-func (q *Queue) firstWaitingPlayerForBotLocked() (*types.PlayerAddress, error) {
+func (q *Queue) firstWaitingPlayerForBot() (*types.PlayerAddress, error) {
 	cutoff := time.Now().Add(-q.botWaitTime).UnixMilli()
 	return q.lobbyState.FirstWaitingPlayerBefore(q.ctx, cutoff)
 }
@@ -82,9 +82,8 @@ func (q *Queue) handleBotDispatchTick() error {
 	if q.ctx.Err() != nil {
 		return nil
 	}
-	q.lock.Lock()
 	for {
-		player, err := q.firstWaitingPlayerForBotLocked()
+		player, err := q.firstWaitingPlayerForBot()
 		if err != nil {
 			log.Errorw("find waiting player for bot failed", "err", err)
 			break
@@ -92,7 +91,7 @@ func (q *Queue) handleBotDispatchTick() error {
 		if player == nil {
 			break
 		}
-		botPlayer, ok := q.popBotForMatchLocked()
+		botPlayer, ok := q.popBotForMatch()
 		if !ok {
 			break
 		}
@@ -103,7 +102,6 @@ func (q *Queue) handleBotDispatchTick() error {
 			break
 		}
 	}
-	q.lock.Unlock()
 	return nil
 }
 
