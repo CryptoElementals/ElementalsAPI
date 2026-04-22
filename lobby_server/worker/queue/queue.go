@@ -18,6 +18,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
 	"google.golang.org/grpc"
 )
 
@@ -110,6 +111,9 @@ func (q *Queue) start() error {
 }
 
 func (q *Queue) close() {
+	if err := timer.UnregisterBotDispatchRecurring(); err != nil {
+		log.Errorw("unregister bot dispatch recurring failed", "err", err)
+	}
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	q.closing = true
@@ -205,7 +209,8 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 		}
 	})
 	q.lock.Unlock()
-	if err := db.BattleResultSettlement(gr); err != nil {
+	skippedDup, err := db.BattleResultSettlement(gr)
+	if err != nil {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
@@ -221,13 +226,16 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	} else if q.anyHumanPlayerBelowQueueThreshold(gr, bots) {
 		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", gameID)
 		q.publishNotMatchableForHumans(gr, gameID, bots)
-	} else {
+	} else if !skippedDup {
 		q.lock.Lock()
 		q.tryStartContinueRematchAfterGame(gameID, gr)
 		q.lock.Unlock()
 	}
 
 	go func() {
+		if skippedDup {
+			return
+		}
 		if q.statSvcClient == nil {
 			return
 		}

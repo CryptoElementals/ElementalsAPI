@@ -126,6 +126,24 @@ func (r *RedisStream) Claim(ctx context.Context, stream, group, consumer string,
 	return parseRangeReply(reply)
 }
 
+func (r *RedisStream) AutoClaim(ctx context.Context, streamName, group, consumer string, minIdleMs int, start string, count int) (AutoClaimResult, error) {
+	if start == "" {
+		start = "0-0"
+	}
+	if count <= 0 {
+		count = 100
+	}
+	reply, err := redis.XAutoClaim(streamName, group, consumer, minIdleMs, start, count)
+	if err != nil {
+		return AutoClaimResult{}, err
+	}
+	entries, next, err := parseAutoClaimReply(reply)
+	if err != nil {
+		return AutoClaimResult{}, err
+	}
+	return AutoClaimResult{Entries: entries, NextStart: next}, nil
+}
+
 func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Duration) (int, error) {
 	cutoff := time.Now().Add(-maxAge)
 	minID := fmt.Sprintf("%d-0", cutoff.UnixMilli())
@@ -226,6 +244,39 @@ func parseRangeReply(reply []interface{}) ([]Entry, error) {
 		result = append(result, ent)
 	}
 	return result, nil
+}
+
+// parseAutoClaimReply decodes XAUTOCLAIM reply: [next-start, entries]. Redis 7+ may append more fields; entries stay at index 1.
+func parseAutoClaimReply(reply interface{}) (entries []Entry, nextStart string, err error) {
+	if reply == nil {
+		return nil, "0-0", nil
+	}
+	vals, err := redigo.Values(reply, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("xautoclaim reply: %w", err)
+	}
+	if len(vals) < 2 {
+		return nil, "", fmt.Errorf("xautoclaim reply: expected >=2 elements, got %d", len(vals))
+	}
+	nextStart, err = redigo.String(vals[0], nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("xautoclaim next id: %w", err)
+	}
+	if vals[1] == nil {
+		return nil, nextStart, nil
+	}
+	entryVals, err := redigo.Values(vals[1], nil)
+	if err != nil {
+		return nil, nextStart, fmt.Errorf("xautoclaim entries: %w", err)
+	}
+	if len(entryVals) == 0 {
+		return nil, nextStart, nil
+	}
+	entries, err = parseRangeReply(entryVals)
+	if err != nil {
+		return nil, nextStart, err
+	}
+	return entries, nextStart, nil
 }
 
 func parseStreamEntry(item interface{}) (Entry, error) {

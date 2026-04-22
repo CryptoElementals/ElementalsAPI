@@ -27,6 +27,12 @@ type PendingConsumer struct {
 	Count int64
 }
 
+// AutoClaimResult is the parsed outcome of XAUTOCLAIM (claimed entries + scan cursor).
+type AutoClaimResult struct {
+	Entries   []Entry
+	NextStart string
+}
+
 // Stream abstracts a message stream backend (Redis, Kafka, etc.).
 // Implementations can be swapped without changing callers.
 type Stream interface {
@@ -67,4 +73,8 @@ type Stream interface {
 
 	// Claim takes idle pending messages and assigns them to consumer (XCLAIM). Requires at least one messageID.
 	Claim(ctx context.Context, stream, group, consumer string, minIdleMs int, messageIDs ...string) ([]Entry, error)
+
+	// AutoClaim scans the group's pending list and claims entries idle longer than minIdleMs (XAUTOCLAIM).
+	// start is the scan cursor ("0-0" to begin); use returned NextStart on the next call to continue scanning.
+	AutoClaim(ctx context.Context, stream, group, consumer string, minIdleMs int, start string, count int) (AutoClaimResult, error)
 }

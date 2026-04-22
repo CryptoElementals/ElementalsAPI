@@ -80,6 +80,7 @@ func InitTimer(scope Scope) {
 		client = asynq.NewClient(redisOpt)
 	}
 
+	initAsynqScheduler(redisOpt)
 	if servers[scope] != nil {
 		return
 	}
@@ -107,6 +108,9 @@ func InitTimer(scope Scope) {
 func StopTimer(scope Scope) {
 	serversMu.Lock()
 	defer serversMu.Unlock()
+	if scope == ScopeLobby {
+		shutdownLobbyAsynqScheduler()
+	}
 	if srv := servers[scope]; srv != nil {
 		srv.Shutdown()
 		delete(servers, scope)

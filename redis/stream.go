@@ -18,6 +18,7 @@ const (
 	XACK_COMMAND                  = "XACK"
 	XPENDING_COMMAND              = "XPENDING"
 	XCLAIM_COMMAND                = "XCLAIM"
+	XAUTOCLAIM_COMMAND            = "XAUTOCLAIM"
 	XINFO_COMMAND                 = "XINFO"
 	XGROUP_CREATE_SUBCOMMAND      = "CREATE"
 	XGROUP_DESTROY_SUBCOMMAND     = "DESTROY"
@@ -258,6 +259,24 @@ func XClaim(stream string, group string, consumer string, minIdleTimeMs int, ids
 		args = append(args, id)
 	}
 	return redis.Values(conn.Do(XCLAIM_COMMAND, args...))
+}
+
+// XAutoClaim runs XAUTOCLAIM key group consumer min-idle-time start [COUNT count].
+// Returns the raw Redis array: [next-start, entries...] (entries in XRANGE shape).
+func XAutoClaim(stream string, group string, consumer string, minIdleTimeMs int, start string, count int) ([]interface{}, error) {
+	conn := globalPool.Get()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Errorf("redis client close err: %s", err.Error())
+		}
+	}()
+
+	args := []interface{}{stream, group, consumer, minIdleTimeMs, start}
+	if count > 0 {
+		args = append(args, COUNT_OPTION, count)
+	}
+	return redis.Values(conn.Do(XAUTOCLAIM_COMMAND, args...))
 }
 
 func XInfoStream(stream string) ([]interface{}, error) {

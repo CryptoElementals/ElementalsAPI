@@ -78,15 +78,6 @@ func (q *Queue) registerBotDispatchTickHandler() {
 	})
 }
 
-func (q *Queue) scheduleNextBotDispatchTick() {
-	if q.botWaitTime <= 0 {
-		return
-	}
-	if err := timer.ProcessIn(timer.ScopeLobby, q.botWaitTime, &botDispatchTickEvent{}, true); err != nil {
-		log.Errorw("schedule bot dispatch tick failed", "err", err)
-	}
-}
-
 func (q *Queue) handleBotDispatchTick() error {
 	if q.ctx.Err() != nil {
 		return nil
@@ -113,10 +104,6 @@ func (q *Queue) handleBotDispatchTick() error {
 		}
 	}
 	q.lock.Unlock()
-
-	if q.ctx.Err() == nil {
-		q.scheduleNextBotDispatchTick()
-	}
 	return nil
 }
 
@@ -124,5 +111,7 @@ func (q *Queue) addBotRoutine() {
 	if q.botWaitTime <= 0 {
 		return
 	}
-	q.scheduleNextBotDispatchTick()
+	if err := timer.RegisterBotDispatchRecurring(q.botWaitTime, &botDispatchTickEvent{}); err != nil {
+		log.Errorw("register bot dispatch recurring failed", "err", err)
+	}
 }
