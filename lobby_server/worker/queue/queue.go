@@ -18,6 +18,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
 	"google.golang.org/grpc"
 )
 
@@ -110,6 +111,9 @@ func (q *Queue) start() error {
 }
 
 func (q *Queue) close() {
+	if err := timer.UnregisterBotDispatchRecurring(); err != nil {
+		log.Errorw("unregister bot dispatch recurring failed", "err", err)
+	}
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	q.closing = true
