@@ -198,7 +198,7 @@ func TestGameManagerNewGameAndRecover(t *testing.T) {
 	mockChain.EXPECT().AddCommitment(gomock.Any()).Return(nil).AnyTimes()
 	mockChain.EXPECT().AddCard(gomock.Any()).Return(nil).AnyTimes()
 	mockChain.EXPECT().ClearGameInfo(gomock.Any()).AnyTimes()
-	gameManager := NewGameManager(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
+	gameManager := NewGameManager(context.Background(), NopPublisher{}, ga.ID, mockChain)
 	registerGameManagerWorker(gameManager)
 	require.NoError(t, gameManager.Start())
 	playerAddress1 := types.PlayerAddress{
@@ -270,7 +270,7 @@ func TestGameStateMachine(t *testing.T) {
 	}
 	t.Run("1 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 1000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
+		svc := NewService(context.Background(), NopPublisher{}, ga.ID, mockChain)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -280,7 +280,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 	t.Run("2 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 3000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
+		svc := NewService(context.Background(), NopPublisher{}, ga.ID, mockChain)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -291,7 +291,7 @@ func TestGameStateMachine(t *testing.T) {
 	})
 	t.Run("3 rounds", func(t *testing.T) {
 		ga := newTestGameArgsRow(t, 10000)
-		svc := NewService(context.Background(), testWorkerManager, NopPublisher{}, ga.ID, mockChain)
+		svc := NewService(context.Background(), NopPublisher{}, ga.ID, mockChain)
 		registerGameManagerWorker(svc.gameManager)
 		require.NoError(t, svc.Start())
 		ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)

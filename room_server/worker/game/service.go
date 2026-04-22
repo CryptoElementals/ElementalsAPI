@@ -7,7 +7,6 @@ import (
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/pubsub"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -45,12 +44,11 @@ func (s *Service) SubmitTransactions(txs *proto.TransactionBatch) error {
 
 func NewService(
 	ctx context.Context,
-	workerManager *worker.WorkerManager,
 	pub Publisher,
 	gameArgsTemplateID uint,
 	roomChain RoomChain,
 ) *Service {
-	mgr := NewGameManager(ctx, workerManager, pub, gameArgsTemplateID, roomChain)
+	mgr := NewGameManager(ctx, pub, gameArgsTemplateID, roomChain)
 	return &Service{
 		ctx:         ctx,
 		gameManager: mgr,

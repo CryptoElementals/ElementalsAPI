@@ -7,7 +7,6 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"gorm.io/gorm"
 )
@@ -16,20 +15,18 @@ import (
 // It is intended for synchronous event handling (e.g. from GameManager) rather than long-lived workers.
 func NewEphemeralGameForEvent(
 	ctx context.Context,
-	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
 	gameInfo *dao.Game,
 ) *Game {
 	return &Game{
-		ctx:                  ctx,
-		gameInfo:             gameInfo,
-		currentRound:         buildRuntimeState(gameInfo),
-		workerManagerService: workerManagerService,
-		publisher:            pub,
-		txPoolEnqueuer:       txPoolEnqueuer,
-		gameResultSettler:    gameResultSettler,
+		ctx:               ctx,
+		gameInfo:          gameInfo,
+		currentRound:      buildRuntimeState(gameInfo),
+		publisher:         pub,
+		txPoolEnqueuer:    txPoolEnqueuer,
+		gameResultSettler: gameResultSettler,
 	}
 }
 
@@ -37,7 +34,6 @@ type Game struct {
 	ctx                  context.Context
 	gameInfo             *dao.Game
 	currentRound         *round
-	workerManagerService *worker.WorkerManager
 	publisher            Publisher
 	txPoolEnqueuer       TxPoolEnqueuer
 	gameResultSettler    GameResultSettler
@@ -61,7 +57,6 @@ func (g *Game) afterTx(fn func() error) error {
 func NewGame(
 	ctx context.Context,
 	players []types.PlayerAddress,
-	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
@@ -87,13 +82,12 @@ func NewGame(
 		GameArgs: &ga,
 	}
 	game := &Game{
-		ctx:                  ctx,
-		gameInfo:             gameInfo,
-		currentRound:         &round{game: gameInfo, gamePlayers: gamePlayers},
-		workerManagerService: workerManagerService,
-		publisher:            pub,
-		txPoolEnqueuer:       txPoolEnqueuer,
-		gameResultSettler:    gameResultSettler,
+		ctx:               ctx,
+		gameInfo:          gameInfo,
+		currentRound:      &round{game: gameInfo, gamePlayers: gamePlayers},
+		publisher:         pub,
+		txPoolEnqueuer:    txPoolEnqueuer,
+		gameResultSettler: gameResultSettler,
 	}
 	game.setupNewRound()
 	return game
@@ -106,16 +100,6 @@ func (g *Game) incrementTurnNumber() {
 
 func (g *Game) stopGame() {
 	log.Infow("stop game", "game id", g.gameInfo.ID)
-	g.workerManagerService.CloseWorker(g.workerID())
-}
-
-func (g *Game) workerID() string {
-	return fmt.Sprint(g.gameInfo.ID)
-}
-
-// WorkerID returns the worker ID for this game (exported version)
-func (g *Game) WorkerID() string {
-	return g.workerID()
 }
 
 func (g *Game) setupNewRound() {
