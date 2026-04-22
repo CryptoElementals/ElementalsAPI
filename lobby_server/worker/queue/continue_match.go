@@ -53,22 +53,21 @@ func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromT
 	if m == nil {
 		return
 	}
+	if m.Status != dao.GameMatchStatusPending {
+		return
+	}
 	players := []types.PlayerAddress{
 		*types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress),
 		*types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress),
 	}
-	if m.Status == dao.GameMatchStatusPending {
-		if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
-			log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
-		}
+	if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
+		log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
 	}
-	if len(players) == 2 {
-		ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
-		if err != nil {
-			log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
-		} else if !ok {
-			log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
-		}
+	ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
+	if err != nil {
+		log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
+	} else if !ok {
+		log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
 	}
 	for _, p := range players {
 		if q.isPlayerBot(p) {
