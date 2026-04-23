@@ -728,8 +728,13 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			"bracket_loser_player_id", loserPID,
 			"bracket_loser_temp", loserTempNorm,
 		)
+		// Pay out when a player is eliminated.
 		if rerr := db.TournamentApplyMatchRewardsTx(tx, locked.TournamentID, locked.RoundNo, locked.MatchNo,
 			winPID, winTempNorm); rerr != nil {
+			return rerr
+		}
+		// Loser leaves tournament now; settle loser's latest snapshot reward once.
+		if rerr := db.TournamentSettlePlayerRewardToWalletTx(tx, locked.TournamentID, loserPID, loserTempNorm); rerr != nil {
 			return rerr
 		}
 
@@ -749,7 +754,7 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 
 		var cerr error
 		cumReward, cerr = db.TournamentCumulativeBattleRewardProtoTx(tx, locked.TournamentID,
-			winPID, winTempNorm, loserPID, loserTempNorm, locked.RoundNo)
+			winPID, winTempNorm, loserPID, loserTempNorm)
 		if cerr != nil {
 			return cerr
 		}
@@ -812,6 +817,15 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			ch.Status = dao.TournamentParticipantStatusChampion
 			if err := tx.Save(ch).Error; err != nil {
 				return err
+			}
+			// Champion gets paid when tournament is finalized.
+			if rerr := db.TournamentSettlePlayerRewardToWalletTx(tx, locked.TournamentID, winPID, winTempNorm); rerr != nil {
+				return rerr
+			}
+			cumReward, cerr = db.TournamentCumulativeBattleRewardProtoTx(tx, locked.TournamentID,
+				winPID, winTempNorm, loserPID, loserTempNorm)
+			if cerr != nil {
+				return cerr
 			}
 			releaseCandidates = append(releaseCandidates, types.PlayerAddress{
 				Id:               ch.PlayerID,
