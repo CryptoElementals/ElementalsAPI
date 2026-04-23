@@ -58,16 +58,9 @@ func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromT
 		*types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress),
 		*types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress),
 	}
-	if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
-		log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
+	if err := q.lobbyState.CancelPendingPair(q.ctx, matchID); err != nil {
+		log.Errorw("cancel pending match (game_match + queue) failed", "match_id", matchID, "err", err)
 		return err
-	}
-	ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
-	if err != nil {
-		log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
-		return err
-	} else if !ok {
-		log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
 	}
 	for _, p := range players {
 		if q.isPlayerBot(p) {

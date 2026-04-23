@@ -335,3 +335,42 @@ func TournamentLoadMatchByID(tx *gorm.DB, id uint) (*dao.TournamentMatch, error)
 	}
 	return &m, nil
 }
+
+// TournamentPlayerQueuedOrInProgressInOpenTournaments inspects tournaments with status
+// registration_open or in_progress and the player's participant row(s) in those tournaments.
+// If any such row has status in_progress, returns in_progress. Else if any has queued, returns queued.
+// Otherwise returns an empty status (no queued/in_progress participation in those tournaments).
+func TournamentPlayerQueuedOrInProgressInOpenTournaments(playerID int64, tempAddress string) (dao.TournamentParticipantStatus, error) {
+	var statuses []string
+	err := Get().Raw(`
+		SELECT p.status FROM tournament_participants AS p
+		INNER JOIN tournaments AS t ON t.tournament_id = p.tournament_id
+		WHERE t.status IN (?, ?)
+		  AND p.player_id = ? AND LOWER(p.temp_address) = LOWER(?)
+		  AND p.status IN (?, ?)`,
+		dao.TournamentStatusRegistrationOpen,
+		dao.TournamentStatusInProgress,
+		playerID, tempAddress,
+		dao.TournamentParticipantStatusQueued,
+		dao.TournamentParticipantStatusInProgress,
+	).Scan(&statuses).Error
+	if err != nil {
+		return "", err
+	}
+	var hasInProgress, hasQueued bool
+	for _, s := range statuses {
+		switch dao.TournamentParticipantStatus(s) {
+		case dao.TournamentParticipantStatusInProgress:
+			hasInProgress = true
+		case dao.TournamentParticipantStatusQueued:
+			hasQueued = true
+		}
+	}
+	if hasInProgress {
+		return dao.TournamentParticipantStatusInProgress, nil
+	}
+	if hasQueued {
+		return dao.TournamentParticipantStatusQueued, nil
+	}
+	return "", nil
+}

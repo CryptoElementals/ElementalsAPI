@@ -8,6 +8,7 @@ import (
 	"time"
 
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/snowflake"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -20,6 +21,197 @@ type LobbyPlayerRef struct {
 
 func normLobbyTemp(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func lobbyNormalizePairRef(a, b LobbyPlayerRef) (LobbyPlayerRef, LobbyPlayerRef) {
+	if a.PlayerID < b.PlayerID || (a.PlayerID == b.PlayerID && a.TempAddress < b.TempAddress) {
+		return a, b
+	}
+	return b, a
+}
+
+// lobbyMatchPlayersTx inserts a pending GameMatch for two players, then updates or inserts their PlayerQueueEntry rows
+// to game_match_id (bots usually have no row yet and get an insert; humans in the queue get an update).
+func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType uint) (int64, error) {
+	p1, p2 := lobbyNormalizePairRef(playerA, playerB)
+	m := &dao.GameMatch{
+		ID:                 snowflake.GenerateID(),
+		Player1ID:          p1.PlayerID,
+		Player1TempAddress: p1.TempAddress,
+		Player2ID:          p2.PlayerID,
+		Player2TempAddress: p2.TempAddress,
+		GameType:           gameType,
+		Status:             dao.GameMatchStatusPending,
+	}
+	if e := tx.Create(m).Error; e != nil {
+		return 0, e
+	}
+	for _, p := range []LobbyPlayerRef{p1, p2} {
+		var row dao.PlayerQueueEntry
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("player_id = ? AND temp_address = ?", p.PlayerID, p.TempAddress).First(&row).Error
+		if err == nil && row.GameMatchID != 0 && row.GameMatchID != m.ID {
+			return 0, fmt.Errorf("lobby: player %d already pending match %d", p.PlayerID, row.GameMatchID)
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			nu := dao.PlayerQueueEntry{
+				PlayerID:    p.PlayerID,
+				TempAddress: p.TempAddress,
+				GameMatchID: m.ID,
+			}
+			if e := tx.Create(&nu).Error; e != nil {
+				return 0, e
+			}
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+		if e := tx.Model(&row).Update("game_match_id", m.ID).Error; e != nil {
+			return 0, e
+		}
+	}
+	return m.ID, nil
+}
+
+// LobbyGetGameIDByPlayer returns whether the player has a player_game_entries row and its game_id.
+func LobbyGetGameIDByPlayer(ctx context.Context, playerID int64, tempAddress string) (ok bool, gameID int64, err error) {
+	tempAddress = normLobbyTemp(tempAddress)
+	var row dao.PlayerGameEntry
+	err = Get().WithContext(ctx).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, err
+	}
+	return true, row.GameID, nil
+}
+
+// LobbyMatchPlayersOrJoinQueue: (1) reject if already queued or pending, (2) reject if in-game,
+// (3) insert a queue-only row, (4) look for an eligible opponent, (5) if found create game_match and set both rows to pending.
+// Returns the new pending game_match id when a pair is formed, or 0 when the player is only in the queue.
+func LobbyMatchPlayersOrJoinQueue(ctx context.Context, playerID int64, tempAddress string, gameType uint) (int64, error) {
+	tempAddress = normLobbyTemp(tempAddress)
+	nowMs := time.Now().UnixMilli()
+	var matchID int64
+	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing dao.PlayerQueueEntry
+		errPQ := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("player_id = ? AND temp_address = ?", playerID, tempAddress).
+			First(&existing).Error
+		if errPQ == nil {
+			if existing.GameMatchID == 0 {
+				return fmt.Errorf("lobby: player already in queue")
+			}
+			return fmt.Errorf("lobby: player already in pending match")
+		}
+		if !errors.Is(errPQ, gorm.ErrRecordNotFound) {
+			return errPQ
+		}
+
+		var ingame int64
+		if e := tx.Model(&dao.PlayerGameEntry{}).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).Count(&ingame).Error; e != nil {
+			return e
+		}
+		if ingame > 0 {
+			return fmt.Errorf("lobby: player already in game")
+		}
+
+		t := time.UnixMilli(nowMs)
+		joinerRow := &dao.PlayerQueueEntry{
+			PlayerID:    playerID,
+			TempAddress: tempAddress,
+			GameMatchID: 0,
+		}
+		joinerRow.CreatedAt = t
+		joinerRow.UpdatedAt = t
+		if e := tx.Create(joinerRow).Error; e != nil {
+			return e
+		}
+
+		joiner := LobbyPlayerRef{PlayerID: playerID, TempAddress: tempAddress}
+		var opp dao.PlayerQueueEntry
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("game_match_id = ? AND player_id <> ? AND temp_address <> ?", 0, playerID, tempAddress).
+			Order("created_at ASC")
+		if e := q.First(&opp).Error; e != nil {
+			if errors.Is(e, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return e
+		}
+
+		cand := LobbyPlayerRef{PlayerID: opp.PlayerID, TempAddress: opp.TempAddress}
+		id, e := lobbyMatchPlayersTx(tx, joiner, cand, gameType)
+		if e != nil {
+			return e
+		}
+		matchID = id
+		return nil
+	})
+	return matchID, err
+}
+
+// LobbyCountLongWaitingQueuedPlayers counts queue-only rows whose created_at is at or before (now - minWait).
+func LobbyCountLongWaitingQueuedPlayers(ctx context.Context, minWait time.Duration) (int, error) {
+	if minWait < 0 {
+		minWait = 0
+	}
+	cutoff := time.Now().Add(-minWait)
+	var n int64
+	err := Get().WithContext(ctx).Model(&dao.PlayerQueueEntry{}).
+		Where("game_match_id = ? AND created_at <= ?", 0, cutoff).
+		Count(&n).Error
+	return int(n), err
+}
+
+// LobbyMatchEarliestQueuedPlayerWithBot pairs the long-waiting human who has been in queue longest (earliest
+// created_at among rows with game_match_id=0 and created_at <= now-minWait) with a single bot. Bots never have
+// PlayerQueueEntry. Returns the new pending GameMatch id, or 0 if no human row qualifies.
+func LobbyMatchEarliestQueuedPlayerWithBot(ctx context.Context, bot LobbyPlayerRef, gameType uint, minWait time.Duration) (int64, error) {
+	bot.TempAddress = normLobbyTemp(bot.TempAddress)
+	if minWait < 0 {
+		minWait = 0
+	}
+	var matchID int64
+	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		cutoff := time.Now().Add(-minWait)
+		var entry dao.PlayerQueueEntry
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("game_match_id = ? AND created_at <= ?", 0, cutoff).
+			Order("created_at ASC").
+			First(&entry).Error; e != nil {
+			if errors.Is(e, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return e
+		}
+		human := LobbyPlayerRef{PlayerID: entry.PlayerID, TempAddress: entry.TempAddress}
+		id, e := lobbyMatchPlayersTx(tx, human, bot, gameType)
+		if e != nil {
+			return e
+		}
+		matchID = id
+		return nil
+	})
+	return matchID, err
+}
+
+// LobbyMatchPair creates a pending GameMatch for two players and updates or inserts their player_queue_entries
+// to that match id. Returns the new GameMatch id.
+func LobbyMatchPair(ctx context.Context, p1, p2 LobbyPlayerRef, gameType uint) (int64, error) {
+	p1.TempAddress = normLobbyTemp(p1.TempAddress)
+	p2.TempAddress = normLobbyTemp(p2.TempAddress)
+	var matchID int64
+	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		id, e := lobbyMatchPlayersTx(tx, p1, p2, gameType)
+		if e != nil {
+			return e
+		}
+		matchID = id
+		return nil
+	})
+	return matchID, err
 }
 
 // LobbyIsInQueue reports whether the player has a queue-only row (game_match_id = 0).
@@ -164,38 +356,27 @@ func LobbySetPendingPair(ctx context.Context, matchID int64, p1, p2 LobbyPlayerR
 	return ok, err
 }
 
-// LobbyCancelPendingPair removes lobby rows for both players when both reference matchID.
-func LobbyCancelPendingPair(ctx context.Context, matchID int64, p1, p2 LobbyPlayerRef) (bool, error) {
-	p1.TempAddress = normLobbyTemp(p1.TempAddress)
-	p2.TempAddress = normLobbyTemp(p2.TempAddress)
-	var ok bool
-	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var r1, r2 dao.PlayerQueueEntry
-		if e := tx.Where("player_id = ? AND temp_address = ?", p1.PlayerID, p1.TempAddress).First(&r1).Error; e != nil {
-			if errors.Is(e, gorm.ErrRecordNotFound) {
-				return nil
-			}
-			return e
+// LobbyCancelPendingMatch marks game_match as cancelled and hard-deletes all player_queue_entries
+// with that game_match_id. The match must exist and be in pending status.
+func LobbyCancelPendingMatch(ctx context.Context, matchID int64) error {
+	return Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var m dao.GameMatch
+		if err := tx.First(&m, "id = ?", matchID).Error; err != nil {
+			return err
 		}
-		if e := tx.Where("player_id = ? AND temp_address = ?", p2.PlayerID, p2.TempAddress).First(&r2).Error; e != nil {
-			if errors.Is(e, gorm.ErrRecordNotFound) {
-				return nil
-			}
-			return e
+		if m.Status != dao.GameMatchStatusPending {
+			return fmt.Errorf("game_match %d: cancel requires pending status, got %s", matchID, m.Status)
 		}
-		if r1.GameMatchID != matchID || r2.GameMatchID != matchID {
-			return nil
+		res := tx.Model(&dao.GameMatch{}).Where("id = ? AND status = ?", matchID, dao.GameMatchStatusPending).
+			Update("status", dao.GameMatchStatusCancelled)
+		if res.Error != nil {
+			return res.Error
 		}
-		if e := tx.Unscoped().Delete(&dao.PlayerQueueEntry{}, r1.ID).Error; e != nil {
-			return e
+		if err := tx.Where("game_match_id = ?", matchID).Delete(&dao.PlayerQueueEntry{}).Error; err != nil {
+			return err
 		}
-		if e := tx.Unscoped().Delete(&dao.PlayerQueueEntry{}, r2.ID).Error; e != nil {
-			return e
-		}
-		ok = true
 		return nil
 	})
-	return ok, err
 }
 
 // LobbyFinalizeConfirmedPair moves a confirmed pair from pending queue rows into player_game_entries.
@@ -357,15 +538,13 @@ func LobbyJoinQueueOrGetMatchCandidate(ctx context.Context, playerID int64, temp
 			return errSelf
 		}
 
-		var candidates []dao.PlayerQueueEntry
-		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("game_match_id = ?", 0).Order("created_at ASC").Limit(100).Find(&candidates).Error; e != nil {
-			return e
-		}
-
-		for _, c := range candidates {
-			if c.PlayerID == playerID || c.TempAddress == tempAddress {
-				continue
-			}
+		var c dao.PlayerQueueEntry
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("game_match_id = ? AND player_id <> ? AND temp_address <> ?", 0, playerID, tempAddress).
+			Order("created_at ASC")
+		if e := q.First(&c).Error; e == nil {
+			// game_match + SetPendingPair run after this transaction commits. Removing the row now
+			// mirrors Redis ZREM so no other joiner can take the same opponent while match rows are created.
 			res := tx.Unscoped().Where("id = ? AND game_match_id = ?", c.ID, 0).Delete(&dao.PlayerQueueEntry{})
 			if res.Error != nil {
 				return res.Error
@@ -374,6 +553,8 @@ func LobbyJoinQueueOrGetMatchCandidate(ctx context.Context, playerID int64, temp
 				candidate = &LobbyPlayerRef{PlayerID: c.PlayerID, TempAddress: c.TempAddress}
 				return nil
 			}
+		} else if !errors.Is(e, gorm.ErrRecordNotFound) {
+			return e
 		}
 
 		t := time.UnixMilli(nowMs)

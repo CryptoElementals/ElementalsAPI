@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
@@ -212,12 +213,18 @@ func (s *RedisStore) SetPendingPair(_ context.Context, matchID int64, p1, p2 typ
 	return out == 1, nil
 }
 
-func (s *RedisStore) CancelPendingPair(_ context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {
-	out, err := redis.ScriptInt(s.pool, cancelPendingPairScript, s.pendingMap, strconv.FormatInt(matchID, 10), key(p1), key(p2))
-	if err != nil {
-		return false, err
+func (s *RedisStore) CancelPendingPair(ctx context.Context, matchID int64) error {
+	if err := db.LobbyCancelPendingMatch(ctx, matchID); err != nil {
+		return err
 	}
-	return out == 1, nil
+	m, err := db.GetGameMatchByID(ctx, matchID)
+	if err != nil {
+		return err
+	}
+	p1 := *types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress)
+	p2 := *types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress)
+	_, err = redis.ScriptInt(s.pool, cancelPendingPairScript, s.pendingMap, strconv.FormatInt(matchID, 10), key(p1), key(p2))
+	return err
 }
 
 func (s *RedisStore) FinalizeConfirmedPair(_ context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {

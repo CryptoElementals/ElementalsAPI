@@ -15,6 +15,11 @@ import (
 	"github.com/CryptoElementals/common/timer"
 )
 
+func lobbyPlayerRef(p types.PlayerAddress) db.LobbyPlayerRef {
+	p.TemporaryAddress = strings.ToLower(strings.TrimSpace(p.TemporaryAddress))
+	return db.LobbyPlayerRef{PlayerID: p.Id, TempAddress: p.TemporaryAddress}
+}
+
 func normalizePairOrder(a, b types.PlayerAddress) (types.PlayerAddress, types.PlayerAddress) {
 	a.TemporaryAddress = strings.ToLower(a.TemporaryAddress)
 	b.TemporaryAddress = strings.ToLower(b.TemporaryAddress)
@@ -24,32 +29,19 @@ func normalizePairOrder(a, b types.PlayerAddress) (types.PlayerAddress, types.Pl
 	return b, a
 }
 
-// createPvpMatchFromQueue inserts game_match and notifies players.
-func (q *Queue) createPvpMatchFromQueue(players []types.PlayerAddress) error {
-	if len(players) != 2 {
-		return fmt.Errorf("match requires 2 players, got %d", len(players))
-	}
-	p1, p2 := normalizePairOrder(players[0], players[1])
-	m := &dao.GameMatch{
-		Player1ID:          p1.Id,
-		Player1TempAddress: p1.TemporaryAddress,
-		Player2ID:          p2.Id,
-		Player2TempAddress: p2.TemporaryAddress,
-		GameType:           types.GameTypePVP,
-		Status:             dao.GameMatchStatusPending,
-	}
-	if err := db.InsertGameMatch(q.ctx, m); err != nil {
-		return err
-	}
-	matchID := m.ID
-	pair := []types.PlayerAddress{p1, p2}
-	ok, err := q.lobbyState.SetPendingPair(q.ctx, matchID, p1, p2)
+// publishPvpMatchPendingFromID publishes TYPE_MATCHED for a pending game_match row already created in the DB (e.g. by LobbyMatchPlayersOrJoinQueue).
+func (q *Queue) publishPvpMatchPendingFromID(matchID int64) error {
+	m, err := db.GetGameMatchByID(q.ctx, matchID)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return fmt.Errorf("set pending pair conflict for match_id=%d", matchID)
+	if m.Status != dao.GameMatchStatusPending {
+		return fmt.Errorf("game_match %d: expected pending status for notify, got %s", matchID, m.Status)
 	}
+	p1 := *types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress)
+	p2 := *types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress)
+	p1, p2 = normalizePairOrder(p1, p2)
+	pair := []types.PlayerAddress{p1, p2}
 	q.publishMatchPending(matchID, pair, nil)
 	log.Infow("pvp match pending confirmations", "match_id", matchID, "p1", p1.String(), "p2", p2.String())
 	q.schedulePendingMatchConfirmationTimeout(matchID, q.matchConfirmationTimeout, 0)
@@ -75,7 +67,7 @@ func (q *Queue) createContinueRematchMatch(players []types.PlayerAddress, lastGa
 		return 0, err
 	}
 	matchID := m.ID
-	ok, err := q.lobbyState.SetPendingPair(q.ctx, matchID, p1, p2)
+	ok, err := db.LobbySetPendingPair(q.ctx, matchID, lobbyPlayerRef(p1), lobbyPlayerRef(p2))
 	if err != nil {
 		return 0, err
 	}
@@ -227,7 +219,7 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 	if err := db.CompleteClaimedGameMatch(q.ctx, m.ID, gid); err != nil {
 		log.Errorw("complete claimed game_match", "match_id", m.ID, "game_id", gid, "err", err)
 	}
-	ok, err := q.lobbyState.FinalizeConfirmedPair(q.ctx, m.ID, players[0], players[1])
+	ok, err := db.LobbyFinalizeConfirmedPair(q.ctx, m.ID, lobbyPlayerRef(players[0]), lobbyPlayerRef(players[1]))
 	if err != nil {
 		return err
 	}

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -107,7 +107,7 @@ func (s *Service) GetPlayerStatusResponse(addr types.PlayerAddress) *proto.GetPl
 	}
 	if s.IsPlayerInGame(addr) {
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}
-		if gid, err := db.GetQueueLockedGameID(s.ctx, addr.Id, addr.TemporaryAddress); err == nil && gid != 0 {
+		if ok, gid, err := s.queue.lobbyState.GetGameIDByPlayer(s.ctx, addr); err == nil && ok && gid != 0 {
 			out.GameID = &gid
 		}
 		return out

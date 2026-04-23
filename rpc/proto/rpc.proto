@@ -75,6 +75,8 @@ enum PlayerStatus {
     PLAYER_MATCHED = 2;
     PLAYER_IN_GAME = 3;
     PLAYER_PENDING_QUEUE_MATCH = 4;
+    PLAYER_TOURNAMENT_QUEUED = 5;
+    PLAYER_TOURNAMENT_IN_PROGRESS= 6;
 }
 
 enum PlayerTurnStatus {

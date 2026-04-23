@@ -3,6 +3,7 @@ package player_info
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -31,26 +32,31 @@ func (s *GormStore) IsInQueue(ctx context.Context, player types.PlayerAddress) (
 	return db.LobbyIsInQueue(ctx, p.Id, p.TemporaryAddress)
 }
 
+func (s *GormStore) GetGameIDByPlayer(ctx context.Context, player types.PlayerAddress) (bool, int64, error) {
+	p := normPlayer(player)
+	return db.LobbyGetGameIDByPlayer(ctx, p.Id, p.TemporaryAddress)
+}
+
 func (s *GormStore) QueueJoinedAtMs(ctx context.Context, player types.PlayerAddress) (ms int64, ok bool, err error) {
 	p := normPlayer(player)
 	return db.LobbyQueueJoinedAtMs(ctx, p.Id, p.TemporaryAddress)
 }
 
-func (s *GormStore) ListQueuedPlayers(ctx context.Context) ([]types.PlayerAddress, error) {
-	rows, err := db.LobbyListQueuedPlayers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]types.PlayerAddress, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, *types.NewPlayerAddress(r.PlayerID, r.TempAddress))
-	}
-	return out, nil
+func (s *GormStore) MatchPlayersOrJoinQueue(ctx context.Context, player types.PlayerAddress) (int64, error) {
+	p := normPlayer(player)
+	return db.LobbyMatchPlayersOrJoinQueue(ctx, p.Id, p.TemporaryAddress, uint(types.GameTypePVP))
 }
 
-func (s *GormStore) AddQueue(ctx context.Context, player types.PlayerAddress, nowMs int64) (bool, error) {
-	p := normPlayer(player)
-	return db.LobbyAddQueue(ctx, p.Id, p.TemporaryAddress, nowMs)
+func (s *GormStore) CountLongWaittingPlayers(ctx context.Context, waitting time.Duration) (int, error) {
+	return db.LobbyCountLongWaitingQueuedPlayers(ctx, waitting)
+}
+
+func (s *GormStore) MatchPlayerWithBot(ctx context.Context, bot types.PlayerAddress, waitting time.Duration) (int64, error) {
+	return db.LobbyMatchEarliestQueuedPlayerWithBot(ctx, toLobbyRef(bot), uint(types.GameTypePVP), waitting)
+}
+
+func (s *GormStore) MatchPlayers(ctx context.Context, p1, p2 types.PlayerAddress) (int64, error) {
+	return db.LobbyMatchPair(ctx, toLobbyRef(p1), toLobbyRef(p2), uint(types.GameTypePVP))
 }
 
 func (s *GormStore) RemoveQueue(ctx context.Context, player types.PlayerAddress) error {
@@ -58,16 +64,9 @@ func (s *GormStore) RemoveQueue(ctx context.Context, player types.PlayerAddress)
 	return db.LobbyRemoveFromQueue(ctx, p.Id, p.TemporaryAddress)
 }
 
-func (s *GormStore) SetPendingPair(ctx context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {
-	return db.LobbySetPendingPair(ctx, matchID, toLobbyRef(p1), toLobbyRef(p2))
-}
-
-func (s *GormStore) CancelPendingPair(ctx context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {
-	return db.LobbyCancelPendingPair(ctx, matchID, toLobbyRef(p1), toLobbyRef(p2))
-}
-
-func (s *GormStore) FinalizeConfirmedPair(ctx context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {
-	return db.LobbyFinalizeConfirmedPair(ctx, matchID, toLobbyRef(p1), toLobbyRef(p2))
+func (s *GormStore) PendingMatchID(ctx context.Context, player types.PlayerAddress) (int64, bool, error) {
+	p := normPlayer(player)
+	return db.LobbyPendingMatchID(ctx, p.Id, p.TemporaryAddress)
 }
 
 func (s *GormStore) MarkPlayersInGame(ctx context.Context, gameID int64, players ...types.PlayerAddress) error {
@@ -86,29 +85,6 @@ func (s *GormStore) MarkPlayersOutOfGame(ctx context.Context, players ...types.P
 	return db.LobbyMarkPlayersOutOfGame(ctx, refs)
 }
 
-func (s *GormStore) IsInGame(ctx context.Context, player types.PlayerAddress) (bool, error) {
-	p := normPlayer(player)
-	return db.LobbyIsInGame(ctx, p.Id, p.TemporaryAddress)
-}
-
-func (s *GormStore) PendingMatchID(ctx context.Context, player types.PlayerAddress) (int64, bool, error) {
-	p := normPlayer(player)
-	return db.LobbyPendingMatchID(ctx, p.Id, p.TemporaryAddress)
-}
-
-func (s *GormStore) JoinQueueOrGetMatchCandidate(ctx context.Context, player types.PlayerAddress, nowMs int64) (*types.PlayerAddress, bool, error) {
-	p := normPlayer(player)
-	cand, queued, err := db.LobbyJoinQueueOrGetMatchCandidate(ctx, p.Id, p.TemporaryAddress, nowMs)
-	if err != nil || cand == nil {
-		return nil, queued, err
-	}
-	return types.NewPlayerAddress(cand.PlayerID, cand.TempAddress), queued, nil
-}
-
-func (s *GormStore) FirstWaitingPlayerBefore(ctx context.Context, cutoffMs int64) (*types.PlayerAddress, error) {
-	ref, err := db.LobbyFirstWaitingPlayerBefore(ctx, cutoffMs)
-	if err != nil || ref == nil {
-		return nil, err
-	}
-	return types.NewPlayerAddress(ref.PlayerID, ref.TempAddress), nil
+func (s *GormStore) CancelPendingPair(ctx context.Context, matchID int64) error {
+	return db.LobbyCancelPendingMatch(ctx, matchID)
 }
