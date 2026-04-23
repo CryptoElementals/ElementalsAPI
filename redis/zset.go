@@ -76,6 +76,29 @@ func ZScoreMemberExists(key string, member interface{}) (bool, error) {
 	return true, nil
 }
 
+// ZScoreInt64IfMember returns the score as int64 when the member exists (e.g. lobby queue ZSET scores are join time in milliseconds).
+func ZScoreInt64IfMember(key string, member interface{}) (score int64, ok bool, err error) {
+	conn := globalPool.Get()
+	defer func() {
+		cerr := conn.Close()
+		if cerr != nil {
+			log.Errorf("redis client close err: %s", cerr.Error())
+		}
+	}()
+	v, err := conn.Do(ZSCORE_COMMAND, key, member)
+	if err != nil {
+		return 0, false, err
+	}
+	if v == nil {
+		return 0, false, nil
+	}
+	f, err := redis.Float64(v, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	return int64(f), true, nil
+}
+
 func ZCard(key string) (int, error) {
 	conn := globalPool.Get()
 	defer func() {

@@ -88,3 +88,29 @@ func (s *Service) HandleCancelMatch(req *proto.CancelMatchRequest) error {
 func (s *Service) IsPlayerPendingMatch(address types.PlayerAddress) bool {
 	return s.queue.IsPlayerPendingMatch(address)
 }
+
+// GetPlayerStatusResponse returns lobby queue/match/game status and optional details (Since = queue join ms, MatchID, GameID).
+func (s *Service) GetPlayerStatusResponse(addr types.PlayerAddress) *proto.GetPlayerStatusResponse {
+	if s.IsPlayerInQueue(addr) {
+		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}
+		if ms, ok := s.queue.queueJoinedAtMs(addr); ok {
+			out.Since = &ms
+		}
+		return out
+	}
+	if s.IsPlayerPendingMatch(addr) {
+		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}
+		if mid, ok := s.queue.pendingMatchID(addr); ok {
+			out.MatchID = &mid
+		}
+		return out
+	}
+	if s.IsPlayerInGame(addr) {
+		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}
+		if gid, err := db.GetQueueLockedGameID(s.ctx, addr.Id, addr.TemporaryAddress); err == nil && gid != 0 {
+			out.GameID = &gid
+		}
+		return out
+	}
+	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}
+}

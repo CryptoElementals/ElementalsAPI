@@ -23,6 +23,11 @@ func (s *RedisStore) IsInQueue(_ context.Context, player types.PlayerAddress) (b
 	return redis.ZScoreMemberExists(s.queueZSet, key(player))
 }
 
+// QueueJoinedAtMs returns the queue ZSET score (join time in milliseconds) when the player is in the queue.
+func (s *RedisStore) QueueJoinedAtMs(_ context.Context, player types.PlayerAddress) (ms int64, ok bool, err error) {
+	return redis.ZScoreInt64IfMember(s.queueZSet, key(player))
+}
+
 func (s *RedisStore) ListQueuedPlayers(_ context.Context) ([]types.PlayerAddress, error) {
 	keys, err := redis.ZRange(s.queueZSet, 0, -1)
 	if err != nil {

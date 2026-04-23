@@ -43,6 +43,9 @@ message SurrenderRequest {
 
 message GetPlayerStatusResponse {
     PlayerStatus Status = 1;
+    optional int64 Since = 2;
+    optional int64 MatchID = 3;
+    optional int64 GameID = 4;
 }
 
 message GetPlayerTokenRequest {

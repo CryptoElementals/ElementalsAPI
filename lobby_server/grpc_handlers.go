@@ -54,18 +54,10 @@ func (s *GRPCServices) CancelMatch(ctx context.Context, req *proto.CancelMatchRe
 }
 
 func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	_ = ctx
 	var addr types.PlayerAddress
 	addr.FromProto(req)
-	if s.queueSvc.IsPlayerInQueue(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}, nil
-	}
-	if s.queueSvc.IsPlayerPendingMatch(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}, nil
-	}
-	if s.queueSvc.IsPlayerInGame(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}, nil
-	}
-	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
+	return s.queueSvc.GetPlayerStatusResponse(addr), nil
 }
 
 func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {

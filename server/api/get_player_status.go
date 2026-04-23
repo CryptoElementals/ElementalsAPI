@@ -28,6 +28,9 @@ type GetPlayerStatusResponse struct {
 	BaseResponse
 	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME (4 deprecated)
 	StatusName string `json:"StatusName"` // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME
+	Since      *int64 `json:"Since,omitempty"`   // Unix ms when entered queue, when in queue
+	MatchID    *int64 `json:"MatchID,omitempty"` // Pending match id when awaiting confirmations
+	GameID     *int64 `json:"GameID,omitempty"`  // Active PVP game id when in game
 }
 
 type GetPlayerStatusTask struct {
@@ -111,6 +114,18 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 
 	task.Response.Status = int32(resp.Status)
 	task.Response.StatusName = getPlayerStatusName(resp.Status)
+	if resp.Since != nil {
+		s := resp.GetSince()
+		task.Response.Since = &s
+	}
+	if resp.MatchID != nil {
+		m := resp.GetMatchID()
+		task.Response.MatchID = &m
+	}
+	if resp.GameID != nil {
+		g := resp.GetGameID()
+		task.Response.GameID = &g
+	}
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully retrieved player status"
 	return task.Response, nil

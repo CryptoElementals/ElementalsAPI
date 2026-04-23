@@ -268,6 +268,16 @@ func (q *Queue) pendingMatchID(address types.PlayerAddress) (int64, bool) {
 	return mid, ok
 }
 
+func (q *Queue) queueJoinedAtMs(address types.PlayerAddress) (int64, bool) {
+	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
+	ms, ok, err := q.lobbyState.QueueJoinedAtMs(q.ctx, address)
+	if err != nil {
+		log.Errorw("redis queue joined-at lookup failed", "player", address.String(), "err", err)
+		return 0, false
+	}
+	return ms, ok
+}
+
 func (q *Queue) markPlayerOutOfGame(address types.PlayerAddress) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	if err := q.lobbyState.MarkPlayersOutOfGame(q.ctx, address); err != nil {
