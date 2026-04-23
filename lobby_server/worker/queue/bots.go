@@ -43,7 +43,7 @@ func (q *Queue) popBotForMatch() (types.PlayerAddress, bool) {
 }
 
 func (q *Queue) releaseInGameBot(addr types.PlayerAddress) bool {
-	ok, err := q.botStore.ReleaseInGameBot(addr, time.Now().UnixMilli(), q.botFreshness.Milliseconds())
+	ok, err := q.botStore.ReleaseInGameBot(q.ctx, addr)
 	if err != nil {
 		log.Errorw("redis release in-game bot failed", "player", addr.String(), "err", err)
 		return false

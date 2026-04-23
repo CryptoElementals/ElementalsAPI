@@ -69,6 +69,11 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("lobby redis bots: %w", err)
 	}
+	tokenTh := int64(cfg.MinTokenToJoinQueue)
+	if int64(cfg.TournamentCfg.EntryFee) > tokenTh {
+		tokenTh = int64(cfg.TournamentCfg.EntryFee)
+	}
+	botStore.SetTokenInsufficientThreshold(tokenTh)
 	timer.InitTimer(timer.ScopeLobby)
 	queueSvc, err := queue.NewService(ctx, eventPub, botStore, gc,
 		cfg.MinTokenToJoinQueue,
