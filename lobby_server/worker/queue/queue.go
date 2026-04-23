@@ -10,7 +10,7 @@ import (
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/lobby_server/bot_manager"
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/lobby_server/player_info"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
