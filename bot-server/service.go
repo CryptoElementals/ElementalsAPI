@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	gameclient "github.com/CryptoElementals/common/game_client"
@@ -32,7 +33,7 @@ type Service struct {
 	started           bool
 	registered        bool
 	mode              string
-	registry          *redisBotRegistry
+	registry          *bot_manager.RedisStore
 	heartbeatInterval time.Duration
 	heartbeatCancel   context.CancelFunc
 	heartbeatWG       sync.WaitGroup
@@ -96,8 +97,8 @@ func NewService(
 		bots = append(bots, b)
 		addresses = append(addresses, p.address())
 	}
-	var registry *redisBotRegistry
-	if r, regErr := newRedisBotRegistry(""); regErr != nil {
+	var registry *bot_manager.RedisStore
+	if r, regErr := bot_manager.NewRedisStore(""); regErr != nil {
 		log.Warnw("bot registry redis not available", "err", regErr)
 	} else {
 		registry = r
@@ -264,7 +265,7 @@ func (s *Service) Stop() {
 				typed = append(typed, *a)
 			}
 		}
-		if err := s.registry.MarkStopping(typed); err != nil {
+		if err := s.registry.MarkBotsStopping(typed...); err != nil {
 			log.Errorw("bot_mark_stopping_failed", "err", err, "count", len(s.addresses))
 		} else {
 			log.Infow("bot_mark_stopping_success", "count", len(s.addresses), "marker", 1)
@@ -280,7 +281,7 @@ func (s *Service) upsertBotsAliveNow() error {
 		}
 		typed = append(typed, *a)
 	}
-	return s.registry.UpsertAlive(time.Now().UnixMilli(), typed)
+	return s.registry.UpsertAliveBots(time.Now().UnixMilli(), typed...)
 }
 
 func (s *Service) heartbeatBotsNow() error {
@@ -291,7 +292,7 @@ func (s *Service) heartbeatBotsNow() error {
 		}
 		typed = append(typed, *a)
 	}
-	return s.registry.Heartbeat(time.Now().UnixMilli(), typed)
+	return s.registry.HeartbeatBots(time.Now().UnixMilli(), typed...)
 }
 
 func (s *Service) startHeartbeatLoopLocked() {

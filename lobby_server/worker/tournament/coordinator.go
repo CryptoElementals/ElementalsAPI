@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/lobby_server/bot_manager"
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
@@ -242,7 +242,7 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 		Id:               bot.Id,
 		TemporaryAddress: bot.TemporaryAddress,
 	}); err != nil {
-		_, rerr := tc.botStore.ReleaseInGameBot(*bot, now.UnixMilli(), tc.botFreshness.Milliseconds())
+		_, rerr := tc.botStore.ReleaseInGameBot(tc.ctx, *bot)
 		if rerr != nil {
 			log.Warnw("tournament: release bot after failed join failed", "bot", bot.String(), "err", rerr)
 		}
@@ -936,10 +936,8 @@ func (tc *coordinator) releaseBotsIfNeeded(addrs []types.PlayerAddress) {
 	if tc == nil || tc.botStore == nil || len(addrs) == 0 {
 		return
 	}
-	nowMs := time.Now().UnixMilli()
-	freshMs := tc.botFreshness.Milliseconds()
 	for _, addr := range addrs {
-		ok, err := tc.botStore.ReleaseInGameBot(addr, nowMs, freshMs)
+		ok, err := tc.botStore.ReleaseInGameBot(tc.ctx, addr)
 		if err != nil {
 			log.Warnw("tournament: release bot failed", "player", addr.String(), "err", err)
 			continue
