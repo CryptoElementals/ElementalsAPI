@@ -26,8 +26,8 @@ type GetPlayerStatusRequest struct {
 // GetPlayerStatusResponse 响应结构体
 type GetPlayerStatusResponse struct {
 	BaseResponse
-	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME (4 deprecated)
-	StatusName string `json:"StatusName"` // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME
+	Status     int32  `json:"Status"`            // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME (4 deprecated)
+	StatusName string `json:"StatusName"`        // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME
 	Since      *int64 `json:"Since,omitempty"`   // Unix ms when entered queue, when in queue
 	MatchID    *int64 `json:"MatchID,omitempty"` // Pending match id when awaiting confirmations
 	GameID     *int64 `json:"GameID,omitempty"`  // Active PVP game id when in game
@@ -138,10 +138,8 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "UNKNOWN"
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		return "IN_QUEUE"
-	case proto.PlayerStatus_PLAYER_MATCHED:
+	case proto.PlayerStatus_PLAYER_MATCHED, proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
 		return "MATCHED"
-	case proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
-		return "PENDING_QUEUE_MATCH"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return "IN_GAME"
 	default:
