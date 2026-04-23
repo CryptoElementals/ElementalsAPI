@@ -182,6 +182,15 @@ end
 return redis.call("SREM", KEYS[1], unpack(ARGV))
 `)
 
+var markInGameScript = redis.NewScript(1, `
+-- KEYS[1] ingame set
+-- ARGV[*] player keys
+if #ARGV == 0 then
+	return 0
+end
+return redis.call("SADD", KEYS[1], unpack(ARGV))
+`)
+
 func (s *RedisStore) AddQueue(_ context.Context, player types.PlayerAddress, nowMs int64) (bool, error) {
 	out, err := redis.ScriptInt(s.pool, queueAddScript, s.queueZSet, s.pendingMap, s.inGameSet, key(player), strconv.FormatInt(nowMs, 10))
 	if err != nil {
@@ -217,6 +226,18 @@ func (s *RedisStore) FinalizeConfirmedPair(_ context.Context, matchID int64, p1,
 		return false, err
 	}
 	return out == 1, nil
+}
+
+func (s *RedisStore) MarkPlayersInGame(_ context.Context, _ int64, players ...types.PlayerAddress) error {
+	if len(players) == 0 {
+		return nil
+	}
+	args := []interface{}{s.inGameSet}
+	for _, p := range players {
+		args = append(args, key(p))
+	}
+	_, err := redis.ScriptDo(s.pool, markInGameScript, args...)
+	return err
 }
 
 func (s *RedisStore) MarkPlayersOutOfGame(_ context.Context, players ...types.PlayerAddress) error {

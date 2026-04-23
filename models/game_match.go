@@ -25,10 +25,9 @@ type GameMatch struct {
 	Player1ConfirmedAt *time.Time `json:"player1_confirmed_at"`
 	Player2ConfirmedAt *time.Time `json:"player2_confirmed_at"`
 	GameType           uint       `gorm:"not null" json:"game_type"`
-	// LastGameID is the finished game when this row is a continue rematch (0 for normal queue PVP).
-	LastGameID         int64   `gorm:"not null;default:0" json:"last_game_id"`
-	Status             string  `gorm:"not null;size:32;index" json:"status"`
-	GameID             *int64  `gorm:"index" json:"game_id"`
+	LastGameID         int64      `gorm:"not null;default:0" json:"last_game_id"`
+	Status             string     `gorm:"not null;size:32;index" json:"status"`
+	GameID             *int64     `gorm:"index" json:"game_id"`
 	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
@@ -45,3 +44,23 @@ func (m *GameMatch) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// PlayerQueueEntry tracks PVP lobby queue membership (GameMatchID=0) or pending game_match linkage (GameMatchID>0).
+type PlayerQueueEntry struct {
+	BaseModel
+	PlayerID    int64  `gorm:"not null;uniqueIndex:uniq_player_queue_player"`
+	TempAddress string `gorm:"not null;size:128;uniqueIndex:uniq_player_queue_player"`
+	GameMatchID int64  `gorm:"not null;default:0;index"`
+}
+
+func (PlayerQueueEntry) TableName() string { return "player_queue_entries" }
+
+// PlayerGameEntry records players currently in an active game (post-confirmation).
+type PlayerGameEntry struct {
+	BaseModel
+	PlayerID    int64  `gorm:"not null;uniqueIndex:uniq_player_game_player"`
+	TempAddress string `gorm:"not null;size:128;uniqueIndex:uniq_player_game_player"`
+	GameID      int64  `gorm:"not null;index"`
+}
+
+func (PlayerGameEntry) TableName() string { return "player_game_entries" }

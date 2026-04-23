@@ -34,6 +34,8 @@ func Migrate() error {
 		&dao.TournamentEntryLedger{},
 		&dao.TournamentTierRewardConfig{},
 		&dao.GameMatch{},
+		&dao.PlayerQueueEntry{},
+		&dao.PlayerGameEntry{},
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 	}
@@ -72,6 +74,8 @@ func MigrateMemDb() error {
 		&dao.TournamentEntryLedger{},
 		&dao.TournamentTierRewardConfig{},
 		&dao.GameMatch{},
+		&dao.PlayerQueueEntry{},
+		&dao.PlayerGameEntry{},
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 	}

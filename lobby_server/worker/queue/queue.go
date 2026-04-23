@@ -26,7 +26,7 @@ type EventPublisher = pubsub.Publisher
 
 type Queue struct {
 	ctx        context.Context
-	lobbyState *player_info.RedisStore
+	lobbyState player_info.Store
 	botStore   *bot_manager.RedisStore
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
 	continueRematchCancelTimeoutSec    int64
