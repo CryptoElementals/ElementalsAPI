@@ -10,6 +10,13 @@ import (
 // SeedTournamentTierRewardConfigs inserts/updates tournament reward templates.
 // Data is aligned with tournament design sheet for bracket sizes 64~8192.
 func SeedTournamentTierRewardConfigs() error {
+	return SeedTournamentTierRewardConfigsWithUpdate(false)
+}
+
+// SeedTournamentTierRewardConfigsWithUpdate seeds tournament reward templates.
+// When allowUpdate is false, existing non-empty table must exactly match expected seed.
+// When allowUpdate is true, existing rows are upserted to expected values.
+func SeedTournamentTierRewardConfigsWithUpdate(allowUpdate bool) error {
 	db := Get()
 	if db == nil {
 		return fmt.Errorf("db is nil")
@@ -33,7 +40,23 @@ func SeedTournamentTierRewardConfigs() error {
 		if isSameTournamentTierRewardConfigs(existing, rows) {
 			return nil
 		}
-		return fmt.Errorf("tournament_tier_reward_configs already has data and does not match expected seed")
+		if !allowUpdate {
+			return fmt.Errorf("tournament_tier_reward_configs already has data and does not match expected seed")
+		}
+		return db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "total_player_count"},
+				{Name: "entry_fee"},
+				{Name: "tier_no"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"commission",
+				"total_tier_count",
+				"reward_token",
+				"point",
+				"updated_at",
+			}),
+		}).Create(&rows).Error
 	}
 	return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
 }
@@ -77,16 +100,16 @@ func buildTournamentTierRewardConfigs() []dao.TournamentTierRewardConfig {
 
 	grouped := map[int32]tierGroup{
 		64: {
-			EntryFee: 1000, Commission: 8000, TotalTierCount: 6,
-			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 2800, 36}, {4, 5600, 48}, {5, 11200, 60}, {6, 22400, 72}},
+			EntryFee: 1000, Commission: 6400, TotalTierCount: 6,
+			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 2880, 36}, {4, 5760, 48}, {5, 11520, 60}, {6, 23040, 72}},
 		},
 		128: {
 			EntryFee: 1000, Commission: 12800, TotalTierCount: 7,
 			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 2400, 36}, {4, 4800, 48}, {5, 9600, 60}, {6, 19200, 72}, {7, 38400, 84}},
 		},
 		256: {
-			EntryFee: 1000, Commission: 20800, TotalTierCount: 8,
-			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 2100, 36}, {4, 4200, 48}, {5, 8400, 60}, {6, 16800, 72}, {7, 33600, 84}, {8, 67200, 96}},
+			EntryFee: 1000, Commission: 25280, TotalTierCount: 8,
+			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 2060, 36}, {4, 4120, 48}, {5, 8240, 60}, {6, 16480, 72}, {7, 32960, 84}, {8, 65920, 96}},
 		},
 		512: {
 			EntryFee: 1000, Commission: 51200, TotalTierCount: 9,
@@ -101,8 +124,8 @@ func buildTournamentTierRewardConfigs() []dao.TournamentTierRewardConfig {
 			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 1440, 36}, {4, 2880, 48}, {5, 5760, 60}, {6, 11520, 72}, {7, 23040, 84}, {8, 46080, 96}, {9, 92160, 108}, {10, 184320, 120}, {11, 368640, 132}},
 		},
 		4096: {
-			EntryFee: 1000, Commission: 407040, TotalTierCount: 12,
-			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 1310, 36}, {4, 2620, 48}, {5, 5240, 60}, {6, 10480, 72}, {7, 20960, 84}, {8, 41920, 96}, {9, 83840, 108}, {10, 167680, 120}, {11, 335360, 132}, {12, 670720, 144}},
+			EntryFee: 1000, Commission: 409856, TotalTierCount: 12,
+			Tiers: []tierRow{{1, 0, 8}, {2, 0, 16}, {3, 1309, 36}, {4, 2618, 48}, {5, 5236, 60}, {6, 10472, 72}, {7, 20944, 84}, {8, 41888, 96}, {9, 83776, 108}, {10, 167552, 120}, {11, 335104, 132}, {12, 670208, 144}},
 		},
 		8192: {
 			EntryFee: 1000, Commission: 819200, TotalTierCount: 13,
