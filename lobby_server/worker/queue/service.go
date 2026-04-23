@@ -6,7 +6,7 @@ import (
 
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/lobby_server/bot_manager"
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"

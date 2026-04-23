@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/lobby_server/bot_manager"
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"

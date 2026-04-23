@@ -3,7 +3,7 @@ package botserver
 import (
 	"fmt"
 
-	"github.com/CryptoElementals/common/lobby_server/bot_manager"
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
