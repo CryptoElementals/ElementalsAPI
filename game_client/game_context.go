@@ -578,7 +578,7 @@ func (c *GameContext) applyGamePhaseRecovery(gp *proto.GamePhase) {
 			return
 		}
 		log.Infow("game phase recovery: commitment submitted", "round", c.currentRound, "turn", c.currentTurn)
-	case ts == proto.TurnStatus_TURN_WAITTING_CARDS && ps == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED:
+	case ts == proto.TurnStatus_TURN_WAITTING_CARDS && ps == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN:
 		self := c.gamePhaseSelf(gp)
 		if self == nil {
 			log.Warnw("game phase recovery: missing self in GamePhase.Players for card submit", "game id", c.gameID)

@@ -1,6 +1,7 @@
 package game
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -22,7 +23,7 @@ func (g *Game) validateCommitmentSubmission(tx *proto.TxCommitmentOnChain) (uint
 }
 
 // validateCardSubmission validates the card submission including round number and returns the 0-based index, card entry, card ID, and error.
-// Proto TurnNumber is the card index (1-based). Returns (cardIdx, cardEntry, cardID, error). If card is already submitted, cardEntry will be nil.
+// Proto TurnNumber is the card index (1-based). When the reveal was already stored (e.g. via SubmitPlayerCard RPC), the on-chain tx must match.
 func (g *Game) validateCardSubmission(tx *proto.TxCardOnChain) (uint32, *dao.TurnSubmittedCard, uint, error) {
 	var address types.PlayerAddress
 	address.FromProto(tx.Address)
@@ -40,9 +41,14 @@ func (g *Game) validateCardSubmission(tx *proto.TxCardOnChain) (uint32, *dao.Tur
 	}
 
 	if cardEntry.CardID != 0 {
+		if cardEntry.CardID != uint32(tx.CardId) {
+			return 0, nil, 0, fmt.Errorf("on-chain card id does not match stored reveal")
+		}
+		if !bytes.Equal(cardEntry.Salt, tx.Salt) {
+			return 0, nil, 0, fmt.Errorf("on-chain salt does not match stored reveal")
+		}
 		cardIdx := tx.TurnNumber - 1
-		log.Errorw("card already submitted", "game id", g.gameInfo.ID, "player address", address.TemporaryAddress, "card index", cardIdx)
-		return cardIdx, nil, 0, nil
+		return cardIdx, cardEntry, uint(tx.CardId), nil
 	}
 
 	return tx.TurnNumber - 1, cardEntry, uint(tx.CardId), nil

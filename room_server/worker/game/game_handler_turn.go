@@ -125,28 +125,28 @@ func (g *Game) areAllPlayersReady() bool {
 	return true
 }
 
-// haveAllPlayersSubmittedCommitment checks if all players have submitted a commitment for the current turn
-func (g *Game) haveAllPlayersSubmittedCommitment() bool {
+// haveAllPlayersCommitmentOnChain checks if all players' commitments are confirmed on chain for the current turn.
+func (g *Game) haveAllPlayersCommitmentOnChain() bool {
 	for _, p := range g.currentRound.gamePlayers {
 		playerTurnInfo := p.getCurrentPlayerTurnInfo()
-		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
+		if playerTurnInfo == nil {
 			return false
 		}
-		if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) == 0 {
+		if playerTurnInfo.PlayerStatus != proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN {
 			return false
 		}
 	}
 	return true
 }
 
-// haveAllPlayersSubmittedCard checks if all players have submitted a card for the current turn
-func (g *Game) haveAllPlayersSubmittedCard() bool {
+// haveAllPlayersCardOnChain checks if all players' cards are confirmed on chain for the current turn.
+func (g *Game) haveAllPlayersCardOnChain() bool {
 	for _, p := range g.currentRound.gamePlayers {
 		playerTurnInfo := p.getCurrentPlayerTurnInfo()
-		if playerTurnInfo == nil || playerTurnInfo.TurnSubmittedCard == nil {
+		if playerTurnInfo == nil {
 			return false
 		}
-		if playerTurnInfo.TurnSubmittedCard.CardID == 0 {
+		if playerTurnInfo.PlayerStatus != proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN {
 			return false
 		}
 	}
