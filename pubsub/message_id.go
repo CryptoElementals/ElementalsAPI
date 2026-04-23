@@ -39,7 +39,8 @@ func gamePhaseSyncMessageTypeIndex(ts proto.TurnStatus) int {
 	}
 }
 
-// BuildEventMessageID returns rr-tt-mm-i for room/lobby facing events.
+// BuildEventMessageID returns a dedup key for room/lobby facing events.
+// TYPE_GAME_PHASE_SYNC appends the caller's PlayerTurnStatus so distinct sync snapshots do not collide.
 func BuildEventMessageID(evt *proto.Event) string {
 	if evt == nil {
 		return ""
@@ -117,5 +118,13 @@ func BuildEventMessageID(evt *proto.Event) string {
 		isSync = 1
 	}
 
+	if evt.GetType() == proto.EventType_TYPE_GAME_PHASE_SYNC {
+		gp := evt.GetGamePhase()
+		pts := 0
+		if gp != nil {
+			pts = int(gp.GetPlayerTurnStatus())
+		}
+		return fmt.Sprintf("%d%02d%02d%02d%02d%d", primaryID, rr, tt, mm, pts, isSync)
+	}
 	return fmt.Sprintf("%d%02d%02d%02d%d", primaryID, rr, tt, mm, isSync)
 }
