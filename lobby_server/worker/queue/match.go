@@ -161,8 +161,7 @@ func (q *Queue) HandleCancelMatch(req *pb.CancelMatchRequest) error {
 	if !addressInGameMatch(m, addr) {
 		return fmt.Errorf("player not in match")
 	}
-	q.abortPendingMatch(matchID, true, false)
-	return nil
+	return q.abortPendingMatch(matchID, true, false)
 }
 
 func addressInGameMatch(m *dao.GameMatch, addr types.PlayerAddress) bool {

@@ -45,16 +45,14 @@ func (q *Queue) handlePendingMatchConfirmationTimeout(evt *pendingMatchConfirmat
 }
 
 // abortPendingMatch cancels DB row if still pending, clears Redis pending pair, unlocks human tokens, optionally notifies TYPE_MATCH_CANCELED.
-func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromTimeout bool) {
+func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromTimeout bool) error {
 	m, err := db.GetGameMatchByID(q.ctx, matchID)
 	if err != nil {
 		log.Errorw("abort pending match: load game_match", "match_id", matchID, "err", err)
-	}
-	if m == nil {
-		return
+		return err
 	}
 	if m.Status != dao.GameMatchStatusPending {
-		return
+		return fmt.Errorf("Game status not GameMatchStatusPending")
 	}
 	players := []types.PlayerAddress{
 		*types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress),
@@ -62,10 +60,12 @@ func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromT
 	}
 	if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
 		log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
+		return err
 	}
 	ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
 	if err != nil {
 		log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
+		return err
 	} else if !ok {
 		log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
 	}
@@ -75,11 +75,13 @@ func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromT
 		}
 		if err := q.unlockToken(&p); err != nil {
 			log.Errorw("unlock token after abort pending match", "player", p.String(), "err", err)
+			return err
 		}
 	}
 	if notifyMatchCanceled {
 		q.publishMatchCanceled(matchID, players, fromTimeout)
 	}
+	return nil
 }
 
 // tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished human-vs-human game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Do not call when the game included bots.
