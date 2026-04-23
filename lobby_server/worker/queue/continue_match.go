@@ -3,7 +3,6 @@ package queue
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
@@ -40,25 +39,13 @@ func (q *Queue) registerPendingMatchConfirmationTimeoutHandler() {
 	})
 }
 
-func (q *Queue) schedulePendingMatchConfirmationTimeout(matchID int64, timeoutSec, redundancySec int64) {
-	if timeoutSec <= 0 {
-		return
-	}
-	d := time.Duration(timeoutSec+redundancySec) * time.Second
-	if err := timer.ProcessIn(timer.ScopeLobby, d, &pendingMatchConfirmationTimeoutEvent{MatchID: matchID}); err != nil {
-		log.Errorw("schedule pending match confirmation timeout failed", "match_id", matchID, "err", err)
-	}
-}
-
 func (q *Queue) handlePendingMatchConfirmationTimeout(evt *pendingMatchConfirmationTimeoutEvent) error {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	q.abortPendingMatchLocked(evt.MatchID, true, true)
+	q.abortPendingMatch(evt.MatchID, true, true)
 	return nil
 }
 
-// abortPendingMatchLocked cancels DB row if still pending, clears Redis pending pair, unlocks human tokens, optionally notifies TYPE_MATCH_CANCELED. Caller must hold q.lock.
-func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool, fromTimeout bool) {
+// abortPendingMatch cancels DB row if still pending, clears Redis pending pair, unlocks human tokens, optionally notifies TYPE_MATCH_CANCELED.
+func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromTimeout bool) {
 	m, err := db.GetGameMatchByID(q.ctx, matchID)
 	if err != nil {
 		log.Errorw("abort pending match: load game_match", "match_id", matchID, "err", err)
@@ -66,25 +53,24 @@ func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool,
 	if m == nil {
 		return
 	}
+	if m.Status != dao.GameMatchStatusPending {
+		return
+	}
 	players := []types.PlayerAddress{
 		*types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress),
 		*types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress),
 	}
-	if m.Status == dao.GameMatchStatusPending {
-		if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
-			log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
-		}
+	if err := db.CancelPendingGameMatch(q.ctx, matchID); err != nil {
+		log.Errorw("cancel pending game_match failed", "match_id", matchID, "err", err)
 	}
-	if len(players) == 2 {
-		ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
-		if err != nil {
-			log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
-		} else if !ok {
-			log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
-		}
+	ok, err := q.lobbyState.CancelPendingPair(q.ctx, matchID, players[0], players[1])
+	if err != nil {
+		log.Errorw("redis cancel pending pair failed", "match_id", matchID, "err", err)
+	} else if !ok {
+		log.Debugw("redis cancel pending pair no-op/conflict", "match_id", matchID)
 	}
 	for _, p := range players {
-		if q.isBotLocked(p) {
+		if q.isPlayerBot(p) {
 			continue
 		}
 		if err := q.unlockToken(&p); err != nil {
@@ -96,7 +82,7 @@ func (q *Queue) abortPendingMatchLocked(matchID int64, notifyMatchCanceled bool,
 	}
 }
 
-// tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished human-vs-human game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Caller must hold q.lock; do not call when the game included bots.
+// tryStartContinueRematchAfterGame runs after GameResultSettlement for a finished human-vs-human game: lock tokens, insert continue game_match, publish TYPE_MATCHED with LastGameId, schedule cancel timer. Do not call when the game included bots.
 func (q *Queue) tryStartContinueRematchAfterGame(gameID int64, gr *dao.GameResult) {
 	if gr == nil || len(gr.PlayerResultInfos) != 2 {
 		return

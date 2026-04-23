@@ -1,6 +1,7 @@
 package game
 
 import (
+	"bytes"
 	"errors"
 
 	dao "github.com/CryptoElementals/common/models"
@@ -133,10 +134,22 @@ func (g *Game) handleGameStateWaittingCommitments(tx *proto.TxCommitmentOnChain)
 	}
 
 	playerTurnInfo := player.getCurrentPlayerTurnInfo()
-	playerTurnInfo.TurnSubmittedCard.CommitmentHash = tx.Commitment
-	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED
+	if playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN {
+		if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) > 0 && bytes.Equal(playerTurnInfo.TurnSubmittedCard.CommitmentHash, tx.Commitment) {
+			return nil
+		}
+		return errors.New("commitment on chain: duplicate or mismatched commitment")
+	}
+	if len(playerTurnInfo.TurnSubmittedCard.CommitmentHash) > 0 {
+		if !bytes.Equal(playerTurnInfo.TurnSubmittedCard.CommitmentHash, tx.Commitment) {
+			return errors.New("on-chain commitment does not match submitted commitment")
+		}
+	} else {
+		playerTurnInfo.TurnSubmittedCard.CommitmentHash = append([]byte(nil), tx.Commitment...)
+	}
+	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN
 
-	if g.haveAllPlayersSubmittedCommitment() {
+	if g.haveAllPlayersCommitmentOnChain() {
 		turnNumber := commitmentIdx + 1
 		g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
 		err = g.persistCommitmentStep(playerTurnInfo, true)
@@ -172,12 +185,9 @@ func (g *Game) handleGameStateWaittingCommitments(tx *proto.TxCommitmentOnChain)
 }
 
 func (g *Game) handleGameStateCardSubmitted(tx *proto.TxCardOnChain) error {
-	_, cardEntry, cardID, err := g.validateCardSubmission(tx)
+	_, _, cardID, err := g.validateCardSubmission(tx)
 	if err != nil {
 		return err
-	}
-	if cardEntry == nil {
-		return nil
 	}
 
 	var address types.PlayerAddress
@@ -188,11 +198,17 @@ func (g *Game) handleGameStateCardSubmitted(tx *proto.TxCardOnChain) error {
 	}
 
 	playerTurnInfo := player.getCurrentPlayerTurnInfo()
+	if playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN {
+		if playerTurnInfo.TurnSubmittedCard.CardID == uint32(cardID) && bytes.Equal(playerTurnInfo.TurnSubmittedCard.Salt, tx.Salt) {
+			return nil
+		}
+		return errors.New("card on chain: duplicate or mismatched reveal")
+	}
 	playerTurnInfo.TurnSubmittedCard.CardID = uint32(cardID)
-	playerTurnInfo.TurnSubmittedCard.Salt = tx.Salt
-	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED
+	playerTurnInfo.TurnSubmittedCard.Salt = append([]byte(nil), tx.Salt...)
+	playerTurnInfo.PlayerStatus = proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN
 
-	if g.haveAllPlayersSubmittedCard() {
+	if g.haveAllPlayersCardOnChain() {
 		return g.handleTurnEnd()
 	}
 	return g.persistPlayerTurnInfo(playerTurnInfo)

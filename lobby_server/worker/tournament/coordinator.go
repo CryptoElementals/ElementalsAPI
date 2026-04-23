@@ -19,6 +19,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/snowflake"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -330,7 +331,7 @@ func (tc *coordinator) createTournamentIfNotExists(at time.Time) error {
 	}
 
 	t := &dao.Tournament{
-		TournamentID:         strconv.FormatInt(dao.GenerateSnowflakeID(), 10),
+		TournamentID:         strconv.FormatInt(snowflake.GenerateID(), 10),
 		Status:               dao.TournamentStatusRegistrationOpen,
 		ScheduledStartAt:     at,
 		ScheduledEndDeadline: at.Add(time.Duration(tc.intervalSeconds) * time.Second),

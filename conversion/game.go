@@ -108,7 +108,9 @@ func DbGameRoundToProtoGameRound(round *RoundView, game *dao.Game) *proto.Round 
 					},
 					PlayerReady: playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
 						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
-						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED,
+						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED ||
+						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN ||
+						playerTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN,
 					SubmittedCards: make([]*proto.RoundSubmittedCard, 0),
 				}
 			}

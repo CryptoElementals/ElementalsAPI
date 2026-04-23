@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
@@ -18,6 +17,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/timer"
 	"google.golang.org/grpc"
 )
 
@@ -26,14 +26,12 @@ type EventPublisher = pubsub.Publisher
 
 type Queue struct {
 	ctx        context.Context
-	lock       sync.RWMutex
 	lobbyState *player_info.RedisStore
 	botStore   *bot_manager.RedisStore
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
 	continueRematchCancelTimeoutSec    int64
 	continueRematchCancelRedundancySec int64
 	publisher                          EventPublisher
-	closing                            bool
 	gameCreator                        GameCreator
 	minTokenToJoinQueue                int32
 	matchConfirmationTimeout           int64
@@ -90,6 +88,7 @@ func NewQueue(
 	}
 	q.botStore = botStore
 	q.registerPendingMatchConfirmationTimeoutHandler()
+	q.registerBotDispatchTickHandler()
 	return q, nil
 }
 
@@ -109,20 +108,14 @@ func (q *Queue) start() error {
 }
 
 func (q *Queue) close() {
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	q.closing = true
+	if err := timer.UnregisterBotDispatchRecurring(); err != nil {
+		log.Errorw("unregister bot dispatch recurring failed", "err", err)
+	}
 }
 
 func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 	var address types.PlayerAddress
 	address.FromProto(req)
-	q.lock.Lock()
-	defer q.lock.Unlock()
-	if q.closing {
-		log.Debugw("cannot join queue, server is closing", "addr", address.String())
-		return errors.New("server is closing")
-	}
 	inQueue, err := q.lobbyState.IsInQueue(q.ctx, address)
 	if err != nil {
 		return err
@@ -159,8 +152,6 @@ func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
 func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
 	var address types.PlayerAddress
 	address.FromProto(req)
-	q.lock.Lock()
-	defer q.lock.Unlock()
 	ok, err := q.lobbyState.IsInQueue(q.ctx, address)
 	if err != nil {
 		return err
@@ -194,17 +185,16 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	}
 
 	bots := Set[types.PlayerAddress]{}
-	q.lock.Lock()
 	forEachSettlementParticipant(gr, func(playerID int64, temporaryAddress string) {
 		addr := types.NewPlayerAddress(playerID, temporaryAddress)
-		q.markPlayerOutOfGameLocked(*addr)
-		isBot := q.releaseInGameBotLocked(*addr)
+		q.markPlayerOutOfGame(*addr)
+		isBot := q.releaseInGameBot(*addr)
 		if isBot {
 			bots.Add(*addr)
 		}
 	})
-	q.lock.Unlock()
-	if err := db.BattleResultSettlement(gr); err != nil {
+	skippedDup, err := db.BattleResultSettlement(gr)
+	if err != nil {
 		log.Errorw("BattleResultSettlement failed", "err", err)
 		return err
 	}
@@ -220,13 +210,14 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 	} else if q.anyHumanPlayerBelowQueueThreshold(gr, bots) {
 		log.Infow("skipping continue rematch: insufficient tokens after settlement", "game_id", gameID)
 		q.publishNotMatchableForHumans(gr, gameID, bots)
-	} else {
-		q.lock.Lock()
+	} else if !skippedDup {
 		q.tryStartContinueRematchAfterGame(gameID, gr)
-		q.lock.Unlock()
 	}
 
 	go func() {
+		if skippedDup {
+			return
+		}
 		if q.statSvcClient == nil {
 			return
 		}
@@ -277,7 +268,7 @@ func (q *Queue) pendingMatchID(address types.PlayerAddress) (int64, bool) {
 	return mid, ok
 }
 
-func (q *Queue) markPlayerOutOfGameLocked(address types.PlayerAddress) {
+func (q *Queue) markPlayerOutOfGame(address types.PlayerAddress) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	if err := q.lobbyState.MarkPlayersOutOfGame(q.ctx, address); err != nil {
 		log.Errorw("mark player out of game in redis failed", "player", address.String(), "err", err)

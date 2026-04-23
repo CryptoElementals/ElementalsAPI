@@ -10,19 +10,15 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/CryptoElementals/common/timer"
 	"gorm.io/gorm"
 )
 
 type GameManager struct {
 	ctx               context.Context
-	lock              sync.RWMutex
-	gameLocksGuard    sync.Mutex
-	gameLocks         map[int64]*sync.Mutex
-	workerManager     *worker.WorkerManager
 	publisher         Publisher
 	roomChain         RoomChain
 	gameResultSettler GameResultSettler
@@ -30,29 +26,10 @@ type GameManager struct {
 	argsTemplateID uint
 	gameArgsMu     sync.RWMutex
 	gameArgsByID   map[uint]*dao.GameArgs
-	stopped        bool
-}
-
-func (r *GameManager) getGameLock(gameID int64) *sync.Mutex {
-	r.gameLocksGuard.Lock()
-	defer r.gameLocksGuard.Unlock()
-	lock, ok := r.gameLocks[gameID]
-	if !ok {
-		lock = &sync.Mutex{}
-		r.gameLocks[gameID] = lock
-	}
-	return lock
-}
-
-func (r *GameManager) withGameLock(gameID int64, fn func() error) error {
-	lock := r.getGameLock(gameID)
-	lock.Lock()
-	defer lock.Unlock()
-	return fn()
 }
 
 // withGameMutation runs handler inside a DB transaction with a row lock on games.id, then runs
-// queued after-commit hooks (settlement, etc.). Process-local withGameLock still reduces contention.
+// queued after-commit hooks (settlement, etc.).
 func (r *GameManager) withGameMutation(gameID int64, handler func(g *Game) error) error {
 	var afterCommit []func() error
 	err := db.WithGameMutationTx(gameID, func(tx *gorm.DB, gameInfo *dao.Game) error {
@@ -61,7 +38,7 @@ func (r *GameManager) withGameMutation(gameID int64, handler func(g *Game) error
 			return err
 		}
 		gameInfo.GameArgs = gameArgs
-		g := NewEphemeralGameForEvent(r.ctx, r.workerManager, r.publisher, r.roomChain, r.gameResultSettler, gameInfo)
+		g := NewEphemeralGameForEvent(r.ctx, r.publisher, r.roomChain, r.gameResultSettler, gameInfo)
 		g.mutateTx = tx
 		g.queueAfterTxCommit = func(fn func() error) {
 			afterCommit = append(afterCommit, fn)
@@ -88,9 +65,7 @@ func (r *GameManager) executeOnGame(gameID int64, handler func(g *Game) error) e
 	if gameID == 0 {
 		return fmt.Errorf("executeOnGame: missing game id")
 	}
-	return r.withGameLock(gameID, func() error {
-		return r.withGameMutation(gameID, handler)
-	})
+	return r.withGameMutation(gameID, handler)
 }
 func (r *GameManager) HandleConfirmBattle(req *proto.ConfirmBattleRequest) error {
 	return r.executeOnGame(req.GameID, func(g *Game) error { return g.handleConfirmBattle(req) })
@@ -119,15 +94,12 @@ func (r *GameManager) HandleSubmitPlayerCard(req *proto.SubmitPlayerCardRequest)
 }
 
 func NewGameManager(ctx context.Context,
-	workerManagerService *worker.WorkerManager,
 	pub Publisher,
 	argsTemplateID uint,
 	roomChain RoomChain,
 ) *GameManager {
 	return &GameManager{
 		ctx:            ctx,
-		gameLocks:      make(map[int64]*sync.Mutex),
-		workerManager:  workerManagerService,
 		publisher:      pub,
 		roomChain:      roomChain,
 		argsTemplateID: argsTemplateID,
@@ -206,10 +178,7 @@ func (r *GameManager) Start() error {
 }
 
 func (r *GameManager) Stop() {
-	r.lock.Lock()
 	log.Info("closing game manager")
-	r.stopped = true
-	r.lock.Unlock()
 	timer.StopTimer(timer.ScopeRoom)
 	log.Info("game manager closed")
 }
@@ -227,7 +196,7 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	if err != nil {
 		return 0, err
 	}
-	game := NewGame(r.ctx, players, r.workerManager, r.publisher, r.roomChain, r.gameResultSettler, gameType, gameArgs)
+	game := NewGame(r.ctx, players, r.publisher, r.roomChain, r.gameResultSettler, gameType, gameArgs)
 	game.gameInfo.ID = completedMatchID
 	game.gameInfo.QueueMatchID = completedMatchID
 	if gameType == types.GameTypeTournament {
@@ -252,14 +221,9 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 
 // CreateGameAndRun persists a new game (queue PVP, continue, or tournament), bootstraps chain for turn 1, then notifies.
 func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	if r.stopped {
-		return 0, errors.New("server stopping, drop queue match finalize")
-	}
 	matchID := completedMatchID
 	if completedMatchID == 0 {
-		matchID = dao.GenerateSnowflakeID()
+		matchID = snowflake.GenerateID()
 	}
 	gameID, err := r.createGameAndNotify(players, gameType, matchID)
 	if err != nil {
