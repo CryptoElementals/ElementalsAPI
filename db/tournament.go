@@ -336,41 +336,30 @@ func TournamentLoadMatchByID(tx *gorm.DB, id uint) (*dao.TournamentMatch, error)
 	return &m, nil
 }
 
+// activeTournamentByPlayerRow is the scan target for a join of tournament_participants to tournaments.
+type activeTournamentByPlayerRow struct {
+	dao.Tournament
+	ParticipantStatus string `gorm:"column:participant_status"`
+}
+
 // TournamentGetActiveTournamentByPlayer returns one tournament and the corresponding participant
 // status for the player in registration_open or in_progress tournaments where the participant
 // is queued or in_progress. If multiple rows match, in_progress is preferred, then the earliest
 // scheduled_start_at. If none match, t is nil and status is empty.
 func TournamentGetActiveTournamentByPlayer(playerID int64, tempAddress string) (t *dao.Tournament, status dao.TournamentParticipantStatus, err error) {
-	var out struct {
-		dao.Tournament
-		ParticipantStatus string `gorm:"column:participant_status"`
-	}
-	err = Get().Raw(`
-		SELECT
-			t.id, t.tournament_id, t.status, t.scheduled_start_at, t.scheduled_end_deadline,
-			t.registration_deadline, t.entry_fee, t.created_at, t.updated_at,
-			p.status AS participant_status
-		FROM tournament_participants AS p
-		INNER JOIN tournaments AS t ON t.tournament_id = p.tournament_id
-		WHERE t.status IN (?, ?)
-		  AND p.player_id = ? AND LOWER(p.temp_address) = LOWER(?)
-		  AND p.status IN (?, ?)
-		ORDER BY
-			CASE p.status
-				WHEN ? THEN 0
-				WHEN ? THEN 1
-				ELSE 2
-			END,
-			t.scheduled_start_at ASC
-		LIMIT 1`,
-		dao.TournamentStatusRegistrationOpen,
-		dao.TournamentStatusInProgress,
-		playerID, tempAddress,
-		dao.TournamentParticipantStatusQueued,
-		dao.TournamentParticipantStatusInProgress,
-		dao.TournamentParticipantStatusInProgress,
-		dao.TournamentParticipantStatusQueued,
-	).Scan(&out).Error
+	var out activeTournamentByPlayerRow
+	// Order clause uses only dao constants (not user input).
+	orderBy := "CASE p.status WHEN '" + string(dao.TournamentParticipantStatusInProgress) + "' THEN 0 WHEN '" + string(dao.TournamentParticipantStatusQueued) + "' THEN 1 ELSE 2 END, t.scheduled_start_at DESC"
+	err = Get().
+		Table("tournament_participants AS p").
+		Select("t.*, p.status AS participant_status").
+		Joins("INNER JOIN tournaments AS t ON t.tournament_id = p.tournament_id").
+		Where("t.status IN ?", []dao.TournamentStatus{dao.TournamentStatusRegistrationOpen, dao.TournamentStatusInProgress}).
+		Where("p.player_id = ? AND LOWER(p.temp_address) = LOWER(?)", playerID, tempAddress).
+		Where("p.status IN ?", []dao.TournamentParticipantStatus{dao.TournamentParticipantStatusQueued, dao.TournamentParticipantStatusInProgress}).
+		Order(orderBy).
+		Limit(1).
+		Scan(&out).Error
 	if err != nil {
 		return nil, "", err
 	}
