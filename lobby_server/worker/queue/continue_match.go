@@ -101,7 +101,7 @@ func (q *Queue) tryStartContinueRematchAfterGame(gameID int64, gr *dao.GameResul
 		}
 		locked = append(locked, pl)
 	}
-	matchID, err := q.createContinueRematchMatch(players, gameID)
+	err := q.createContinueRematchMatch(players, gameID)
 	if err != nil {
 		for _, u := range locked {
 			_ = q.unlockToken(&u)
@@ -109,5 +109,4 @@ func (q *Queue) tryStartContinueRematchAfterGame(gameID int64, gr *dao.GameResul
 		log.Errorw("continue rematch create failed", "game_id", gameID, "err", err)
 		return
 	}
-	q.schedulePendingMatchConfirmationTimeout(matchID, q.continueRematchCancelTimeoutSec, q.continueRematchCancelRedundancySec)
 }

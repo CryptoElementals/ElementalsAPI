@@ -48,8 +48,8 @@ func (m *GameMatch) BeforeCreate(tx *gorm.DB) error {
 // PlayerQueueEntry tracks PVP lobby queue membership (GameMatchID=0) or pending game_match linkage (GameMatchID>0).
 type PlayerQueueEntry struct {
 	BaseModel
-	PlayerID    int64  `gorm:"not null;uniqueIndex:uniq_player_queue_player"`
-	TempAddress string `gorm:"not null;size:128;uniqueIndex:uniq_player_queue_player"`
+	PlayerID    int64  `gorm:"not null;index:uniq_player_queue_player"`
+	TempAddress string `gorm:"not null;size:128;index:uniq_player_queue_player"`
 	GameMatchID int64  `gorm:"not null;default:0;index"`
 }
 
@@ -58,8 +58,8 @@ func (PlayerQueueEntry) TableName() string { return "player_queue_entries" }
 // PlayerGameEntry records players currently in an active game (post-confirmation).
 type PlayerGameEntry struct {
 	BaseModel
-	PlayerID    int64  `gorm:"not null;uniqueIndex:uniq_player_game_player"`
-	TempAddress string `gorm:"not null;size:128;uniqueIndex:uniq_player_game_player"`
+	PlayerID    int64  `gorm:"not null;index:uniq_player_game_player"`
+	TempAddress string `gorm:"not null;size:128;index:uniq_player_game_player"`
 	GameID      int64  `gorm:"not null;index"`
 }
 

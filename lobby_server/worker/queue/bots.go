@@ -93,17 +93,21 @@ func (q *Queue) handleBotDispatchTick() error {
 		if !ok {
 			break
 		}
-		matchID, err := q.lobbyState.MatchPlayerWithBot(q.ctx, botPlayer, q.botWaitTime)
+		gm, err := q.lobbyState.MatchPlayerWithBot(q.ctx, botPlayer, q.botWaitTime)
 		if err != nil {
 			_ = q.releaseInGameBot(botPlayer)
 			log.Errorw("error match player with bot", "err", err, "bot", botPlayer.String())
 			break
 		}
-		if matchID == 0 {
+		if gm == nil {
 			_ = q.releaseInGameBot(botPlayer)
 			break
 		}
-		log.Infow("found long waitting player, dispatch a bot", "match_id", matchID, "bot", botPlayer.String())
+		if err := q.postMatchNotifyPending(gm); err != nil {
+			log.Errorw("publish pvp match pending after bot dispatch failed", "match_id", gm.ID, "bot", botPlayer.String(), "err", err)
+			break
+		}
+		log.Infow("found long waitting player, dispatch a bot", "match_id", gm.ID, "bot", botPlayer.String())
 	}
 	return nil
 }

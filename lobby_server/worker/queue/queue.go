@@ -126,13 +126,13 @@ func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 		log.Errorf("cannot join queue, err: %s", err.Error())
 		return err
 	}
-	matchID, err := q.lobbyState.MatchPlayersOrJoinQueue(q.ctx, address)
+	gm, err := q.lobbyState.MatchPlayersOrJoinQueue(q.ctx, address)
 	if err != nil {
 		_ = q.unlockToken(&address)
 		return err
 	}
-	if matchID > 0 {
-		if err := q.publishPvpMatchPendingFromID(matchID); err != nil {
+	if gm != nil {
+		if err := q.postMatchNotifyPending(gm); err != nil {
 			_ = q.unlockToken(&address)
 			return err
 		}

@@ -32,7 +32,8 @@ func lobbyNormalizePairRef(a, b LobbyPlayerRef) (LobbyPlayerRef, LobbyPlayerRef)
 
 // lobbyMatchPlayersTx inserts a pending GameMatch for two players, then updates or inserts their PlayerQueueEntry rows
 // to game_match_id (bots usually have no row yet and get an insert; humans in the queue get an update).
-func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType uint) (int64, error) {
+// lastGameID non-zero sets game_match.last_game_id (e.g. continue rematch); zero leaves the DB default.
+func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType uint, lastGameID int64) (*dao.GameMatch, error) {
 	p1, p2 := lobbyNormalizePairRef(playerA, playerB)
 	m := &dao.GameMatch{
 		ID:                 snowflake.GenerateID(),
@@ -43,14 +44,17 @@ func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType 
 		GameType:           gameType,
 		Status:             dao.GameMatchStatusPending,
 	}
+	if lastGameID != 0 {
+		m.LastGameID = lastGameID
+	}
 	if e := tx.Create(m).Error; e != nil {
-		return 0, e
+		return nil, e
 	}
 	for _, p := range []LobbyPlayerRef{p1, p2} {
 		var row dao.PlayerQueueEntry
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("player_id = ? AND temp_address = ?", p.PlayerID, p.TempAddress).First(&row).Error
 		if err == nil && row.GameMatchID != 0 && row.GameMatchID != m.ID {
-			return 0, fmt.Errorf("lobby: player %d already pending match %d", p.PlayerID, row.GameMatchID)
+			return nil, fmt.Errorf("lobby: player %d already pending match %d", p.PlayerID, row.GameMatchID)
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			nu := dao.PlayerQueueEntry{
@@ -59,18 +63,18 @@ func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType 
 				GameMatchID: m.ID,
 			}
 			if e := tx.Create(&nu).Error; e != nil {
-				return 0, e
+				return nil, e
 			}
 			continue
 		}
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		if e := tx.Model(&row).Update("game_match_id", m.ID).Error; e != nil {
-			return 0, e
+			return nil, e
 		}
 	}
-	return m.ID, nil
+	return m, nil
 }
 
 // LobbyGetGameIDByPlayer returns whether the player has a player_game_entries row and its game_id.
@@ -89,11 +93,11 @@ func LobbyGetGameIDByPlayer(ctx context.Context, playerID int64, tempAddress str
 
 // LobbyMatchPlayersOrJoinQueue: (1) reject if already queued or pending, (2) reject if in-game,
 // (3) insert a queue-only row, (4) look for an eligible opponent, (5) if found create game_match and set both rows to pending.
-// Returns the new pending game_match id when a pair is formed, or 0 when the player is only in the queue.
-func LobbyMatchPlayersOrJoinQueue(ctx context.Context, playerID int64, tempAddress string, gameType uint) (int64, error) {
+// Returns the new pending game_match row when a pair is formed, or nil when the player is only in the queue.
+func LobbyMatchPlayersOrJoinQueue(ctx context.Context, playerID int64, tempAddress string, gameType uint) (*dao.GameMatch, error) {
 	tempAddress = normLobbyTemp(tempAddress)
 	nowMs := time.Now().UnixMilli()
-	var matchID int64
+	var out *dao.GameMatch
 	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing dao.PlayerQueueEntry
 		errPQ := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -142,14 +146,14 @@ func LobbyMatchPlayersOrJoinQueue(ctx context.Context, playerID int64, tempAddre
 		}
 
 		cand := LobbyPlayerRef{PlayerID: opp.PlayerID, TempAddress: opp.TempAddress}
-		id, e := lobbyMatchPlayersTx(tx, joiner, cand, gameType)
+		m, e := lobbyMatchPlayersTx(tx, joiner, cand, gameType, 0)
 		if e != nil {
 			return e
 		}
-		matchID = id
+		out = m
 		return nil
 	})
-	return matchID, err
+	return out, err
 }
 
 // LobbyCountLongWaitingQueuedPlayers counts queue-only rows whose created_at is at or before (now - minWait).
@@ -167,13 +171,13 @@ func LobbyCountLongWaitingQueuedPlayers(ctx context.Context, minWait time.Durati
 
 // LobbyMatchEarliestQueuedPlayerWithBot pairs the long-waiting human who has been in queue longest (earliest
 // created_at among rows with game_match_id=0 and created_at <= now-minWait) with a single bot. Bots never have
-// PlayerQueueEntry. Returns the new pending GameMatch id, or 0 if no human row qualifies.
-func LobbyMatchEarliestQueuedPlayerWithBot(ctx context.Context, bot LobbyPlayerRef, gameType uint, minWait time.Duration) (int64, error) {
+// PlayerQueueEntry. Returns the new pending game_match row, or nil if no human row qualifies.
+func LobbyMatchEarliestQueuedPlayerWithBot(ctx context.Context, bot LobbyPlayerRef, gameType uint, minWait time.Duration) (*dao.GameMatch, error) {
 	bot.TempAddress = normLobbyTemp(bot.TempAddress)
 	if minWait < 0 {
 		minWait = 0
 	}
-	var matchID int64
+	var out *dao.GameMatch
 	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		cutoff := time.Now().Add(-minWait)
 		var entry dao.PlayerQueueEntry
@@ -187,31 +191,31 @@ func LobbyMatchEarliestQueuedPlayerWithBot(ctx context.Context, bot LobbyPlayerR
 			return e
 		}
 		human := LobbyPlayerRef{PlayerID: entry.PlayerID, TempAddress: entry.TempAddress}
-		id, e := lobbyMatchPlayersTx(tx, human, bot, gameType)
+		m, e := lobbyMatchPlayersTx(tx, human, bot, gameType, 0)
 		if e != nil {
 			return e
 		}
-		matchID = id
+		out = m
 		return nil
 	})
-	return matchID, err
+	return out, err
 }
 
 // LobbyMatchPair creates a pending GameMatch for two players and updates or inserts their player_queue_entries
-// to that match id. Returns the new GameMatch id.
-func LobbyMatchPair(ctx context.Context, p1, p2 LobbyPlayerRef, gameType uint) (int64, error) {
+// to that match id. Returns the new pending game_match row. lastGameID non-zero is stored (continue rematch).
+func LobbyMatchPair(ctx context.Context, p1, p2 LobbyPlayerRef, gameType uint, lastGameID int64) (*dao.GameMatch, error) {
 	p1.TempAddress = normLobbyTemp(p1.TempAddress)
 	p2.TempAddress = normLobbyTemp(p2.TempAddress)
-	var matchID int64
+	var out *dao.GameMatch
 	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		id, e := lobbyMatchPlayersTx(tx, p1, p2, gameType)
+		m, e := lobbyMatchPlayersTx(tx, p1, p2, gameType, lastGameID)
 		if e != nil {
 			return e
 		}
-		matchID = id
+		out = m
 		return nil
 	})
-	return matchID, err
+	return out, err
 }
 
 // LobbyIsInQueue reports whether the player has a queue-only row (game_match_id = 0).
@@ -293,8 +297,7 @@ func LobbyAddQueue(ctx context.Context, playerID int64, tempAddress string, nowM
 // LobbyRemoveFromQueue deletes a queue-only row for the player.
 func LobbyRemoveFromQueue(ctx context.Context, playerID int64, tempAddress string) error {
 	tempAddress = normLobbyTemp(tempAddress)
-	return Get().WithContext(ctx).Unscoped().
-		Where("player_id = ? AND temp_address = ? AND game_match_id = ?", playerID, tempAddress, 0).
+	return Get().WithContext(ctx).Where("player_id = ? AND temp_address = ? AND game_match_id = ?", playerID, tempAddress, 0).
 		Delete(&dao.PlayerQueueEntry{}).Error
 }
 
@@ -410,10 +413,10 @@ func LobbyFinalizeConfirmedPair(ctx context.Context, matchID int64, p1, p2 Lobby
 		if r1.GameMatchID != matchID || r2.GameMatchID != matchID {
 			return nil
 		}
-		if e := tx.Unscoped().Delete(&dao.PlayerQueueEntry{}, r1.ID).Error; e != nil {
+		if e := tx.Delete(&dao.PlayerQueueEntry{}, r1.ID).Error; e != nil {
 			return e
 		}
-		if e := tx.Unscoped().Delete(&dao.PlayerQueueEntry{}, r2.ID).Error; e != nil {
+		if e := tx.Delete(&dao.PlayerQueueEntry{}, r2.ID).Error; e != nil {
 			return e
 		}
 		for _, p := range []LobbyPlayerRef{p1, p2} {
@@ -471,7 +474,7 @@ func LobbyMarkPlayersOutOfGame(ctx context.Context, players []LobbyPlayerRef) er
 	for _, pl := range players {
 		p := pl
 		p.TempAddress = normLobbyTemp(p.TempAddress)
-		if err := Get().WithContext(ctx).Unscoped().
+		if err := Get().WithContext(ctx).
 			Where("player_id = ? AND temp_address = ?", p.PlayerID, p.TempAddress).
 			Delete(&dao.PlayerGameEntry{}).Error; err != nil {
 			return err
@@ -514,76 +517,6 @@ func LobbyPendingMatchID(ctx context.Context, playerID int64, tempAddress string
 		return 0, false, nil
 	}
 	return row.GameMatchID, true, nil
-}
-
-// LobbyJoinQueueOrGetMatchCandidate either pairs the player with an eligible queued opponent or enqueues the player.
-// On match, the candidate is removed from the queue and returned; queued is false. On enqueue, candidate is nil and queued is true.
-func LobbyJoinQueueOrGetMatchCandidate(ctx context.Context, playerID int64, tempAddress string, nowMs int64) (candidate *LobbyPlayerRef, queued bool, err error) {
-	tempAddress = normLobbyTemp(tempAddress)
-	err = Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var ingame int64
-		if e := tx.Model(&dao.PlayerGameEntry{}).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).Count(&ingame).Error; e != nil {
-			return e
-		}
-		if ingame > 0 {
-			return nil
-		}
-
-		var self dao.PlayerQueueEntry
-		errSelf := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).First(&self).Error
-		if errSelf == nil && self.GameMatchID != 0 {
-			return nil
-		}
-		if errSelf != nil && !errors.Is(errSelf, gorm.ErrRecordNotFound) {
-			return errSelf
-		}
-
-		var c dao.PlayerQueueEntry
-		q := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("game_match_id = ? AND player_id <> ? AND temp_address <> ?", 0, playerID, tempAddress).
-			Order("created_at ASC")
-		if e := q.First(&c).Error; e == nil {
-			// game_match + SetPendingPair run after this transaction commits. Removing the row now
-			// mirrors Redis ZREM so no other joiner can take the same opponent while match rows are created.
-			res := tx.Unscoped().Where("id = ? AND game_match_id = ?", c.ID, 0).Delete(&dao.PlayerQueueEntry{})
-			if res.Error != nil {
-				return res.Error
-			}
-			if res.RowsAffected == 1 {
-				candidate = &LobbyPlayerRef{PlayerID: c.PlayerID, TempAddress: c.TempAddress}
-				return nil
-			}
-		} else if !errors.Is(e, gorm.ErrRecordNotFound) {
-			return e
-		}
-
-		t := time.UnixMilli(nowMs)
-		if errors.Is(errSelf, gorm.ErrRecordNotFound) {
-			row := &dao.PlayerQueueEntry{
-				PlayerID:    playerID,
-				TempAddress: tempAddress,
-				GameMatchID: 0,
-			}
-			row.CreatedAt = t
-			row.UpdatedAt = t
-			if e := tx.Create(row).Error; e != nil {
-				return e
-			}
-		} else {
-			if e := tx.Model(&self).Updates(map[string]interface{}{
-				"created_at": t,
-				"updated_at": t,
-			}).Error; e != nil {
-				return e
-			}
-		}
-		queued = true
-		return nil
-	})
-	if err != nil {
-		return nil, false, err
-	}
-	return candidate, queued, nil
 }
 
 // LobbyFirstWaitingPlayerBefore returns the longest-waiting queued player whose created_at is at or before cutoffMs (Unix ms).
