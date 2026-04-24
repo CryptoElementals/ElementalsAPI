@@ -167,9 +167,9 @@ func topFourRewardTokensFromTierTable(participantCount int64) ([]int32, error) {
 	}
 	if len(rows) > 1 {
 		out[1] = rows[1].RewardToken
-		out[2] = rows[1].RewardToken
 	}
 	if len(rows) > 2 {
+		out[2] = rows[2].RewardToken
 		out[3] = rows[2].RewardToken
 	}
 	return out, nil
