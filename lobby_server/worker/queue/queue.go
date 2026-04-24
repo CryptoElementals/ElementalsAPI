@@ -233,7 +233,7 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	ok, err := q.lobbyState.IsInQueue(q.ctx, address)
 	if err != nil {
-		log.Errorw("lobby is in queue check failed", "player", address.String(), "err", err)
+		log.Debugw("lobby is in queue check failed", "player", address.String(), "err", err)
 		return false
 	}
 	return ok
@@ -242,25 +242,17 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 func (q *Queue) isPlayerInGame(address types.PlayerAddress) bool {
 	ok, _, err := q.lobbyState.GetGameIDByPlayer(q.ctx, address)
 	if err != nil {
-		log.Errorw("lobby is in game check failed", "player", address.String(), "err", err)
+		log.Debugw("lobby is in game check failed", "player", address.String(), "err", err)
 		return false
 	}
 	return ok
-}
-
-// matchConfirmationTimeoutMs is the configured PVP match confirmation window in milliseconds.
-func (q *Queue) matchConfirmationTimeoutMs() int64 {
-	if q.matchConfirmationTimeout <= 0 {
-		return 0
-	}
-	return q.matchConfirmationTimeout * 1000
 }
 
 func (q *Queue) pendingMatchID(address types.PlayerAddress) (int64, bool) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	mid, ok, err := q.lobbyState.PendingMatchID(q.ctx, address)
 	if err != nil {
-		log.Errorw("lobby pending match lookup failed", "player", address.String(), "err", err)
+		log.Debugw("lobby pending match lookup failed", "player", address.String(), "err", err)
 		return 0, false
 	}
 	return mid, ok
@@ -270,7 +262,7 @@ func (q *Queue) queueJoinedAtMs(address types.PlayerAddress) (int64, bool) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	ms, ok, err := q.lobbyState.QueueJoinedAtMs(q.ctx, address)
 	if err != nil {
-		log.Errorw("lobby queue joined-at lookup failed", "player", address.String(), "err", err)
+		log.Debugw("lobby queue joined-at lookup failed", "player", address.String(), "err", err)
 		return 0, false
 	}
 	return ms, ok

@@ -159,17 +159,18 @@ func (s *TournamentQueueService) GameResultSettlementHook(event *types.GameCompl
 	return s.coord.onGameCompleted(event.GameID)
 }
 
-// PlayerInProgressOrQueued reports whether the player is queued or in bracket play for a registration_open or in_progress tournament.
-// It returns in_progress if any such participant row is in_progress, else queued if any is queued, else an empty string.
-func (s *TournamentQueueService) PlayerInProgressOrQueued(player *proto.PlayerAddress) (dao.TournamentParticipantStatus, error) {
+// GetActiveTournamentByPlayer returns the tournament and participant status if the player is
+// queued or in bracket play for a registration_open or in_progress tournament. If not, t is
+// nil and status is empty.
+func (s *TournamentQueueService) GetActiveTournamentByPlayer(player *proto.PlayerAddress) (t *dao.Tournament, status dao.TournamentParticipantStatus, err error) {
 	if player == nil {
-		return "", fmt.Errorf("nil player address")
+		return nil, "", fmt.Errorf("nil player address")
 	}
 	var address types.PlayerAddress
 	address.FromProto(player)
 	if address.Id == 0 {
-		return "", fmt.Errorf("invalid player id: 0")
+		return nil, "", fmt.Errorf("invalid player id: 0")
 	}
 	temp := strings.ToLower(strings.TrimSpace(address.TemporaryAddress))
-	return db.TournamentPlayerQueuedOrInProgressInOpenTournaments(address.Id, temp)
+	return db.TournamentGetActiveTournamentByPlayer(address.Id, temp)
 }

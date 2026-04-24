@@ -336,41 +336,46 @@ func TournamentLoadMatchByID(tx *gorm.DB, id uint) (*dao.TournamentMatch, error)
 	return &m, nil
 }
 
-// TournamentPlayerQueuedOrInProgressInOpenTournaments inspects tournaments with status
-// registration_open or in_progress and the player's participant row(s) in those tournaments.
-// If any such row has status in_progress, returns in_progress. Else if any has queued, returns queued.
-// Otherwise returns an empty status (no queued/in_progress participation in those tournaments).
-func TournamentPlayerQueuedOrInProgressInOpenTournaments(playerID int64, tempAddress string) (dao.TournamentParticipantStatus, error) {
-	var statuses []string
-	err := Get().Raw(`
-		SELECT p.status FROM tournament_participants AS p
+// TournamentGetActiveTournamentByPlayer returns one tournament and the corresponding participant
+// status for the player in registration_open or in_progress tournaments where the participant
+// is queued or in_progress. If multiple rows match, in_progress is preferred, then the earliest
+// scheduled_start_at. If none match, t is nil and status is empty.
+func TournamentGetActiveTournamentByPlayer(playerID int64, tempAddress string) (t *dao.Tournament, status dao.TournamentParticipantStatus, err error) {
+	var out struct {
+		dao.Tournament
+		ParticipantStatus string `gorm:"column:participant_status"`
+	}
+	err = Get().Raw(`
+		SELECT
+			t.id, t.tournament_id, t.status, t.scheduled_start_at, t.scheduled_end_deadline,
+			t.registration_deadline, t.entry_fee, t.created_at, t.updated_at,
+			p.status AS participant_status
+		FROM tournament_participants AS p
 		INNER JOIN tournaments AS t ON t.tournament_id = p.tournament_id
 		WHERE t.status IN (?, ?)
 		  AND p.player_id = ? AND LOWER(p.temp_address) = LOWER(?)
-		  AND p.status IN (?, ?)`,
+		  AND p.status IN (?, ?)
+		ORDER BY
+			CASE p.status
+				WHEN ? THEN 0
+				WHEN ? THEN 1
+				ELSE 2
+			END,
+			t.scheduled_start_at ASC
+		LIMIT 1`,
 		dao.TournamentStatusRegistrationOpen,
 		dao.TournamentStatusInProgress,
 		playerID, tempAddress,
 		dao.TournamentParticipantStatusQueued,
 		dao.TournamentParticipantStatusInProgress,
-	).Scan(&statuses).Error
+		dao.TournamentParticipantStatusInProgress,
+		dao.TournamentParticipantStatusQueued,
+	).Scan(&out).Error
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	var hasInProgress, hasQueued bool
-	for _, s := range statuses {
-		switch dao.TournamentParticipantStatus(s) {
-		case dao.TournamentParticipantStatusInProgress:
-			hasInProgress = true
-		case dao.TournamentParticipantStatusQueued:
-			hasQueued = true
-		}
+	if out.TournamentID == "" {
+		return nil, "", nil
 	}
-	if hasInProgress {
-		return dao.TournamentParticipantStatusInProgress, nil
-	}
-	if hasQueued {
-		return dao.TournamentParticipantStatusQueued, nil
-	}
-	return "", nil
+	return &out.Tournament, dao.TournamentParticipantStatus(out.ParticipantStatus), nil
 }

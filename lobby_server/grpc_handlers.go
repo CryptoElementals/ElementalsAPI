@@ -2,6 +2,7 @@ package lobbyserver
 
 import (
 	"context"
+	"time"
 
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
@@ -39,12 +40,14 @@ func (s *GRPCServices) JoinQueue(ctx context.Context, req *proto.PlayerAddress) 
 	if s.queueSvc.IsPlayerInGame(addr) {
 		return nil, status.Error(codes.FailedPrecondition, "player already in game")
 	}
-	st, err := s.tournamentSvc.PlayerInProgressOrQueued(req)
+	tournament, st, err := s.tournamentSvc.GetActiveTournamentByPlayer(req)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "tournament status: %v", err)
 	}
 	if st == dao.TournamentParticipantStatusInProgress || st == dao.TournamentParticipantStatusQueued {
-		return nil, status.Error(codes.FailedPrecondition, "player in tournament")
+		if tournament.RegistrationDeadline.After(time.Now().Add(time.Minute * 5)) {
+			return nil, status.Error(codes.FailedPrecondition, "player in tournament")
+		}
 	}
 	return &emptypb.Empty{}, s.queueSvc.HandleJoinQueueEvent(req)
 }
@@ -69,7 +72,7 @@ func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAdd
 	var addr types.PlayerAddress
 	addr.FromProto(req)
 	if s.tournamentSvc != nil {
-		st, err := s.tournamentSvc.PlayerInProgressOrQueued(req)
+		_, st, err := s.tournamentSvc.GetActiveTournamentByPlayer(req)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "tournament status: %v", err)
 		}
