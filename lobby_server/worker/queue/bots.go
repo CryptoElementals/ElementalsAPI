@@ -51,11 +51,6 @@ func (q *Queue) releaseInGameBot(addr types.PlayerAddress) bool {
 	return ok
 }
 
-func (q *Queue) firstWaitingPlayerForBot() (*types.PlayerAddress, error) {
-	cutoff := time.Now().Add(-q.botWaitTime).UnixMilli()
-	return q.lobbyState.FirstWaitingPlayerBefore(q.ctx, cutoff)
-}
-
 // botDispatchTickEvent schedules periodic bot-vs-human matchmaking for long-waiting players.
 type botDispatchTickEvent struct{}
 
@@ -82,25 +77,37 @@ func (q *Queue) handleBotDispatchTick() error {
 	if q.ctx.Err() != nil {
 		return nil
 	}
+	n, err := q.lobbyState.CountLongWaittingPlayers(q.ctx, q.botWaitTime)
+	if err != nil {
+		log.Errorw("count long waiting players for bot failed", "err", err)
+		return nil
+	}
+	if n <= 0 {
+		return nil
+	}
 	for {
-		player, err := q.firstWaitingPlayerForBot()
-		if err != nil {
-			log.Errorw("find waiting player for bot failed", "err", err)
-			break
-		}
-		if player == nil {
-			break
+		if q.ctx.Err() != nil {
+			return nil
 		}
 		botPlayer, ok := q.popBotForMatch()
 		if !ok {
 			break
 		}
-		log.Infow("found long waitting player, dispatch a bot", "player", player.String(), "bot", botPlayer.String())
-		err = q.matchPlayers([]types.PlayerAddress{botPlayer, *player})
+		gm, err := q.lobbyState.MatchPlayerWithBot(q.ctx, botPlayer, q.botWaitTime)
 		if err != nil {
-			log.Errorw("error match bot with player", "err", err, "bot", botPlayer.String(), "player", player.String())
+			_ = q.releaseInGameBot(botPlayer)
+			log.Errorw("error match player with bot", "err", err, "bot", botPlayer.String())
 			break
 		}
+		if gm == nil {
+			_ = q.releaseInGameBot(botPlayer)
+			break
+		}
+		if err := q.postMatchNotifyPending(gm); err != nil {
+			log.Errorw("publish pvp match pending after bot dispatch failed", "match_id", gm.ID, "bot", botPlayer.String(), "err", err)
+			break
+		}
+		log.Infow("found long waitting player, dispatch a bot", "match_id", gm.ID, "bot", botPlayer.String())
 	}
 	return nil
 }

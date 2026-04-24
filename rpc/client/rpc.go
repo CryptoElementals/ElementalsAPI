@@ -122,6 +122,11 @@ func (c *RpcClient) SyncGamePhase(ctx context.Context, addr *types.PlayerAddress
 	return err
 }
 
+// GetGamePhase returns the current game phase from the room server (same data as a phase sync event).
+func (c *RpcClient) GetGamePhase(ctx context.Context, addr *types.PlayerAddress) (*proto.GamePhase, error) {
+	return c.room.GetGamePhase(ctx, addr.ToProto())
+}
+
 func (c *RpcClient) GetPlayerToken(ctx context.Context, playerId int64) (*proto.GetPlayerTokenResponse, error) {
 	if err := c.lobbyRequired(); err != nil {
 		return nil, err

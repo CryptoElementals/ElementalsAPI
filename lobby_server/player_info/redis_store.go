@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 )
@@ -21,6 +22,11 @@ type RedisStore struct {
 
 func (s *RedisStore) IsInQueue(_ context.Context, player types.PlayerAddress) (bool, error) {
 	return redis.ZScoreMemberExists(s.queueZSet, key(player))
+}
+
+// QueueJoinedAtMs returns the queue ZSET score (join time in milliseconds) when the player is in the queue.
+func (s *RedisStore) QueueJoinedAtMs(_ context.Context, player types.PlayerAddress) (ms int64, ok bool, err error) {
+	return redis.ZScoreInt64IfMember(s.queueZSet, key(player))
 }
 
 func (s *RedisStore) ListQueuedPlayers(_ context.Context) ([]types.PlayerAddress, error) {
@@ -177,6 +183,15 @@ end
 return redis.call("SREM", KEYS[1], unpack(ARGV))
 `)
 
+var markInGameScript = redis.NewScript(1, `
+-- KEYS[1] ingame set
+-- ARGV[*] player keys
+if #ARGV == 0 then
+	return 0
+end
+return redis.call("SADD", KEYS[1], unpack(ARGV))
+`)
+
 func (s *RedisStore) AddQueue(_ context.Context, player types.PlayerAddress, nowMs int64) (bool, error) {
 	out, err := redis.ScriptInt(s.pool, queueAddScript, s.queueZSet, s.pendingMap, s.inGameSet, key(player), strconv.FormatInt(nowMs, 10))
 	if err != nil {
@@ -198,12 +213,18 @@ func (s *RedisStore) SetPendingPair(_ context.Context, matchID int64, p1, p2 typ
 	return out == 1, nil
 }
 
-func (s *RedisStore) CancelPendingPair(_ context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {
-	out, err := redis.ScriptInt(s.pool, cancelPendingPairScript, s.pendingMap, strconv.FormatInt(matchID, 10), key(p1), key(p2))
-	if err != nil {
-		return false, err
+func (s *RedisStore) CancelPendingPair(ctx context.Context, matchID int64) error {
+	if err := db.LobbyCancelPendingMatch(ctx, matchID); err != nil {
+		return err
 	}
-	return out == 1, nil
+	m, err := db.GetGameMatchByID(ctx, matchID)
+	if err != nil {
+		return err
+	}
+	p1 := *types.NewPlayerAddress(m.Player1ID, m.Player1TempAddress)
+	p2 := *types.NewPlayerAddress(m.Player2ID, m.Player2TempAddress)
+	_, err = redis.ScriptInt(s.pool, cancelPendingPairScript, s.pendingMap, strconv.FormatInt(matchID, 10), key(p1), key(p2))
+	return err
 }
 
 func (s *RedisStore) FinalizeConfirmedPair(_ context.Context, matchID int64, p1, p2 types.PlayerAddress) (bool, error) {
@@ -212,6 +233,18 @@ func (s *RedisStore) FinalizeConfirmedPair(_ context.Context, matchID int64, p1,
 		return false, err
 	}
 	return out == 1, nil
+}
+
+func (s *RedisStore) MarkPlayersInGame(_ context.Context, _ int64, players ...types.PlayerAddress) error {
+	if len(players) == 0 {
+		return nil
+	}
+	args := []interface{}{s.inGameSet}
+	for _, p := range players {
+		args = append(args, key(p))
+	}
+	_, err := redis.ScriptDo(s.pool, markInGameScript, args...)
+	return err
 }
 
 func (s *RedisStore) MarkPlayersOutOfGame(_ context.Context, players ...types.PlayerAddress) error {

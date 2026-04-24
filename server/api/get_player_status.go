@@ -26,8 +26,12 @@ type GetPlayerStatusRequest struct {
 // GetPlayerStatusResponse 响应结构体
 type GetPlayerStatusResponse struct {
 	BaseResponse
-	Status     int32  `json:"Status"`     // PlayerStatus enum: 0=UNKNOWN, 1=IN_QUEUE, 2=MATCHED, 3=IN_GAME (4 deprecated)
-	StatusName string `json:"StatusName"` // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME
+	Status         int32  `json:"Status"`                   // PlayerStatus enum (see rpc.PlayerStatus)
+	StatusName     string `json:"StatusName"`               // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME, tournament names, etc.
+	Since          *int64 `json:"Since,omitempty"`          // Detail: queue join ms, match pending since, or in-game since (Unix ms)
+	MatchID        *int64 `json:"MatchID,omitempty"`        // Pending match id when awaiting confirmations
+	MatchTimeoutMs *int64 `json:"MatchTimeoutMs,omitempty"` // Confirmation window in ms (MATCHED / pending queue match)
+	GameID         *int64 `json:"GameID,omitempty"`         // Active PVP game id when in game
 }
 
 type GetPlayerStatusTask struct {
@@ -111,6 +115,22 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 
 	task.Response.Status = int32(resp.Status)
 	task.Response.StatusName = getPlayerStatusName(resp.Status)
+	if q := resp.GetInQueue(); q != nil {
+		s := q.Since
+		task.Response.Since = &s
+	} else if m := resp.GetInMatch(); m != nil {
+		mid := m.ID
+		task.Response.MatchID = &mid
+		s := m.Since
+		task.Response.Since = &s
+		t := m.Timeout
+		task.Response.MatchTimeoutMs = &t
+	} else if g := resp.GetInGame(); g != nil {
+		gid := g.ID
+		task.Response.GameID = &gid
+		s := g.Since
+		task.Response.Since = &s
+	}
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "Successfully retrieved player status"
 	return task.Response, nil
@@ -123,12 +143,14 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "UNKNOWN"
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		return "IN_QUEUE"
-	case proto.PlayerStatus_PLAYER_MATCHED:
+	case proto.PlayerStatus_PLAYER_MATCHED, proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
 		return "MATCHED"
-	case proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
-		return "PENDING_QUEUE_MATCH"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return "IN_GAME"
+	case proto.PlayerStatus_PLAYER_TOURNAMENT_QUEUED:
+		return "TOURNAMENT_QUEUED"
+	case proto.PlayerStatus_PLAYER_TOURNAMENT_IN_PROGRESS:
+		return "TOURNAMENT_IN_PROGRESS"
 	default:
 		return "UNKNOWN"
 	}

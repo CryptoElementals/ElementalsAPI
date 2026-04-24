@@ -230,7 +230,8 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 		_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
-	if statusResp != nil && statusResp.GetStatus() == proto.PlayerStatus_PLAYER_IN_GAME {
+	if statusResp.GetStatus() == proto.PlayerStatus_PLAYER_IN_GAME ||
+		statusResp.GetStatus() == proto.PlayerStatus_PLAYER_TOURNAMENT_IN_PROGRESS {
 		rpcClient := client.GetGlobalRpcClient()
 		if rpcClient == nil {
 			err := fmt.Errorf("gRPC room client not initialized")
