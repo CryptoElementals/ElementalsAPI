@@ -96,31 +96,30 @@ func (s *Service) GetPlayerStatusResponse(addr types.PlayerAddress) (*proto.GetP
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}
 		since := int64(0)
 		if ms, ok := s.queue.queueJoinedAtMs(addr); ok {
-			since = ms
+			since = ms / 1000
 		}
 		out.Detail = &proto.GetPlayerStatusResponse_InQueue{InQueue: &proto.InQueueStatus{Since: since}}
 		return out, nil
 	}
 	if s.IsPlayerPendingMatch(addr) {
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}
-		timeoutMs := s.queue.matchConfirmationTimeoutMs()
-		mid, sinceMs, err := db.LobbyPendingMatchDetail(ctx, addr.Id, addr.TemporaryAddress)
+		mid, since, err := db.LobbyPendingMatchDetail(ctx, addr.Id, addr.TemporaryAddress)
 		if err != nil {
 			return nil, err
 		}
 		out.Detail = &proto.GetPlayerStatusResponse_InMatch{
-			InMatch: &proto.InMatchStatus{ID: mid, Since: sinceMs, Timeout: timeoutMs},
+			InMatch: &proto.InMatchStatus{ID: mid, Since: since, Timeout: s.queue.matchConfirmationTimeout},
 		}
 		return out, nil
 	}
 	if s.IsPlayerInGame(addr) {
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}
-		gid, sinceMs, err := db.LobbyInGameDetail(ctx, addr.Id, addr.TemporaryAddress)
+		gid, since, err := db.LobbyInGameDetail(ctx, addr.Id, addr.TemporaryAddress)
 		if err != nil {
 			return nil, err
 		}
 		out.Detail = &proto.GetPlayerStatusResponse_InGame{
-			InGame: &proto.InGameStatus{ID: gid, Since: sinceMs},
+			InGame: &proto.InGameStatus{ID: gid, Since: since},
 		}
 		return out, nil
 	}

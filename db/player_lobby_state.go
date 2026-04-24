@@ -79,14 +79,14 @@ func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType 
 
 // LobbyInGameDetail returns the active game id and player_game_entries.created_at as Unix ms when the player is in-game.
 // If the player has no row, it returns (0, 0, nil).
-func LobbyInGameDetail(ctx context.Context, playerID int64, tempAddress string) (gameID int64, sinceMs int64, err error) {
+func LobbyInGameDetail(ctx context.Context, playerID int64, tempAddress string) (gameID int64, since int64, err error) {
 	tempAddress = normLobbyTemp(tempAddress)
 	var row dao.PlayerGameEntry
 	err = Get().WithContext(ctx).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).First(&row).Error
 	if err != nil {
 		return 0, 0, err
 	}
-	return row.GameID, row.CreatedAt.UnixMilli(), nil
+	return row.GameID, row.CreatedAt.Unix(), nil
 }
 
 // LobbyGetGameIDByPlayer returns whether the player has a player_game_entries row and its game_id.
@@ -502,7 +502,7 @@ func LobbyIsInGame(ctx context.Context, playerID int64, tempAddress string) (boo
 
 // LobbyPendingMatchDetail returns the pending game_match id and game_match.created_at as Unix ms when status is still pending.
 // On success matchID is non-zero. If the player has no pending match, it returns (0, 0, nil).
-func LobbyPendingMatchDetail(ctx context.Context, playerID int64, tempAddress string) (matchID int64, pendingSinceMs int64, err error) {
+func LobbyPendingMatchDetail(ctx context.Context, playerID int64, tempAddress string) (matchID int64, pendingSince int64, err error) {
 	tempAddress = normLobbyTemp(tempAddress)
 	var row dao.PlayerQueueEntry
 	if err := Get().WithContext(ctx).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).First(&row).Error; err != nil {
@@ -524,7 +524,7 @@ func LobbyPendingMatchDetail(ctx context.Context, playerID int64, tempAddress st
 	if m.Status != dao.GameMatchStatusPending {
 		return 0, 0, nil
 	}
-	return row.GameMatchID, m.CreatedAt.UnixMilli(), nil
+	return row.GameMatchID, m.CreatedAt.Unix(), nil
 }
 
 // LobbyPendingMatchID returns the pending game_match id for the player when game_match.status is still pending.
