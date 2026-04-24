@@ -45,7 +45,7 @@ func (s *GRPCServices) JoinQueue(ctx context.Context, req *proto.PlayerAddress) 
 		return nil, status.Errorf(codes.Internal, "tournament status: %v", err)
 	}
 	if st == dao.TournamentParticipantStatusInProgress || st == dao.TournamentParticipantStatusQueued {
-		if tournament.RegistrationDeadline.After(time.Now().Add(time.Minute * 5)) {
+		if tournament.RegistrationDeadline.Before(time.Now().Add(time.Minute * 5)) {
 			return nil, status.Error(codes.FailedPrecondition, "player in tournament")
 		}
 	}
