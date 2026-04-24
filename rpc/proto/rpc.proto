@@ -23,6 +23,7 @@ service RoomService {
     // lobby -> room worker api
     rpc CreateGameAndRun(CreateGameAndRunRequest) returns (CreateGameAndRunResponse);
     rpc SyncGamePhase(PlayerAddress) returns (google.protobuf.Empty);
+    rpc GetGamePhase(PlayerAddress) returns (GamePhase);
 }
 
 message TimeoutConfig {
@@ -41,11 +42,28 @@ message SurrenderRequest {
     PlayerAddress Address = 2;
 }
 
+message InMatchStatus {
+    int64 ID = 1;
+    int64 Since = 2;
+    int64 Timeout=3;
+}
+
+message InGameStatus {
+    int64 ID = 1;
+    int64 Since = 2;
+}
+
+message InQueueStatus {
+    int64 Since = 1;
+}
+
 message GetPlayerStatusResponse {
     PlayerStatus Status = 1;
-    optional int64 Since = 2;
-    optional int64 MatchID = 3;
-    optional int64 GameID = 4;
+    oneof Detail{
+        InQueueStatus InQueue = 2;
+        InMatchStatus InMatch = 3;
+        InGameStatus InGame = 4;
+    }
 }
 
 message GetPlayerTokenRequest {
@@ -107,8 +125,9 @@ message GamePhase {
     uint32 TurnNumber = 4;
     int64 TurnStartAt = 5;
     TurnStatus TurnStatus = 6;
-    PlayerTurnStatus PlayerTurnStatus = 7;
-    repeated GamePhasePlayer Players = 8;
+    int64 Timeout = 7;
+    PlayerTurnStatus PlayerTurnStatus = 8;
+    repeated GamePhasePlayer Players = 9;
 }
 
 message ConfirmBattleRequest {

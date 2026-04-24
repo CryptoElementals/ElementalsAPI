@@ -75,12 +75,17 @@ func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAdd
 		}
 		switch st {
 		case dao.TournamentParticipantStatusInProgress:
+			// Tournament: Status only; omit Detail oneof.
 			return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_TOURNAMENT_IN_PROGRESS}, nil
 		case dao.TournamentParticipantStatusQueued:
 			return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_TOURNAMENT_QUEUED}, nil
 		}
 	}
-	return s.queueSvc.GetPlayerStatusResponse(addr), nil
+	resp, err := s.queueSvc.GetPlayerStatusResponse(addr)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "queue player status: %v", err)
+	}
+	return resp, nil
 }
 
 func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {

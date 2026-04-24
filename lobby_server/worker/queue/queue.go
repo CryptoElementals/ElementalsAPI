@@ -248,6 +248,14 @@ func (q *Queue) isPlayerInGame(address types.PlayerAddress) bool {
 	return ok
 }
 
+// matchConfirmationTimeoutMs is the configured PVP match confirmation window in milliseconds.
+func (q *Queue) matchConfirmationTimeoutMs() int64 {
+	if q.matchConfirmationTimeout <= 0 {
+		return 0
+	}
+	return q.matchConfirmationTimeout * 1000
+}
+
 func (q *Queue) pendingMatchID(address types.PlayerAddress) (int64, bool) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	mid, ok, err := q.lobbyState.PendingMatchID(q.ctx, address)

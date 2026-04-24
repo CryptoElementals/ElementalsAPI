@@ -77,18 +77,25 @@ func lobbyMatchPlayersTx(tx *gorm.DB, playerA, playerB LobbyPlayerRef, gameType 
 	return m, nil
 }
 
-// LobbyGetGameIDByPlayer returns whether the player has a player_game_entries row and its game_id.
-func LobbyGetGameIDByPlayer(ctx context.Context, playerID int64, tempAddress string) (ok bool, gameID int64, err error) {
+// LobbyInGameDetail returns the active game id and player_game_entries.created_at as Unix ms when the player is in-game.
+// If the player has no row, it returns (0, 0, nil).
+func LobbyInGameDetail(ctx context.Context, playerID int64, tempAddress string) (gameID int64, sinceMs int64, err error) {
 	tempAddress = normLobbyTemp(tempAddress)
 	var row dao.PlayerGameEntry
 	err = Get().WithContext(ctx).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, 0, nil
+	if err != nil {
+		return 0, 0, err
 	}
+	return row.GameID, row.CreatedAt.UnixMilli(), nil
+}
+
+// LobbyGetGameIDByPlayer returns whether the player has a player_game_entries row and its game_id.
+func LobbyGetGameIDByPlayer(ctx context.Context, playerID int64, tempAddress string) (ok bool, gameID int64, err error) {
+	gid, _, err := LobbyInGameDetail(ctx, playerID, tempAddress)
 	if err != nil {
 		return false, 0, err
 	}
-	return true, row.GameID, nil
+	return gid != 0, gid, nil
 }
 
 // LobbyMatchPlayersOrJoinQueue: (1) reject if already queued or pending, (2) reject if in-game,
@@ -493,30 +500,40 @@ func LobbyIsInGame(ctx context.Context, playerID int64, tempAddress string) (boo
 	return n > 0, err
 }
 
-// LobbyPendingMatchID returns the pending game_match id for the player when game_match.status is still pending.
-func LobbyPendingMatchID(ctx context.Context, playerID int64, tempAddress string) (int64, bool, error) {
+// LobbyPendingMatchDetail returns the pending game_match id and game_match.created_at as Unix ms when status is still pending.
+// On success matchID is non-zero. If the player has no pending match, it returns (0, 0, nil).
+func LobbyPendingMatchDetail(ctx context.Context, playerID int64, tempAddress string) (matchID int64, pendingSinceMs int64, err error) {
 	tempAddress = normLobbyTemp(tempAddress)
 	var row dao.PlayerQueueEntry
 	if err := Get().WithContext(ctx).Where("player_id = ? AND temp_address = ?", playerID, tempAddress).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, false, nil
+			return 0, 0, nil
 		}
-		return 0, false, err
+		return 0, 0, err
 	}
 	if row.GameMatchID == 0 {
-		return 0, false, nil
+		return 0, 0, nil
 	}
 	var m dao.GameMatch
 	if err := Get().WithContext(ctx).First(&m, row.GameMatchID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, false, nil
+			return 0, 0, nil
 		}
-		return 0, false, err
+		return 0, 0, err
 	}
 	if m.Status != dao.GameMatchStatusPending {
-		return 0, false, nil
+		return 0, 0, nil
 	}
-	return row.GameMatchID, true, nil
+	return row.GameMatchID, m.CreatedAt.UnixMilli(), nil
+}
+
+// LobbyPendingMatchID returns the pending game_match id for the player when game_match.status is still pending.
+func LobbyPendingMatchID(ctx context.Context, playerID int64, tempAddress string) (int64, bool, error) {
+	id, _, err := LobbyPendingMatchDetail(ctx, playerID, tempAddress)
+	if err != nil {
+		return 0, false, err
+	}
+	return id, id != 0, nil
 }
 
 // LobbyFirstWaitingPlayerBefore returns the longest-waiting queued player whose created_at is at or before cutoffMs (Unix ms).

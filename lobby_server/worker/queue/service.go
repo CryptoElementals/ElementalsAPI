@@ -89,28 +89,40 @@ func (s *Service) IsPlayerPendingMatch(address types.PlayerAddress) bool {
 	return s.queue.IsPlayerPendingMatch(address)
 }
 
-// GetPlayerStatusResponse returns lobby queue/match/game status and optional details (Since = queue join ms, MatchID, GameID).
-func (s *Service) GetPlayerStatusResponse(addr types.PlayerAddress) *proto.GetPlayerStatusResponse {
+// GetPlayerStatusResponse returns lobby queue/match/game status and a Detail oneof (InQueue / InMatch / InGame).
+func (s *Service) GetPlayerStatusResponse(addr types.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	ctx := s.ctx
 	if s.IsPlayerInQueue(addr) {
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}
+		since := int64(0)
 		if ms, ok := s.queue.queueJoinedAtMs(addr); ok {
-			out.Since = &ms
+			since = ms
 		}
-		return out
+		out.Detail = &proto.GetPlayerStatusResponse_InQueue{InQueue: &proto.InQueueStatus{Since: since}}
+		return out, nil
 	}
 	if s.IsPlayerPendingMatch(addr) {
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}
-		if mid, ok := s.queue.pendingMatchID(addr); ok {
-			out.MatchID = &mid
+		timeoutMs := s.queue.matchConfirmationTimeoutMs()
+		mid, sinceMs, err := db.LobbyPendingMatchDetail(ctx, addr.Id, addr.TemporaryAddress)
+		if err != nil {
+			return nil, err
 		}
-		return out
+		out.Detail = &proto.GetPlayerStatusResponse_InMatch{
+			InMatch: &proto.InMatchStatus{ID: mid, Since: sinceMs, Timeout: timeoutMs},
+		}
+		return out, nil
 	}
 	if s.IsPlayerInGame(addr) {
 		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}
-		if ok, gid, err := s.queue.lobbyState.GetGameIDByPlayer(s.ctx, addr); err == nil && ok && gid != 0 {
-			out.GameID = &gid
+		gid, sinceMs, err := db.LobbyInGameDetail(ctx, addr.Id, addr.TemporaryAddress)
+		if err != nil {
+			return nil, err
 		}
-		return out
+		out.Detail = &proto.GetPlayerStatusResponse_InGame{
+			InGame: &proto.InGameStatus{ID: gid, Since: sinceMs},
+		}
+		return out, nil
 	}
-	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}
+	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
 }

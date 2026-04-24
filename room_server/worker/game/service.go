@@ -136,3 +136,10 @@ func (s *Service) SyncGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress
 	}
 	return &emptypb.Empty{}, nil
 }
+
+func (s *Service) GetGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*proto.GamePhase, error) {
+	_ = ctx
+	var addr types.PlayerAddress
+	addr.FromProto(req)
+	return s.gameManager.GetGamePhase(addr)
+}
