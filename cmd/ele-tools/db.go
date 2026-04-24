@@ -13,7 +13,8 @@ import (
 )
 
 var (
-	configPath string
+	configPath                  string
+	allowUpdateTournamentReward bool
 )
 
 // createDbCmd represents the create-db command
@@ -145,7 +146,7 @@ var configureTournamentReward = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if err := db.SeedTournamentTierRewardConfigs(); err != nil {
+		if err := db.SeedTournamentTierRewardConfigsWithUpdate(allowUpdateTournamentReward); err != nil {
 			fmt.Printf("Failed to seed tournament tier reward configs: %v\n", err)
 			os.Exit(1)
 		}
@@ -169,6 +170,7 @@ func init() {
 	dropFksCmd.MarkFlagRequired("config")
 
 	configureTournamentReward.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
+	configureTournamentReward.Flags().BoolVar(&allowUpdateTournamentReward, "allow-update", false, "allow upsert updates when tournament tier reward config table already has data")
 	configureTournamentReward.MarkFlagRequired("config")
 }
 
