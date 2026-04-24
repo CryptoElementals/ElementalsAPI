@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/bot_manager"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
@@ -157,4 +157,20 @@ func (s *TournamentQueueService) GameResultSettlementHook(event *types.GameCompl
 	}
 	log.Debugw("tournament: game result settlement hook", "game_id", event.GameID)
 	return s.coord.onGameCompleted(event.GameID)
+}
+
+// GetActiveTournamentByPlayer returns the tournament and participant status if the player is
+// queued or in bracket play for a registration_open or in_progress tournament. If not, t is
+// nil and status is empty.
+func (s *TournamentQueueService) GetActiveTournamentByPlayer(player *proto.PlayerAddress) (t *dao.Tournament, status dao.TournamentParticipantStatus, err error) {
+	if player == nil {
+		return nil, "", fmt.Errorf("nil player address")
+	}
+	var address types.PlayerAddress
+	address.FromProto(player)
+	if address.Id == 0 {
+		return nil, "", fmt.Errorf("invalid player id: 0")
+	}
+	temp := strings.ToLower(strings.TrimSpace(address.TemporaryAddress))
+	return db.TournamentGetActiveTournamentByPlayer(address.Id, temp)
 }

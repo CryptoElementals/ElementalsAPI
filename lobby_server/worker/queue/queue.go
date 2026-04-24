@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/cmd/ele-stat/proto"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/lobby_server/player_info"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -26,7 +26,7 @@ type EventPublisher = pubsub.Publisher
 
 type Queue struct {
 	ctx        context.Context
-	lobbyState *player_info.RedisStore
+	lobbyState player_info.Store
 	botStore   *bot_manager.RedisStore
 	// Continue rematch cancel deadline (seconds); same config source as former continue queue timeout.
 	continueRematchCancelTimeoutSec    int64
@@ -75,12 +75,9 @@ func NewQueue(
 		matchConfirmationTimeout:           matchConfirmationTimeout,
 		statServiceEndpoint:                statServiceEndpoint,
 	}
-	lobbyState, err := player_info.NewRedisStore("")
-	if err != nil {
-		return nil, fmt.Errorf("lobby redis state: %w", err)
-	}
-	q.lobbyState = lobbyState
+	q.lobbyState = player_info.NewGormStore()
 	if botStore == nil {
+		var err error
 		botStore, err = bot_manager.NewRedisStore("")
 		if err != nil {
 			return nil, fmt.Errorf("lobby redis bots: %w", err)
@@ -129,24 +126,18 @@ func (q *Queue) HandleJoinQueueEvent(req *pb.PlayerAddress) error {
 		log.Errorf("cannot join queue, err: %s", err.Error())
 		return err
 	}
-	now := time.Now()
-	candidate, queued, err := q.lobbyState.JoinQueueOrGetMatchCandidate(q.ctx, address, now.UnixMilli())
+	gm, err := q.lobbyState.MatchPlayersOrJoinQueue(q.ctx, address)
 	if err != nil {
 		_ = q.unlockToken(&address)
 		return err
 	}
-	if candidate != nil {
-		return q.matchPlayers([]types.PlayerAddress{address, *candidate})
-	}
-	if !queued {
-		_ = q.unlockToken(&address)
-		return errors.New("player cannot enter queue")
+	if gm != nil {
+		if err := q.postMatchNotifyPending(gm); err != nil {
+			_ = q.unlockToken(&address)
+			return err
+		}
 	}
 	return nil
-}
-
-func (q *Queue) matchPlayers(players []types.PlayerAddress) error {
-	return q.createPvpMatchFromQueue(players)
 }
 
 func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
@@ -165,7 +156,7 @@ func (q *Queue) HandleExitQueueEvent(req *pb.PlayerAddress) error {
 
 func (q *Queue) removePlayerFromQueue(player types.PlayerAddress) error {
 	if err := q.lobbyState.RemoveQueue(q.ctx, player); err != nil {
-		log.Errorw("remove player from redis queue failed", "player", player.String(), "err", err)
+		log.Errorw("remove player from lobby queue failed", "player", player.String(), "err", err)
 	}
 	err := q.unlockToken(&player)
 	if err != nil {
@@ -242,17 +233,16 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	ok, err := q.lobbyState.IsInQueue(q.ctx, address)
 	if err != nil {
-		log.Errorw("redis is in queue check failed", "player", address.String(), "err", err)
+		log.Debugw("lobby is in queue check failed", "player", address.String(), "err", err)
 		return false
 	}
 	return ok
 }
 
 func (q *Queue) isPlayerInGame(address types.PlayerAddress) bool {
-	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
-	ok, err := q.lobbyState.IsInGame(q.ctx, address)
+	ok, _, err := q.lobbyState.GetGameIDByPlayer(q.ctx, address)
 	if err != nil {
-		log.Errorw("redis is in game check failed", "player", address.String(), "err", err)
+		log.Debugw("lobby is in game check failed", "player", address.String(), "err", err)
 		return false
 	}
 	return ok
@@ -262,16 +252,26 @@ func (q *Queue) pendingMatchID(address types.PlayerAddress) (int64, bool) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	mid, ok, err := q.lobbyState.PendingMatchID(q.ctx, address)
 	if err != nil {
-		log.Errorw("redis pending match lookup failed", "player", address.String(), "err", err)
+		log.Debugw("lobby pending match lookup failed", "player", address.String(), "err", err)
 		return 0, false
 	}
 	return mid, ok
 }
 
+func (q *Queue) queueJoinedAtMs(address types.PlayerAddress) (int64, bool) {
+	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
+	ms, ok, err := q.lobbyState.QueueJoinedAtMs(q.ctx, address)
+	if err != nil {
+		log.Debugw("lobby queue joined-at lookup failed", "player", address.String(), "err", err)
+		return 0, false
+	}
+	return ms, ok
+}
+
 func (q *Queue) markPlayerOutOfGame(address types.PlayerAddress) {
 	address.TemporaryAddress = strings.ToLower(address.TemporaryAddress)
 	if err := q.lobbyState.MarkPlayersOutOfGame(q.ctx, address); err != nil {
-		log.Errorw("mark player out of game in redis failed", "player", address.String(), "err", err)
+		log.Errorw("mark player out of game in lobby store failed", "player", address.String(), "err", err)
 	}
 }
 

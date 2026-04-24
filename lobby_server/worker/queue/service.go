@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -87,4 +87,41 @@ func (s *Service) HandleCancelMatch(req *proto.CancelMatchRequest) error {
 // IsPlayerPendingMatch reports whether the player is in the pre-game game_match confirmation phase.
 func (s *Service) IsPlayerPendingMatch(address types.PlayerAddress) bool {
 	return s.queue.IsPlayerPendingMatch(address)
+}
+
+// GetPlayerStatusResponse returns lobby queue/match/game status and a Detail oneof (InQueue / InMatch / InGame).
+func (s *Service) GetPlayerStatusResponse(addr types.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	ctx := s.ctx
+	if s.IsPlayerInQueue(addr) {
+		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}
+		since := int64(0)
+		if ms, ok := s.queue.queueJoinedAtMs(addr); ok {
+			since = ms / 1000
+		}
+		out.Detail = &proto.GetPlayerStatusResponse_InQueue{InQueue: &proto.InQueueStatus{Since: since}}
+		return out, nil
+	}
+	if s.IsPlayerPendingMatch(addr) {
+		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}
+		mid, since, err := db.LobbyPendingMatchDetail(ctx, addr.Id, addr.TemporaryAddress)
+		if err != nil {
+			return nil, err
+		}
+		out.Detail = &proto.GetPlayerStatusResponse_InMatch{
+			InMatch: &proto.InMatchStatus{ID: mid, Since: since, Timeout: s.queue.matchConfirmationTimeout},
+		}
+		return out, nil
+	}
+	if s.IsPlayerInGame(addr) {
+		out := &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}
+		gid, since, err := db.LobbyInGameDetail(ctx, addr.Id, addr.TemporaryAddress)
+		if err != nil {
+			return nil, err
+		}
+		out.Detail = &proto.GetPlayerStatusResponse_InGame{
+			InGame: &proto.InGameStatus{ID: gid, Since: since},
+		}
+		return out, nil
+	}
+	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
 }

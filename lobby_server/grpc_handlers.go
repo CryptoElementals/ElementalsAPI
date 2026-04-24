@@ -2,10 +2,12 @@ package lobbyserver
 
 import (
 	"context"
+	"time"
 
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc/codes"
@@ -38,6 +40,15 @@ func (s *GRPCServices) JoinQueue(ctx context.Context, req *proto.PlayerAddress) 
 	if s.queueSvc.IsPlayerInGame(addr) {
 		return nil, status.Error(codes.FailedPrecondition, "player already in game")
 	}
+	tournament, st, err := s.tournamentSvc.GetActiveTournamentByPlayer(req)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "tournament status: %v", err)
+	}
+	if st == dao.TournamentParticipantStatusInProgress || st == dao.TournamentParticipantStatusQueued {
+		if tournament.RegistrationDeadline.Before(time.Now().Add(time.Minute * 5)) {
+			return nil, status.Error(codes.FailedPrecondition, "player in tournament")
+		}
+	}
 	return &emptypb.Empty{}, s.queueSvc.HandleJoinQueueEvent(req)
 }
 
@@ -54,18 +65,30 @@ func (s *GRPCServices) CancelMatch(ctx context.Context, req *proto.CancelMatchRe
 }
 
 func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAddress) (*proto.GetPlayerStatusResponse, error) {
+	_ = ctx
+	if req == nil {
+		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
+	}
 	var addr types.PlayerAddress
 	addr.FromProto(req)
-	if s.queueSvc.IsPlayerInQueue(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_QUEUE}, nil
+	if s.tournamentSvc != nil {
+		_, st, err := s.tournamentSvc.GetActiveTournamentByPlayer(req)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "tournament status: %v", err)
+		}
+		switch st {
+		case dao.TournamentParticipantStatusInProgress:
+			// Tournament: Status only; omit Detail oneof.
+			return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_TOURNAMENT_IN_PROGRESS}, nil
+		case dao.TournamentParticipantStatusQueued:
+			return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_TOURNAMENT_QUEUED}, nil
+		}
 	}
-	if s.queueSvc.IsPlayerPendingMatch(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH}, nil
+	resp, err := s.queueSvc.GetPlayerStatusResponse(addr)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "queue player status: %v", err)
 	}
-	if s.queueSvc.IsPlayerInGame(addr) {
-		return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_IN_GAME}, nil
-	}
-	return &proto.GetPlayerStatusResponse{Status: proto.PlayerStatus_PLAYER_UNKNOWN}, nil
+	return resp, nil
 }
 
 func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {
@@ -85,19 +108,6 @@ func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	}
 
 	return nil
-}
-
-func playerAddressesFromRegisterBotsRequest(req *proto.RegisterBotsForLobbyRequest) []*types.PlayerAddress {
-	if req == nil {
-		return nil
-	}
-	out := make([]*types.PlayerAddress, 0, len(req.Addresses))
-	for _, p := range req.Addresses {
-		var a types.PlayerAddress
-		a.FromProto(p)
-		out = append(out, &a)
-	}
-	return out
 }
 
 func (s *GRPCServices) JoinTournament(ctx context.Context, req *proto.JoinTournamentRequest) (*emptypb.Empty, error) {

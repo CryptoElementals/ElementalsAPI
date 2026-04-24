@@ -42,6 +42,7 @@ const (
 	CANCEL_MATCH_LABEL             = "CancelMatch"
 	CONFIRM_BATTLE_LABEL           = "ConfirmBattle"
 	SYNC_GAME_PHASE_LABEL          = "SyncGamePhase"
+	GET_GAME_PHASE_LABEL           = "GetGamePhase"
 	REFUSE_CONTINUE_GAME_LABEL     = "RefuseContinueGame"
 	CONTINUE_GAME_LABEL            = "ContinueGame"
 	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"

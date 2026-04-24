@@ -427,6 +427,31 @@ func DeleteAllLockedUserTokens() (rowsAffected int64, err error) {
 	return res.RowsAffected, res.Error
 }
 
+// GetQueueLockedGameID returns the active PVP queue game id from locked_user_tokens for the given address, if any.
+func GetQueueLockedGameID(ctx context.Context, playerId int64, temporaryAddress string) (int64, error) {
+	ut, err := GetPlayerToken(ctx, playerId)
+	if err != nil {
+		return 0, err
+	}
+	temp := strings.ToLower(strings.TrimSpace(temporaryAddress))
+	for _, locked := range ut.LockedTokens {
+		if locked == nil {
+			continue
+		}
+		if locked.TournamentID != "" {
+			continue
+		}
+		if strings.ToLower(locked.TemporaryAddress) != temp {
+			continue
+		}
+		if locked.GameID == 0 {
+			continue
+		}
+		return locked.GameID, nil
+	}
+	return 0, nil
+}
+
 func SetLockedTokenGameID(ctx context.Context, playerId int64, temporaryAddress string, gameID int64) error {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		userToken := &dao.UserToken{}

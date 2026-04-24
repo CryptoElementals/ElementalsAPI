@@ -251,9 +251,7 @@ func (r *GameManager) GetActiveGame(player types.PlayerAddress) *proto.GameInfo 
 func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	gameInfo, err := db.GetActiveGameByPlayer(address.Id, address.TemporaryAddress)
 	if err != nil {
-		return &proto.GamePhase{
-			GameType: proto.GameType_PVP,
-		}, nil
+		return nil, err
 	}
 
 	// Rebuild runtime round state from DB

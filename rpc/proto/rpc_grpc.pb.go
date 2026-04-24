@@ -27,6 +27,7 @@ const (
 	RoomService_SubmitTransactions_FullMethodName     = "/rpc.RoomService/SubmitTransactions"
 	RoomService_CreateGameAndRun_FullMethodName       = "/rpc.RoomService/CreateGameAndRun"
 	RoomService_SyncGamePhase_FullMethodName          = "/rpc.RoomService/SyncGamePhase"
+	RoomService_GetGamePhase_FullMethodName           = "/rpc.RoomService/GetGamePhase"
 )
 
 // RoomServiceClient is the client API for RoomService service.
@@ -46,6 +47,7 @@ type RoomServiceClient interface {
 	// lobby -> room worker api
 	CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error)
 	SyncGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
 }
 
 type roomServiceClient struct {
@@ -126,6 +128,16 @@ func (c *roomServiceClient) SyncGamePhase(ctx context.Context, in *PlayerAddress
 	return out, nil
 }
 
+func (c *roomServiceClient) GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GamePhase)
+	err := c.cc.Invoke(ctx, RoomService_GetGamePhase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RoomServiceServer is the server API for RoomService service.
 // All implementations must embed UnimplementedRoomServiceServer
 // for forward compatibility.
@@ -143,6 +155,7 @@ type RoomServiceServer interface {
 	// lobby -> room worker api
 	CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error)
 	SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error)
+	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
 	mustEmbedUnimplementedRoomServiceServer()
 }
 
@@ -173,6 +186,9 @@ func (UnimplementedRoomServiceServer) CreateGameAndRun(context.Context, *CreateG
 }
 func (UnimplementedRoomServiceServer) SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SyncGamePhase not implemented")
+}
+func (UnimplementedRoomServiceServer) GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetGamePhase not implemented")
 }
 func (UnimplementedRoomServiceServer) mustEmbedUnimplementedRoomServiceServer() {}
 func (UnimplementedRoomServiceServer) testEmbeddedByValue()                     {}
@@ -321,6 +337,24 @@ func _RoomService_SyncGamePhase_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RoomService_GetGamePhase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlayerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoomServiceServer).GetGamePhase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoomService_GetGamePhase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoomServiceServer).GetGamePhase(ctx, req.(*PlayerAddress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RoomService_ServiceDesc is the grpc.ServiceDesc for RoomService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -355,6 +389,10 @@ var RoomService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncGamePhase",
 			Handler:    _RoomService_SyncGamePhase_Handler,
+		},
+		{
+			MethodName: "GetGamePhase",
+			Handler:    _RoomService_GetGamePhase_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

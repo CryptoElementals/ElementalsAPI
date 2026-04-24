@@ -286,6 +286,22 @@ func turnCardPlayingInfosForCurrentRound(round *RoundView, activeTurn uint32, pl
 	return out
 }
 
+// gamePhaseTimeoutSeconds picks the per-phase deadline from [dao.GameArgs] (seconds) for the single
+// GamePhase.Timeout field: confirmation while waiting for battle confirm, card while waiting for cards.
+func gamePhaseTimeoutSeconds(turnStatus proto.TurnStatus, args *dao.GameArgs) int64 {
+	if args == nil {
+		return 0
+	}
+	switch turnStatus {
+	case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
+		return args.ConfirmationTimeout
+	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
+		return args.CommitmentSubmissionTimeout
+	default:
+		return 0
+	}
+}
+
 func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber uint32, turnStartAt int64, caller types.PlayerAddress) *proto.GamePhase {
 	if game == nil || currentRound == nil {
 		return nil
@@ -320,6 +336,7 @@ func DbGameToProtoGamePhase(game *dao.Game, currentRound *RoundView, turnNumber 
 
 	if currentTurn != nil {
 		gamePhase.TurnStatus = proto.TurnStatus(currentTurn.TurnStatus)
+		gamePhase.Timeout = gamePhaseTimeoutSeconds(gamePhase.TurnStatus, game.GameArgs)
 		// Only the SyncGamePhase caller's per-player status (not other players').
 		if pti := playerTurnInfoInTurn(currentTurn, caller.Id, caller.TemporaryAddress); pti != nil {
 			gamePhase.PlayerTurnStatus = pti.PlayerStatus
