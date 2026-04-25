@@ -6,7 +6,7 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
@@ -73,11 +73,9 @@ type Chain struct {
 
 	chainIDs []int64 // configured chain ids (for random pick)
 
-	gameToChainMu sync.RWMutex
-	gameToChainID map[int64]int64
-
 	poolBatchSize          int
 	poolProcessingInterval int
+	poolTickerDur          time.Duration
 }
 
 // NewChain builds chain runtimes from room server config (EffectiveChains).
@@ -97,7 +95,6 @@ func NewChain(
 		ctx:                    ctx,
 		runtimes:               make(map[int64]*chainRuntime),
 		pools:                  make(map[int64]*txPool),
-		gameToChainID:          make(map[int64]int64),
 		poolBatchSize:          batch,
 		poolProcessingInterval: interval,
 	}
@@ -126,8 +123,12 @@ func NewChain(
 		}
 		h.runtimes[chainID] = rt
 		h.chainIDs = append(h.chainIDs, chainID)
-		p := newTxPool(rt, batch, interval)
+		p := newTxPool(rt, batch)
 		h.pools[chainID] = p
+	}
+	h.poolTickerDur = time.Duration(interval) * time.Second
+	if h.poolTickerDur <= 0 {
+		h.poolTickerDur = time.Second
 	}
 	return h, nil
 }
@@ -144,14 +145,7 @@ func (h *Chain) PickChainIDForNewGame() int64 {
 	return h.chainIDs[int(n.Int64())]
 }
 
-// RegisterGameChain records game→chain in memory after db.SaveGameChainIDForGame (create-room path).
-func (h *Chain) RegisterGameChain(gameID, chainID int64) {
-	h.gameToChainMu.Lock()
-	h.gameToChainID[gameID] = chainID
-	h.gameToChainMu.Unlock()
-}
-
-// AddCreateRoom picks a random configured chain, persists game_chain_ids, updates the registry, then enqueues for that chain's pool.
+// AddCreateRoom picks a random configured chain, persists game_chain_ids, then enqueues for that chain's pool.
 func (h *Chain) AddCreateRoom(evt *types.RequireGameCreationEvent) {
 	if evt == nil {
 		return
@@ -161,7 +155,6 @@ func (h *Chain) AddCreateRoom(evt *types.RequireGameCreationEvent) {
 		log.Errorw("AddCreateRoom: save game_chain_ids", "gameID", evt.GameID, "chain_id", chainID, "err", err)
 		return
 	}
-	h.RegisterGameChain(evt.GameID, chainID)
 	p, ok := h.pools[chainID]
 	if !ok {
 		log.Errorw("AddCreateRoom: no tx pool for chain", "chain_id", chainID)
@@ -170,45 +163,25 @@ func (h *Chain) AddCreateRoom(evt *types.RequireGameCreationEvent) {
 	p.addCreateRoom(evt)
 }
 
-func (h *Chain) chainIDForGame(gameID int64) (int64, error) {
-	h.gameToChainMu.RLock()
-	cid, ok := h.gameToChainID[gameID]
-	h.gameToChainMu.RUnlock()
-	if ok {
-		return cid, nil
-	}
-	dbCID, err := db.GetChainIDForGame(gameID)
-	if err != nil {
-		return 0, err
-	}
-	h.gameToChainMu.Lock()
-	h.gameToChainID[gameID] = dbCID
-	h.gameToChainMu.Unlock()
-	return dbCID, nil
-}
-
-// PreloadGameChainRegistry loads game→chain from DB into memory.
-func (h *Chain) PreloadGameChainRegistry() error {
-	m, err := db.LoadAllGameChainIDMap()
-	if err != nil {
-		return err
-	}
-	h.gameToChainMu.Lock()
-	for gid, cid := range m {
-		h.gameToChainID[gid] = cid
-	}
-	h.gameToChainMu.Unlock()
-	return nil
-}
-
-// Start preloads registry and runs one tx pool ticker per chain.
+// Start registers the room timer handler and a periodic Asynq cron that enqueues the tx pool tick.
 func (h *Chain) Start() error {
-	if err := h.PreloadGameChainRegistry(); err != nil {
+	if err := h.registerTxPoolTimerHandler(); err != nil {
 		return err
 	}
-	for _, p := range h.pools {
-		pp := p
-		go pp.processPools(h.ctx)
+	return h.registerChainTxPoolPeriodic(&chainTxPoolTickEvent{})
+}
+
+func (h *Chain) runAllPoolTicks() {
+	byChain, err := db.ListChainTxPoolPendingByChain()
+	if err != nil {
+		log.Errorw("ListChainTxPoolPendingByChain", "err", err)
+		return
 	}
-	return nil
+	for chainID, p := range h.pools {
+		rows := byChain[chainID]
+		if len(rows) == 0 {
+			continue
+		}
+		p.runPoolTickForOrderedRows(rows)
+	}
 }

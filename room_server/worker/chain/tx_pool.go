@@ -1,105 +1,48 @@
 package chain
 
 import (
-	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
-	"sync"
-	"time"
+	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/ethereum/go-ethereum/common"
+	goproto "google.golang.org/protobuf/proto"
 )
 
 const defaultPoolBatchSize = 10
-const defaultPoolProcessingInterval = time.Second
 
-type eventKey struct {
-	gameID      int64
-	address     string
-	roundNumber uint32
-	index       uint32
-}
-
-type setTurnKey struct {
-	gameID      int64
-	roundNumber uint32
-	turnNumber  uint32
+// roomBatchSubmitter posts encoded tasks to the RoomV3 client (or a test double).
+type roomBatchSubmitter interface {
+	SubmitTasks([]types.RoomContractTask) error
 }
 
 type txPool struct {
-	rt *chainRuntime
-
-	commitmentPool   map[eventKey]*proto.SubmitPlayerCommitmentRequest
-	cardPool         map[eventKey]*proto.SubmitPlayerCardRequest
-	createRoomPool   map[int64]*types.RequireGameCreationEvent
-	setTurnReadyPool map[setTurnKey]*types.RequireSetupNewTurnEvent
-	poolLock         sync.RWMutex
-
-	gameTxInfos map[int64]*gameTxInfo
-	txInfoLock  sync.RWMutex
+	chainID int64
+	sub     roomBatchSubmitter
 
 	batchSize int
-	tickerDur time.Duration
 }
 
-type gameTxInfo struct {
-	playerTxInfos map[types.PlayerAddress]*gameTxPlayerInfo
+func newTxPool(rt *chainRuntime, batchSize int) *txPool {
+	return newTxPoolWithSubmitter(rt, rt.chainID, batchSize)
 }
 
-type gameTxPlayerInfo struct {
-	commitmentTurnIndices map[uint32]int32
-	cardTurnIndices       map[uint32]int32
-}
-
-func newTxPool(rt *chainRuntime, batchSize int, processingIntervalSec int) *txPool {
+func newTxPoolWithSubmitter(sub roomBatchSubmitter, chainID int64, batchSize int) *txPool {
 	if batchSize <= 0 {
 		batchSize = defaultPoolBatchSize
 	}
-	tickerDur := time.Duration(processingIntervalSec) * time.Second
-	if tickerDur <= 0 {
-		tickerDur = defaultPoolProcessingInterval
-	}
 	return &txPool{
-		rt:               rt,
-		commitmentPool:   make(map[eventKey]*proto.SubmitPlayerCommitmentRequest),
-		cardPool:         make(map[eventKey]*proto.SubmitPlayerCardRequest),
-		createRoomPool:   make(map[int64]*types.RequireGameCreationEvent),
-		setTurnReadyPool: make(map[setTurnKey]*types.RequireSetupNewTurnEvent),
-		gameTxInfos:      make(map[int64]*gameTxInfo),
-		batchSize:        batchSize,
-		tickerDur:        tickerDur,
+		chainID:   chainID,
+		sub:       sub,
+		batchSize: batchSize,
 	}
-}
-
-func makeEventKey(gameID int64, address types.PlayerAddress, roundNumber, index uint32) eventKey {
-	return eventKey{
-		gameID:      gameID,
-		address:     address.TemporaryAddress,
-		roundNumber: roundNumber,
-		index:       index,
-	}
-}
-
-func (p *txPool) getOrCreatePlayerInfo(gameID int64, address types.PlayerAddress) *gameTxPlayerInfo {
-	gameInfo, exists := p.gameTxInfos[gameID]
-	if !exists {
-		gameInfo = &gameTxInfo{
-			playerTxInfos: make(map[types.PlayerAddress]*gameTxPlayerInfo),
-		}
-		p.gameTxInfos[gameID] = gameInfo
-	}
-	playerInfo, exists := gameInfo.playerTxInfos[address]
-	if !exists {
-		playerInfo = &gameTxPlayerInfo{
-			commitmentTurnIndices: make(map[uint32]int32),
-			cardTurnIndices:       make(map[uint32]int32),
-		}
-		gameInfo.playerTxInfos[address] = playerInfo
-	}
-	return playerInfo
 }
 
 func (p *txPool) addCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
@@ -109,25 +52,29 @@ func (p *txPool) addCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
 	var addr types.PlayerAddress
 	addr.FromProto(evt.Address)
 	gameID := evt.GetGameID()
+	taddr := strings.ToLower(addr.TemporaryAddress)
 
-	p.txInfoLock.Lock()
-	playerInfo := p.getOrCreatePlayerInfo(gameID, addr)
-	maxTurnIndex := playerInfo.commitmentTurnIndices[evt.RoundNumber]
-	if int32(evt.TurnNumber) <= maxTurnIndex {
-		p.txInfoLock.Unlock()
-		return fmt.Errorf("commitment with round %d, turn index %d rejected: already received index %d or higher for this round", evt.RoundNumber, evt.TurnNumber, maxTurnIndex)
+	payload, err := goproto.Marshal(evt)
+	if err != nil {
+		return err
 	}
-	playerInfo.commitmentTurnIndices[evt.RoundNumber] = int32(evt.TurnNumber)
-	p.txInfoLock.Unlock()
+	row := &dao.ChainTxPoolItem{
+		ChainID:             p.chainID,
+		Kind:                dao.ChainTxPoolKindCommitment,
+		GameID:              gameID,
+		PlayerTemporaryAddr: taddr,
+		RoundNumber:         evt.RoundNumber,
+		TurnNumber:          evt.TurnNumber,
+		Payload:             payload,
+	}
+	if err := db.InsertChainTxPoolItem(row); err != nil {
+		if errors.Is(err, db.ErrChainTxPoolDuplicate) {
+			return fmt.Errorf("commitment already in pool")
+		}
+		return err
+	}
 
-	key := makeEventKey(gameID, addr, evt.RoundNumber, evt.TurnNumber)
-	p.poolLock.Lock()
-	defer p.poolLock.Unlock()
-	if _, exists := p.commitmentPool[key]; exists {
-		return fmt.Errorf("commitment already in pool")
-	}
-	p.commitmentPool[key] = evt
-	log.Infow("request added to tx pool", "kind", "commitment", "gameID", gameID, "chain_id", p.rt.chainID, "address", addr.TemporaryAddress, "round", evt.RoundNumber, "turn", evt.TurnNumber)
+	log.Infow("request added to tx pool", "kind", "commitment", "gameID", gameID, "chain_id", p.chainID, "address", taddr, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 	return nil
 }
 
@@ -138,164 +85,198 @@ func (p *txPool) addCard(evt *proto.SubmitPlayerCardRequest) error {
 	var addr types.PlayerAddress
 	addr.FromProto(evt.Address)
 	gameID := evt.GetGameID()
+	taddr := strings.ToLower(addr.TemporaryAddress)
 
-	p.txInfoLock.Lock()
-	playerInfo := p.getOrCreatePlayerInfo(gameID, addr)
-	maxTurnIndex := playerInfo.cardTurnIndices[evt.RoundNumber]
-	if int32(evt.TurnNumber) <= maxTurnIndex {
-		p.txInfoLock.Unlock()
-		return fmt.Errorf("card with round %d, turn index %d rejected: already received index %d or higher for this round", evt.RoundNumber, evt.TurnNumber, maxTurnIndex)
+	payload, err := goproto.Marshal(evt)
+	if err != nil {
+		return err
 	}
-	playerInfo.cardTurnIndices[evt.RoundNumber] = int32(evt.TurnNumber)
-	p.txInfoLock.Unlock()
+	row := &dao.ChainTxPoolItem{
+		ChainID:             p.chainID,
+		Kind:                dao.ChainTxPoolKindCard,
+		GameID:              gameID,
+		PlayerTemporaryAddr: taddr,
+		RoundNumber:         evt.RoundNumber,
+		TurnNumber:          evt.TurnNumber,
+		Payload:             payload,
+	}
+	if err := db.InsertChainTxPoolItem(row); err != nil {
+		if errors.Is(err, db.ErrChainTxPoolDuplicate) {
+			return fmt.Errorf("card already in pool")
+		}
+		return err
+	}
 
-	key := makeEventKey(gameID, addr, evt.RoundNumber, evt.TurnNumber)
-	p.poolLock.Lock()
-	defer p.poolLock.Unlock()
-	if _, exists := p.cardPool[key]; exists {
-		return fmt.Errorf("card already in pool")
-	}
-	p.cardPool[key] = evt
-	log.Infow("request added to tx pool", "kind", "card", "gameID", gameID, "chain_id", p.rt.chainID, "address", addr.TemporaryAddress, "round", evt.RoundNumber, "turn", evt.TurnNumber)
+	log.Infow("request added to tx pool", "kind", "card", "gameID", gameID, "chain_id", p.chainID, "address", taddr, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 	return nil
 }
 
 func (p *txPool) addCreateRoom(evt *types.RequireGameCreationEvent) {
-	p.poolLock.Lock()
-	defer p.poolLock.Unlock()
-	p.createRoomPool[evt.GameID] = evt
-	log.Infow("request added to tx pool", "kind", "create_room", "gameID", evt.GameID, "chain_id", p.rt.chainID)
+	if evt == nil {
+		return
+	}
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		log.Errorw("addCreateRoom: marshal", "err", err, "gameID", evt.GameID)
+		return
+	}
+	row := &dao.ChainTxPoolItem{
+		ChainID:             p.chainID,
+		Kind:                dao.ChainTxPoolKindCreateRoom,
+		GameID:              evt.GameID,
+		PlayerTemporaryAddr: "",
+		RoundNumber:         0,
+		TurnNumber:          0,
+		Payload:             payload,
+	}
+	if err := db.InsertChainTxPoolItem(row); err != nil {
+		if errors.Is(err, db.ErrChainTxPoolDuplicate) {
+			log.Errorw("addCreateRoom: duplicate in pool", "err", err, "gameID", evt.GameID, "chain_id", p.chainID)
+			return
+		}
+		log.Errorw("addCreateRoom: insert", "err", err, "gameID", evt.GameID, "chain_id", p.chainID)
+		return
+	}
+	log.Infow("request added to tx pool", "kind", "create_room", "gameID", evt.GameID, "chain_id", p.chainID)
 }
 
 func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
-	key := setTurnKey{gameID: evt.GameID, roundNumber: evt.RoundNumber, turnNumber: evt.TurnNumber}
-	p.poolLock.Lock()
-	defer p.poolLock.Unlock()
-	p.setTurnReadyPool[key] = evt
-	log.Infow("request added to tx pool", "kind", "set_turn_ready", "gameID", evt.GameID, "chain_id", p.rt.chainID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
-}
-
-func (p *txPool) processPools(ctx context.Context) {
-	ticker := time.NewTicker(p.tickerDur)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
+	if evt == nil {
+		return
+	}
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		log.Errorw("addSetTurnReady: marshal", "err", err, "gameID", evt.GameID)
+		return
+	}
+	row := &dao.ChainTxPoolItem{
+		ChainID:             p.chainID,
+		Kind:                dao.ChainTxPoolKindSetTurnReady,
+		GameID:              evt.GameID,
+		PlayerTemporaryAddr: "",
+		RoundNumber:         evt.RoundNumber,
+		TurnNumber:          evt.TurnNumber,
+		Payload:             payload,
+	}
+	if err := db.InsertChainTxPoolItem(row); err != nil {
+		if errors.Is(err, db.ErrChainTxPoolDuplicate) {
+			log.Errorw("addSetTurnReady: duplicate in pool", "err", err, "gameID", evt.GameID, "chain_id", p.chainID)
 			return
-		case <-ticker.C:
-			var flatTasks []types.RoomContractTask
-			if tasks := p.processCreateRoomPool(); len(tasks) > 0 {
-				flatTasks = append(flatTasks, tasks...)
-			}
-			if tasks := p.processSetTurnReadyPool(); len(tasks) > 0 {
-				flatTasks = append(flatTasks, tasks...)
-			}
-			if tasks := p.processCommitmentPool(); len(tasks) > 0 {
-				flatTasks = append(flatTasks, tasks...)
-			}
-			if tasks := p.processCardPool(); len(tasks) > 0 {
-				flatTasks = append(flatTasks, tasks...)
-			}
-			if len(flatTasks) == 0 {
-				continue
-			}
-			for start := 0; start < len(flatTasks); start += p.batchSize {
-				end := start + p.batchSize
-				if end > len(flatTasks) {
-					end = len(flatTasks)
-				}
-				batch := flatTasks[start:end]
-				if err := p.rt.SubmitTasks(batch); err != nil {
-					log.Errorw("failed to submit tasks batch to chain", "error", err, "count", len(batch), "chain_id", p.rt.chainID)
-					break
-				}
-				log.Infow("submitted tasks batch to chain", "count", len(batch), "chain_id", p.rt.chainID)
-			}
+		}
+		log.Errorw("addSetTurnReady: insert", "err", err, "gameID", evt.GameID, "chain_id", p.chainID)
+		return
+	}
+	log.Infow("request added to tx pool", "kind", "set_turn_ready", "gameID", evt.GameID, "chain_id", p.chainID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
+}
+
+// runPoolTickForOrderedRows submits pending work for this chain. Rows must already be in flush order
+// (see db.chainItemsToPendingRowsInFlushOrder).
+func (p *txPool) runPoolTickForOrderedRows(ordered []db.ChainTxPoolPendingRow) {
+	flatTasks, rowIDs, dropIDs, err := p.loadPendingTasksFromRows(ordered)
+	if err != nil {
+		log.Errorw("loadPendingTasksFromRows", "err", err, "chain_id", p.chainID)
+		return
+	}
+	if len(dropIDs) > 0 {
+		if derr := db.DeleteChainTxPoolItemsByIDs(dropIDs); derr != nil {
+			log.Errorw("delete dropped pool rows", "err", derr, "chain_id", p.chainID)
 		}
 	}
-}
-
-func (p *txPool) processCreateRoomPool() []types.RoomContractTask {
-	p.poolLock.Lock()
-	events := make([]*types.RequireGameCreationEvent, 0, len(p.createRoomPool))
-	for _, evt := range p.createRoomPool {
-		events = append(events, evt)
+	if len(flatTasks) == 0 {
+		return
 	}
-	for k := range p.createRoomPool {
-		delete(p.createRoomPool, k)
-	}
-	p.poolLock.Unlock()
-	if len(events) == 0 {
-		return nil
-	}
-	return encodeCreateRoomEventsToTasks(events)
-}
-
-func (p *txPool) processSetTurnReadyPool() []types.RoomContractTask {
-	p.poolLock.Lock()
-	events := make([]*types.RequireSetupNewTurnEvent, 0, len(p.setTurnReadyPool))
-	for _, evt := range p.setTurnReadyPool {
-		events = append(events, evt)
-	}
-	for k := range p.setTurnReadyPool {
-		delete(p.setTurnReadyPool, k)
-	}
-	p.poolLock.Unlock()
-	if len(events) == 0 {
-		return nil
-	}
-	return encodeSetTurnReadyEventsToTasks(events)
-}
-
-func (p *txPool) processCommitmentPool() []types.RoomContractTask {
-	p.poolLock.Lock()
-	batchEvents := make([]*proto.SubmitPlayerCommitmentRequest, 0, len(p.commitmentPool))
-	for key, evt := range p.commitmentPool {
-		if evt.GetGameID() != 0 {
-			batchEvents = append(batchEvents, evt)
-		} else {
-			addr := ""
-			if evt.Address != nil {
-				addr = evt.Address.TemporaryAddress
-			}
-			log.Errorw("commitment event missing GameID", "address", addr)
+	for start := 0; start < len(flatTasks); start += p.batchSize {
+		end := start + p.batchSize
+		if end > len(flatTasks) {
+			end = len(flatTasks)
 		}
-		delete(p.commitmentPool, key)
-	}
-	p.poolLock.Unlock()
-	if len(batchEvents) == 0 {
-		return nil
-	}
-	return encodeCommitmentEventsToTasks(batchEvents)
-}
-
-func (p *txPool) processCardPool() []types.RoomContractTask {
-	p.poolLock.Lock()
-	batchEvents := make([]*proto.SubmitPlayerCardRequest, 0, len(p.cardPool))
-	for key, evt := range p.cardPool {
-		if evt.GetGameID() != 0 {
-			batchEvents = append(batchEvents, evt)
-		} else {
-			addr := ""
-			if evt.Address != nil {
-				addr = evt.Address.TemporaryAddress
-			}
-			log.Errorw("card event missing GameID", "address", addr)
+		batch := flatTasks[start:end]
+		ids := rowIDs[start:end]
+		if err := p.sub.SubmitTasks(batch); err != nil {
+			log.Errorw("failed to submit tasks batch to chain", "error", err, "count", len(batch), "chain_id", p.chainID)
+			break
 		}
-		delete(p.cardPool, key)
+		if derr := db.DeleteChainTxPoolItemsByIDs(ids); derr != nil {
+			log.Errorw("delete after submit: chain tx pool rows", "err", derr, "chain_id", p.chainID, "ids", ids)
+		}
+		log.Infow("submitted tasks batch to chain", "count", len(batch), "chain_id", p.chainID)
 	}
-	p.poolLock.Unlock()
-	if len(batchEvents) == 0 {
-		return nil
-	}
-	return encodeCardEventsToTasks(batchEvents)
 }
 
-func (p *txPool) clearGameInfo(gameID int64) {
-	p.txInfoLock.Lock()
-	defer p.txInfoLock.Unlock()
-	delete(p.gameTxInfos, gameID)
-	log.Infow("cleared transaction info for game", "gameID", gameID, "chain_id", p.rt.chainID)
+func (p *txPool) loadPendingTasksFromRows(rows []db.ChainTxPoolPendingRow) (tasks []types.RoomContractTask, rowIDs []uint, dropIDs []uint, err error) {
+	for _, r := range rows {
+		t, ok, drop := p.pendingRowToTask(r)
+		if drop {
+			dropIDs = append(dropIDs, r.ID)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		tasks = append(tasks, t)
+		rowIDs = append(rowIDs, r.ID)
+	}
+	return tasks, rowIDs, dropIDs, nil
+}
+
+func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContractTask, ok bool, drop bool) {
+	switch r.Kind {
+	case dao.ChainTxPoolKindCreateRoom:
+		var evt types.RequireGameCreationEvent
+		if err := json.Unmarshal(r.Payload, &evt); err != nil {
+			log.Errorw("create_room pool row: bad json", "id", r.ID, "err", err)
+			return t, false, true
+		}
+		out := encodeCreateRoomEventsToTasks([]*types.RequireGameCreationEvent{&evt})
+		if len(out) == 0 {
+			return t, false, true
+		}
+		return out[0], true, false
+	case dao.ChainTxPoolKindSetTurnReady:
+		var evt types.RequireSetupNewTurnEvent
+		if err := json.Unmarshal(r.Payload, &evt); err != nil {
+			log.Errorw("set_turn pool row: bad json", "id", r.ID, "err", err)
+			return t, false, true
+		}
+		out := encodeSetTurnReadyEventsToTasks([]*types.RequireSetupNewTurnEvent{&evt})
+		if len(out) == 0 {
+			return t, false, true
+		}
+		return out[0], true, false
+	case dao.ChainTxPoolKindCommitment:
+		var msg proto.SubmitPlayerCommitmentRequest
+		if err := goproto.Unmarshal(r.Payload, &msg); err != nil {
+			log.Errorw("commitment pool row: bad proto", "id", r.ID, "err", err)
+			return t, false, true
+		}
+		if msg.GetGameID() == 0 {
+			log.Errorw("commitment event missing GameID", "id", r.ID)
+			return t, false, true
+		}
+		out := encodeCommitmentEventsToTasks([]*proto.SubmitPlayerCommitmentRequest{&msg})
+		if len(out) == 0 {
+			return t, false, true
+		}
+		return out[0], true, false
+	case dao.ChainTxPoolKindCard:
+		var msg proto.SubmitPlayerCardRequest
+		if err := goproto.Unmarshal(r.Payload, &msg); err != nil {
+			log.Errorw("card pool row: bad proto", "id", r.ID, "err", err)
+			return t, false, true
+		}
+		if msg.GetGameID() == 0 {
+			log.Errorw("card event missing GameID", "id", r.ID)
+			return t, false, true
+		}
+		out := encodeCardEventsToTasks([]*proto.SubmitPlayerCardRequest{&msg})
+		if len(out) == 0 {
+			return t, false, true
+		}
+		return out[0], true, false
+	default:
+		log.Errorw("unknown chain tx pool kind", "id", r.ID, "kind", r.Kind)
+		return t, false, true
+	}
 }
 
 func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) []types.RoomContractTask {
@@ -405,7 +386,7 @@ func encodeCardEventsToTasks(events []*proto.SubmitPlayerCardRequest) []types.Ro
 // --- Chain implements game.TxPoolEnqueuer (method set below) ---
 
 func (h *Chain) poolForGame(gameID int64) (*txPool, error) {
-	cid, err := h.chainIDForGame(gameID)
+	cid, err := db.GetChainIDForGame(gameID)
 	if err != nil {
 		return nil, err
 	}
@@ -455,10 +436,7 @@ func (h *Chain) AddCard(evt *proto.SubmitPlayerCardRequest) error {
 
 // ClearGameInfo implements the game TxPoolEnqueuer contract.
 func (h *Chain) ClearGameInfo(gameID int64) {
-	for _, p := range h.pools {
-		p.clearGameInfo(gameID)
+	if err := db.DeleteChainTxPoolItemsForGame(gameID); err != nil {
+		log.Errorw("ClearGameInfo: delete chain tx pool rows", "gameID", gameID, "err", err)
 	}
-	h.gameToChainMu.Lock()
-	delete(h.gameToChainID, gameID)
-	h.gameToChainMu.Unlock()
 }

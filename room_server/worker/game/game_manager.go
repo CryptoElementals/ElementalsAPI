@@ -151,7 +151,6 @@ func (r *GameManager) Start() error {
 	if r.argsTemplateID == 0 {
 		return fmt.Errorf("game args template id is required")
 	}
-	timer.InitTimer(timer.ScopeRoom)
 	r.registerTimerFunction()
 
 	if err := r.preloadGameArgsCache(); err != nil {

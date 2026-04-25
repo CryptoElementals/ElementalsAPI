@@ -80,7 +80,7 @@ func InitTimer(scope Scope) {
 		client = asynq.NewClient(redisOpt)
 	}
 
-	initAsynqScheduler(redisOpt)
+	initPeriodicAsynqScheduler(redisOpt)
 	if servers[scope] != nil {
 		return
 	}
@@ -108,8 +108,13 @@ func InitTimer(scope Scope) {
 func StopTimer(scope Scope) {
 	serversMu.Lock()
 	defer serversMu.Unlock()
+	if scope == ScopeRoom {
+		if err := UnregisterRoomChainTxPoolRecurring(); err != nil {
+			log.Errorw("stop timer: unregister room chain tx pool cron", "err", err)
+		}
+	}
 	if scope == ScopeLobby {
-		shutdownLobbyAsynqScheduler()
+		shutdownPeriodicAsynqScheduler()
 	}
 	if srv := servers[scope]; srv != nil {
 		srv.Shutdown()
