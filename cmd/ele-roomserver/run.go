@@ -53,7 +53,7 @@ var runCmd = &cobra.Command{
 		}
 		log.Info("redis initialized")
 		timer.InitTimer(timer.ScopeRoom)
-		log.Info("room timer (ScopeRoom) asynq worker started")
+		log.Info("room timer (ScopeRoom) asynq client/scheduler/queue ready (worker starts with Service.Start)")
 
 		svr, err := roomserver.New(context.Background(), &config.RSGConf)
 		if err != nil {

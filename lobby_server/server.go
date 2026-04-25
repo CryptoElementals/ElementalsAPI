@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
@@ -74,7 +74,6 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 		tokenTh = int64(cfg.TournamentCfg.EntryFee)
 	}
 	botStore.SetTokenInsufficientThreshold(tokenTh)
-	timer.InitTimer(timer.ScopeLobby)
 	queueSvc, err := queue.NewService(ctx, eventPub, botStore, gc,
 		cfg.MinTokenToJoinQueue,
 		argsTemplate.ConfirmationTimeout,
@@ -125,9 +124,8 @@ func dialRoomWorkerWithRetry(ctx context.Context, addr string, opts []grpc.DialO
 	return nil, fmt.Errorf("dial room at %s after %d attempts: %w", addr, maxAttempts, lastErr)
 }
 
-// Start queue, tournament coordinator, and gRPC listener.
+// Start queue, tournament coordinator, gRPC timer worker, and listener.
 func (s *Service) Start() error {
-	timer.InitTimer(timer.ScopeLobby)
 	log.Debugw("lobby server timer initialized")
 	if err := s.queueSvc.Start(); err != nil {
 		log.Errorw("queue service start failed", "err", err)
@@ -138,6 +136,7 @@ func (s *Service) Start() error {
 	s.tournamentSvc.Start()
 	log.Debugw("tournament tournament service started")
 	s.runRoomSettlementSubscriber()
+	timer.StartTimer(timer.ScopeLobby)
 	return s.startListener()
 }
 
