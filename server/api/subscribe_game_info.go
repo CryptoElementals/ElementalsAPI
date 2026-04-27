@@ -86,9 +86,10 @@ type TurnCompletedDTO struct {
 }
 
 type TurnCompletedPlayerInfoDTO struct {
-	IsMyself      bool                   `json:"IsMyself"`
-	PlayerAddress PlayerAddressDTO       `json:"PlayerAddress"`
-	SubmittedCard *RoundSubmittedCardDTO `json:"SubmittedCard,omitempty"`
+	IsMyself               bool                          `json:"IsMyself"`
+	PlayerAddress          PlayerAddressDTO              `json:"PlayerAddress"`
+	SubmittedCard          *RoundSubmittedCardDTO        `json:"SubmittedCard,omitempty"`
+	PlayerGameResultStatus *proto.PlayerGameResultStatus `json:"PlayerGameResultStatus,omitempty"`
 }
 
 type PlayerAddressDTO struct {
@@ -757,11 +758,16 @@ func buildTurnCompletedDTO(task *SubscribeGameInfoTask, tc *proto.TurnCompleted)
 			submittedCards[idx] = submittedCardDTO
 		}
 
-		dto.PlayerTurnInfos = append(dto.PlayerTurnInfos, TurnCompletedPlayerInfoDTO{
+		entry := TurnCompletedPlayerInfoDTO{
 			IsMyself:      isMyself,
 			PlayerAddress: addrDTO,
 			SubmittedCard: submittedCardDTO,
-		})
+		}
+		if info.PlayerGameResultStatus != nil {
+			st := *info.PlayerGameResultStatus
+			entry.PlayerGameResultStatus = &st
+		}
+		dto.PlayerTurnInfos = append(dto.PlayerTurnInfos, entry)
 	}
 
 	// 本回合各提交卡结算血量的 max−min，与房间端 HP spread 倍率一致（通常为 2 人对局）

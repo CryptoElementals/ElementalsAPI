@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strconv"
 	"strings"
 	"time"
 
@@ -767,6 +768,33 @@ func (c *HttpApiClient) parseSSEEvent(eventData string) *proto.Event {
 			}
 			if isGameComplete, ok := msg["IsGameComplete"].(bool); ok {
 				turnCompleted.IsGameComplete = isGameComplete
+			}
+			if arr, ok := msg["PlayerTurnInfos"].([]interface{}); ok {
+				for _, item := range arr {
+					elem, ok := item.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					pti := &proto.PlayerTurnInfo{}
+					if paMap, ok := elem["PlayerAddress"].(map[string]interface{}); ok {
+						pti.PlayerAddress = &proto.PlayerAddress{}
+						if id, ok := paMap["id"].(string); ok {
+							if parsed, err := strconv.ParseInt(id, 10, 64); err == nil {
+								pti.PlayerAddress.Id = parsed
+							}
+						} else if id, ok := paMap["id"].(float64); ok {
+							pti.PlayerAddress.Id = int64(id)
+						}
+						if ta, ok := paMap["temporaryAddress"].(string); ok {
+							pti.PlayerAddress.TemporaryAddress = ta
+						}
+					}
+					if v, ok := elem["PlayerGameResultStatus"].(float64); ok {
+						st := proto.PlayerGameResultStatus(int32(v))
+						pti.PlayerGameResultStatus = &st
+					}
+					turnCompleted.PlayerTurnInfos = append(turnCompleted.PlayerTurnInfos, pti)
+				}
 			}
 			protoEvent.Event = &proto.Event_TurnCompleted{TurnCompleted: turnCompleted}
 		}

@@ -189,6 +189,7 @@ message CommitmentsOnChain {
 message PlayerTurnInfo {
   rpc.PlayerAddress PlayerAddress = 1;
   rpc.RoundSubmittedCard SubmittedCard = 2;
+  optional battle.PlayerGameResultStatus PlayerGameResultStatus = 3;
 }
 
 message TurnCompleted {

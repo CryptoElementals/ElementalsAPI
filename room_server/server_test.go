@@ -17,10 +17,10 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/redis"
-	"github.com/CryptoElementals/common/snowflake"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	rpc "github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/snowflake"
 	"github.com/stretchr/testify/require"
 )
 
@@ -321,6 +321,9 @@ func runClient(t *testing.T,
 					}
 					if tc.GetIsGameComplete() {
 						t.Log("game complete")
+						for _, pti := range tc.GetPlayerTurnInfos() {
+							require.NotNil(t, pti.PlayerGameResultStatus, "game-over turn complete should include per-player status")
+						}
 						close(partConfimredChan)
 						return
 					}

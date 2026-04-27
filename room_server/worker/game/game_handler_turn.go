@@ -174,7 +174,7 @@ func (g *Game) handleTurnEnd() error {
 	isNextRoundExtra := isRoundComplete && !isGameComplete && g.currentRound.isNextRoundExtra()
 
 	// Build proto TurnCompleted directly
-	turnCompletedEvt := g.buildTurnCompletedEvent(roundNumber, turnNumber, isRoundComplete, isGameComplete, isNextRoundExtra, gameResult)
+	turnCompletedEvt := g.buildTurnCompletedEvent(roundNumber, turnNumber, isRoundComplete, isGameComplete, isNextRoundExtra)
 	confirmationTimeout := g.gameInfo.GameArgs.ConfirmationTimeout
 	gameContinueTimeout := g.gameInfo.GameArgs.GameContinueTimeout
 	turnCompletedEvt.GetTurnCompleted().ConfirmationTimeout = &confirmationTimeout
@@ -235,27 +235,33 @@ func (g *Game) handleTurnEnd() error {
 }
 
 // buildTurnCompletedEvent constructs a proto.Event for TYPE_TURN_COMPLETE from current game state.
-func (g *Game) buildTurnCompletedEvent(roundNumber uint32, turnNumber uint32, isRoundComplete, isGameComplete, isNextRoundExtra bool, gameResult interface{}) *proto.Event {
+func (g *Game) buildTurnCompletedEvent(roundNumber, turnNumber uint32, isRoundComplete, isGameComplete, isNextRoundExtra bool) *proto.Event {
 	playerTurnInfos := make([]*proto.PlayerTurnInfo, 0, len(g.currentRound.gamePlayers))
 	for _, p := range g.currentRound.gamePlayers {
 		playerTurnInfo := p.getCurrentPlayerTurnInfo()
 		if playerTurnInfo != nil && playerTurnInfo.TurnSubmittedCard != nil {
 			addr := p.PlayerAddress()
-			playerTurnInfos = append(playerTurnInfos, &proto.PlayerTurnInfo{
+			pti := &proto.PlayerTurnInfo{
 				PlayerAddress: addr.ToProto(),
 				SubmittedCard: conversion.TurnSubmittedCardToProtoRoundSubmittedCard(playerTurnInfo.TurnSubmittedCard, turnNumber),
-			})
+			}
+			if isGameComplete {
+				if st := conversion.PlayerGameResultStatusPtrFromGameResult(g.gameInfo.GameResult, p.player.PlayerId); st != nil {
+					pti.PlayerGameResultStatus = st
+				}
+			}
+			playerTurnInfos = append(playerTurnInfos, pti)
 		}
 	}
 
 	turnCompleted := &proto.TurnCompleted{
-		GameId:             g.gameInfo.ID,
-		RoundNum:           roundNumber,
-		TurnNum:            turnNumber,
-		IsRoundComplete:    isRoundComplete,
-		IsGameComplete:     isGameComplete,
-		IsNextRoundExtra:   isNextRoundExtra,
-		PlayerTurnInfos:    playerTurnInfos,
+		GameId:           g.gameInfo.ID,
+		RoundNum:         roundNumber,
+		TurnNum:          turnNumber,
+		IsRoundComplete:  isRoundComplete,
+		IsGameComplete:   isGameComplete,
+		IsNextRoundExtra: isNextRoundExtra,
+		PlayerTurnInfos:  playerTurnInfos,
 	}
 
 	if isGameComplete && g.gameInfo.GameResult != nil {

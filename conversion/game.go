@@ -42,6 +42,18 @@ func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 	}
 }
 
+// PlayerGameResultStatusPtrFromGameResult returns the persisted per-player outcome, or nil if absent.
+func PlayerGameResultStatusPtrFromGameResult(gr *dao.GameResult, playerID int64) *proto.PlayerGameResultStatus {
+	if gr == nil {
+		return nil
+	}
+	if pri, ok := db.PlayerResultInfoByPlayerID(gr.PlayerResultInfos)[playerID]; ok && pri != nil {
+		st := pri.PlayerGameResultStatus
+		return &st
+	}
+	return nil
+}
+
 func DbBattleRewardToProtoBattleReward(br *dao.BattleRewardPVP, infos []*dao.PlayerResultInfo) *proto.BattleReward {
 	if br == nil {
 		return nil
