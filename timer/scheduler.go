@@ -13,6 +13,7 @@ var (
 	// that periodically enqueue work onto timer queues (one queue per scope).
 	periodicAsynqScheduler  *asynq.Scheduler
 	lobbyBotDispatchEntryID string
+	lobbyTournamentEntryID  string
 	roomChainTxPoolEntryID  string
 )
 
@@ -36,6 +37,9 @@ func initPeriodicAsynqScheduler(redisOpt asynq.RedisClientOpt) {
 func shutdownPeriodicAsynqScheduler() {
 	if err := UnregisterBotDispatchRecurring(); err != nil {
 		log.Errorw("unregister bot dispatch cron on scheduler shutdown", "err", err)
+	}
+	if err := UnregisterTournamentRecurring(); err != nil {
+		log.Errorw("unregister tournament cron on scheduler shutdown", "err", err)
 	}
 	if err := UnregisterRoomChainTxPoolRecurring(); err != nil {
 		log.Errorw("unregister room chain tx pool cron on scheduler shutdown", "err", err)
@@ -110,6 +114,18 @@ func RegisterBotDispatchRecurring(period time.Duration, evt TimerEvent) error {
 // (e.g. on queue stop).
 func UnregisterBotDispatchRecurring() error {
 	return unregisterRecurring(&lobbyBotDispatchEntryID)
+}
+
+// RegisterTournamentRecurring registers a repeating job that enqueues the given
+// event on @every <period> to the lobby timer queue. Replaces the previous
+// tournament registration.
+func RegisterTournamentRecurring(period time.Duration, evt TimerEvent) error {
+	return registerRecurring(period, evt, ScopeLobby, &lobbyTournamentEntryID)
+}
+
+// UnregisterTournamentRecurring removes the tournament cron, if any.
+func UnregisterTournamentRecurring() error {
+	return unregisterRecurring(&lobbyTournamentEntryID)
 }
 
 // RegisterRoomChainTxPoolRecurring registers a repeating job that enqueues the given event
