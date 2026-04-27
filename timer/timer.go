@@ -48,19 +48,20 @@ var (
 	}
 	handlersLock sync.RWMutex
 
-	client    *asynq.Client
-	servers   = map[Scope]*asynq.Server{}
-	serversMu sync.Mutex
+	client  *asynq.Client
+	servers = map[Scope]*asynq.Server{}
+	// asynqWorkerRunning records scopes for which StartTimer has already launched s.Run.
+	asynqWorkerRunning = map[Scope]bool{}
+	serversMu          sync.Mutex
 )
 
 func queueName(s Scope) string {
 	return "timer:" + string(s)
 }
 
-// InitTimer starts an Asynq worker for the given scope's queue. Production binaries
-// typically call this once with ScopeLobby or ScopeRoom; tests may call both scopes
-// in-process (one worker per scope).
-// When Redis is unavailable, delayed tasks fall back to in-process timers (no workers).
+// InitTimer creates the Asynq client, periodic scheduler, and Asynq Server for the scope
+// but does not run the worker. Call StartTimer after handlers are registered and before
+// opening your listener. When Redis is unavailable, it returns after logging (no client).
 func InitTimer(scope Scope) {
 	cfg := redis.GetConfig()
 	if cfg == nil {
@@ -80,7 +81,7 @@ func InitTimer(scope Scope) {
 		client = asynq.NewClient(redisOpt)
 	}
 
-	initAsynqScheduler(redisOpt)
+	initPeriodicAsynqScheduler(redisOpt)
 	if servers[scope] != nil {
 		return
 	}
@@ -93,6 +94,27 @@ func InitTimer(scope Scope) {
 		LogLevel:    asynq.WarnLevel,
 	})
 	servers[scope] = srv
+}
+
+// StartTimer runs the Asynq worker for the given scope in a goroutine (s.Run). It is
+// a no-op if InitTimer was skipped (no Redis) or the worker for that scope is already
+// running. Call once per started process after InitTimer for that scope.
+func StartTimer(scope Scope) {
+	serversMu.Lock()
+	srv, ok := servers[scope]
+	if !ok {
+		serversMu.Unlock()
+		if client != nil {
+			log.Warnw("start timer: no asynq server; InitTimer for scope was not run", "scope", scope)
+		}
+		return
+	}
+	if asynqWorkerRunning[scope] {
+		serversMu.Unlock()
+		return
+	}
+	asynqWorkerRunning[scope] = true
+	serversMu.Unlock()
 
 	go func(sc Scope, s *asynq.Server) {
 		if err := s.Run(asynq.HandlerFunc(func(ctx context.Context, t *asynq.Task) error {
@@ -100,6 +122,9 @@ func InitTimer(scope Scope) {
 		})); err != nil {
 			log.Errorw("asynq server stopped", "scope", sc, "err", err)
 		}
+		serversMu.Lock()
+		delete(asynqWorkerRunning, sc)
+		serversMu.Unlock()
 	}(scope, srv)
 }
 
@@ -108,12 +133,18 @@ func InitTimer(scope Scope) {
 func StopTimer(scope Scope) {
 	serversMu.Lock()
 	defer serversMu.Unlock()
+	if scope == ScopeRoom {
+		if err := UnregisterRoomChainTxPoolRecurring(); err != nil {
+			log.Errorw("stop timer: unregister room chain tx pool cron", "err", err)
+		}
+	}
 	if scope == ScopeLobby {
-		shutdownLobbyAsynqScheduler()
+		shutdownPeriodicAsynqScheduler()
 	}
 	if srv := servers[scope]; srv != nil {
 		srv.Shutdown()
 		delete(servers, scope)
+		delete(asynqWorkerRunning, scope)
 	}
 	if len(servers) == 0 && client != nil {
 		client.Close()

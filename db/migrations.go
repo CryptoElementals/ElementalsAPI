@@ -38,6 +38,7 @@ func Migrate() error {
 		&dao.PlayerGameEntry{},
 		&dao.BotAccount{},
 		&dao.GameChainID{},
+		&dao.ChainTxPoolItem{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -78,6 +79,7 @@ func MigrateMemDb() error {
 		&dao.PlayerGameEntry{},
 		&dao.BotAccount{},
 		&dao.GameChainID{},
+		&dao.ChainTxPoolItem{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

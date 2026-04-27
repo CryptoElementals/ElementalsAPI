@@ -93,19 +93,6 @@ func GetChainIDForGame(gameID int64) (int64, error) {
 	return row.ChainID, nil
 }
 
-// LoadAllGameChainIDMap returns all game_id -> chain_id rows (for room server registry preload).
-func LoadAllGameChainIDMap() (map[int64]int64, error) {
-	var rows []dao.GameChainID
-	if err := Get().Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	m := make(map[int64]int64, len(rows))
-	for i := range rows {
-		m[rows[i].GameID] = rows[i].ChainID
-	}
-	return m, nil
-}
-
 // SaveTurnTx inserts a new turn (omit PTIs) or updates turn_status and turn_start_at only.
 func SaveTurnTx(tx *gorm.DB, turn *dao.Turn) error {
 	if turn.ID == 0 {

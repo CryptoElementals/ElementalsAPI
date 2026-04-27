@@ -9,15 +9,17 @@ import (
 )
 
 var (
-	lobbyAsynqScheduler *asynq.Scheduler
-	botDispatchCronID   string
+	// periodicAsynqScheduler is the shared hibiken/asynq.Scheduler used to run cron specs
+	// that periodically enqueue work onto timer queues (one queue per scope).
+	periodicAsynqScheduler  *asynq.Scheduler
+	lobbyBotDispatchEntryID string
+	roomChainTxPoolEntryID  string
 )
 
-// initAsynqScheduler starts the shared hibiken/asynq process scheduler for
-// periodic lobby jobs. It is invoked from InitTimer(ScopeLobby) when Redis is
-// available. The scheduler uses a separate Redis client from the timer Client.
-func initAsynqScheduler(redisOpt asynq.RedisClientOpt) {
-	if lobbyAsynqScheduler != nil {
+// initPeriodicAsynqScheduler starts the shared scheduler. Invoked from InitTimer when Redis is
+// available. Uses a separate Redis client from the timer Client.
+func initPeriodicAsynqScheduler(redisOpt asynq.RedisClientOpt) {
+	if periodicAsynqScheduler != nil {
 		return
 	}
 	s := asynq.NewScheduler(redisOpt, &asynq.SchedulerOpts{
@@ -25,34 +27,36 @@ func initAsynqScheduler(redisOpt asynq.RedisClientOpt) {
 		LogLevel: asynq.WarnLevel,
 	})
 	if err := s.Start(); err != nil {
-		log.Fatalw("asynq lobby scheduler failed to start", "err", err)
+		log.Fatalw("asynq periodic scheduler failed to start", "err", err)
 		return
 	}
-	lobbyAsynqScheduler = s
+	periodicAsynqScheduler = s
 }
 
-func shutdownLobbyAsynqScheduler() {
-	s := lobbyAsynqScheduler
-	if s == nil {
-		return
-	}
+func shutdownPeriodicAsynqScheduler() {
 	if err := UnregisterBotDispatchRecurring(); err != nil {
 		log.Errorw("unregister bot dispatch cron on scheduler shutdown", "err", err)
 	}
-	lobbyAsynqScheduler = nil
+	if err := UnregisterRoomChainTxPoolRecurring(); err != nil {
+		log.Errorw("unregister room chain tx pool cron on scheduler shutdown", "err", err)
+	}
+	s := periodicAsynqScheduler
+	if s == nil {
+		return
+	}
+	periodicAsynqScheduler = nil
 	s.Shutdown()
 }
 
-// RegisterBotDispatchRecurring registers a single repeating cron job that enqueues
-// queue bot-dispatch work on @every <period> (using robfig/cron "every" syntax).
-// It replaces any previous bot-dispatch registration. Call after InitTimer(ScopeLobby).
-func RegisterBotDispatchRecurring(period time.Duration, evt TimerEvent) error {
+// registerRecurring enqueues a task to the given scope queue on @every <period>. Replaces
+// a previous entry when entryID is non-empty (same logical job reregistered).
+func registerRecurring(period time.Duration, evt TimerEvent, scope Scope, previousEntryID *string) error {
 	if period <= 0 || evt == nil {
 		return nil
 	}
-	s := lobbyAsynqScheduler
+	s := periodicAsynqScheduler
 	if s == nil {
-		return fmt.Errorf("register bot dispatch: lobby asynq scheduler is not started")
+		return fmt.Errorf("periodic asynq scheduler is not started")
 	}
 	cronSpec := fmt.Sprintf("@every %s", period.String())
 	task := asynq.NewTask(evt.EventType(), evt.Marshal())
@@ -61,33 +65,31 @@ func RegisterBotDispatchRecurring(period time.Duration, evt TimerEvent) error {
 		uniqueTTL = time.Second
 	}
 	opts := []asynq.Option{
-		asynq.Queue(queueName(ScopeLobby)),
+		asynq.Queue(queueName(scope)),
 		asynq.MaxRetry(0),
 		asynq.Unique(uniqueTTL),
 	}
-	if botDispatchCronID != "" {
-		if err := s.Unregister(botDispatchCronID); err != nil {
-			log.Errorw("unregister previous bot dispatch cron", "err", err)
+	if *previousEntryID != "" {
+		if err := s.Unregister(*previousEntryID); err != nil {
+			log.Errorw("unregister previous periodic cron", "err", err)
 		}
-		botDispatchCronID = ""
+		*previousEntryID = ""
 	}
 	eid, err := s.Register(cronSpec, task, opts...)
 	if err != nil {
 		return err
 	}
-	botDispatchCronID = eid
+	*previousEntryID = eid
 	return nil
 }
 
-// UnregisterBotDispatchRecurring removes the scheduled bot-dispatch job if any
-// (e.g. on queue stop).
-func UnregisterBotDispatchRecurring() error {
-	eid := botDispatchCronID
-	botDispatchCronID = ""
+func unregisterRecurring(entryID *string) error {
+	eid := *entryID
+	*entryID = ""
 	if eid == "" {
 		return nil
 	}
-	s := lobbyAsynqScheduler
+	s := periodicAsynqScheduler
 	if s == nil {
 		return nil
 	}
@@ -95,4 +97,29 @@ func UnregisterBotDispatchRecurring() error {
 		return err
 	}
 	return nil
+}
+
+// RegisterBotDispatchRecurring registers a single repeating cron job that enqueues
+// queue bot-dispatch work on @every <period> (using robfig/cron "every" syntax).
+// It replaces any previous bot-dispatch registration. Call after InitTimer(ScopeLobby).
+func RegisterBotDispatchRecurring(period time.Duration, evt TimerEvent) error {
+	return registerRecurring(period, evt, ScopeLobby, &lobbyBotDispatchEntryID)
+}
+
+// UnregisterBotDispatchRecurring removes the scheduled bot-dispatch job if any
+// (e.g. on queue stop).
+func UnregisterBotDispatchRecurring() error {
+	return unregisterRecurring(&lobbyBotDispatchEntryID)
+}
+
+// RegisterRoomChainTxPoolRecurring registers a repeating job that enqueues the given event
+// on @every <period> to the room timer queue. Replaces a previous room chain tx pool
+// registration. Call after InitTimer(ScopeRoom) and RegisterHandler for the same event type.
+func RegisterRoomChainTxPoolRecurring(period time.Duration, evt TimerEvent) error {
+	return registerRecurring(period, evt, ScopeRoom, &roomChainTxPoolEntryID)
+}
+
+// UnregisterRoomChainTxPoolRecurring removes the room chain tx pool cron, if any.
+func UnregisterRoomChainTxPoolRecurring() error {
+	return unregisterRecurring(&roomChainTxPoolEntryID)
 }

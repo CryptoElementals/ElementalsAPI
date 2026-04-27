@@ -14,6 +14,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/stream"
+	"github.com/CryptoElementals/common/timer"
 	"github.com/CryptoElementals/common/wallet"
 	"google.golang.org/grpc"
 )
@@ -77,6 +78,7 @@ func (s *Service) Start() error {
 	}
 	log.Info("game service started")
 
+	timer.StartTimer(timer.ScopeRoom)
 	log.Info("starting listener")
 	err = s.startListener()
 	if err != nil {

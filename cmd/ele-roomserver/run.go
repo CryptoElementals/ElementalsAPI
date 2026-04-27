@@ -15,6 +15,7 @@ import (
 	"github.com/CryptoElementals/common/redis"
 	roomserver "github.com/CryptoElementals/common/room_server"
 	"github.com/CryptoElementals/common/snowflake"
+	"github.com/CryptoElementals/common/timer"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +52,8 @@ var runCmd = &cobra.Command{
 			log.Fatalf("init redis failed, err: %v", err)
 		}
 		log.Info("redis initialized")
+		timer.InitTimer(timer.ScopeRoom)
+		log.Info("room timer (ScopeRoom) asynq client/scheduler/queue ready (worker starts with Service.Start)")
 
 		svr, err := roomserver.New(context.Background(), &config.RSGConf)
 		if err != nil {

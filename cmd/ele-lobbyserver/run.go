@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/snowflake"
+	"github.com/CryptoElementals/common/timer"
 	"github.com/spf13/cobra"
 )
 
@@ -43,6 +44,8 @@ var runCmd = &cobra.Command{
 			log.Fatalf("init redis failed (required for event streams): %v", err)
 		}
 		log.Debugw("db and redis initialized")
+		timer.InitTimer(timer.ScopeLobby)
+		log.Debugw("timer initialized")
 		svr, err := lobbyserver.New(context.Background(), &config.LSGConf)
 		if err != nil {
 			log.Fatalf("init lobby server failed: %v", err)
