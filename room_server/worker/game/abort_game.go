@@ -63,6 +63,9 @@ func (g *Game) sendTurnCompletedEventForAbort() {
 				if submittedCard != nil {
 					pti.SubmittedCard = conversion.TurnSubmittedCardToProtoRoundSubmittedCard(submittedCard, turnNumber)
 				}
+				if st := conversion.PlayerGameResultStatusPtrFromGameResult(g.gameInfo.GameResult, p.player.PlayerId); st != nil {
+					pti.PlayerGameResultStatus = st
+				}
 				playerTurnInfos = append(playerTurnInfos, pti)
 			}
 		}
