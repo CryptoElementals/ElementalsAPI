@@ -3,6 +3,7 @@ package tournament
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/bits"
@@ -27,8 +28,10 @@ import (
 
 const tickInterval = 500 * time.Millisecond
 const recurringTickInterval = 3 * time.Second
+const nextRoundStartDelay = 5 * time.Second
 const disabledCreationLogInterval = 1 * time.Minute
 const coordinatorTickEventType = "tournament:coordinator:tick"
+const nextRoundStartEventType = "tournament:next-round-start"
 const maxBotsPerTickPerTournament = 10
 
 type coordinatorTickEvent struct{}
@@ -39,6 +42,24 @@ func (e *coordinatorTickEvent) Unmarshal(_ []byte) error {
 	return nil
 }
 func (e *coordinatorTickEvent) String() string { return coordinatorTickEventType }
+
+type nextRoundStartEvent struct {
+	MatchIDs    []uint `json:"match_ids"`
+	TournamentID string `json:"tournament_id"`
+	NextRound   uint32 `json:"next_round"`
+}
+
+func (e *nextRoundStartEvent) EventType() string { return nextRoundStartEventType }
+func (e *nextRoundStartEvent) Marshal() []byte {
+	b, _ := json.Marshal(e)
+	return b
+}
+func (e *nextRoundStartEvent) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, e)
+}
+func (e *nextRoundStartEvent) String() string {
+	return fmt.Sprintf("%s(tournament_id=%s,next_round=%d,match_ids=%d)", nextRoundStartEventType, e.TournamentID, e.NextRound, len(e.MatchIDs))
+}
 
 // GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
@@ -103,6 +124,23 @@ func (tc *coordinator) start() {
 	}
 	if err := timer.RegisterTournamentRecurring(recurringTickInterval, evt); err != nil {
 		log.Fatalw("tournament coordinator register recurring failed", "err", err)
+		return
+	}
+	nextEvt := &nextRoundStartEvent{}
+	if err := timer.RegisterHandler(timer.ScopeLobby, nextEvt, func(event timer.TimerEvent) error {
+		select {
+		case <-tc.ctx.Done():
+			return nil
+		default:
+		}
+		e, ok := event.(*nextRoundStartEvent)
+		if !ok {
+			return fmt.Errorf("unexpected timer event type %T for %s", event, nextRoundStartEventType)
+		}
+		tc.handleNextRoundStart(e.MatchIDs, e.TournamentID, e.NextRound)
+		return nil
+	}); err != nil {
+		log.Fatalw("tournament coordinator register next-round handler failed", "err", err)
 		return
 	}
 }
@@ -973,19 +1011,36 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 	}
 
 	if len(postNewIDs) > 0 {
-		go func(newIDs []uint, tournID string, nextRound uint32) {
-			time.Sleep(5 * time.Second) //todo: optimized by distributed timer later
-			anyPlaying := tc.startGamesForNewMatches(newIDs)
-			if anyPlaying && tournID != "" {
-				if r, rerr := db.TournamentGetRound(db.Get(), tournID, nextRound); rerr == nil {
-					r.Status = dao.TournamentRoundStatusPlaying
-					_ = db.TournamentSaveRound(db.Get(), r)
-				}
-			}
-		}(postNewIDs, postTournID, postNextRound)
+		if err := tc.scheduleNextRoundStart(postNewIDs, postTournID, postNextRound); err != nil {
+			log.Errorw("tournament: schedule next round start failed", "tournament_id", postTournID, "next_round", postNextRound, "err", err)
+			return err
+		}
 	}
 
 	return nil
+}
+
+func (tc *coordinator) scheduleNextRoundStart(matchIDs []uint, tournID string, nextRound uint32) error {
+	if len(matchIDs) == 0 || tournID == "" || nextRound == 0 {
+		return nil
+	}
+	evt := &nextRoundStartEvent{
+		MatchIDs:    matchIDs,
+		TournamentID: tournID,
+		NextRound:   nextRound,
+	}
+	return timer.ProcessIn(timer.ScopeLobby, nextRoundStartDelay, evt, false)
+}
+
+func (tc *coordinator) handleNextRoundStart(matchIDs []uint, tournID string, nextRound uint32) {
+	anyPlaying := tc.startGamesForNewMatches(matchIDs)
+	if !anyPlaying || tournID == "" {
+		return
+	}
+	if r, err := db.TournamentGetRound(db.Get(), tournID, nextRound); err == nil {
+		r.Status = dao.TournamentRoundStatusPlaying
+		_ = db.TournamentSaveRound(db.Get(), r)
+	}
 }
 
 func (tc *coordinator) filterBotsForRelease(addrs []types.PlayerAddress) []types.PlayerAddress {
