@@ -8,6 +8,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // GormStore implements Store using player_queue_entries / player_game_entries via the db package.
@@ -45,7 +46,7 @@ func (s *GormStore) QueueJoinedAtMs(ctx context.Context, player types.PlayerAddr
 
 func (s *GormStore) MatchPlayersOrJoinQueue(ctx context.Context, player types.PlayerAddress) (*dao.GameMatch, error) {
 	p := normPlayer(player)
-	return db.LobbyMatchPlayersOrJoinQueue(ctx, p.Id, p.TemporaryAddress, uint(types.GameTypePVP))
+	return db.LobbyMatchPlayersOrJoinQueue(ctx, p.Id, p.TemporaryAddress, uint(proto.GameType_PVP))
 }
 
 func (s *GormStore) CountLongWaittingPlayers(ctx context.Context, waitting time.Duration) (int, error) {
@@ -53,11 +54,11 @@ func (s *GormStore) CountLongWaittingPlayers(ctx context.Context, waitting time.
 }
 
 func (s *GormStore) MatchPlayerWithBot(ctx context.Context, bot types.PlayerAddress, waitting time.Duration) (*dao.GameMatch, error) {
-	return db.LobbyMatchEarliestQueuedPlayerWithBot(ctx, toLobbyRef(bot), uint(types.GameTypePVP), waitting)
+	return db.LobbyMatchEarliestQueuedPlayerWithBot(ctx, toLobbyRef(bot), uint(proto.GameType_PVP), waitting)
 }
 
 func (s *GormStore) MatchPlayers(ctx context.Context, p1, p2 types.PlayerAddress, lastGameID int64) (*dao.GameMatch, error) {
-	return db.LobbyMatchPair(ctx, toLobbyRef(p1), toLobbyRef(p2), uint(types.GameTypePVP), lastGameID)
+	return db.LobbyMatchPair(ctx, toLobbyRef(p1), toLobbyRef(p2), uint(proto.GameType_PVP), lastGameID)
 }
 
 func (s *GormStore) RemoveQueue(ctx context.Context, player types.PlayerAddress) error {

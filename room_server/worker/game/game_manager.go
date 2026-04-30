@@ -184,12 +184,12 @@ func (r *GameManager) Stop() {
 
 // createGameAndNotify persists the new game graph, bootstraps first turn / chain flow (same for queue PVP, continue, tournament),
 // then returns the game id. completedMatchID is queue PVP only; when non-zero we also use it as games.id.
-func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
+func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameType proto.GameType, completedMatchID int64) (int64, error) {
 	if err := r.validatePlayersNotInGame(players); err != nil {
 		return 0, err
 	}
-	if gameType == 0 {
-		gameType = types.GameTypePVP
+	if gameType == proto.GameType_GAME_TYPE_UNKNOWN {
+		gameType = proto.GameType_PVP
 	}
 	gameArgs, err := r.cloneGameArgs()
 	if err != nil {
@@ -198,7 +198,7 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	game := NewGame(r.ctx, players, r.publisher, r.roomChain, r.gameResultSettler, gameType, gameArgs)
 	game.gameInfo.ID = completedMatchID
 	game.gameInfo.QueueMatchID = completedMatchID
-	if gameType == types.GameTypeTournament {
+	if gameType == proto.GameType_TOURNAMENT {
 		rr := uint32(game.gameInfo.GameArgs.MaxNormalRounds)
 		if rr == 0 {
 			rr = 3
@@ -219,7 +219,7 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 }
 
 // CreateGameAndRun persists a new game (queue PVP, continue, or tournament), bootstraps chain for turn 1, then notifies.
-func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
+func (r *GameManager) CreateGameAndRun(players []types.PlayerAddress, gameType proto.GameType, completedMatchID int64) (int64, error) {
 	matchID := completedMatchID
 	if completedMatchID == 0 {
 		matchID = snowflake.GenerateID()

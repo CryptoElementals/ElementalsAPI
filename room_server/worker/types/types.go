@@ -9,11 +9,6 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-const (
-	GameTypePVP        = 1
-	GameTypeTournament = 2
-)
-
 type PlayerAddress struct {
 	Id               int64
 	TemporaryAddress string

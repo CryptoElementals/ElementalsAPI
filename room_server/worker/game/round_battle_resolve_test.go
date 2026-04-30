@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRound_isExtraRound(t *testing.T) {
 	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
-	pvp := &round{game: &dao.Game{GameArgs: ga, Type: types.GameTypePVP}, roundNumber: 4}
+	pvp := &round{game: &dao.Game{GameArgs: ga, Type: uint(proto.GameType_PVP)}, roundNumber: 4}
 	require.False(t, pvp.isExtraRound())
 
 	tourReg := &round{game: &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}, roundNumber: 3}
@@ -22,7 +22,7 @@ func TestRound_isExtraRound(t *testing.T) {
 
 func TestRound_isNextRoundExtra(t *testing.T) {
 	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
-	pvp := &round{game: &dao.Game{GameArgs: ga, Type: types.GameTypePVP}, roundNumber: 2}
+	pvp := &round{game: &dao.Game{GameArgs: ga, Type: uint(proto.GameType_PVP)}, roundNumber: 2}
 	require.False(t, pvp.isNextRoundExtra())
 
 	gTour := &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}

@@ -8,6 +8,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
 
@@ -60,10 +61,10 @@ func NewGame(
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
-	gameType uint,
+	gameType proto.GameType,
 	gameArgs *dao.GameArgs) *Game {
 	if gameType == 0 {
-		gameType = types.GameTypePVP
+		gameType = proto.GameType_PVP
 	}
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
@@ -78,7 +79,7 @@ func NewGame(
 	}
 	gameInfo := &dao.Game{
 		Players:  daoPlayers,
-		Type:     gameType,
+		Type:     uint(gameType),
 		GameArgs: &ga,
 	}
 	game := &Game{

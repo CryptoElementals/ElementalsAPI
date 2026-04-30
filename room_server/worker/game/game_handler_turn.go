@@ -195,7 +195,7 @@ func (g *Game) handleTurnEnd() error {
 			evt := turnCompletedEvt
 			return g.afterTx(func() error {
 				g.publishProtoToAllPlayers(evt)
-				completeEvt := &types.GameCompletedEvent{GameID: g.gameInfo.ID, GameType: g.gameInfo.Type}
+				completeEvt := &types.GameCompletedEvent{GameID: g.gameInfo.ID, GameType: proto.GameType(g.gameInfo.Type)}
 				if err := g.completeGameAndNotify(completeEvt); err != nil {
 					log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 					return err

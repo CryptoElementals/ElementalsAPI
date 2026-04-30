@@ -93,7 +93,7 @@ func (s *Service) CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGame
 		a.FromProto(p)
 		players = append(players, a)
 	}
-	gid, err := s.gameManager.CreateGameAndRun(players, uint(req.GetGameType()), req.GetCompletedMatchId())
+	gid, err := s.gameManager.CreateGameAndRun(players, proto.GameType(req.GetGameType()), req.GetCompletedMatchId())
 	if err != nil {
 		return nil, err
 	}

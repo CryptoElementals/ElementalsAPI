@@ -38,7 +38,7 @@ func newTimeoutTestGame() *Game {
 		{Id: 1, TemporaryAddress: "0x1"},
 		{Id: 2, TemporaryAddress: "0x2"},
 	}
-	return NewGame(context.Background(), players, nopPublisher{}, noopTxPool{}, nil, types.GameTypePVP, gameArgs)
+	return NewGame(context.Background(), players, nopPublisher{}, noopTxPool{}, nil, proto.GameType_PVP, gameArgs)
 }
 
 func TestTimeoutFromCurrentRound_IgnoresUnknownStatus(t *testing.T) {

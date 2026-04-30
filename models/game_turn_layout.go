@@ -15,7 +15,7 @@ func MaxRoundNumberFromTurns(turns []*Turn) uint32 {
 }
 
 const (
-	// GameTypeTournament matches room_server/worker/types.GameTypeTournament.
+	// GameTypeTournament matches proto.GameType_TOURNAMENT.
 	GameTypeTournament uint = 2
 
 	// TournamentMaxOvertimeRounds is the cap on tie-breaker rounds (one turn each) after regulation.
