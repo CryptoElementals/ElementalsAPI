@@ -3,6 +3,7 @@ package tournament
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/bits"
@@ -12,20 +13,53 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/bot_manager"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/snowflake"
+	"github.com/CryptoElementals/common/timer"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 const tickInterval = 500 * time.Millisecond
+const recurringTickInterval = 3 * time.Second
+const nextRoundStartDelay = 5 * time.Second
 const disabledCreationLogInterval = 1 * time.Minute
+const coordinatorTickEventType = "tournament:coordinator:tick"
+const nextRoundStartEventType = "tournament:next-round-start"
+const maxBotsPerTickPerTournament = 10
+
+type coordinatorTickEvent struct{}
+
+func (e *coordinatorTickEvent) EventType() string { return coordinatorTickEventType }
+func (e *coordinatorTickEvent) Marshal() []byte   { return []byte("{}") }
+func (e *coordinatorTickEvent) Unmarshal(_ []byte) error {
+	return nil
+}
+func (e *coordinatorTickEvent) String() string { return coordinatorTickEventType }
+
+type nextRoundStartEvent struct {
+	MatchIDs    []uint `json:"match_ids"`
+	TournamentID string `json:"tournament_id"`
+	NextRound   uint32 `json:"next_round"`
+}
+
+func (e *nextRoundStartEvent) EventType() string { return nextRoundStartEventType }
+func (e *nextRoundStartEvent) Marshal() []byte {
+	b, _ := json.Marshal(e)
+	return b
+}
+func (e *nextRoundStartEvent) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, e)
+}
+func (e *nextRoundStartEvent) String() string {
+	return fmt.Sprintf("%s(tournament_id=%s,next_round=%d,match_ids=%d)", nextRoundStartEventType, e.TournamentID, e.NextRound, len(e.MatchIDs))
+}
 
 // GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
@@ -44,9 +78,9 @@ type coordinator struct {
 	intervalSeconds    uint32
 	beforeStartSeconds uint32
 
-	botFreshness time.Duration
-	botFillWindow time.Duration
-	botFillInterval time.Duration
+	botFreshness                time.Duration
+	botFillWindow               time.Duration
+	botFillInterval             time.Duration
 	botFillLastJoinByTournament sync.Map // map[tournamentID]unixMilli
 
 	tournamentCreationEnabled atomic.Bool
@@ -75,25 +109,47 @@ func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore
 
 func (tc *coordinator) start() {
 	log.Debugw("tournament coordinator start")
-	go tc.loop()
+	evt := &coordinatorTickEvent{}
+	if err := timer.RegisterHandler(timer.ScopeLobby, evt, func(_ timer.TimerEvent) error {
+		select {
+		case <-tc.ctx.Done():
+			return nil
+		default:
+		}
+		tc.tick()
+		return nil
+	}); err != nil {
+		log.Fatalw("tournament coordinator register timer handler failed", "err", err)
+		return
+	}
+	if err := timer.RegisterTournamentRecurring(recurringTickInterval, evt); err != nil {
+		log.Fatalw("tournament coordinator register recurring failed", "err", err)
+		return
+	}
+	nextEvt := &nextRoundStartEvent{}
+	if err := timer.RegisterHandler(timer.ScopeLobby, nextEvt, func(event timer.TimerEvent) error {
+		select {
+		case <-tc.ctx.Done():
+			return nil
+		default:
+		}
+		e, ok := event.(*nextRoundStartEvent)
+		if !ok {
+			return fmt.Errorf("unexpected timer event type %T for %s", event, nextRoundStartEventType)
+		}
+		tc.handleNextRoundStart(e.MatchIDs, e.TournamentID, e.NextRound)
+		return nil
+	}); err != nil {
+		log.Fatalw("tournament coordinator register next-round handler failed", "err", err)
+		return
+	}
 }
 
 func (tc *coordinator) stop() {
-	tc.cancel()
-}
-
-func (tc *coordinator) loop() {
-	tick := time.NewTicker(tickInterval)
-	defer tick.Stop()
-	log.Debugw("tournament coordinator loop start")
-	for {
-		select {
-		case <-tc.ctx.Done():
-			return
-		case <-tick.C:
-			tc.tick()
-		}
+	if err := timer.UnregisterTournamentRecurring(); err != nil {
+		log.Errorw("tournament coordinator unregister recurring failed", "err", err)
 	}
+	tc.cancel()
 }
 
 // 1. 超过整数倍单元时间(支持配置，如1小时, 10分钟)，创建下一个tournament
@@ -182,6 +238,7 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 	}
 	need := 0
 	var remainingToDeadline time.Duration
+	fillProgress := 1.0 // 0=start of fill window, 1=deadline
 	err := db.Get().Transaction(func(tx *gorm.DB) error {
 		var t dao.Tournament
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -212,6 +269,17 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 		}
 		need = target - len(queued)
 		remainingToDeadline = t.RegistrationDeadline.Sub(now)
+		window := t.RegistrationDeadline.Sub(fillStart)
+		if window > 0 {
+			elapsed := now.Sub(fillStart)
+			if elapsed < 0 {
+				elapsed = 0
+			}
+			if elapsed > window {
+				elapsed = window
+			}
+			fillProgress = float64(elapsed) / float64(window)
+		}
 		return nil
 	})
 	if err != nil {
@@ -228,33 +296,63 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 		return nil
 	}
 
-	bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
-	if err != nil {
-		return err
-	}
-	if bot == nil {
-		return nil
-	}
 	if tc.joinTournamentFunc == nil {
 		return fmt.Errorf("nil tournament join function")
 	}
-	if err := tc.joinTournamentFunc(tournamentID, &proto.PlayerAddress{
-		Id:               bot.Id,
-		TemporaryAddress: bot.TemporaryAddress,
-	}); err != nil {
-		_, rerr := tc.botStore.ReleaseInGameBot(tc.ctx, *bot)
-		if rerr != nil {
-			log.Warnw("tournament: release bot after failed join failed", "bot", bot.String(), "err", rerr)
+	burst := minInt(need, maxBotsPerTickPerTournament)
+	// Adaptive burst:
+	// - when there is enough time, add fewer bots (1~4);
+	// - when behind schedule, raise burst up to maxBotsPerTickPerTournament.
+	if effectiveInterval > 0 {
+		adaptive := int((recurringTickInterval + effectiveInterval - 1) / effectiveInterval) // ceil(period/effective)
+		if adaptive < 1 {
+			adaptive = 1
 		}
-		log.Warnw("tournament: bot join tournament failed", "tournament_id", tournamentID, "bot", bot.String(), "err", err)
-		return nil
+		if adaptive < burst {
+			burst = adaptive
+		}
 	}
-	log.Debugw("tournament: bot join tournament success",
-		"tournament_id", tournamentID,
-		"bot", bot.String(),
-		"need_before_join", need,
-		"remaining_to_deadline_ms", remainingToDeadline.Milliseconds(),
-		"effective_interval_ms", effectiveInterval.Milliseconds())
+	// Time-progress cap (front-slow, back-fast):
+	// prefer real players early, then ramp up bot burst near deadline.
+	stageCap := 1 + int(fillProgress*4) // 1..5
+	if stageCap < 1 {
+		stageCap = 1
+	}
+	if stageCap > maxBotsPerTickPerTournament {
+		stageCap = maxBotsPerTickPerTournament
+	}
+	if stageCap < burst {
+		burst = stageCap
+	}
+	for i := 0; i < burst; i++ {
+		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
+		if err != nil {
+			return err
+		}
+		if bot == nil {
+			return nil
+		}
+		if err := tc.joinTournamentFunc(tournamentID, &proto.PlayerAddress{
+			Id:               bot.Id,
+			TemporaryAddress: bot.TemporaryAddress,
+		}); err != nil {
+			_, rerr := tc.botStore.ReleaseInGameBot(tc.ctx, *bot)
+			if rerr != nil {
+				log.Warnw("tournament: release bot after failed join failed", "bot", bot.String(), "err", rerr)
+			}
+			log.Warnw("tournament: bot join tournament failed", "tournament_id", tournamentID, "bot", bot.String(), "err", err)
+			return nil
+		}
+		log.Debugw("tournament: bot join tournament success",
+			"tournament_id", tournamentID,
+			"bot", bot.String(),
+			"need_before_join", need,
+			"join_index_in_tick", i+1,
+			"join_burst_limit", burst,
+			"fill_progress", fillProgress,
+			"remaining_to_deadline_ms", remainingToDeadline.Milliseconds(),
+			"effective_interval_ms", effectiveInterval.Milliseconds())
+	}
 	return nil
 }
 
@@ -913,19 +1011,36 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 	}
 
 	if len(postNewIDs) > 0 {
-		go func(newIDs []uint, tournID string, nextRound uint32) {
-			time.Sleep(5 * time.Second) //todo: optimized by distributed timer later
-			anyPlaying := tc.startGamesForNewMatches(newIDs)
-			if anyPlaying && tournID != "" {
-				if r, rerr := db.TournamentGetRound(db.Get(), tournID, nextRound); rerr == nil {
-					r.Status = dao.TournamentRoundStatusPlaying
-					_ = db.TournamentSaveRound(db.Get(), r)
-				}
-			}
-		}(postNewIDs, postTournID, postNextRound)
+		if err := tc.scheduleNextRoundStart(postNewIDs, postTournID, postNextRound); err != nil {
+			log.Errorw("tournament: schedule next round start failed", "tournament_id", postTournID, "next_round", postNextRound, "err", err)
+			return err
+		}
 	}
 
 	return nil
+}
+
+func (tc *coordinator) scheduleNextRoundStart(matchIDs []uint, tournID string, nextRound uint32) error {
+	if len(matchIDs) == 0 || tournID == "" || nextRound == 0 {
+		return nil
+	}
+	evt := &nextRoundStartEvent{
+		MatchIDs:    matchIDs,
+		TournamentID: tournID,
+		NextRound:   nextRound,
+	}
+	return timer.ProcessIn(timer.ScopeLobby, nextRoundStartDelay, evt, false)
+}
+
+func (tc *coordinator) handleNextRoundStart(matchIDs []uint, tournID string, nextRound uint32) {
+	anyPlaying := tc.startGamesForNewMatches(matchIDs)
+	if !anyPlaying || tournID == "" {
+		return
+	}
+	if r, err := db.TournamentGetRound(db.Get(), tournID, nextRound); err == nil {
+		r.Status = dao.TournamentRoundStatusPlaying
+		_ = db.TournamentSaveRound(db.Get(), r)
+	}
 }
 
 func (tc *coordinator) filterBotsForRelease(addrs []types.PlayerAddress) []types.PlayerAddress {
