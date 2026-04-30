@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/hibiken/asynq"
+	"github.com/DillLabs/asynq"
 )
 
 var (
