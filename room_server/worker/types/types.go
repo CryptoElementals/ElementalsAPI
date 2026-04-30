@@ -3,33 +3,15 @@ package types
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/google/uuid"
-)
-
-const (
-	WORKER_TYPE_GAME         = 1
-	WORKER_TYPE_PLAYER       = 2
-	WORKER_TYPE_GAME_MANAGER = 3
-	WORKER_TYPE_CHAIN        = 4
-	WORKER_TYPE_QUEUE        = 5
 )
 
 const (
 	GameTypePVP        = 1
 	GameTypeTournament = 2
-)
-
-// well known worker id
-const (
-	GAME_MANAGER_ID   = "game_manager"
-	QUEUE_MANAGER_ID  = "queue_manager"
-	CHAIN_MANAGER_ID  = "chain_manager"
-	WORKER_MANAGER_ID = "worker_manager"
 )
 
 type PlayerAddress struct {
@@ -94,48 +76,6 @@ func (a *PlayerAddress) FromProto(player *proto.PlayerAddress) {
 	a.TemporaryAddress = strings.ToLower(player.TemporaryAddress)
 }
 
-type Event struct {
-	Sender  string
-	EventID string
-	AckChan chan any `json:",omitempty"` // Response channel that returns error or any value
-	Data    any
-}
-
-func NewEvent(sender string, evt any, needAck ...bool) *Event {
-	var ack chan any
-	if len(needAck) > 0 && needAck[0] {
-		ack = make(chan any, 1) // Buffered channel to avoid blocking
-	}
-	eid := uuid.NewString()
-	return &Event{
-		Sender:  sender,
-		EventID: eid,
-		AckChan: ack,
-		Data:    evt,
-	}
-}
-
-// Await waits for the response from AckChan and returns the value or error
-func (e *Event) Await() (any, error) {
-	if e.AckChan == nil {
-		return nil, nil
-	}
-	response := <-e.AckChan
-	if err, ok := response.(error); ok {
-		return nil, err
-	}
-	return response, nil
-}
-
-func AssertInterface[T any](evt *Event) (T, error) {
-	data, ok := evt.Data.(T)
-	if !ok {
-		t := *new(T)
-		return *new(T), fmt.Errorf("event data type not match: %s, received: %s", reflect.TypeOf(t), reflect.TypeOf(evt.Data))
-	}
-	return data, nil
-}
-
 func ToJsonLoggable(obj any) string {
 	res, _ := json.Marshal(obj)
 	return string(res)
@@ -145,4 +85,3 @@ func ToJsonLoggableIndent(obj any) string {
 	res, _ := json.MarshalIndent(obj, "", "  ")
 	return string(res)
 }
-

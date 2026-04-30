@@ -238,15 +238,6 @@ func (r *GameManager) IsPlayerInGame(player types.PlayerAddress) bool {
 	return err == nil
 }
 
-func (r *GameManager) GetActiveGame(player types.PlayerAddress) *proto.GameInfo {
-	gameInfo, err := db.GetActiveGameByPlayer(player.Id, player.TemporaryAddress)
-	if err != nil {
-		log.Errorw("GetActiveGame: failed to load game by player", "player", player.String(), "err", err)
-		return nil
-	}
-	return conversion.DbGameInfoToProtoGameInfo(gameInfo)
-}
-
 func (r *GameManager) GetGamePhase(address types.PlayerAddress) (*proto.GamePhase, error) {
 	gameInfo, err := db.GetActiveGameByPlayer(address.Id, address.TemporaryAddress)
 	if err != nil {

@@ -190,16 +190,7 @@ enum GameStatus {
 enum GameType {
     GAME_TYPE_UNKNOWN = 0;
     PVP = 1;
-}
-
-message GameInfo {
-    int64 game_id = 1;
-    GameType game_type = 2;
-    GameStatus status = 3;
-    int32 initial_hp = 4;
-    repeated PlayerAddress players = 5;
-    repeated Round rounds = 6;
-    optional battle.GameResult result = 7;
+    TOURNAMENT = 2;
 }
 
 message Transaction {
