@@ -48,7 +48,7 @@ func TestCheckGameOverByHP_regulationHPSpreadEndsBeforeOvertime(t *testing.T) {
 		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
 		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
 	}
-	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, r.roundNumber, false, true)
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, false, true)
 	require.True(t, ok)
 	require.Equal(t, gameResultNormal, grType)
 	require.Equal(t, int64(1), winnerID)
@@ -74,7 +74,7 @@ func TestCheckGameOverByHP_overtimeHPSpreadEndsImmediately(t *testing.T) {
 		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
 		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
 	}
-	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, r.roundNumber, false, true)
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, false, true)
 	require.True(t, ok)
 	require.Equal(t, gameResultNormal, grType)
 	require.Equal(t, int64(1), winnerID)

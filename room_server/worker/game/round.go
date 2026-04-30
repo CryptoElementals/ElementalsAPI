@@ -1,8 +1,6 @@
 package game
 
 import (
-	"fmt"
-
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -30,10 +28,6 @@ func (p *gamePlayer) PlayerAddress() types.PlayerAddress {
 	return addr
 }
 
-func (p *gamePlayer) String() string {
-	return fmt.Sprintf("%d_%s", p.player.PlayerId, p.player.TemporaryAddress)
-}
-
 func (g *gamePlayer) getLastSubmittedCard() *dao.TurnSubmittedCard {
 	return g.currentTurnInfo.TurnSubmittedCard
 }
@@ -49,17 +43,7 @@ func (p *gamePlayer) isPlayerReady() bool {
 	if p.currentTurnInfo == nil {
 		return false
 	}
-	return p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_READY ||
-		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED ||
-		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED ||
-		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN ||
-		p.currentTurnInfo.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN
-}
-
-// isSurrendered checks if player has surrendered
-func (p *gamePlayer) isSurrendered() bool {
-	// Check if any turn info indicates surrender
-	return p.status == playerStatusSurrendered
+	return p.currentTurnInfo.PlayerStatus != proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN
 }
 
 // round is runtime state for the current logical round / turn (backed by dao.Game.Turns).

@@ -31,12 +31,12 @@ func NewEphemeralGameForEvent(
 }
 
 type Game struct {
-	ctx                  context.Context
-	gameInfo             *dao.Game
-	currentRound         *round
-	publisher            Publisher
-	txPoolEnqueuer       TxPoolEnqueuer
-	gameResultSettler    GameResultSettler
+	ctx               context.Context
+	gameInfo          *dao.Game
+	currentRound      *round
+	publisher         Publisher
+	txPoolEnqueuer    TxPoolEnqueuer
+	gameResultSettler GameResultSettler
 
 	// mutateTx, when non-nil, is the outer game mutation transaction (pessimistic lock on games row).
 	mutateTx *gorm.DB

@@ -153,20 +153,6 @@ func (g *Game) persistCompletedTurnAndNewTurn(completed, fresh *dao.Turn) error 
 	})
 }
 
-// persistAbortInit sets game to aborted and stores the result tree (no turn row update).
-func (g *Game) persistAbortInit() error {
-	st := proto.GameStatus_GAME_END
-	return g.runGamePersist(func(tx *gorm.DB) error {
-		if err := db.UpdateGameFieldsTx(tx, g.gameInfo.ID, db.GameFieldsUpdate{Status: &st}); err != nil {
-			return err
-		}
-		if g.gameInfo.GameResult != nil {
-			return db.SaveGameResultTreeTx(tx, g.gameInfo)
-		}
-		return nil
-	})
-}
-
 // persistAbortInternal saves current turn, game aborted status, and result tree.
 func (g *Game) persistAbortInternal() error {
 	st := proto.GameStatus_GAME_END

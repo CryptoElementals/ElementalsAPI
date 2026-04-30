@@ -181,7 +181,7 @@ message Round {
 }
 
 enum GameStatus {
-    GAME_INIT = 0;
+    GAME_UNKNOWN = 0;
     GAME_RUNNING = 1;
     GAME_END = 2;
 }
