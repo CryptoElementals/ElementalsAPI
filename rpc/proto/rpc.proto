@@ -258,6 +258,9 @@ message CreateGameAndRunRequest {
   uint32 game_type = 2;
   // Queue PVP: snowflake game_match id after ConfirmMatch; 0 for tournament / no lobby match row.
   int64 completed_match_id = 3;
+  // Temporary transport type; room server converts to *big.Int for chain task encoding.
+  int64 tournament_id = 4;
+  int64 tier_no = 5;
 }
 
 message CreateGameAndRunResponse {

@@ -7,6 +7,8 @@ type RequireGameCreationEvent struct {
 	InitialHP      int64
 	RoundTimeout   int64
 	MaxRoundNumber int64
+	TournamentID   int64
+	TierNo         int64
 	Players        []PlayerAddress
 }
 

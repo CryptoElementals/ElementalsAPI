@@ -38,6 +38,8 @@ type Game struct {
 	publisher         Publisher
 	txPoolEnqueuer    TxPoolEnqueuer
 	gameResultSettler GameResultSettler
+	tournamentID      int64
+	tierNo            int64
 
 	// mutateTx, when non-nil, is the outer game mutation transaction (pessimistic lock on games row).
 	mutateTx *gorm.DB
@@ -130,6 +132,8 @@ func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
 		InitialHP:      ga.InitialHP,
 		RoundTimeout:   ga.CommitmentSubmissionTimeout,
 		MaxRoundNumber: int64(dao.EffectiveMaxRounds(g.gameInfo)),
+		TournamentID:   g.tournamentID,
+		TierNo:         g.tierNo,
 	}
 	g.txPoolEnqueuer.AddCreateRoom(evt)
 	return nil
