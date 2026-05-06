@@ -151,7 +151,7 @@ func (r *round) checkGameOverFromGamePlayersPostExecution() (bool, *dao.GameResu
 
 func (r *round) checkGameOverWithResult(checkRoundTurnLimit bool) (bool, *dao.GameResult) {
 	states := r.buildGameEndStates()
-	ok, grType, winnerID, winnerTemp, finalMul := r.checkGameOver(states, r.roundNumber, checkRoundTurnLimit)
+	ok, grType, winnerID, winnerTemp, finalMul := r.checkGameOver(states, checkRoundTurnLimit)
 	if !ok {
 		return false, nil
 	}
@@ -179,7 +179,7 @@ func (r *round) isGameEndsByRegulationRoundAndTurn() bool {
 	return r.roundNumber >= reg
 }
 
-func (r *round) checkGameOver(states []*gameEndState, round uint32, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
+func (r *round) checkGameOver(states []*gameEndState, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
 	surrenderedCount := 0
 	maxLoserMul := uint32(1)
 
@@ -225,7 +225,7 @@ func (r *round) checkGameOver(states []*gameEndState, round uint32, checkRoundTu
 		}
 	}
 
-	return r.checkGameOverByHP(states, round, false, checkRoundTurnLimit)
+	return r.checkGameOverByHP(states, false, checkRoundTurnLimit)
 }
 
 func rewardSpreadMultiplier(hps []int) uint32 {
@@ -248,7 +248,7 @@ func rewardSpreadMultiplier(hps []int) uint32 {
 	return dao.MultiplierFromHPSpread(int64(d))
 }
 
-func (r *round) checkGameOverByHP(states []*gameEndState, round uint32, hasOffline bool, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
+func (r *round) checkGameOverByHP(states []*gameEndState, hasOffline bool, checkRoundTurnLimit bool) (bool, gameResultType, int64, string, uint32) {
 	hps := make([]int, len(states))
 	for i, state := range states {
 		hps[i] = state.HP

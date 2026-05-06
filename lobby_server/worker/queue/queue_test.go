@@ -16,17 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type testEventHandler struct {
-	evtChan chan *types.Event
-	tt      *testing.T
-}
-
-func (h *testEventHandler) Handle(ctx context.Context, event *types.Event) error {
-	h.evtChan <- event
-	h.tt.Log(*event)
-	return nil
-}
-
 var globalTestQueueService *Service
 
 var testMiniRedis *miniredis.Miniredis

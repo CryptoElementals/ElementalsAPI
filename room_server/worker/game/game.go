@@ -8,6 +8,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
 
@@ -31,12 +32,14 @@ func NewEphemeralGameForEvent(
 }
 
 type Game struct {
-	ctx                  context.Context
-	gameInfo             *dao.Game
-	currentRound         *round
-	publisher            Publisher
-	txPoolEnqueuer       TxPoolEnqueuer
-	gameResultSettler    GameResultSettler
+	ctx               context.Context
+	gameInfo          *dao.Game
+	currentRound      *round
+	publisher         Publisher
+	txPoolEnqueuer    TxPoolEnqueuer
+	gameResultSettler GameResultSettler
+	tournamentID      int64
+	tierNo            int64
 
 	// mutateTx, when non-nil, is the outer game mutation transaction (pessimistic lock on games row).
 	mutateTx *gorm.DB
@@ -60,10 +63,10 @@ func NewGame(
 	pub Publisher,
 	txPoolEnqueuer TxPoolEnqueuer,
 	gameResultSettler GameResultSettler,
-	gameType uint,
+	gameType proto.GameType,
 	gameArgs *dao.GameArgs) *Game {
 	if gameType == 0 {
-		gameType = types.GameTypePVP
+		gameType = proto.GameType_PVP
 	}
 	daoPlayers := make([]*dao.GamePlayerInfo, 0, len(players))
 	gamePlayers := make(map[string]*gamePlayer)
@@ -78,7 +81,7 @@ func NewGame(
 	}
 	gameInfo := &dao.Game{
 		Players:  daoPlayers,
-		Type:     gameType,
+		Type:     uint(gameType),
 		GameArgs: &ga,
 	}
 	game := &Game{
@@ -129,6 +132,8 @@ func (g *Game) sendContractCreation(allPlayers []types.PlayerAddress) error {
 		InitialHP:      ga.InitialHP,
 		RoundTimeout:   ga.CommitmentSubmissionTimeout,
 		MaxRoundNumber: int64(dao.EffectiveMaxRounds(g.gameInfo)),
+		TournamentID:   g.tournamentID,
+		TierNo:         g.tierNo,
 	}
 	g.txPoolEnqueuer.AddCreateRoom(evt)
 	return nil

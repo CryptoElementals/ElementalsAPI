@@ -7,6 +7,7 @@ package testing
 import (
 	reflect "reflect"
 
+	proto "github.com/CryptoElementals/common/rpc/proto"
 	types "github.com/CryptoElementals/common/room_server/worker/types"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -35,7 +36,7 @@ func (m *MockGameCreator) EXPECT() *MockGameCreatorMockRecorder {
 }
 
 // CreateGameAndRun mocks base method.
-func (m *MockGameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
+func (m *MockGameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType proto.GameType, completedMatchID int64) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateGameAndRun", players, gameType, completedMatchID)
 	ret0, _ := ret[0].(int64)

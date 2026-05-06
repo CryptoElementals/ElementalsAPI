@@ -17,7 +17,7 @@ func TestWithGameMutationTx_loadsPreloadedGraph(t *testing.T) {
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,
-		Status:   proto.GameStatus_GAME_INIT,
+		Status:   proto.GameStatus_GAME_UNKNOWN,
 		Players: []*dao.GamePlayerInfo{
 			{PlayerId: 401, TemporaryAddress: "0xm1"},
 			{PlayerId: 402, TemporaryAddress: "0xm2"},
@@ -47,7 +47,7 @@ func TestWithGameMutationTx_concurrentSameGame(t *testing.T) {
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,
-		Status:   proto.GameStatus_GAME_INIT,
+		Status:   proto.GameStatus_GAME_UNKNOWN,
 		Players: []*dao.GamePlayerInfo{
 			{PlayerId: 501, TemporaryAddress: "0xn1"},
 			{PlayerId: 502, TemporaryAddress: "0xn2"},

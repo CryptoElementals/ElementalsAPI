@@ -1,10 +1,14 @@
 package types
 
+import "github.com/CryptoElementals/common/rpc/proto"
+
 type RequireGameCreationEvent struct {
 	GameID         int64
 	InitialHP      int64
 	RoundTimeout   int64
 	MaxRoundNumber int64
+	TournamentID   int64
+	TierNo         int64
 	Players        []PlayerAddress
 }
 
@@ -28,16 +32,16 @@ type GameCreatedEvent struct {
 	MatchID             int64
 }
 
-// GameCompletedEvent is published when a match ends. GameType is GameTypePVP or GameTypeTournament (0 treated as PVP).
+// GameCompletedEvent is published when a match ends.
 type GameCompletedEvent struct {
 	GameID   int64
-	GameType uint
+	GameType proto.GameType
 }
 
 type GameMatchedEvent struct {
 	Players             []PlayerAddress
 	ConfirmationTimeout int64 // Timeout for game match confirmation
-	// GameType is types.GameTypePVP (default) or types.GameTypeTournament; 0 means PVP.
-	GameType uint
+	// GameType defaults to proto.GameType_PVP when unset.
+	GameType proto.GameType
 }
 

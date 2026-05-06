@@ -67,10 +67,6 @@ func (s *Service) Stop() {
 	s.gameManager.Stop()
 }
 
-func (s *Service) GetActiveGameInfo(playerAddress types.PlayerAddress) *proto.GameInfo {
-	return s.gameManager.GetActiveGame(playerAddress)
-}
-
 func (s *Service) LoadBattleInfoFromDB(gameID int64, roundNum uint32) (*proto.RoundResult, *proto.GameResult, error) {
 	gameInfo, err := db.LoadGameByGameID(gameID)
 	if err != nil {
@@ -89,29 +85,6 @@ func (s *Service) LoadBattleInfoFromDB(gameID int64, roundNum uint32) (*proto.Ro
 	return nil, nil, errors.New("round not found")
 }
 
-func (s *Service) IsPlayerInGame(playerAddress *types.PlayerAddress) bool {
-	return s.gameManager.IsPlayerInGame(*playerAddress)
-}
-
-func (s *Service) GetPlayerGameInfo(playerAddress types.PlayerAddress) proto.PlayerStatus {
-	gameInfo := s.gameManager.GetActiveGame(playerAddress)
-	if gameInfo == nil {
-		return proto.PlayerStatus_PLAYER_UNKNOWN
-	}
-	if gameInfo.Status == proto.GameStatus_GAME_INIT {
-		return proto.PlayerStatus_PLAYER_MATCHED
-	}
-	return proto.PlayerStatus_PLAYER_IN_GAME
-}
-
-func (s *Service) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
-	return s.gameManager.CreateGameAndRun(players, gameType, completedMatchID)
-}
-
-func (s *Service) SyncGamePhase(address types.PlayerAddress) error {
-	return s.gameManager.SyncGamePhase(address)
-}
-
 func (s *Service) CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGameAndRunRequest) (*proto.CreateGameAndRunResponse, error) {
 	_ = ctx
 	players := make([]types.PlayerAddress, 0, len(req.GetPlayers()))
@@ -120,15 +93,20 @@ func (s *Service) CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGame
 		a.FromProto(p)
 		players = append(players, a)
 	}
-	gid, err := s.gameManager.CreateGameAndRun(players, uint(req.GetGameType()), req.GetCompletedMatchId())
+	gid, err := s.gameManager.CreateGameAndRun(
+		players,
+		proto.GameType(req.GetGameType()),
+		req.GetCompletedMatchId(),
+		req.GetTournamentId(),
+		req.GetTierNo(),
+	)
 	if err != nil {
 		return nil, err
 	}
 	return &proto.CreateGameAndRunResponse{GameId: gid}, nil
 }
 
-func (s *Service) SyncGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
-	_ = ctx
+func (s *Service) SyncGamePhaseRPC(_ context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error) {
 	var addr types.PlayerAddress
 	addr.FromProto(req)
 	if err := s.gameManager.SyncGamePhase(addr); err != nil {

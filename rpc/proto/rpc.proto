@@ -181,7 +181,7 @@ message Round {
 }
 
 enum GameStatus {
-    GAME_INIT = 0;
+    GAME_UNKNOWN = 0;
     GAME_RUNNING = 1;
     GAME_END = 2;
 }
@@ -190,16 +190,7 @@ enum GameStatus {
 enum GameType {
     GAME_TYPE_UNKNOWN = 0;
     PVP = 1;
-}
-
-message GameInfo {
-    int64 game_id = 1;
-    GameType game_type = 2;
-    GameStatus status = 3;
-    int32 initial_hp = 4;
-    repeated PlayerAddress players = 5;
-    repeated Round rounds = 6;
-    optional battle.GameResult result = 7;
+    TOURNAMENT = 2;
 }
 
 message Transaction {
@@ -267,6 +258,9 @@ message CreateGameAndRunRequest {
   uint32 game_type = 2;
   // Queue PVP: snowflake game_match id after ConfirmMatch; 0 for tournament / no lobby match row.
   int64 completed_match_id = 3;
+  // Temporary transport type; room server converts to *big.Int for chain task encoding.
+  int64 tournament_id = 4;
+  int64 tier_no = 5;
 }
 
 message CreateGameAndRunResponse {

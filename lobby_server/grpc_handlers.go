@@ -100,7 +100,7 @@ func (s *GRPCServices) HandleGameCompletedFromRoom(gameID int64) error {
 	if gameID == 0 {
 		return nil
 	}
-	if err := s.queueSvc.GameResultSettlement(&types.GameCompletedEvent{GameID: gameID, GameType: types.GameTypePVP}); err != nil {
+	if err := s.queueSvc.GameResultSettlement(&types.GameCompletedEvent{GameID: gameID, GameType: proto.GameType_PVP}); err != nil {
 		return err
 	}
 	if s.tournamentSvc == nil {
@@ -120,7 +120,7 @@ func (s *GRPCServices) HandleGameCompletedFromTournamentStream(gameID int64) err
 		return nil
 	}
 	log.Debugw("lobby: handle game completed from tournament stream", "game_id", gameID)
-	return s.tournamentSvc.GameResultSettlementHook(&types.GameCompletedEvent{GameID: gameID, GameType: types.GameTypeTournament})
+	return s.tournamentSvc.GameResultSettlementHook(&types.GameCompletedEvent{GameID: gameID, GameType: proto.GameType_TOURNAMENT})
 }
 
 func (s *GRPCServices) SetTournamentScheduling(ctx context.Context, req *proto.SetTournamentSchedulingRequest) (*proto.TournamentSchedulingStatus, error) {

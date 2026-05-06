@@ -297,6 +297,8 @@ func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) []t
 		totalCardIndex := big.NewInt(3)
 		initialHP := big.NewInt(evt.InitialHP)
 		gameID := new(big.Int).SetInt64(evt.GameID)
+		tournamentID := new(big.Int).SetInt64(evt.TournamentID)
+		tierNo := new(big.Int).SetInt64(evt.TierNo)
 		payload, err := EncodeCreateRoomTask(
 			player1ID,
 			player2ID,
@@ -307,6 +309,8 @@ func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) []t
 			totalCardIndex,
 			initialHP,
 			gameID,
+			tournamentID,
+			tierNo,
 		)
 		if err != nil {
 			log.Errorw("failed to encode create room task", "error", err, "game_id", evt.GameID)

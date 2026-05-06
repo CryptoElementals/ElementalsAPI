@@ -31,13 +31,13 @@ func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameComplete
 		},
 	}
 	gt := evt.GameType
-	if gt == 0 {
-		gt = types.GameTypePVP
+	if gt == proto.GameType_GAME_TYPE_UNKNOWN {
+		gt = proto.GameType_PVP
 	}
 	switch gt {
-	case types.GameTypeTournament:
+	case proto.GameType_TOURNAMENT:
 		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementTournament, out)
-	case types.GameTypePVP:
+	case proto.GameType_PVP:
 		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementPVP, out)
 	default:
 		return fmt.Errorf("unknown game type: %d", evt.GameType)

@@ -74,9 +74,6 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 	ga := g.gameInfo.GameArgs
 	timeoutDuration := int64(0)
 	switch g.gameInfo.Status {
-	case proto.GameStatus_GAME_INIT:
-		// game waitting confirmed for the first round
-		timeoutDuration = ga.ConfirmationTimeout + ga.ConfirmationTimeoutRedundancy
 	case proto.GameStatus_GAME_RUNNING:
 		switch g.currentRound.getTurnStatus() {
 		case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION,
@@ -92,6 +89,9 @@ func (g *Game) timeoutFromCurentRound() time.Duration {
 			timeoutDuration = ga.CardSubmissionTimeout + ga.CardSubmissionTimeoutRedundancy
 		}
 	case proto.GameStatus_GAME_END:
+		return 0
+	default:
+		// Legacy/unknown statuses are ignored by room server.
 		return 0
 	}
 
@@ -152,12 +152,16 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		"turn status", g.currentRound.getTurnStatus(),
 		"turn number", g.currentRound.getCurrentTurnNumber(),
 		"game status", g.gameInfo.Status)
-	// game init only exists at the very beginning, once both players confirms, it turns to game running
-	if g.gameInfo.Status == proto.GameStatus_GAME_INIT {
-		err := g.handleGameAbortInit()
-		if err != nil {
-			log.Errorf("abort game failed, err: %s", err.Error())
-		}
+	if g.gameInfo.Status == proto.GameStatus_GAME_UNKNOWN {
+		log.Infow("ignoring timer event for unknown game status",
+			"game id", g.gameInfo.ID,
+			"status", g.gameInfo.Status)
+		return
+	}
+	if g.gameInfo.Status != proto.GameStatus_GAME_RUNNING {
+		log.Infow("ignoring timer event for unsupported game status",
+			"game id", g.gameInfo.ID,
+			"status", g.gameInfo.Status)
 		return
 	}
 	switch g.currentRound.getTurnStatus() {
