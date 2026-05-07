@@ -198,8 +198,6 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	game := NewGame(r.ctx, players, r.publisher, r.roomChain, r.gameResultSettler, gameType, gameArgs)
 	game.gameInfo.ID = completedMatchID
 	game.gameInfo.QueueMatchID = completedMatchID
-	game.tournamentID = tournamentID
-	game.tierNo = tierNo
 	if gameType == proto.GameType_TOURNAMENT {
 		rr := uint32(game.gameInfo.GameArgs.MaxNormalRounds)
 		if rr == 0 {
@@ -213,6 +211,8 @@ func (r *GameManager) createGameAndNotify(players []types.PlayerAddress, gameTyp
 	}
 	gameID := game.gameInfo.ID
 	if err := r.executeOnGame(gameID, func(g *Game) error {
+		g.tournamentID = tournamentID
+		g.tierNo = tierNo
 		return g.bootstrapFirstTurnAfterQueueConfirmations()
 	}); err != nil {
 		return 0, err
