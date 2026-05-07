@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/hibiken/asynq"
+	"github.com/DillLabs/asynq"
 )
 
 var (
@@ -72,6 +72,7 @@ func registerRecurring(period time.Duration, evt TimerEvent, scope Scope, previo
 		asynq.Queue(queueName(scope)),
 		asynq.MaxRetry(0),
 		asynq.Unique(uniqueTTL),
+		asynq.Retention(24 * time.Hour),
 	}
 	if *previousEntryID != "" {
 		if err := s.Unregister(*previousEntryID); err != nil {

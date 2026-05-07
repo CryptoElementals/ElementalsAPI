@@ -10,7 +10,7 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
-	"github.com/hibiken/asynq"
+	"github.com/DillLabs/asynq"
 )
 
 // Scope selects a dedicated Asynq queue and handler registry so lobby and room
@@ -92,6 +92,15 @@ func InitTimer(scope Scope) {
 		Queues:      map[string]int{q: 1},
 		Logger:      &asynqLogger{},
 		LogLevel:    asynq.WarnLevel,
+		// Speed up retry handoff for crash simulation demos.
+		RetryDelayFunc: func(n int, err error, t *asynq.Task) time.Duration {
+			return 1 * time.Second
+		},
+		DelayedTaskCheckInterval: 1 * time.Second,
+		LeaseDuration:            5 * time.Second,
+		HeartbeatInterval:        1500 * time.Millisecond,
+		RecovererInterval:        1 * time.Second,
+		RecovererCutoff:          2 * time.Second,
 	})
 	servers[scope] = srv
 }
@@ -209,6 +218,7 @@ func ProcessIn(scope Scope, duration time.Duration, evt TimerEvent, unique bool)
 			asynq.ProcessIn(duration),
 			asynq.Queue(queueName(scope)),
 			asynq.MaxRetry(0),
+			asynq.Retention(24 * time.Hour),
 		}
 		if unique {
 			ttl := duration
