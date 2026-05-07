@@ -52,9 +52,11 @@ func New(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
-	eventPub := pubsub.NewStreamPublisher(st)
-	s.gameSvc = game.NewService(ctx, eventPub, cfg.GameArgsID, chainSvc)
-	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, eventPub))
+	roomEventPub := pubsub.NewStreamPublisher(st, pubsub.TopicRoom)
+	settlementPVPPub := pubsub.NewStreamPublisher(st, pubsub.TopicRoomSettlementPVP)
+	settlementTournamentPub := pubsub.NewStreamPublisher(st, pubsub.TopicRoomSettlementTournament)
+	s.gameSvc = game.NewService(ctx, roomEventPub, cfg.GameArgsID, chainSvc)
+	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, settlementPVPPub, settlementTournamentPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	// game.Service implements chain/player/game handlers.
 	rpcServer := rpc.NewRpc(s.gameSvc)

@@ -14,30 +14,35 @@ import (
 // exactly req.Topic (same string used by [StreamSubscriber]).
 type StreamPublisher struct {
 	stream stream.Stream
+	topic  string
 }
 
 // NewStreamPublisher creates a publisher that writes proto.Event messages into
 // the underlying Stream, one stream per topic.
-func NewStreamPublisher(s stream.Stream) *StreamPublisher {
-	return &StreamPublisher{stream: s}
+func NewStreamPublisher(s stream.Stream, topic string) *StreamPublisher {
+	return &StreamPublisher{stream: s, topic: topic}
 }
 
-// Publish serializes the proto.Event and writes it to the stream keyed by req.Topic.
-func (p *StreamPublisher) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
-	if req.Topic == "" {
+func (p *StreamPublisher) Topic() string {
+	return p.topic
+}
+
+// Publish serializes the proto.Event and writes it to the stream keyed by Topic().
+func (p *StreamPublisher) Publish(ctx context.Context, evt *proto.Event) (*proto.PublishResponse, error) {
+	if p.topic == "" {
 		return nil, fmt.Errorf("topic is required")
 	}
-	if req.Event == nil {
+	if evt == nil {
 		return nil, fmt.Errorf("event is required")
 	}
 
-	payload, err := goproto.Marshal(req.Event)
+	payload, err := goproto.Marshal(evt)
 	if err != nil {
 		return nil, fmt.Errorf("marshal event: %w", err)
 	}
 
 	ts := time.Now().UnixMilli()
-	msgID, err := p.stream.Publish(ctx, req.Topic, req.Topic, payload, ts)
+	msgID, err := p.stream.Publish(ctx, p.topic, p.topic, payload, ts)
 	if err != nil {
 		return nil, fmt.Errorf("stream publish: %w", err)
 	}

@@ -12,16 +12,17 @@ import (
 
 // settlementStreamPublisher notifies the lobby via the room Pub/Sub stream ([pubsub.TopicRoomSettlementPVP]) when a game ends.
 type settlementStreamPublisher struct {
-	ctx context.Context
-	pub game.Publisher
+	ctx           context.Context
+	pvpPub        game.Publisher
+	tournamentPub game.Publisher
 }
 
-func newSettlementStreamPublisher(ctx context.Context, pub game.Publisher) *settlementStreamPublisher {
-	return &settlementStreamPublisher{ctx: ctx, pub: pub}
+func newSettlementStreamPublisher(ctx context.Context, pvpPub game.Publisher, tournamentPub game.Publisher) *settlementStreamPublisher {
+	return &settlementStreamPublisher{ctx: ctx, pvpPub: pvpPub, tournamentPub: tournamentPub}
 }
 
 func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameCompletedEvent) error {
-	if p.pub == nil || evt == nil || evt.GameID == 0 {
+	if evt == nil || evt.GameID == 0 {
 		return nil
 	}
 	out := &proto.Event{
@@ -36,9 +37,9 @@ func (p *settlementStreamPublisher) GameResultSettlement(evt *types.GameComplete
 	}
 	switch gt {
 	case proto.GameType_TOURNAMENT:
-		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementTournament, out)
+		return pubsub.Publish(p.ctx, p.tournamentPub, out)
 	case proto.GameType_PVP:
-		return pubsub.Publish(p.ctx, p.pub, pubsub.TopicRoomSettlementPVP, out)
+		return pubsub.Publish(p.ctx, p.pvpPub, out)
 	default:
 		return fmt.Errorf("unknown game type: %d", evt.GameType)
 	}

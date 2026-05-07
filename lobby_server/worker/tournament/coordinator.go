@@ -69,7 +69,8 @@ type GameCreator interface {
 type coordinator struct {
 	ctx                context.Context
 	cancel             context.CancelFunc
-	publisher          pubsub.Publisher
+	lobbyPublisher     pubsub.Publisher
+	rosterPublisher    pubsub.Publisher
 	botStore           *bot_manager.RedisStore
 	joinTournamentFunc func(tournamentID string, req *proto.PlayerAddress) error
 	gameCreator        GameCreator
@@ -87,12 +88,13 @@ type coordinator struct {
 	lastDisabledLogUnixSec    atomic.Int64
 }
 
-func newCoordinator(parent context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFillWindowSeconds uint32, botFillIntervalSeconds uint32, botFreshnessSec int64) *coordinator {
+func newCoordinator(parent context.Context, lobbyPublisher pubsub.Publisher, rosterPublisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFillWindowSeconds uint32, botFillIntervalSeconds uint32, botFreshnessSec int64) *coordinator {
 	ctx, cancel := context.WithCancel(parent)
 	tc := &coordinator{
 		ctx:                ctx,
 		cancel:             cancel,
-		publisher:          publisher,
+		lobbyPublisher:     lobbyPublisher,
+		rosterPublisher:    rosterPublisher,
 		botStore:           botStore,
 		gameCreator:        gameCreator,
 		entryFee:           entryFee,
@@ -695,7 +697,7 @@ func (tc *coordinator) publishTournamentMatchOutcome(o *tournamentMatchOutcomeTo
 			},
 		},
 	}
-	if err := pubsub.Publish(tc.ctx, tc.publisher, pubsub.TopicLobby, evt); err != nil {
+	if err := pubsub.Publish(tc.ctx, tc.lobbyPublisher, evt); err != nil {
 		log.Errorw("tournament: publish match outcome failed", "game_id", o.gameID, "err", err)
 	}
 }
@@ -704,8 +706,8 @@ func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) error 
 	if tc == nil {
 		return fmt.Errorf("nil coordinator")
 	}
-	if tc.publisher == nil {
-		return fmt.Errorf("nil publisher")
+	if tc.rosterPublisher == nil {
+		return fmt.Errorf("nil roster publisher")
 	}
 	if tournamentID == "" {
 		return fmt.Errorf("empty tournament id")
@@ -716,7 +718,7 @@ func (tc *coordinator) publishTournamentRosterUpdate(tournamentID string) error 
 			TournamentRosterUpdate: &proto.TournamentRosterUpdate{TournamentID: tournamentID},
 		},
 	}
-	if err := pubsub.Publish(tc.ctx, tc.publisher, pubsub.TopicTournamentRoster, evt); err != nil {
+	if err := pubsub.Publish(tc.ctx, tc.rosterPublisher, evt); err != nil {
 		log.Errorw("tournament: publish roster update failed", "tournament_id", tournamentID, "err", err)
 		return err
 	}

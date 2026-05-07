@@ -81,7 +81,7 @@ func (q *Queue) publishMatchPending(matchID int64, players []types.PlayerAddress
 			GameMatched: gm,
 		},
 	}
-	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, out); err != nil {
 		log.Errorw("publish match pending failed", "topic", pubsub.TopicLobby, "err", err)
 	}
 }
@@ -102,7 +102,7 @@ func (q *Queue) publishMatchCanceled(matchID int64, players []types.PlayerAddres
 			},
 		},
 	}
-	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, out); err != nil {
 		log.Errorw("publish match canceled failed", "topic", pubsub.TopicLobby, "err", err)
 	}
 }

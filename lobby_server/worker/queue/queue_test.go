@@ -23,9 +23,11 @@ var testMiniRedis *miniredis.Miniredis
 // noopEventPublisher satisfies EventPublisher for tests (non-nil publisher required).
 type noopEventPublisher struct{}
 
-func (noopEventPublisher) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
+func (noopEventPublisher) Publish(_ context.Context, _ *proto.Event) (*proto.PublishResponse, error) {
 	return &proto.PublishResponse{Success: true}, nil
 }
+
+func (noopEventPublisher) Topic() string { return "test-topic" }
 
 func TestMain(m *testing.M) {
 	if err := snowflake.Init(1); err != nil {
