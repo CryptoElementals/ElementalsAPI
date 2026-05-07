@@ -44,9 +44,9 @@ func (e *coordinatorTickEvent) Unmarshal(_ []byte) error {
 func (e *coordinatorTickEvent) String() string { return coordinatorTickEventType }
 
 type nextRoundStartEvent struct {
-	MatchIDs    []uint `json:"match_ids"`
+	MatchIDs     []uint `json:"match_ids"`
 	TournamentID string `json:"tournament_id"`
-	NextRound   uint32 `json:"next_round"`
+	NextRound    uint32 `json:"next_round"`
 }
 
 func (e *nextRoundStartEvent) EventType() string { return nextRoundStartEventType }
@@ -63,7 +63,7 @@ func (e *nextRoundStartEvent) String() string {
 
 // GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
-	CreateGameAndRun(players []types.PlayerAddress, gameType proto.GameType, completedMatchID int64) (int64, error)
+	CreateTournamentGameAndRun(players []types.PlayerAddress, completedMatchID int64, tournamentID int64, tierNo int64) (int64, error)
 }
 
 type coordinator struct {
@@ -609,7 +609,15 @@ func (tc *coordinator) startGamesForNewMatches(matchIDs []uint) bool {
 			{Id: m.Player1ID, TemporaryAddress: m.Player1TempAddress},
 			{Id: m.Player2ID, TemporaryAddress: m.Player2TempAddress},
 		}
-		gameID, gerr := tc.gameCreator.CreateGameAndRun(players, proto.GameType_TOURNAMENT, 0)
+		tournamentIDNum, perr := strconv.ParseInt(strings.TrimSpace(m.TournamentID), 10, 64)
+		if perr != nil {
+			log.Errorw("tournament: invalid tournament id for create game",
+				"match_id", matchID,
+				"tournament_id", m.TournamentID,
+				"err", perr)
+			continue
+		}
+		gameID, gerr := tc.gameCreator.CreateTournamentGameAndRun(players, int64(matchID), tournamentIDNum, int64(m.RoundNo))
 		if gerr != nil {
 			log.Errorw("tournament: create game failed", "match_id", matchID, "err", gerr)
 			continue
@@ -1027,9 +1035,9 @@ func (tc *coordinator) scheduleNextRoundStart(matchIDs []uint, tournID string, n
 		return nil
 	}
 	evt := &nextRoundStartEvent{
-		MatchIDs:    matchIDs,
+		MatchIDs:     matchIDs,
 		TournamentID: tournID,
-		NextRound:   nextRound,
+		NextRound:    nextRound,
 	}
 	return timer.ProcessIn(timer.ScopeLobby, nextRoundStartDelay, evt, false)
 }
