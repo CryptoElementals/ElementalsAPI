@@ -98,9 +98,9 @@ func InitTimer(scope Scope) {
 		},
 		DelayedTaskCheckInterval: 1 * time.Second,
 		LeaseDuration:            5 * time.Second,
-		HeartbeatInterval:        2 * time.Second,
+		HeartbeatInterval:        1500 * time.Millisecond,
 		RecovererInterval:        1 * time.Second,
-		RecovererCutoff:          3 * time.Second,
+		RecovererCutoff:          2 * time.Second,
 	})
 	servers[scope] = srv
 }
