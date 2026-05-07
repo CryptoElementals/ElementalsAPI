@@ -44,7 +44,7 @@ type Queue struct {
 }
 
 type GameCreator interface {
-	CreateGameAndRun(players []types.PlayerAddress, gameType pb.GameType, completedMatchID int64) (int64, error)
+	CreatePVPGameAndRun(players []types.PlayerAddress, completedMatchID int64) (int64, error)
 }
 
 func NewQueue(

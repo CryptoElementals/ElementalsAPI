@@ -85,7 +85,7 @@ func TestGameMatched(t *testing.T) {
 	testMiniRedis.FlushAll()
 	ctrl := gomock.NewController(t)
 	gameCreator := tt.NewMockGameCreator(ctrl)
-	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
+	gameCreator.EXPECT().CreatePVPGameAndRun(gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
 	var err error
 	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, nil, gameCreator, 0, 60, 0, 0, 0, 0, "")
 	require.NoError(t, err)
