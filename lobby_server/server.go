@@ -62,7 +62,8 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
-	eventPub := pubsub.NewStreamPublisher(st)
+	lobbyEventPub := pubsub.NewStreamPublisher(st, pubsub.TopicLobby)
+	tournamentRosterPub := pubsub.NewStreamPublisher(st, pubsub.TopicTournamentRoster)
 	s.eventStream = st
 
 	botStore, err := bot_manager.NewRedisStore("")
@@ -74,7 +75,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 		tokenTh = int64(cfg.TournamentCfg.EntryFee)
 	}
 	botStore.SetTokenInsufficientThreshold(tokenTh)
-	queueSvc, err := queue.NewService(ctx, eventPub, botStore, gc,
+	queueSvc, err := queue.NewService(ctx, lobbyEventPub, botStore, gc,
 		cfg.MinTokenToJoinQueue,
 		argsTemplate.ConfirmationTimeout,
 		argsTemplate.GameContinueTimeout,
@@ -88,7 +89,7 @@ func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	}
 	s.queueSvc = queueSvc
 
-	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, eventPub, botStore, gc,
+	s.tournamentSvc = tournament.NewTournamentQueueService(ctx, lobbyEventPub, tournamentRosterPub, botStore, gc,
 		cfg.TournamentCfg.EntryFee,
 		cfg.TournamentCfg.MinPlayersRequired,
 		cfg.TournamentCfg.IntervalSeconds,

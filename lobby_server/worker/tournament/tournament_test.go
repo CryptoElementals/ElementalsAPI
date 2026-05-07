@@ -19,9 +19,11 @@ func (n *noopGameCreator) CreateGameAndRun(_ []types.PlayerAddress, _ proto.Game
 	return 1, nil
 }
 
-func (noopPublisher) Publish(_ context.Context, _ *proto.PublishRequest) (*proto.PublishResponse, error) {
+func (noopPublisher) Publish(_ context.Context, _ *proto.Event) (*proto.PublishResponse, error) {
 	return &proto.PublishResponse{Success: true}, nil
 }
+
+func (noopPublisher) Topic() string { return "test-topic" }
 
 func setupSQLite(t *testing.T) {
 	t.Helper()
@@ -61,7 +63,7 @@ func TestHandleJoinTournamentEvent_Success(t *testing.T) {
 	seedProfileAndToken(t, 5001, "p5001", 5000)
 	seedTournament(t, "tour-success", time.Now().Add(10*time.Minute))
 
-	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
+	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
 	req := &proto.PlayerAddress{Id: 5001, TemporaryAddress: " 0xABCDEF "}
 	require.NoError(t, svc.HandleJoinTournamentEvent("tour-success", req))
 
@@ -87,7 +89,7 @@ func TestHandleJoinTournamentEvent_DuplicateJoinRejected(t *testing.T) {
 	seedProfileAndToken(t, 5002, "p5002", 5000)
 	seedTournament(t, "tour-dup", time.Now().Add(10*time.Minute))
 
-	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
+	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
 	req := &proto.PlayerAddress{Id: 5002, TemporaryAddress: "0xdup"}
 	require.NoError(t, svc.HandleJoinTournamentEvent("tour-dup", req))
 
@@ -107,7 +109,7 @@ func TestHandleJoinTournamentEvent_RejectWhenDeadlineExceeded(t *testing.T) {
 	seedProfileAndToken(t, 5003, "p5003", 5000)
 	seedTournament(t, "tour-expired", time.Now().Add(-1*time.Minute))
 
-	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
+	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
 	err := svc.HandleJoinTournamentEvent("tour-expired", &proto.PlayerAddress{Id: 5003, TemporaryAddress: "0xlate"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "registration deadline has passed")
@@ -124,7 +126,7 @@ func TestHandleJoinTournamentEvent_RejectWhenTokenNotEnough(t *testing.T) {
 	seedProfileAndToken(t, 5004, "p5004", 500)
 	seedTournament(t, "tour-no-token", time.Now().Add(10*time.Minute))
 
-	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
+	svc := NewTournamentQueueService(context.Background(), noopPublisher{}, noopPublisher{}, nil, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
 	err := svc.HandleJoinTournamentEvent("tour-no-token", &proto.PlayerAddress{Id: 5004, TemporaryAddress: "0xpoor"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user token amount is not enough")

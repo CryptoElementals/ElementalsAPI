@@ -44,7 +44,7 @@ type Queue struct {
 }
 
 type GameCreator interface {
-	CreateGameAndRun(players []types.PlayerAddress, gameType pb.GameType, completedMatchID int64) (int64, error)
+	CreatePVPGameAndRun(players []types.PlayerAddress, completedMatchID int64) (int64, error)
 }
 
 func NewQueue(
@@ -327,7 +327,7 @@ func (q *Queue) publishGameSettlementResult(gameID int64, gr *dao.GameResult) {
 			},
 		},
 	}
-	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, out); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, out); err != nil {
 		log.Errorw("publish game settlement result failed", "topic", pubsub.TopicLobby, "game_id", gameID, "err", err)
 	}
 }
@@ -348,7 +348,7 @@ func (q *Queue) publishNotMatchableForHumans(gr *dao.GameResult, lastGameID int6
 			NotMatchable: &pb.NotMatchable{LastGameId: lastGameID},
 		},
 	}
-	if err := pubsub.Publish(q.ctx, q.publisher, pubsub.TopicLobby, evt); err != nil {
+	if err := pubsub.Publish(q.ctx, q.publisher, evt); err != nil {
 		log.Errorw("publish not matchable failed", "topic", pubsub.TopicLobby, "last_game_id", lastGameID, "err", err)
 	}
 }

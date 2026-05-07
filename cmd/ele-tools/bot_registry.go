@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -264,6 +265,64 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 	},
 }
 
+var botRegistryCleanLastSeenGreaterThanCmd = &cobra.Command{
+	Use:   "clean-last-seen-gt <last_seen_ms>",
+	Short: "Remove all bots with last_seen_ms greater than the provided value",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := initBotRegistryRuntime(); err != nil {
+			fmt.Printf("Failed to initialize bot registry tools: %v\n", err)
+			os.Exit(1)
+		}
+
+		thresholdMs, err := strconv.ParseInt(strings.TrimSpace(args[0]), 10, 64)
+		if err != nil {
+			fmt.Printf("Invalid last_seen_ms %q: %v\n", args[0], err)
+			os.Exit(1)
+		}
+
+		keys := botRegistryKeys(botRegistryNamespace)
+		totalRemoved := 0
+
+		for {
+			members, err := redis.ZRangeByScore(keys.lastSeenKey, fmt.Sprintf("(%d", thresholdMs), "+inf", 0, 1000)
+			if err != nil {
+				fmt.Printf("Failed to query last_seen zset: %v\n", err)
+				os.Exit(1)
+			}
+			if len(members) == 0 {
+				break
+			}
+
+			memberArgs := make([]interface{}, 0, len(members))
+			for _, m := range members {
+				memberArgs = append(memberArgs, m)
+			}
+
+			if _, err := redis.SRem(keys.allKey, memberArgs...); err != nil {
+				fmt.Printf("Failed to remove from all set: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.SRem(keys.idleKey, memberArgs...); err != nil {
+				fmt.Printf("Failed to remove from idle set: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.SRem(keys.inGameKey, memberArgs...); err != nil {
+				fmt.Printf("Failed to remove from in-game set: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.ZRem(keys.lastSeenKey, memberArgs...); err != nil {
+				fmt.Printf("Failed to remove from last_seen zset: %v\n", err)
+				os.Exit(1)
+			}
+
+			totalRemoved += len(members)
+		}
+
+		fmt.Printf("Removed %d bots with last_seen_ms > %d\n", totalRemoved, thresholdMs)
+	},
+}
+
 type botRegistryRedisKeys struct {
 	allKey      string
 	idleKey     string
@@ -332,6 +391,7 @@ func init() {
 	botRegistryCmd.AddCommand(botRegistryAddCmd)
 	botRegistryCmd.AddCommand(botRegistryRemoveCmd)
 	botRegistryCmd.AddCommand(botRegistryUpdateStatusCmd)
+	botRegistryCmd.AddCommand(botRegistryCleanLastSeenGreaterThanCmd)
 
 	botRegistryInspectCmd.Flags().Int64("freshness-sec", 20, "freshness threshold in seconds")
 	botRegistryInspectCmd.PreRun = func(cmd *cobra.Command, args []string) {
