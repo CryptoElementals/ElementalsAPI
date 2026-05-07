@@ -49,3 +49,18 @@ func (mr *MockGameCreatorMockRecorder) CreateGameAndRun(players, gameType, compl
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGameAndRun", reflect.TypeOf((*MockGameCreator)(nil).CreateGameAndRun), players, gameType, completedMatchID)
 }
+
+// CreatePVPGameAndRun mocks base method.
+func (m *MockGameCreator) CreatePVPGameAndRun(players []types.PlayerAddress, completedMatchID int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePVPGameAndRun", players, completedMatchID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePVPGameAndRun indicates an expected call of CreatePVPGameAndRun.
+func (mr *MockGameCreatorMockRecorder) CreatePVPGameAndRun(players, completedMatchID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePVPGameAndRun", reflect.TypeOf((*MockGameCreator)(nil).CreatePVPGameAndRun), players, completedMatchID)
+}

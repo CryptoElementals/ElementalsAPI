@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/proto"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/room_server/worker/types"
@@ -20,9 +21,11 @@ func (noopTxPool) ClearGameInfo(_ int64)                                      {}
 
 type nopPublisher struct{}
 
-func (nopPublisher) Publish(_ context.Context, _ *proto.PublishRequest) (*proto.PublishResponse, error) {
+func (nopPublisher) Publish(_ context.Context, _ *proto.Event) (*proto.PublishResponse, error) {
 	return &proto.PublishResponse{Success: true}, nil
 }
+
+func (nopPublisher) Topic() string { return pubsub.TopicRoom }
 
 func newTimeoutTestGame() *Game {
 	gameArgs := &dao.GameArgs{

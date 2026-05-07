@@ -48,22 +48,6 @@ func (c *PubSubClient) Close() error {
 	return nil
 }
 
-func (c *PubSubClient) Publish(topic string, event *pb.Event, metadata map[string]string) error {
-	if c.stream == nil {
-		return fmt.Errorf("stream is nil")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	pub := pubsub.NewStreamPublisher(c.stream)
-	req := &pb.PublishRequest{Topic: topic, Event: event, Metadata: metadata}
-	resp, err := pub.Publish(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to publish: %w", err)
-	}
-	log.Debugw("pubsub published", "message_id", resp.MessageId, "topic", topic, "subscriber_count", resp.SubscriberCount)
-	return nil
-}
-
 // Subscribe listens on TopicRoom and TopicLobby via Redis streams, filtering by Receivers.
 func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, evtChan chan *pb.Event, errChan chan error) error {
 	if c.eventBus == nil {

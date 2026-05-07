@@ -25,10 +25,10 @@ type TournamentQueueService struct {
 }
 
 // NewTournamentQueueService constructs the tournament worker. Call Start after DB is ready.
-func NewTournamentQueueService(ctx context.Context, publisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFillWindowSeconds uint32, botFillIntervalSeconds uint32, botFreshnessSec int64) *TournamentQueueService {
+func NewTournamentQueueService(ctx context.Context, lobbyPublisher pubsub.Publisher, rosterPublisher pubsub.Publisher, botStore *bot_manager.RedisStore, gameCreator GameCreator, entryFee int32, minPlayersRequired uint32, intervalSeconds uint32, beforeStartSeconds uint32, botFillWindowSeconds uint32, botFillIntervalSeconds uint32, botFreshnessSec int64) *TournamentQueueService {
 	svc := &TournamentQueueService{
 		ctx:   ctx,
-		coord: newCoordinator(ctx, publisher, botStore, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds, botFillWindowSeconds, botFillIntervalSeconds, botFreshnessSec),
+		coord: newCoordinator(ctx, lobbyPublisher, rosterPublisher, botStore, gameCreator, entryFee, minPlayersRequired, intervalSeconds, beforeStartSeconds, botFillWindowSeconds, botFillIntervalSeconds, botFreshnessSec),
 	}
 	svc.coord.joinTournamentFunc = func(tournamentID string, req *proto.PlayerAddress) error {
 		return svc.handleJoinTournamentEvent(tournamentID, req, true)

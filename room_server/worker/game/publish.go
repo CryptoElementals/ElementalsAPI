@@ -42,13 +42,13 @@ func (g *Game) publishPartialReadyToOtherPlayers(readyAddress types.PlayerAddres
 }
 
 func (g *Game) publishProto(evt *proto.Event) {
-	if err := pubsub.Publish(g.ctx, g.publisher, pubsub.TopicRoom, evt); err != nil {
+	if err := pubsub.Publish(g.ctx, g.publisher, evt); err != nil {
 		log.Errorw("publish failed", "topic", pubsub.TopicRoom, "eventType", evt.Type.String(), "err", err)
 	}
 }
 
 func (r *GameManager) syncGamePhasePublish(address types.PlayerAddress, gamePhase *proto.GamePhase) error {
-	return pubsub.Publish(r.ctx, r.publisher, pubsub.TopicRoom, &proto.Event{
+	return pubsub.Publish(r.ctx, r.publisher, &proto.Event{
 		Type:      proto.EventType_TYPE_GAME_PHASE_SYNC,
 		Receivers: []*proto.PlayerAddress{address.ToProto()},
 		Event: &proto.Event_GamePhase{

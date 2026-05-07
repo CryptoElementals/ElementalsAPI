@@ -23,9 +23,11 @@ var testMiniRedis *miniredis.Miniredis
 // noopEventPublisher satisfies EventPublisher for tests (non-nil publisher required).
 type noopEventPublisher struct{}
 
-func (noopEventPublisher) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
+func (noopEventPublisher) Publish(_ context.Context, _ *proto.Event) (*proto.PublishResponse, error) {
 	return &proto.PublishResponse{Success: true}, nil
 }
+
+func (noopEventPublisher) Topic() string { return "test-topic" }
 
 func TestMain(m *testing.M) {
 	if err := snowflake.Init(1); err != nil {
@@ -83,7 +85,7 @@ func TestGameMatched(t *testing.T) {
 	testMiniRedis.FlushAll()
 	ctrl := gomock.NewController(t)
 	gameCreator := tt.NewMockGameCreator(ctrl)
-	gameCreator.EXPECT().CreateGameAndRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
+	gameCreator.EXPECT().CreatePVPGameAndRun(gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(1)
 	var err error
 	globalTestQueueService, err = NewService(context.Background(), noopEventPublisher{}, nil, gameCreator, 0, 60, 0, 0, 0, 0, "")
 	require.NoError(t, err)
