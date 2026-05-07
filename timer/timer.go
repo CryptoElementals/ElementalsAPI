@@ -218,6 +218,7 @@ func ProcessIn(scope Scope, duration time.Duration, evt TimerEvent, unique bool)
 			asynq.ProcessIn(duration),
 			asynq.Queue(queueName(scope)),
 			asynq.MaxRetry(0),
+			asynq.Retention(24 * time.Hour),
 		}
 		if unique {
 			ttl := duration
