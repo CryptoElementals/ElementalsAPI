@@ -19,6 +19,7 @@ var (
 	chainTxPoolCleanupDays    int
 	chainTxPoolCleanupExecute bool
 	chainTxPoolCleanupBatch   int
+	chainTxPoolCleanupSleep   time.Duration
 )
 
 var chainTxPoolCleanupCmd = &cobra.Command{
@@ -75,30 +76,38 @@ By default this is a dry-run that only prints the count; pass --execute to actua
 			return
 		}
 
-		type idRow struct{ ID uint }
+		type batchBoundary struct {
+			LastID uint
+		}
 		var deleted int64
 		for {
-			var rows []idRow
-			err := q.Select("id").Order("id").Limit(chainTxPoolCleanupBatch).Find(&rows).Error
+			batchScope := q.Select("id").Order("id").Limit(chainTxPoolCleanupBatch)
+			var boundary batchBoundary
+			err := db.Get().
+				Table("(?) AS batch_ids", batchScope).
+				Select("MAX(id) AS last_id").
+				Scan(&boundary).Error
 			if err != nil {
-				fmt.Printf("Failed to load batch ids: %v\n", err)
+				fmt.Printf("Failed to resolve batch boundary id: %v\n", err)
 				os.Exit(1)
 			}
-			if len(rows) == 0 {
+			if boundary.LastID == 0 {
 				break
 			}
 
-			ids := make([]uint, 0, len(rows))
-			for i := range rows {
-				ids = append(ids, rows[i].ID)
-			}
-
-			res := db.Get().Unscoped().Where("id IN ?", ids).Delete(&dao.ChainTxPoolItem{})
+			res := db.Get().Unscoped().
+				Where("deleted_at IS NOT NULL").
+				Where("deleted_at < ?", before).
+				Where("id <= ?", boundary.LastID).
+				Delete(&dao.ChainTxPoolItem{})
 			if res.Error != nil {
 				fmt.Printf("Failed to delete batch: %v\n", res.Error)
 				os.Exit(1)
 			}
 			deleted += res.RowsAffected
+			if chainTxPoolCleanupSleep > 0 {
+				time.Sleep(chainTxPoolCleanupSleep)
+			}
 		}
 
 		fmt.Printf("Deleted %d chain_tx_pool_items row(s)\n", deleted)
@@ -115,6 +124,7 @@ func init() {
 
 	chainTxPoolCleanupCmd.Flags().BoolVar(&chainTxPoolCleanupExecute, "execute", false, "actually delete rows (default: dry-run)")
 	chainTxPoolCleanupCmd.Flags().IntVar(&chainTxPoolCleanupBatch, "batch", 5000, "batch size for deletes")
+	chainTxPoolCleanupCmd.Flags().DurationVar(&chainTxPoolCleanupSleep, "sleep-interval", 0, "sleep duration between delete batches (e.g. 200ms, 1s)")
 }
 
 func parseFlexibleTime(s string) (time.Time, error) {
