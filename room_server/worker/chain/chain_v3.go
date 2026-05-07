@@ -116,13 +116,15 @@ func mustNewType(t string) abi.Type {
 func EncodeCreateRoomTask(
 	player1ID, player2ID *big.Int,
 	player1TemporaryAddress, player2TemporaryAddress common.Address,
-	roundTimeout, totalRound, totalCardIndex, initialHP, gameID *big.Int,
+	roundTimeout, totalRound, totalCardIndex, initialHP, gameID, tournamentID, tierNo *big.Int,
 ) ([]byte, error) {
 	args := abi.Arguments{
 		{Type: mustNewType("uint256")},
 		{Type: mustNewType("uint256")},
 		{Type: mustNewType("address")},
 		{Type: mustNewType("address")},
+		{Type: mustNewType("uint256")},
+		{Type: mustNewType("uint256")},
 		{Type: mustNewType("uint256")},
 		{Type: mustNewType("uint256")},
 		{Type: mustNewType("uint256")},
@@ -139,6 +141,8 @@ func EncodeCreateRoomTask(
 		totalCardIndex,
 		initialHP,
 		gameID,
+		tournamentID,
+		tierNo,
 	)
 }
 

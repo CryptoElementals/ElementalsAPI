@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRound_isExtraRound(t *testing.T) {
 	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
-	pvp := &round{game: &dao.Game{GameArgs: ga, Type: types.GameTypePVP}, roundNumber: 4}
+	pvp := &round{game: &dao.Game{GameArgs: ga, Type: uint(proto.GameType_PVP)}, roundNumber: 4}
 	require.False(t, pvp.isExtraRound())
 
 	tourReg := &round{game: &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}, roundNumber: 3}
@@ -22,7 +22,7 @@ func TestRound_isExtraRound(t *testing.T) {
 
 func TestRound_isNextRoundExtra(t *testing.T) {
 	ga := &dao.GameArgs{MaxNormalRounds: 3, MaxTurnsPerNormalRound: 3}
-	pvp := &round{game: &dao.Game{GameArgs: ga, Type: types.GameTypePVP}, roundNumber: 2}
+	pvp := &round{game: &dao.Game{GameArgs: ga, Type: uint(proto.GameType_PVP)}, roundNumber: 2}
 	require.False(t, pvp.isNextRoundExtra())
 
 	gTour := &dao.Game{GameArgs: ga, Type: dao.GameTypeTournament, RegulationRounds: 3, OvertimeRoundsCap: 3}
@@ -48,7 +48,7 @@ func TestCheckGameOverByHP_regulationHPSpreadEndsBeforeOvertime(t *testing.T) {
 		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
 		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
 	}
-	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, r.roundNumber, false, true)
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, false, true)
 	require.True(t, ok)
 	require.Equal(t, gameResultNormal, grType)
 	require.Equal(t, int64(1), winnerID)
@@ -74,7 +74,7 @@ func TestCheckGameOverByHP_overtimeHPSpreadEndsImmediately(t *testing.T) {
 		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
 		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
 	}
-	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, r.roundNumber, false, true)
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, false, true)
 	require.True(t, ok)
 	require.Equal(t, gameResultNormal, grType)
 	require.Equal(t, int64(1), winnerID)

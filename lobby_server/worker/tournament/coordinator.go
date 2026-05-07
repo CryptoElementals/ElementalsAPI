@@ -63,7 +63,7 @@ func (e *nextRoundStartEvent) String() string {
 
 // GameCreator starts tournament matches via RoomWorkerService.CreateGameAndRun.
 type GameCreator interface {
-	CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error)
+	CreateGameAndRun(players []types.PlayerAddress, gameType proto.GameType, completedMatchID int64) (int64, error)
 }
 
 type coordinator struct {
@@ -607,7 +607,7 @@ func (tc *coordinator) startGamesForNewMatches(matchIDs []uint) bool {
 			{Id: m.Player1ID, TemporaryAddress: m.Player1TempAddress},
 			{Id: m.Player2ID, TemporaryAddress: m.Player2TempAddress},
 		}
-		gameID, gerr := tc.gameCreator.CreateGameAndRun(players, types.GameTypeTournament, 0)
+		gameID, gerr := tc.gameCreator.CreateGameAndRun(players, proto.GameType_TOURNAMENT, 0)
 		if gerr != nil {
 			log.Errorw("tournament: create game failed", "match_id", matchID, "err", gerr)
 			continue

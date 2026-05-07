@@ -31,7 +31,7 @@ var (
 
 // RoomV3ContractMetaData contains all meta data concerning the RoomV3Contract contract.
 var RoomV3ContractMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_player1Id\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_player2Id\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalCardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"RoomCreated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"startANewTurn\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"playerId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"card\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"salt\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCard\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"playerId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"cardHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCardHash\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newManager\",\"type\":\"address\"}],\"name\":\"addManager\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint8[]\",\"name\":\"taskIndexes\",\"type\":\"uint8[]\"},{\"internalType\":\"bytes[]\",\"name\":\"tasks\",\"type\":\"bytes[]\"}],\"name\":\"batchSubmitTasks\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameIdIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_cardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_playerIndex\",\"type\":\"uint256\"}],\"name\":\"getCard\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_cardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_playerIndex\",\"type\":\"uint256\"}],\"name\":\"getCardHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"managerIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"roomData\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"currentRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"currentCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"creator\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"player1Id\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"player2Id\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"player1Temp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"player2Temp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"launchTime\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"initialHP\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_player1Id\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_player2Id\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player1_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"_player2_tmp\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalRound\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_totalCardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_initialHP\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"}],\"name\":\"RoomCreated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"startANewTurn\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"playerId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"card\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"salt\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCard\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"playerId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"player\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"cardHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"round\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"cardIndex\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gameId\",\"type\":\"uint256\"}],\"name\":\"submitCardHash\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newManager\",\"type\":\"address\"}],\"name\":\"addManager\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint8[]\",\"name\":\"taskIndexes\",\"type\":\"uint8[]\"},{\"internalType\":\"bytes[]\",\"name\":\"tasks\",\"type\":\"bytes[]\"}],\"name\":\"batchSubmitTasks\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"cardHashes\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"cardsAndSalts\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameId\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"gameIdIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_cardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_playerIndex\",\"type\":\"uint256\"}],\"name\":\"getCard\",\"outputs\":[{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_gameId\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_round\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_cardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"_playerIndex\",\"type\":\"uint256\"}],\"name\":\"getCardHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"managerIndex\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"roomData\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"currentRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"currentCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalRound\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCardIndex\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"creator\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"player1Id\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"player2Id\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"player1Temp\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"player2Temp\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"launchTime\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"roundTimeout\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"initialHP\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"tournament\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"tierNo\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // RoomV3ContractABI is the input ABI used to generate the binding from.
@@ -178,6 +178,68 @@ func (_RoomV3Contract *RoomV3ContractTransactorRaw) Transfer(opts *bind.Transact
 // Transact invokes the (paid) contract method with params as input values.
 func (_RoomV3Contract *RoomV3ContractTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
 	return _RoomV3Contract.Contract.contract.Transact(opts, method, params...)
+}
+
+// CardHashes is a free data retrieval call binding the contract method 0x872aebe6.
+//
+// Solidity: function cardHashes(uint256 , uint256 , uint256 , uint256 ) view returns(bytes32)
+func (_RoomV3Contract *RoomV3ContractCaller) CardHashes(opts *bind.CallOpts, arg0 *big.Int, arg1 *big.Int, arg2 *big.Int, arg3 *big.Int) ([32]byte, error) {
+	var out []interface{}
+	err := _RoomV3Contract.contract.Call(opts, &out, "cardHashes", arg0, arg1, arg2, arg3)
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// CardHashes is a free data retrieval call binding the contract method 0x872aebe6.
+//
+// Solidity: function cardHashes(uint256 , uint256 , uint256 , uint256 ) view returns(bytes32)
+func (_RoomV3Contract *RoomV3ContractSession) CardHashes(arg0 *big.Int, arg1 *big.Int, arg2 *big.Int, arg3 *big.Int) ([32]byte, error) {
+	return _RoomV3Contract.Contract.CardHashes(&_RoomV3Contract.CallOpts, arg0, arg1, arg2, arg3)
+}
+
+// CardHashes is a free data retrieval call binding the contract method 0x872aebe6.
+//
+// Solidity: function cardHashes(uint256 , uint256 , uint256 , uint256 ) view returns(bytes32)
+func (_RoomV3Contract *RoomV3ContractCallerSession) CardHashes(arg0 *big.Int, arg1 *big.Int, arg2 *big.Int, arg3 *big.Int) ([32]byte, error) {
+	return _RoomV3Contract.Contract.CardHashes(&_RoomV3Contract.CallOpts, arg0, arg1, arg2, arg3)
+}
+
+// CardsAndSalts is a free data retrieval call binding the contract method 0x27f5118f.
+//
+// Solidity: function cardsAndSalts(uint256 , uint256 , uint256 , uint256 ) view returns(bytes)
+func (_RoomV3Contract *RoomV3ContractCaller) CardsAndSalts(opts *bind.CallOpts, arg0 *big.Int, arg1 *big.Int, arg2 *big.Int, arg3 *big.Int) ([]byte, error) {
+	var out []interface{}
+	err := _RoomV3Contract.contract.Call(opts, &out, "cardsAndSalts", arg0, arg1, arg2, arg3)
+
+	if err != nil {
+		return *new([]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([]byte)).(*[]byte)
+
+	return out0, err
+
+}
+
+// CardsAndSalts is a free data retrieval call binding the contract method 0x27f5118f.
+//
+// Solidity: function cardsAndSalts(uint256 , uint256 , uint256 , uint256 ) view returns(bytes)
+func (_RoomV3Contract *RoomV3ContractSession) CardsAndSalts(arg0 *big.Int, arg1 *big.Int, arg2 *big.Int, arg3 *big.Int) ([]byte, error) {
+	return _RoomV3Contract.Contract.CardsAndSalts(&_RoomV3Contract.CallOpts, arg0, arg1, arg2, arg3)
+}
+
+// CardsAndSalts is a free data retrieval call binding the contract method 0x27f5118f.
+//
+// Solidity: function cardsAndSalts(uint256 , uint256 , uint256 , uint256 ) view returns(bytes)
+func (_RoomV3Contract *RoomV3ContractCallerSession) CardsAndSalts(arg0 *big.Int, arg1 *big.Int, arg2 *big.Int, arg3 *big.Int) ([]byte, error) {
+	return _RoomV3Contract.Contract.CardsAndSalts(&_RoomV3Contract.CallOpts, arg0, arg1, arg2, arg3)
 }
 
 // GameId is a free data retrieval call binding the contract method 0x168aa23a.
@@ -337,7 +399,7 @@ func (_RoomV3Contract *RoomV3ContractCallerSession) ManagerIndex(arg0 common.Add
 
 // RoomData is a free data retrieval call binding the contract method 0xe193dff8.
 //
-// Solidity: function roomData(uint256 ) view returns(uint256 currentRound, uint256 currentCardIndex, uint256 totalRound, uint256 totalCardIndex, address creator, uint256 player1Id, uint256 player2Id, address player1Temp, address player2Temp, uint256 launchTime, uint256 roundTimeout, uint256 initialHP)
+// Solidity: function roomData(uint256 ) view returns(uint256 currentRound, uint256 currentCardIndex, uint256 totalRound, uint256 totalCardIndex, address creator, uint256 player1Id, uint256 player2Id, address player1Temp, address player2Temp, uint256 launchTime, uint256 roundTimeout, uint256 initialHP, uint256 tournament, uint256 tierNo)
 func (_RoomV3Contract *RoomV3ContractCaller) RoomData(opts *bind.CallOpts, arg0 *big.Int) (struct {
 	CurrentRound     *big.Int
 	CurrentCardIndex *big.Int
@@ -351,6 +413,8 @@ func (_RoomV3Contract *RoomV3ContractCaller) RoomData(opts *bind.CallOpts, arg0 
 	LaunchTime       *big.Int
 	RoundTimeout     *big.Int
 	InitialHP        *big.Int
+	Tournament       *big.Int
+	TierNo           *big.Int
 }, error) {
 	var out []interface{}
 	err := _RoomV3Contract.contract.Call(opts, &out, "roomData", arg0)
@@ -368,6 +432,8 @@ func (_RoomV3Contract *RoomV3ContractCaller) RoomData(opts *bind.CallOpts, arg0 
 		LaunchTime       *big.Int
 		RoundTimeout     *big.Int
 		InitialHP        *big.Int
+		Tournament       *big.Int
+		TierNo           *big.Int
 	})
 	if err != nil {
 		return *outstruct, err
@@ -385,6 +451,8 @@ func (_RoomV3Contract *RoomV3ContractCaller) RoomData(opts *bind.CallOpts, arg0 
 	outstruct.LaunchTime = *abi.ConvertType(out[9], new(*big.Int)).(**big.Int)
 	outstruct.RoundTimeout = *abi.ConvertType(out[10], new(*big.Int)).(**big.Int)
 	outstruct.InitialHP = *abi.ConvertType(out[11], new(*big.Int)).(**big.Int)
+	outstruct.Tournament = *abi.ConvertType(out[12], new(*big.Int)).(**big.Int)
+	outstruct.TierNo = *abi.ConvertType(out[13], new(*big.Int)).(**big.Int)
 
 	return *outstruct, err
 
@@ -392,7 +460,7 @@ func (_RoomV3Contract *RoomV3ContractCaller) RoomData(opts *bind.CallOpts, arg0 
 
 // RoomData is a free data retrieval call binding the contract method 0xe193dff8.
 //
-// Solidity: function roomData(uint256 ) view returns(uint256 currentRound, uint256 currentCardIndex, uint256 totalRound, uint256 totalCardIndex, address creator, uint256 player1Id, uint256 player2Id, address player1Temp, address player2Temp, uint256 launchTime, uint256 roundTimeout, uint256 initialHP)
+// Solidity: function roomData(uint256 ) view returns(uint256 currentRound, uint256 currentCardIndex, uint256 totalRound, uint256 totalCardIndex, address creator, uint256 player1Id, uint256 player2Id, address player1Temp, address player2Temp, uint256 launchTime, uint256 roundTimeout, uint256 initialHP, uint256 tournament, uint256 tierNo)
 func (_RoomV3Contract *RoomV3ContractSession) RoomData(arg0 *big.Int) (struct {
 	CurrentRound     *big.Int
 	CurrentCardIndex *big.Int
@@ -406,13 +474,15 @@ func (_RoomV3Contract *RoomV3ContractSession) RoomData(arg0 *big.Int) (struct {
 	LaunchTime       *big.Int
 	RoundTimeout     *big.Int
 	InitialHP        *big.Int
+	Tournament       *big.Int
+	TierNo           *big.Int
 }, error) {
 	return _RoomV3Contract.Contract.RoomData(&_RoomV3Contract.CallOpts, arg0)
 }
 
 // RoomData is a free data retrieval call binding the contract method 0xe193dff8.
 //
-// Solidity: function roomData(uint256 ) view returns(uint256 currentRound, uint256 currentCardIndex, uint256 totalRound, uint256 totalCardIndex, address creator, uint256 player1Id, uint256 player2Id, address player1Temp, address player2Temp, uint256 launchTime, uint256 roundTimeout, uint256 initialHP)
+// Solidity: function roomData(uint256 ) view returns(uint256 currentRound, uint256 currentCardIndex, uint256 totalRound, uint256 totalCardIndex, address creator, uint256 player1Id, uint256 player2Id, address player1Temp, address player2Temp, uint256 launchTime, uint256 roundTimeout, uint256 initialHP, uint256 tournament, uint256 tierNo)
 func (_RoomV3Contract *RoomV3ContractCallerSession) RoomData(arg0 *big.Int) (struct {
 	CurrentRound     *big.Int
 	CurrentCardIndex *big.Int
@@ -426,6 +496,8 @@ func (_RoomV3Contract *RoomV3ContractCallerSession) RoomData(arg0 *big.Int) (str
 	LaunchTime       *big.Int
 	RoundTimeout     *big.Int
 	InitialHP        *big.Int
+	Tournament       *big.Int
+	TierNo           *big.Int
 }, error) {
 	return _RoomV3Contract.Contract.RoomData(&_RoomV3Contract.CallOpts, arg0)
 }

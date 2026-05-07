@@ -185,10 +185,11 @@ func (q *Queue) finalizeConfirmedGameMatch(m *dao.GameMatch) error {
 		*types.NewPlayerAddress(claimedRow.Player2ID, claimedRow.Player2TempAddress),
 	}
 	gt := claimedRow.GameType
-	if gt == 0 {
-		gt = types.GameTypePVP
+	gameType := pb.GameType(gt)
+	if gameType == pb.GameType_GAME_TYPE_UNKNOWN {
+		gameType = pb.GameType_PVP
 	}
-	gid, err := q.gameCreator.CreateGameAndRun(players, gt, m.ID)
+	gid, err := q.gameCreator.CreateGameAndRun(players, gameType, m.ID)
 	if err != nil {
 		if revErr := db.RevertGameMatchToPending(q.ctx, m.ID); revErr != nil {
 			log.Errorw("revert game_match after failed game create", "match_id", m.ID, "err", revErr)

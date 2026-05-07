@@ -9,26 +9,6 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
-func DbGameInfoToProtoGameInfo(info *dao.Game) *proto.GameInfo {
-	if info == nil {
-		return nil
-	}
-	gameInfo := &proto.GameInfo{
-		GameId:    info.ID,
-		GameType:  proto.GameType(info.Type),
-		Status:    proto.GameStatus(info.Status),
-		InitialHp: int32(info.GameArgs.InitialHP),
-	}
-	// convert rounds (synthetic from flat turns)
-	for _, round := range SyntheticRoundsFromTurns(info.Turns) {
-		gameInfo.Rounds = append(gameInfo.Rounds, DbGameRoundToProtoGameRound(round, info))
-	}
-	// conver results
-	gameResult := DbGameResultToProtoGameResult(info.GameResult)
-	gameInfo.Result = gameResult
-	return gameInfo
-}
-
 func DbGameResultToProtoGameResult(result *dao.GameResult) *proto.GameResult {
 	if result == nil {
 		return nil

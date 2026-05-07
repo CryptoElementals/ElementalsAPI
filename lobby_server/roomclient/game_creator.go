@@ -14,7 +14,7 @@ type GameCreator struct {
 	Client proto.RoomServiceClient
 }
 
-func (c *GameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType uint, completedMatchID int64) (int64, error) {
+func (c *GameCreator) CreateGameAndRun(players []types.PlayerAddress, gameType proto.GameType, completedMatchID int64) (int64, error) {
 	if c.Client == nil {
 		return 0, status.Error(codes.Unavailable, "room worker client not configured")
 	}

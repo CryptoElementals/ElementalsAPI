@@ -50,7 +50,7 @@ func TestGamePersist_InsertAndGranularUpdates(t *testing.T) {
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,
-		Status:   proto.GameStatus_GAME_INIT,
+		Status:   proto.GameStatus_GAME_UNKNOWN,
 		Players: []*dao.GamePlayerInfo{
 			{PlayerId: 101, TemporaryAddress: "0xaaa"},
 			{PlayerId: 102, TemporaryAddress: "0xbbb"},
@@ -154,7 +154,7 @@ func TestPhase3_SaveFullGameGraphPreservesSnapshot(t *testing.T) {
 	game := &dao.Game{
 		GameArgs: ga,
 		Type:     1,
-		Status:   proto.GameStatus_GAME_INIT,
+		Status:   proto.GameStatus_GAME_UNKNOWN,
 		Players: []*dao.GamePlayerInfo{
 			{PlayerId: 201, TemporaryAddress: "0xc01"},
 			{PlayerId: 202, TemporaryAddress: "0xc02"},

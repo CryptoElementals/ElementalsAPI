@@ -1,8 +1,6 @@
 package game
 
 import (
-	"fmt"
-
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -31,7 +29,7 @@ func (g *Game) abortedGameResult() *dao.GameResult {
 func (g *Game) runAfterAbortPersisted() error {
 	return g.afterTx(func() error {
 		g.sendTurnCompletedEventForAbort()
-		completeEvt := &types.GameCompletedEvent{GameID: g.gameInfo.ID, GameType: g.gameInfo.Type}
+		completeEvt := &types.GameCompletedEvent{GameID: g.gameInfo.ID, GameType: proto.GameType(g.gameInfo.Type)}
 		if err := g.completeGameAndNotify(completeEvt); err != nil {
 			log.Errorw("handle game complete event failed", "err", err, "game id", g.gameInfo.ID)
 			return err
@@ -89,22 +87,6 @@ func (g *Game) sendTurnCompletedEventForAbort() {
 			TurnCompleted: turnCompleted,
 		},
 	})
-}
-
-// handleGameAbortInit handles game abortion during initialization
-// can go into game end from any other status
-func (g *Game) handleGameAbortInit() error {
-	log.Infow("game aborted", "game id", g.gameInfo.ID)
-	if g.gameInfo.Status != proto.GameStatus_GAME_INIT {
-		return fmt.Errorf("invalid game status: %d", g.gameInfo.Status)
-	}
-	g.currentRound.isLastRound = true
-	g.gameInfo.Status = proto.GameStatus_GAME_END
-	g.gameInfo.GameResult = g.abortedGameResult()
-	if err := g.persistAbortInit(); err != nil {
-		return err
-	}
-	return g.runAfterAbortPersisted()
 }
 
 // handleGameAbortInternalError handles game abortion due to internal errors
