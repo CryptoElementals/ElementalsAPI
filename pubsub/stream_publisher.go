@@ -10,6 +10,12 @@ import (
 	goproto "google.golang.org/protobuf/proto"
 )
 
+const (
+	streamTrimInterval  = 24 * time.Hour
+	streamMessageMaxAge = 24 * time.Hour
+	streamTrimTimeout   = 30 * time.Second
+)
+
 // StreamPublisher adapts a Stream backend into [Publisher]. The Redis stream key is
 // exactly req.Topic (same string used by [StreamSubscriber]).
 type StreamPublisher struct {
@@ -20,7 +26,9 @@ type StreamPublisher struct {
 // NewStreamPublisher creates a publisher that writes proto.Event messages into
 // the underlying Stream, one stream per topic.
 func NewStreamPublisher(s stream.Stream, topic string) *StreamPublisher {
-	return &StreamPublisher{stream: s, topic: topic}
+	p := &StreamPublisher{stream: s, topic: topic}
+	p.startCleaner()
+	return p
 }
 
 func (p *StreamPublisher) Topic() string {
@@ -51,4 +59,28 @@ func (p *StreamPublisher) Publish(ctx context.Context, evt *proto.Event) (*proto
 		MessageId: msgID,
 		Success:   true,
 	}, nil
+}
+
+func (p *StreamPublisher) startCleaner() {
+	go func() {
+		p.trimOldMessages()
+
+		ticker := time.NewTicker(streamTrimInterval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			p.trimOldMessages()
+		}
+	}()
+}
+
+func (p *StreamPublisher) trimOldMessages() {
+	if p.topic == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), streamTrimTimeout)
+	defer cancel()
+
+	_, _ = p.stream.Trim(ctx, p.topic, streamMessageMaxAge)
 }
