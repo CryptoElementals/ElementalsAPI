@@ -156,23 +156,6 @@ func (r *GameManager) Start() error {
 	if err := r.preloadGameArgsCache(); err != nil {
 		return err
 	}
-
-	// On startup, abort any games that were left active (non-ended/non-aborted).
-	// This matches the "stateless" model: we do not attempt to recover/resume games after restart.
-	games, err := db.GetAllActiveGames()
-	if err != nil {
-		return err
-	}
-	for _, gameInfo := range games {
-		if gameInfo == nil {
-			continue
-		}
-		if err := r.withGameMutation(gameInfo.ID, func(g *Game) error {
-			return g.handleGameAbortInternalError()
-		}); err != nil {
-			log.Errorw("startup abort active game failed", "game id", gameInfo.ID, "err", err)
-		}
-	}
 	return nil
 }
 
