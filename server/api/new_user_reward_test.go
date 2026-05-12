@@ -1,0 +1,115 @@
+package api
+
+import (
+	"net/http/httptest"
+	"strconv"
+	"testing"
+
+	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
+	cmnErrors "github.com/CryptoElementals/common/errors"
+	dao "github.com/CryptoElementals/common/models"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	gorm_logger "gorm.io/gorm/logger"
+)
+
+func setupTestDBForNewUserRewardAPI(t *testing.T) {
+	t.Helper()
+	require.NoError(t, db.Init(&db.Config{Development: true}))
+	db.Get().Logger = db.Get().Logger.LogMode(gorm_logger.Error)
+	require.NoError(t, db.MigrateMemDb())
+}
+
+func setupGinContext() *gin.Context {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/", nil)
+	return c
+}
+
+func TestCollectNewUserReward_OnlyOnce(t *testing.T) {
+	setupTestDBForNewUserRewardAPI(t)
+	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 1234})
+
+	profile := &dao.UserProfile{
+		PlayerID: 4001,
+		Address:  "0xapi_new_reward_1",
+		Name:     "api_new_reward_1",
+	}
+	require.NoError(t, db.Get().Create(profile).Error)
+	require.NoError(t, db.Get().Create(&dao.UserToken{PlayerId: profile.PlayerID, Points: 0, TokenAmount: 100}).Error)
+
+	playerID := strconv.FormatInt(profile.PlayerID, 10)
+	params := map[string]interface{}{
+		"Action":      COLLECT_NEW_USER_REWARD_LABEL,
+		"RequestUUID": "test-request-1",
+		"PlayerID":    playerID,
+	}
+	taskIntf, err := NewCollectNewUserRewardTask(&params)
+	require.NoError(t, err)
+
+	resp, err := taskIntf.Run(setupGinContext())
+	require.NoError(t, err)
+	typedResp, ok := resp.(*CollectNewUserRewardResponse)
+	require.True(t, ok)
+	require.Equal(t, int32(1234), typedResp.RewardAmount)
+
+	var token dao.UserToken
+	require.NoError(t, db.Get().Where("player_id = ?", profile.PlayerID).First(&token).Error)
+	require.Equal(t, int32(1334), token.TokenAmount)
+
+	_, err = taskIntf.Run(setupGinContext())
+	require.Error(t, err)
+	customErr, ok := err.(cmnErrors.Error)
+	require.True(t, ok)
+	require.Equal(t, int(cmnErrors.ActionError().Code()), int(customErr.Code()))
+	require.Contains(t, customErr.String(), "already collected")
+
+	require.NoError(t, db.Get().Where("player_id = ?", profile.PlayerID).First(&token).Error)
+	require.Equal(t, int32(1334), token.TokenAmount)
+}
+
+func TestHasCollectedNewUserReward_StatusChangesAfterClaim(t *testing.T) {
+	setupTestDBForNewUserRewardAPI(t)
+	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 200})
+
+	profile := &dao.UserProfile{
+		PlayerID: 4002,
+		Address:  "0xapi_new_reward_2",
+		Name:     "api_new_reward_2",
+	}
+	require.NoError(t, db.Get().Create(profile).Error)
+	require.NoError(t, db.Get().Create(&dao.UserToken{PlayerId: profile.PlayerID, Points: 0, TokenAmount: 0}).Error)
+
+	playerID := strconv.FormatInt(profile.PlayerID, 10)
+	checkParams := map[string]interface{}{
+		"Action":      HAS_COLLECTED_NEW_USER_REWARD_LABEL,
+		"RequestUUID": "test-request-2",
+		"PlayerID":    playerID,
+	}
+	checkTaskIntf, err := NewHasCollectedNewUserRewardTask(&checkParams)
+	require.NoError(t, err)
+
+	resp, err := checkTaskIntf.Run(setupGinContext())
+	require.NoError(t, err)
+	checkResp, ok := resp.(*HasCollectedNewUserRewardResponse)
+	require.True(t, ok)
+	require.False(t, checkResp.Collected)
+
+	collectParams := map[string]interface{}{
+		"Action":      COLLECT_NEW_USER_REWARD_LABEL,
+		"RequestUUID": "test-request-3",
+		"PlayerID":    playerID,
+	}
+	collectTaskIntf, err := NewCollectNewUserRewardTask(&collectParams)
+	require.NoError(t, err)
+	_, err = collectTaskIntf.Run(setupGinContext())
+	require.NoError(t, err)
+
+	resp, err = checkTaskIntf.Run(setupGinContext())
+	require.NoError(t, err)
+	checkResp, ok = resp.(*HasCollectedNewUserRewardResponse)
+	require.True(t, ok)
+	require.True(t, checkResp.Collected)
+}

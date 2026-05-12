@@ -15,6 +15,7 @@ type GameParamConfig struct {
 	DailyRewardEndDate          string `mapstructure:"daily-reward-end-date"`           // 活动结束日期，格式：YYYY-MM-DD
 	FirstTimeRewardTokens       int    `mapstructure:"first-time-reward-tokens"`        // 活动期间内第一次领取奖励代币数量
 	DailyRewardTokensAfterFirst int    `mapstructure:"daily-reward-tokens-after-first"` // 活动后续每天奖励代币数量
+	NewUserRewardTokens         int    `mapstructure:"new-user-reward-tokens"`          // 新手一次性奖励代币数量
 
 	MaxRounds    int64 `mapstructure:"max-rounds"`
 	InitialHP    int64 `mapstructure:"initial-hp"`
@@ -71,6 +72,9 @@ func InitializeGameParams(gameParams *GameParamConfig) {
 	}
 	if gameParams.DailyRewardTokensAfterFirst == 0 {
 		gameParams.DailyRewardTokensAfterFirst = 3000
+	}
+	if gameParams.NewUserRewardTokens == 0 {
+		gameParams.NewUserRewardTokens = 5000
 	}
 	if gameParams.KeygenPolicy == 0 {
 		gameParams.KeygenPolicy = 2

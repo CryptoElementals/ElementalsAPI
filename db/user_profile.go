@@ -234,3 +234,29 @@ func UpdateDailyRewardCollectionByPlayerID(playerID string) error {
 		Where("player_id = ?", id).
 		Update("collected_reward_at", now).Error
 }
+
+// HasCollectedNewUserRewardByPlayerID 检查用户（按 player_id）是否已领取新手奖励
+func HasCollectedNewUserRewardByPlayerID(playerID string) (bool, error) {
+	profile, err := GetUserProfileByPlayerID(playerID)
+	if err != nil {
+		return false, err
+	}
+	return profile.CollectedNewUserRewardAt != nil, nil
+}
+
+// MarkNewUserRewardCollectedByPlayerIDTx 原子标记新手奖励已领取。
+// 当 marked=false 时表示该用户此前已领取（或用户不存在）。
+func MarkNewUserRewardCollectedByPlayerIDTx(tx *gorm.DB, playerID string) (marked bool, err error) {
+	id, err := strconv.ParseUint(playerID, 10, 64)
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UTC()
+	res := tx.Model(&dao.UserProfile{}).
+		Where("player_id = ? AND collected_new_user_reward_at IS NULL", id).
+		Update("collected_new_user_reward_at", now)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
