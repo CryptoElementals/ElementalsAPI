@@ -16,6 +16,7 @@ type GameParamConfig struct {
 	FirstTimeRewardTokens       int    `mapstructure:"first-time-reward-tokens"`        // 活动期间内第一次领取奖励代币数量
 	DailyRewardTokensAfterFirst int    `mapstructure:"daily-reward-tokens-after-first"` // 活动后续每天奖励代币数量
 	NewUserRewardTokens         int    `mapstructure:"new-user-reward-tokens"`          // 新手一次性奖励代币数量
+	EnableNewUserReward         bool   `mapstructure:"enable-new-user-reward"`          // 为 true 时开放新手一次性奖励 API
 
 	MaxRounds    int64 `mapstructure:"max-rounds"`
 	InitialHP    int64 `mapstructure:"initial-hp"`

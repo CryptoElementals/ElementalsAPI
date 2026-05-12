@@ -30,7 +30,7 @@ func setupGinContext() *gin.Context {
 
 func TestCollectNewUserReward_OnlyOnce(t *testing.T) {
 	setupTestDBForNewUserRewardAPI(t)
-	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 1234})
+	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 1234, EnableNewUserReward: true})
 
 	profile := &dao.UserProfile{
 		PlayerID: 4001,
@@ -72,7 +72,7 @@ func TestCollectNewUserReward_OnlyOnce(t *testing.T) {
 
 func TestHasCollectedNewUserReward_StatusChangesAfterClaim(t *testing.T) {
 	setupTestDBForNewUserRewardAPI(t)
-	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 200})
+	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 200, EnableNewUserReward: true})
 
 	profile := &dao.UserProfile{
 		PlayerID: 4002,
@@ -112,4 +112,48 @@ func TestHasCollectedNewUserReward_StatusChangesAfterClaim(t *testing.T) {
 	checkResp, ok = resp.(*HasCollectedNewUserRewardResponse)
 	require.True(t, ok)
 	require.True(t, checkResp.Collected)
+}
+
+func TestNewUserReward_DisabledByConfig(t *testing.T) {
+	setupTestDBForNewUserRewardAPI(t)
+	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 999, EnableNewUserReward: false})
+
+	profile := &dao.UserProfile{
+		PlayerID: 4003,
+		Address:  "0xapi_new_reward_disabled",
+		Name:     "api_new_reward_disabled",
+	}
+	require.NoError(t, db.Get().Create(profile).Error)
+	require.NoError(t, db.Get().Create(&dao.UserToken{PlayerId: profile.PlayerID, Points: 0, TokenAmount: 50}).Error)
+	playerID := strconv.FormatInt(profile.PlayerID, 10)
+
+	checkParams := map[string]interface{}{
+		"Action":      HAS_COLLECTED_NEW_USER_REWARD_LABEL,
+		"RequestUUID": "test-request-disabled-has",
+		"PlayerID":    playerID,
+	}
+	checkTaskIntf, err := NewHasCollectedNewUserRewardTask(&checkParams)
+	require.NoError(t, err)
+	resp, err := checkTaskIntf.Run(setupGinContext())
+	require.NoError(t, err)
+	checkResp, ok := resp.(*HasCollectedNewUserRewardResponse)
+	require.True(t, ok)
+	require.True(t, checkResp.Collected)
+
+	collectParams := map[string]interface{}{
+		"Action":      COLLECT_NEW_USER_REWARD_LABEL,
+		"RequestUUID": "test-request-disabled-collect",
+		"PlayerID":    playerID,
+	}
+	collectTaskIntf, err := NewCollectNewUserRewardTask(&collectParams)
+	require.NoError(t, err)
+	_, err = collectTaskIntf.Run(setupGinContext())
+	require.Error(t, err)
+	customErr, ok := err.(cmnErrors.Error)
+	require.True(t, ok)
+	require.Contains(t, customErr.String(), "not enabled")
+
+	var token dao.UserToken
+	require.NoError(t, db.Get().Where("player_id = ?", profile.PlayerID).First(&token).Error)
+	require.Equal(t, int32(50), token.TokenAmount)
 }
