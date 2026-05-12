@@ -15,6 +15,7 @@ type GameParamConfig struct {
 	DailyRewardEndDate          string `mapstructure:"daily-reward-end-date"`           // 活动结束日期，格式：YYYY-MM-DD
 	FirstTimeRewardTokens       int    `mapstructure:"first-time-reward-tokens"`        // 活动期间内第一次领取奖励代币数量
 	DailyRewardTokensAfterFirst int    `mapstructure:"daily-reward-tokens-after-first"` // 活动后续每天奖励代币数量
+	EnableDailyReward           bool   `mapstructure:"enable-daily-reward"`             // 为 true 时开放每日奖励 API；未配置时默认为 false
 	NewUserRewardTokens         int    `mapstructure:"new-user-reward-tokens"`          // 新手一次性奖励代币数量
 	EnableNewUserReward         bool   `mapstructure:"enable-new-user-reward"`          // 为 true 时开放新手一次性奖励 API
 

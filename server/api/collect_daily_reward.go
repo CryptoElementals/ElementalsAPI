@@ -76,6 +76,10 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	// 统一流程：检查活动期间 -> 校验是否已领取 -> 判断第一天还是后续天 -> 发放并保存代币 -> 更新领取时间
 	requestPlayerID := strings.TrimSpace(task.Request.PlayerID)
+	if !config.GameParams.EnableDailyReward {
+		log.Errorf("%s, daily reward disabled by config (player_id=%s)", task.Request.RequestUUID, requestPlayerID)
+		return nil, cmnErrors.ActionError("Daily reward is not enabled")
+	}
 	profile, err := db.GetUserProfileByPlayerID(requestPlayerID)
 	if err != nil {
 		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
