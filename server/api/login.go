@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-contrib/sessions"
@@ -165,10 +166,18 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 	var playerIDStr string
 	if task.Request.Address != "" {
 		lowercaseAddress := strings.ToLower(task.Request.Address)
-		profile, _ := db.GetOrCreateUserProfile(lowercaseAddress)
-		if profile != nil {
-			playerIDStr = fmt.Sprintf("%d", profile.PlayerID)
+		lobbyClient := client.GetGlobalLobbyClient()
+		if lobbyClient == nil {
+			return nil, errors.ActionError("gRPC lobby client not initialized")
 		}
+		profile, pErr := lobbyClient.GetOrCreateUserProfileByAddress(c.Request.Context(), &proto.GetOrCreateUserProfileByAddressRequest{
+			Address: lowercaseAddress,
+		})
+		if pErr != nil {
+			log.Errorf("%s, GetOrCreateUserProfileByAddress failed: %v", task.Request.RequestUUID, pErr)
+			return nil, errors.OperateDbFailed()
+		}
+		playerIDStr = fmt.Sprintf("%d", profile.GetPlayerID())
 	}
 	err = withRetry(10, func(retryTime int) error {
 		var saveErr error

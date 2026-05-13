@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -8,12 +9,11 @@ import (
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"gorm.io/gorm"
-
-	dao "github.com/CryptoElementals/common/models"
 )
 
 func init() {
@@ -148,24 +148,17 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		log.Infof("%s, player_id=%s collecting daily reward: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	}
 
-	// 发放 token
-	var userToken *dao.UserToken
-	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.OperateDbFailed()
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
+		log.Errorf("%s, gRPC lobby client not initialized", task.Request.RequestUUID)
+		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")
 	}
-	if userToken == nil {
-		userToken = &dao.UserToken{
-			PlayerId:    profile.PlayerID,
-			Points:      0,
-			TokenAmount: dailyRewardTokens,
-		}
-	} else {
-		userToken.TokenAmount += dailyRewardTokens
-	}
-	if err = db.SaveUserToken(*userToken); err != nil {
-		log.Errorf("%s, failed to save user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+	if _, err = lobbyClient.CreditUserTokens(context.Background(), &proto.CreditUserTokensRequest{
+		PlayerID: profile.PlayerID,
+		Delta:    dailyRewardTokens,
+		Reason:   "daily_reward",
+	}); err != nil {
+		log.Errorf("%s, failed to credit user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 

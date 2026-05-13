@@ -2,8 +2,11 @@ package lobbyserver
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	"github.com/CryptoElementals/common/conversion"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
 	"github.com/CryptoElementals/common/log"
@@ -93,6 +96,116 @@ func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAdd
 
 func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {
 	return s.queueSvc.GetPlayerToken(req.Id)
+}
+
+func (s *GRPCServices) GetOrCreateUserProfileByAddress(ctx context.Context, req *proto.GetOrCreateUserProfileByAddressRequest) (*proto.UserProfileResponse, error) {
+	_ = ctx
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	address := strings.ToLower(strings.TrimSpace(req.GetAddress()))
+	if address == "" {
+		return nil, status.Error(codes.InvalidArgument, "address is empty")
+	}
+	profile, err := db.GetOrCreateUserProfile(address)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get or create profile by address failed: %v", err)
+	}
+	return &proto.UserProfileResponse{
+		PlayerID:      profile.PlayerID,
+		Address:       profile.Address,
+		Email:         profile.Email,
+		Name:          profile.Name,
+		AvatarURL:     profile.AvatarURL,
+		BackgroundURL: profile.BackgroundURL,
+	}, nil
+}
+
+func (s *GRPCServices) GetOrCreateUserProfileByEmail(ctx context.Context, req *proto.GetOrCreateUserProfileByEmailRequest) (*proto.UserProfileResponse, error) {
+	_ = ctx
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	email := strings.TrimSpace(req.GetEmail())
+	if email == "" {
+		return nil, status.Error(codes.InvalidArgument, "email is empty")
+	}
+	profile, err := db.GetOrCreateUserProfileByEmail(email, strings.TrimSpace(req.GetName()))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get or create profile by email failed: %v", err)
+	}
+	return &proto.UserProfileResponse{
+		PlayerID:      profile.PlayerID,
+		Address:       profile.Address,
+		Email:         profile.Email,
+		Name:          profile.Name,
+		AvatarURL:     profile.AvatarURL,
+		BackgroundURL: profile.BackgroundURL,
+	}, nil
+}
+
+func (s *GRPCServices) EnsureUserToken(ctx context.Context, req *proto.EnsureUserTokenRequest) (*emptypb.Empty, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	if _, err := db.EnsureUserTokenByPlayerID(req.GetPlayerID()); err != nil {
+		return nil, status.Errorf(codes.Internal, "ensure user token failed: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *GRPCServices) CreditUserTokens(ctx context.Context, req *proto.CreditUserTokensRequest) (*proto.GetPlayerTokenResponse, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	userToken, err := db.CreditUserTokenAmount(req.GetPlayerID(), req.GetDelta())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "credit user token failed: %v", err)
+	}
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+}
+
+func (s *GRPCServices) SetUserTokenAmount(ctx context.Context, req *proto.SetUserTokenAmountRequest) (*proto.GetPlayerTokenResponse, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	userToken, err := db.SetUserTokenAmount(req.GetPlayerID(), req.GetTokenAmount())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "set user token failed: %v", err)
+	}
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+}
+
+func (s *GRPCServices) CreateBotAccount(ctx context.Context, req *proto.CreateBotAccountRequest) (*proto.UserProfileWithTokenResponse, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	profile, token, err := db.CreateBot(
+		req.GetPlayerID(),
+		strings.TrimSpace(req.GetName()),
+		strings.TrimSpace(req.GetAvatarURL()),
+		strings.TrimSpace(req.GetBackgroundURL()),
+		req.GetTokenAmount(),
+		req.GetPoints(),
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create bot account failed: %v", err)
+	}
+	return &proto.UserProfileWithTokenResponse{
+		Profile: &proto.UserProfileResponse{
+			PlayerID:      profile.PlayerID,
+			Address:       profile.Address,
+			Email:         profile.Email,
+			Name:          profile.Name,
+			AvatarURL:     profile.AvatarURL,
+			BackgroundURL: profile.BackgroundURL,
+		},
+		Token: conversion.DbUserTokenToProtoGetPlayerTokenResponse(token),
+	}, nil
 }
 
 // HandleGameCompletedFromRoom runs queue settlement after the room publishes TYPE_GAME_COMPLETED (game id only).

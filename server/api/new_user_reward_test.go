@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"net"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -9,8 +11,13 @@ import (
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 	gorm_logger "gorm.io/gorm/logger"
 )
 
@@ -19,6 +26,7 @@ func setupTestDBForNewUserRewardAPI(t *testing.T) {
 	require.NoError(t, db.Init(&db.Config{Development: true}))
 	db.Get().Logger = db.Get().Logger.LogMode(gorm_logger.Error)
 	require.NoError(t, db.MigrateMemDb())
+	setupTestLobbyClientForRewards(t)
 }
 
 func setupGinContext() *gin.Context {
@@ -26,6 +34,45 @@ func setupGinContext() *gin.Context {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/", nil)
 	return c
+}
+
+type testLobbyRewardService struct {
+	proto.UnimplementedLobbyServiceServer
+}
+
+func (s *testLobbyRewardService) CreditUserTokens(ctx context.Context, req *proto.CreditUserTokensRequest) (*proto.GetPlayerTokenResponse, error) {
+	userToken, err := db.CreditUserTokenAmount(req.GetPlayerID(), req.GetDelta())
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetPlayerTokenResponse{
+		Id:           userToken.PlayerId,
+		Tokens:       uint64(userToken.TokenAmount),
+		Points:       uint64(userToken.Points),
+		LockedTokens: 0,
+	}, nil
+}
+
+func setupTestLobbyClientForRewards(t *testing.T) {
+	t.Helper()
+	lis := bufconn.Listen(1024 * 1024)
+	srv := grpc.NewServer()
+	proto.RegisterLobbyServiceServer(srv, &testLobbyRewardService{})
+	go func() {
+		_ = srv.Serve(lis)
+	}()
+	conn, err := grpc.DialContext(context.Background(), "bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return lis.Dial() }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	client.SetGlobalLobbyClientForTest(proto.NewLobbyServiceClient(conn))
+	t.Cleanup(func() {
+		client.SetGlobalLobbyClientForTest(nil)
+		_ = conn.Close()
+		srv.Stop()
+		_ = lis.Close()
+	})
 }
 
 func TestCollectNewUserReward_OnlyOnce(t *testing.T) {

@@ -159,6 +159,13 @@ func GetGlobalLobbyClient() pb.LobbyServiceClient {
 	return globalLobbyClient
 }
 
+// SetGlobalLobbyClientForTest overrides the global lobby client for tests.
+func SetGlobalLobbyClientForTest(c pb.LobbyServiceClient) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+	globalLobbyClient = c
+}
+
 // GetGlobalEventStream returns the shared Redis-backed stream used for game/lobby events (after InitGlobalClients).
 func GetGlobalEventStream() stream.Stream {
 	globalMutex.RLock()

@@ -1,18 +1,19 @@
 package api
 
 import (
+	"context"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"gorm.io/gorm"
-
-	dao "github.com/CryptoElementals/common/models"
 )
 
 func init() {
@@ -83,34 +84,12 @@ func (task *CollectNewUserRewardTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	err := db.Get().WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
-		profile, err := db.GetUserProfileByPlayerIDWithDB(playerID, tx)
-		if err != nil {
-			return err
-		}
-
 		marked, err := db.MarkNewUserRewardCollectedByPlayerIDTx(tx, playerID)
 		if err != nil {
 			return err
 		}
 		if !marked {
 			return cmnErrors.ActionError("New user reward already collected")
-		}
-
-		res := tx.Model(&dao.UserToken{}).
-			Where("player_id = ?", profile.PlayerID).
-			Update("token_amount", gorm.Expr("token_amount + ?", rewardAmount))
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			userToken := dao.UserToken{
-				PlayerId:    profile.PlayerID,
-				Points:      0,
-				TokenAmount: rewardAmount,
-			}
-			if err := tx.Create(&userToken).Error; err != nil {
-				return err
-			}
 		}
 		return nil
 	})
@@ -123,6 +102,23 @@ func (task *CollectNewUserRewardTask) Run(c *gin.Context) (Response, error) {
 			return nil, cmnErrors.GetUserProfileFailed(playerID)
 		}
 		log.Errorf("%s, failed to collect new user reward for player_id=%s: %v", task.Request.RequestUUID, playerID, err)
+		return nil, cmnErrors.OperateDbFailed()
+	}
+	profile, err := db.GetUserProfileByPlayerID(playerID)
+	if err != nil {
+		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, playerID, err)
+		return nil, cmnErrors.GetUserProfileFailed(playerID)
+	}
+	lobbyClient := client.GetGlobalLobbyClient()
+	if lobbyClient == nil {
+		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")
+	}
+	if _, err = lobbyClient.CreditUserTokens(context.Background(), &proto.CreditUserTokensRequest{
+		PlayerID: profile.PlayerID,
+		Delta:    rewardAmount,
+		Reason:   "new_user_reward",
+	}); err != nil {
+		log.Errorf("%s, failed to credit new user reward token for player_id=%s: %v", task.Request.RequestUUID, playerID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 

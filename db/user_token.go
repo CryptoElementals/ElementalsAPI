@@ -23,6 +23,84 @@ func SaveUserToken(tokens ...dao.UserToken) error {
 	return Get().Save(&tokens).Error
 }
 
+// EnsureUserTokenByPlayerID creates an empty user_token row when missing.
+func EnsureUserTokenByPlayerID(playerID int64) (*dao.UserToken, error) {
+	return EnsureUserTokenByPlayerIDTx(Get(), playerID)
+}
+
+// EnsureUserTokenByPlayerIDTx creates an empty user_token row when missing in an existing DB session.
+func EnsureUserTokenByPlayerIDTx(tx *gorm.DB, playerID int64) (*dao.UserToken, error) {
+	var userToken dao.UserToken
+	err := tx.Where("player_id = ?", playerID).First(&userToken).Error
+	if err == nil {
+		return &userToken, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	userToken = dao.UserToken{
+		PlayerId:    playerID,
+		Points:      0,
+		TokenAmount: 0,
+	}
+	if err := tx.Create(&userToken).Error; err != nil {
+		return nil, err
+	}
+	return &userToken, nil
+}
+
+// CreditUserTokenAmount adds delta to token_amount for the player (creates row if missing).
+func CreditUserTokenAmount(playerID int64, delta int32) (*dao.UserToken, error) {
+	var updated *dao.UserToken
+	err := Get().Transaction(func(tx *gorm.DB) error {
+		token, err := EnsureUserTokenByPlayerIDTx(tx, playerID)
+		if err != nil {
+			return err
+		}
+		res := tx.Model(&dao.UserToken{}).
+			Where("id = ?", token.ID).
+			Update("token_amount", gorm.Expr("token_amount + ?", delta))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("user token not found")
+		}
+		updated, err = EnsureUserTokenByPlayerIDTx(tx, playerID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// SetUserTokenAmount sets token_amount for the player (creates row if missing).
+func SetUserTokenAmount(playerID int64, tokenAmount int32) (*dao.UserToken, error) {
+	var updated *dao.UserToken
+	err := Get().Transaction(func(tx *gorm.DB) error {
+		token, err := EnsureUserTokenByPlayerIDTx(tx, playerID)
+		if err != nil {
+			return err
+		}
+		res := tx.Model(&dao.UserToken{}).
+			Where("id = ?", token.ID).
+			Update("token_amount", tokenAmount)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("user token not found")
+		}
+		updated, err = EnsureUserTokenByPlayerIDTx(tx, playerID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
 // DeductUserTokenForTournamentEntry deducts tokenAmount directly from user_tokens for tournament registration.
 // Returns "user token amount is not enough" when balance is insufficient (or row missing).
 func DeductUserTokenForTournamentEntry(ctx context.Context, playerID int64, tokenAmount int32) error {

@@ -13,8 +13,9 @@ import (
 
 	"github.com/CryptoElementals/common/cache"
 	"github.com/CryptoElementals/common/config"
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/handler"
 	"github.com/CryptoElementals/common/server/middlewares"
@@ -299,12 +300,20 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: id_token: %s", tokenPayload.IdToken)
 		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
-		userProfile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
+		lobbyClient := client.GetGlobalLobbyClient()
+		if lobbyClient == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "gRPC lobby client not initialized"})
+			return
+		}
+		userProfile, err := lobbyClient.GetOrCreateUserProfileByEmail(c.Request.Context(), &proto.GetOrCreateUserProfileByEmailRequest{
+			Email: payload.Email,
+			Name:  payload.Name,
+		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
 			return
 		}
-		playerIDStr := fmt.Sprintf("%d", userProfile.PlayerID)
+		playerIDStr := fmt.Sprintf("%d", userProfile.GetPlayerID())
 		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
@@ -346,7 +355,6 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		q.Set("code", tempCode)
 		u.RawQuery = q.Encode()
 		c.Redirect(http.StatusFound, u.String())
-		return
 	}
 }
 
