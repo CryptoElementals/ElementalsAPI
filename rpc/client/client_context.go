@@ -24,7 +24,7 @@ func defaultGRPCDialOptions() []grpc.DialOption {
 	}
 }
 
-// ClientContext holds package-global room/lobby gRPC clients and the shared event stream.
+// ClientContext holds room/lobby gRPC clients and the shared event stream for one logical bundle (e.g. one shard).
 type ClientContext struct {
 	RoomAddr     string
 	LobbyAddr    string
@@ -37,7 +37,53 @@ type ClientContext struct {
 	initComplete bool
 }
 
-var grpcGlobals = &ClientContext{}
+func NewClientContext(roomAddress, lobbyAddress string) *ClientContext {
+	return &ClientContext{
+		RoomAddr:  roomAddress,
+		LobbyAddr: lobbyAddress,
+	}
+}
+
+// GlobalContextKey is the registry key used by InitGlobalClients and GetGlobal* helpers.
+const GlobalContextKey = "GLOBAL"
+
+var (
+	clientContextsMu sync.RWMutex
+	clientContexts   = make(map[string]*ClientContext)
+)
+
+// RegisterClientContexts pre-creates empty client context slots for the given keys (no dialing).
+// Calling with no arguments is a no-op.
+func RegisterClientContexts(keys ...string) {
+	clientContextsMu.Lock()
+	defer clientContextsMu.Unlock()
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		if clientContexts[k] == nil {
+			clientContexts[k] = &ClientContext{}
+		}
+	}
+}
+
+func getOrCreateClientContext(key string) *ClientContext {
+	clientContextsMu.Lock()
+	defer clientContextsMu.Unlock()
+	if c := clientContexts[key]; c != nil {
+		return c
+	}
+	c := &ClientContext{}
+	clientContexts[key] = c
+	return c
+}
+
+func getClientContext(key string) (*ClientContext, bool) {
+	clientContextsMu.RLock()
+	defer clientContextsMu.RUnlock()
+	c, ok := clientContexts[key]
+	return c, ok && c != nil
+}
 
 // dialLocked opens room and lobby connections. Caller must hold c.Mutex (write lock).
 func (c *ClientContext) dialLocked() error {
@@ -78,25 +124,41 @@ func (c *ClientContext) dialLocked() error {
 	return nil
 }
 
-// InitGlobalClients connects to room (Rpc) and lobby (LobbyService). Requires [redis.Init] first for event streams.
-func InitGlobalClients(roomAddress, lobbyAddress string) error {
-	grpcGlobals.Mutex.Lock()
-	defer grpcGlobals.Mutex.Unlock()
-
-	if grpcGlobals.initComplete {
+// Init dials room and lobby, creates the Redis event stream if needed, and starts the health check loop.
+// Caller must hold c.Mutex (write lock).
+func (c *ClientContext) Init() error {
+	if c.initComplete {
 		return nil
 	}
-	grpcGlobals.RoomAddr = roomAddress
-	grpcGlobals.LobbyAddr = lobbyAddress
-	if err := grpcGlobals.dialLocked(); err != nil {
+	if err := c.dialLocked(); err != nil {
 		return err
 	}
-	grpcGlobals.initComplete = true
-
-	go grpcGlobals.startHealthCheck()
-
-	log.Infof("全局gRPC客户端初始化成功，room=%s lobby=%s", roomAddress, lobbyAddress)
+	c.initComplete = true
+	go c.startHealthCheck()
+	log.Infof("全局gRPC客户端初始化成功，room=%s lobby=%s", c.RoomAddr, c.LobbyAddr)
 	return nil
+}
+
+// InitClientContext connects to room (Rpc) and lobby (LobbyService) for the named context. Requires [redis.Init] first for event streams.
+func InitClientContext(key, roomAddress, lobbyAddress string) error {
+	if key == "" {
+		return fmt.Errorf("rpc/client: empty client context key")
+	}
+	c := getOrCreateClientContext(key)
+	c.Mutex.Lock()
+	defer c.Mutex.Unlock()
+	if c.initComplete {
+		return nil
+	}
+	cfg := NewClientContext(roomAddress, lobbyAddress)
+	c.RoomAddr = cfg.RoomAddr
+	c.LobbyAddr = cfg.LobbyAddr
+	return c.Init()
+}
+
+// InitGlobalClients connects to room (Rpc) and lobby (LobbyService) for [GlobalContextKey].
+func InitGlobalClients(roomAddress, lobbyAddress string) error {
+	return InitClientContext(GlobalContextKey, roomAddress, lobbyAddress)
 }
 
 // startHealthCheck 启动健康检查（监控 room 连接；失败时重连 room+lobby）
@@ -147,55 +209,100 @@ func (c *ClientContext) startHealthCheck() {
 	}
 }
 
+// GetRoomServiceClient returns the room RoomService client for key, or nil if missing or not initialized.
+func GetRoomServiceClient(key string) pb.RoomServiceClient {
+	c, ok := getClientContext(key)
+	if !ok {
+		return nil
+	}
+	c.Mutex.RLock()
+	defer c.Mutex.RUnlock()
+	return c.RpcClient
+}
+
 // GetGlobalRpcClient 获取 room RoomService 客户端
 func GetGlobalRpcClient() pb.RoomServiceClient {
-	grpcGlobals.Mutex.RLock()
-	defer grpcGlobals.Mutex.RUnlock()
-	return grpcGlobals.RpcClient
+	return GetRoomServiceClient(GlobalContextKey)
+}
+
+// GetLobbyServiceClient returns the lobby LobbyService client for key, or nil if missing or not initialized.
+func GetLobbyServiceClient(key string) pb.LobbyServiceClient {
+	c, ok := getClientContext(key)
+	if !ok {
+		return nil
+	}
+	c.Mutex.RLock()
+	defer c.Mutex.RUnlock()
+	return c.LobbyClient
 }
 
 // GetGlobalLobbyClient 获取 lobby LobbyService 客户端
 func GetGlobalLobbyClient() pb.LobbyServiceClient {
-	grpcGlobals.Mutex.RLock()
-	defer grpcGlobals.Mutex.RUnlock()
-	return grpcGlobals.LobbyClient
+	return GetLobbyServiceClient(GlobalContextKey)
+}
+
+// SetLobbyClientForTest overrides the lobby client for tests for the given context key.
+func SetLobbyClientForTest(key string, cl pb.LobbyServiceClient) {
+	if key == "" {
+		key = GlobalContextKey
+	}
+	c := getOrCreateClientContext(key)
+	c.Mutex.Lock()
+	defer c.Mutex.Unlock()
+	c.LobbyClient = cl
 }
 
 // SetGlobalLobbyClientForTest overrides the global lobby client for tests.
 func SetGlobalLobbyClientForTest(c pb.LobbyServiceClient) {
-	grpcGlobals.Mutex.Lock()
-	defer grpcGlobals.Mutex.Unlock()
-	grpcGlobals.LobbyClient = c
+	SetLobbyClientForTest(GlobalContextKey, c)
+}
+
+// GetEventStream returns the Redis-backed stream for key, or nil if missing or not initialized.
+func GetEventStream(key string) stream.Stream {
+	c, ok := getClientContext(key)
+	if !ok {
+		return nil
+	}
+	c.Mutex.RLock()
+	defer c.Mutex.RUnlock()
+	return c.EventStream
 }
 
 // GetGlobalEventStream returns the shared Redis-backed stream used for game/lobby events (after InitGlobalClients).
 func GetGlobalEventStream() stream.Stream {
-	grpcGlobals.Mutex.RLock()
-	defer grpcGlobals.Mutex.RUnlock()
-	return grpcGlobals.EventStream
+	return GetEventStream(GlobalContextKey)
+}
+
+// CloseClientContext closes connections for the named context. The slot remains in the registry for reuse.
+func CloseClientContext(key string) error {
+	c, ok := getClientContext(key)
+	if !ok {
+		return nil
+	}
+	c.Mutex.Lock()
+	defer c.Mutex.Unlock()
+
+	var firstErr error
+	if c.LobbyConn != nil {
+		if err := c.LobbyConn.Close(); err != nil {
+			firstErr = err
+		}
+		c.LobbyConn = nil
+	}
+	if c.Conn != nil {
+		if err := c.Conn.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		c.Conn = nil
+	}
+	c.RpcClient = nil
+	c.LobbyClient = nil
+	c.EventStream = nil
+	c.initComplete = false
+	return firstErr
 }
 
 // CloseGlobalClients 关闭全局连接
 func CloseGlobalClients() error {
-	grpcGlobals.Mutex.Lock()
-	defer grpcGlobals.Mutex.Unlock()
-
-	var firstErr error
-	if grpcGlobals.LobbyConn != nil {
-		if err := grpcGlobals.LobbyConn.Close(); err != nil {
-			firstErr = err
-		}
-		grpcGlobals.LobbyConn = nil
-	}
-	if grpcGlobals.Conn != nil {
-		if err := grpcGlobals.Conn.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		grpcGlobals.Conn = nil
-	}
-	grpcGlobals.RpcClient = nil
-	grpcGlobals.LobbyClient = nil
-	grpcGlobals.EventStream = nil
-	grpcGlobals.initComplete = false
-	return firstErr
+	return CloseClientContext(GlobalContextKey)
 }
