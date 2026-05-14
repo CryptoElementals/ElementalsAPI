@@ -67,7 +67,7 @@ func NewLogoutTask(data *map[string]interface{}) (Task, error) {
 
 func (task *LogoutTask) Run(c *gin.Context) (Response, error) {
 	session := sessions.Default(c)
-	
+
 	// 从 session 中获取 playerID
 	playerIDStr := session.Get(SESSION_USER_KEY)
 	if playerIDStr == nil {
@@ -88,7 +88,7 @@ func (task *LogoutTask) Run(c *gin.Context) (Response, error) {
 
 	// 验证 token 对应的 playerID 是否与 cookie 中的 playerID 一致
 	if userID != playerID {
-		log.Errorf("%s, refresh token does not belong to current user: cookie player_id=%s, token player_id=%s", 
+		log.Errorf("%s, refresh token does not belong to current user: cookie player_id=%s, token player_id=%s",
 			task.Request.RequestUUID, playerID, userID)
 		return nil, errors.LoginCookieInvalid("refresh token does not belong to current user")
 	}
@@ -112,4 +112,3 @@ func (task *LogoutTask) Run(c *gin.Context) (Response, error) {
 	log.Infof("%s, logout successful for player_id: %s", task.Request.RequestUUID, playerID)
 	return task.Response, nil
 }
-

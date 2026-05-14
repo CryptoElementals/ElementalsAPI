@@ -104,4 +104,3 @@ func (task *ConfirmMatchTask) Run(c *gin.Context) (Response, error) {
 	task.Response.BaseResponse.Message = "Successfully confirmed match"
 	return task.Response, nil
 }
-

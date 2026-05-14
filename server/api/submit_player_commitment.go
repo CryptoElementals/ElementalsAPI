@@ -22,7 +22,7 @@ func init() {
 // SubmitPlayerCommitmentRequest 请求结构体
 type SubmitPlayerCommitmentRequest struct {
 	BaseRequest
-	GameID      int64 `mapstructure:"GameID" validate:"required"`
+	GameID      int64  `mapstructure:"GameID" validate:"required"`
 	RoundNumber uint32 `mapstructure:"RoundNumber" validate:"required"`
 	TurnNumber  uint32 `mapstructure:"TurnNumber" validate:"required"`
 	Commitment  string `mapstructure:"Commitment" validate:"required"` // hex 字符串

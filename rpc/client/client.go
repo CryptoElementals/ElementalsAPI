@@ -26,10 +26,10 @@ func defaultGRPCDialOptions() []grpc.DialOption {
 
 // 全局gRPC客户端变量（room + lobby）
 var (
-	globalRoomAddr     string
-	globalLobbyAddr    string
-	globalConn         *grpc.ClientConn
-	globalLobbyConn    *grpc.ClientConn
+	globalRoomAddr    string
+	globalLobbyAddr   string
+	globalConn        *grpc.ClientConn
+	globalLobbyConn   *grpc.ClientConn
 	globalRpcClient   pb.RoomServiceClient
 	globalLobbyClient pb.LobbyServiceClient
 	globalEventStream stream.Stream

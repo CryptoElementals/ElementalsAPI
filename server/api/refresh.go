@@ -81,8 +81,8 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 		MaxAge:   globalSessionMaxAge,
 		Path:     "/",
 		SameSite: http.SameSiteNoneMode, // 允许跨域请求携带 cookie
-		Secure:   true,                    // HTTPS 必需
-		HttpOnly: true,                    // 防止 XSS 攻击
+		Secure:   true,                  // HTTPS 必需
+		HttpOnly: true,                  // 防止 XSS 攻击
 	})
 
 	refreshToken := task.Request.RefreshToken

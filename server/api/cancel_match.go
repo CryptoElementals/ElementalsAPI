@@ -104,4 +104,3 @@ func (task *CancelMatchTask) Run(c *gin.Context) (Response, error) {
 	task.Response.BaseResponse.Message = "Successfully canceled match"
 	return task.Response, nil
 }
-

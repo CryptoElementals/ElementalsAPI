@@ -2,9 +2,9 @@ package redis
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/CryptoElementals/common/log"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -36,14 +36,81 @@ const (
 	COUNT_COMMAND  = "count"
 )
 
-var globalPool RedisPool
-var globalConfig *Config
+type ConfigWithName struct {
+	Name string `mapstructure:"address"`
+	Cfg  *Config
+}
 
-func Init(cfg *Config) error {
-	// 保存配置到全局变量
-	globalConfig = cfg
+// Init connects the default Redis pool from defaultCfg, then for each cfgs entry builds and
+// pings a separate pool, registers it under Name, and stores Cfg for GetPoolConfig.
+// All pings succeed before global state is updated. Re-Init replaces the default pool and
+// drops any previously registered named pools not present in this call's cfgs.
+func Init(defaultCfg *Config, cfgs ...*ConfigWithName) error {
+	if defaultCfg == nil {
+		return errors.New("redis: default config is nil")
+	}
+	seen := make(map[string]struct{}, len(cfgs))
+	for _, cn := range cfgs {
+		if cn == nil {
+			return errors.New("redis: nil ConfigWithName entry")
+		}
+		if cn.Name == "" {
+			return errors.New("redis: named config has empty name")
+		}
+		if cn.Name == defaultPoolName {
+			return fmt.Errorf("redis: config name %q is reserved", defaultPoolName)
+		}
+		if cn.Cfg == nil {
+			return fmt.Errorf("redis: config for name %q is nil", cn.Name)
+		}
+		if _, dup := seen[cn.Name]; dup {
+			return fmt.Errorf("redis: duplicate named config %q", cn.Name)
+		}
+		seen[cn.Name] = struct{}{}
+	}
 
-	pool := &redis.Pool{
+	defaultPool := newRedigoPool(defaultCfg)
+	if _, err := defaultPool.Get().Do(PING_COMMAND); err != nil {
+		return err
+	}
+
+	type namedReady struct {
+		name string
+		pool *redis.Pool
+		cfg  *Config
+	}
+	ready := make([]namedReady, 0, len(cfgs))
+	for _, cn := range cfgs {
+		p := newRedigoPool(cn.Cfg)
+		if _, err := p.Get().Do(PING_COMMAND); err != nil {
+			return fmt.Errorf("redis: ping named pool %q: %w", cn.Name, err)
+		}
+		ready = append(ready, namedReady{name: cn.Name, pool: p, cfg: cn.Cfg})
+	}
+
+	setDefaultPool(defaultPool, defaultCfg)
+
+	for name := range globalOperatorProvider.ops {
+		if name != defaultPoolName {
+			delete(globalOperatorProvider.ops, name)
+		}
+	}
+	if globalOperatorProvider.configs == nil {
+		globalOperatorProvider.configs = make(map[string]*Config)
+	} else {
+		clear(globalOperatorProvider.configs)
+	}
+	for _, nr := range ready {
+		if err := registerPool(nr.name, nr.pool); err != nil {
+			return err
+		}
+		globalOperatorProvider.configs[nr.name] = nr.cfg
+	}
+	return nil
+}
+
+func newRedigoPool(cfg *Config) *redis.Pool {
+	return &redis.Pool{
 		MaxIdle:     cfg.Size,
 		IdleTimeout: 240 * time.Second,
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
@@ -54,25 +121,14 @@ func Init(cfg *Config) error {
 			return dial("tcp", cfg.Address, cfg.Password)
 		},
 	}
-	// do ping for quick redis error request
-	_, err := pool.Get().Do(PING_COMMAND)
-	if err != nil {
-		return err
-	}
-	globalPool = pool
-	return nil
-}
-
-func SetGlobalPool(pool RedisPool) {
-	globalPool = pool
 }
 
 func GetGlobalPool() RedisPool {
-	return globalPool
+	return mustDefault().Pool()
 }
 
 func GetRedigoPool() (*redis.Pool, error) {
-	p, ok := globalPool.(*redis.Pool)
+	p, ok := mustDefault().Pool().(*redis.Pool)
 	if !ok {
 		return nil, errors.New("pool is not a valid redisgo redis pool")
 	}
@@ -94,126 +150,69 @@ func dial(network, address, password string) (redis.Conn, error) {
 }
 
 func Get(key string) (string, error) {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	res, err := redis.String(conn.Do(GET_COMMAND, key))
-	return res, err
+	return mustDefault().Get(key)
 }
 
 // expire by seconds
 func Set(key string, val string, expire int) error {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	if expire <= 0 {
-		_, err := conn.Do(SET_COMMAND, key, val)
-		return err
-	}
-	_, err := conn.Do(SET_COMMAND, key, val, EXPIRE_COMMAND, expire)
-	return err
+	return mustDefault().Set(key, val, expire)
 }
 
 func Delete(key string) error {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	_, err := conn.Do(DELETE_COMMAND, key)
-	return err
+	return mustDefault().Delete(key)
 }
 
 func Exist(key string) (bool, error) {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	return redis.Bool(conn.Do(EXISTS_COMMAND, key))
+	return mustDefault().Exist(key)
 }
 
-// GetConfig returns the global Redis config set by Init.
+// GetConfig returns the default Redis config set by Init (same lifecycle as the default pool).
 // Returns nil if Init has not been called.
 func GetConfig() *Config {
-	return globalConfig
+	return defaultConfig()
+}
+
+// GetPoolConfig returns the config for a named pool key. Empty name or "default" returns the
+// default config from Init. Other names match pools registered by Init's variadic cfgs (or registerPool).
+func GetPoolConfig(name string) (*Config, error) {
+	if globalOperatorProvider == nil {
+		return nil, errors.New("redis: not initialized")
+	}
+	if name == "" || name == defaultPoolName {
+		if globalOperatorProvider.defaultConfig == nil {
+			return nil, errors.New("redis: default config not set")
+		}
+		return globalOperatorProvider.defaultConfig, nil
+	}
+	cfg, ok := globalOperatorProvider.configs[name]
+	if !ok {
+		return nil, fmt.Errorf("redis: unknown config %q", name)
+	}
+	return cfg, nil
 }
 
 func Ping() error {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	_, err := conn.Do(PING_COMMAND)
-	if err != nil {
-		return err
-	}
-	return nil
+	return mustDefault().Ping()
 }
 
 // 便捷函数：使用会话过期时间设置键值
 func SetSession(key string, val string) error {
-	if globalConfig == nil {
+	cfg := defaultConfig()
+	if cfg == nil {
 		return errors.New("redis config not initialized")
 	}
-	return Set(key, val, globalConfig.SessionExpire)
+	return mustDefault().Set(key, val, cfg.SessionExpire)
 }
 
 // 获取会话过期时间
 func GetSessionExpire() int {
-	if globalConfig == nil {
+	cfg := defaultConfig()
+	if cfg == nil {
 		return 43200 // 默认12小时
 	}
-	return globalConfig.SessionExpire
+	return cfg.SessionExpire
 }
 
 func Scan(prefix string) ([]string, error) {
-	conn := globalPool.Get()
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Errorf("redis client close err: %s", err.Error())
-		}
-	}()
-	var keys []string
-	cursor := 0
-	for {
-		var scanCursor int
-		var scanKeys []string
-		res, err := redis.Values(conn.Do(SCAN_COMMAND, cursor, MATCH_COMMAND, prefix+"*", COUNT_COMMAND, 10000))
-		if err != nil {
-			return nil, err
-		}
-		rest, err := redis.Scan(res, &scanCursor, &scanKeys)
-		if err != nil {
-			return nil, err
-		}
-		if len(rest) != 0 {
-			return nil, errors.New("scan error: unexpected result number")
-		}
-		if len(scanKeys) != 0 {
-			keys = append(keys, scanKeys...)
-		}
-		cursor = scanCursor
-		if cursor == 0 {
-			break
-		}
-	}
-
-	return keys, nil
+	return mustDefault().Scan(prefix)
 }
