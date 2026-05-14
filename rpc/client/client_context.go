@@ -52,21 +52,6 @@ var (
 	clientContexts   = make(map[string]*ClientContext)
 )
 
-// RegisterClientContexts pre-creates empty client context slots for the given keys (no dialing).
-// Calling with no arguments is a no-op.
-func RegisterClientContexts(keys ...string) {
-	clientContextsMu.Lock()
-	defer clientContextsMu.Unlock()
-	for _, k := range keys {
-		if k == "" {
-			continue
-		}
-		if clientContexts[k] == nil {
-			clientContexts[k] = &ClientContext{}
-		}
-	}
-}
-
 func getOrCreateClientContext(key string) *ClientContext {
 	clientContextsMu.Lock()
 	defer clientContextsMu.Unlock()
@@ -78,7 +63,7 @@ func getOrCreateClientContext(key string) *ClientContext {
 	return c
 }
 
-func getClientContext(key string) (*ClientContext, bool) {
+func GetClientContext(key string) (*ClientContext, bool) {
 	clientContextsMu.RLock()
 	defer clientContextsMu.RUnlock()
 	c, ok := clientContexts[key]
@@ -211,7 +196,7 @@ func (c *ClientContext) startHealthCheck() {
 
 // GetRoomServiceClient returns the room RoomService client for key, or nil if missing or not initialized.
 func GetRoomServiceClient(key string) pb.RoomServiceClient {
-	c, ok := getClientContext(key)
+	c, ok := GetClientContext(key)
 	if !ok {
 		return nil
 	}
@@ -227,7 +212,7 @@ func GetGlobalRpcClient() pb.RoomServiceClient {
 
 // GetLobbyServiceClient returns the lobby LobbyService client for key, or nil if missing or not initialized.
 func GetLobbyServiceClient(key string) pb.LobbyServiceClient {
-	c, ok := getClientContext(key)
+	c, ok := GetClientContext(key)
 	if !ok {
 		return nil
 	}
@@ -259,7 +244,7 @@ func SetGlobalLobbyClientForTest(c pb.LobbyServiceClient) {
 
 // GetEventStream returns the Redis-backed stream for key, or nil if missing or not initialized.
 func GetEventStream(key string) stream.Stream {
-	c, ok := getClientContext(key)
+	c, ok := GetClientContext(key)
 	if !ok {
 		return nil
 	}
@@ -275,7 +260,7 @@ func GetGlobalEventStream() stream.Stream {
 
 // CloseClientContext closes connections for the named context. The slot remains in the registry for reuse.
 func CloseClientContext(key string) error {
-	c, ok := getClientContext(key)
+	c, ok := GetClientContext(key)
 	if !ok {
 		return nil
 	}
