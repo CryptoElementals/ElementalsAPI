@@ -11,10 +11,8 @@ import (
 var RoomServerAddress string
 var GConf ApiServerConfig
 
-// EnvironmentConfig is one logical game shard: its own Redis pool (when registered as a named pool),
-// room gRPC, and lobby gRPC. The first entry in ApiServerConfig.EnvironmentConfigs is the primary
-// (default Redis pool + InitGlobalClients); further entries register named Redis pools and
-// InitClientContext(name, ...).
+// EnvironmentConfig is one logical game shard: its own named Redis pool (event streams),
+// room gRPC, and lobby gRPC.
 type EnvironmentConfig struct {
 	Name               string       `mapstructure:"name"`
 	RedisCfg           redis.Config `mapstructure:"redis"`
@@ -24,12 +22,13 @@ type EnvironmentConfig struct {
 
 // ApiServerConfig represents the complete application configuration structure
 type ApiServerConfig struct {
-	LogCfg             log.Config      `mapstructure:"log"`
-	DbCfg              db.Config       `mapstructure:"database"`
-	Snowflake          SnowflakeConfig `mapstructure:"snowflake"`
-	ServerCfg          ServerConfig    `mapstructure:"server"`
-	GameParams         GameParamConfig `mapstructure:"game-params"`
-	S3Config           S3Config        `mapstructure:"s3"`
+	LogCfg             log.Config          `mapstructure:"log"`
+	DbCfg              db.Config           `mapstructure:"database"`
+	RedisCfg           redis.Config        `mapstructure:"redis"` // API server default Redis (sessions, refresh-token cache)
+	Snowflake          SnowflakeConfig     `mapstructure:"snowflake"`
+	ServerCfg          ServerConfig        `mapstructure:"server"`
+	GameParams         GameParamConfig     `mapstructure:"game-params"`
+	S3Config           S3Config            `mapstructure:"s3"`
 	EnvironmentConfigs []EnvironmentConfig `mapstructure:"environments"`
 }
 
@@ -83,6 +82,10 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 	}
 
 	seen := make(map[string]struct{}, len(cfg.EnvironmentConfigs))
+	requiredEnvs := make(map[string]struct{}, len(RequiredEnvironmentNames()))
+	for _, name := range RequiredEnvironmentNames() {
+		requiredEnvs[name] = struct{}{}
+	}
 	for i, env := range cfg.EnvironmentConfigs {
 		if env.Name == "" {
 			return fmt.Errorf("environment[%d]: name cannot be empty", i)
@@ -94,6 +97,7 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 			return fmt.Errorf("duplicate environment name: %q", env.Name)
 		}
 		seen[env.Name] = struct{}{}
+		delete(requiredEnvs, env.Name)
 
 		if err := validateRedisConfig(&env.RedisCfg); err != nil {
 			return fmt.Errorf("environment %q redis: %w", env.Name, err)
@@ -104,6 +108,13 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 		if env.LobbyServerAddress == "" {
 			return fmt.Errorf("environment %q: lobby server address cannot be empty", env.Name)
 		}
+	}
+	for name := range requiredEnvs {
+		return fmt.Errorf("missing required environment %q (trial and normal backends must be configured)", name)
+	}
+
+	if err := validateRedisConfig(&cfg.RedisCfg); err != nil {
+		return fmt.Errorf("redis config validation failed: %w", err)
 	}
 
 	// Validate database configuration
@@ -187,6 +198,7 @@ func setDefaultValues(cfg *ApiServerConfig) {
 		cfg.LogCfg.RotationTime = 24
 	}
 
+	applyRedisDefaults(&cfg.RedisCfg)
 	for i := range cfg.EnvironmentConfigs {
 		applyRedisDefaults(&cfg.EnvironmentConfigs[i].RedisCfg)
 		if cfg.EnvironmentConfigs[i].RoomServerAddress == "" {

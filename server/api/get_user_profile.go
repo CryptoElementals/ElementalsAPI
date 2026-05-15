@@ -168,7 +168,7 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		log.Errorf("%s, failed to get user stat by player_id=%s: %v", task.Request.RequestUUID, playerID, e)
 	}
 
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(db.EffectiveServerType(userProfile))
 	if lobbyClient != nil {
 		if userToken, e := lobbyClient.GetPlayerToken(context.Background(), &proto.GetPlayerTokenRequest{Id: userProfile.PlayerID}); e == nil && userToken != nil {
 			points = int(userToken.GetPoints())

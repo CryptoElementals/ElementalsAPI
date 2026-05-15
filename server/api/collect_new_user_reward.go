@@ -109,7 +109,7 @@ func (task *CollectNewUserRewardTask) Run(c *gin.Context) (Response, error) {
 		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, playerID, err)
 		return nil, cmnErrors.GetUserProfileFailed(playerID)
 	}
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")
 	}

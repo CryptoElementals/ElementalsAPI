@@ -98,52 +98,6 @@ func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerT
 	return s.queueSvc.GetPlayerToken(req.Id)
 }
 
-func (s *GRPCServices) GetOrCreateUserProfileByAddress(ctx context.Context, req *proto.GetOrCreateUserProfileByAddressRequest) (*proto.UserProfileResponse, error) {
-	_ = ctx
-	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "nil request")
-	}
-	address := strings.ToLower(strings.TrimSpace(req.GetAddress()))
-	if address == "" {
-		return nil, status.Error(codes.InvalidArgument, "address is empty")
-	}
-	profile, err := db.GetOrCreateUserProfile(address)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get or create profile by address failed: %v", err)
-	}
-	return &proto.UserProfileResponse{
-		PlayerID:      profile.PlayerID,
-		Address:       profile.Address,
-		Email:         profile.Email,
-		Name:          profile.Name,
-		AvatarURL:     profile.AvatarURL,
-		BackgroundURL: profile.BackgroundURL,
-	}, nil
-}
-
-func (s *GRPCServices) GetOrCreateUserProfileByEmail(ctx context.Context, req *proto.GetOrCreateUserProfileByEmailRequest) (*proto.UserProfileResponse, error) {
-	_ = ctx
-	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "nil request")
-	}
-	email := strings.TrimSpace(req.GetEmail())
-	if email == "" {
-		return nil, status.Error(codes.InvalidArgument, "email is empty")
-	}
-	profile, err := db.GetOrCreateUserProfileByEmail(email, strings.TrimSpace(req.GetName()))
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get or create profile by email failed: %v", err)
-	}
-	return &proto.UserProfileResponse{
-		PlayerID:      profile.PlayerID,
-		Address:       profile.Address,
-		Email:         profile.Email,
-		Name:          profile.Name,
-		AvatarURL:     profile.AvatarURL,
-		BackgroundURL: profile.BackgroundURL,
-	}, nil
-}
-
 func (s *GRPCServices) EnsureUserToken(ctx context.Context, req *proto.EnsureUserTokenRequest) (*emptypb.Empty, error) {
 	_ = ctx
 	if req == nil || req.GetPlayerID() == 0 {

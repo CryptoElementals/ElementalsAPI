@@ -148,7 +148,7 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 		log.Infof("%s, player_id=%s collecting daily reward: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	}
 
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		log.Errorf("%s, gRPC lobby client not initialized", task.Request.RequestUUID)
 		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")

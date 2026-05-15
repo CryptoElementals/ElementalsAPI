@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/stream"
@@ -28,7 +29,7 @@ func defaultGRPCDialOptions() []grpc.DialOption {
 type ClientContext struct {
 	RoomAddr        string
 	LobbyAddr       string
-	redisStreamPool string // empty: default Redis pool; otherwise named pool key from [redis.Init]
+	redisStreamPool string // named pool from [redis.Init] (game env redis); not the API server default pool
 	Conn            *grpc.ClientConn
 	LobbyConn       *grpc.ClientConn
 	RpcClient       pb.RoomServiceClient
@@ -146,7 +147,8 @@ func InitClientContext(key, roomAddress, lobbyAddress string) error {
 	c.RoomAddr = cfg.RoomAddr
 	c.LobbyAddr = cfg.LobbyAddr
 	if key == GlobalContextKey {
-		c.redisStreamPool = ""
+		// GLOBAL gRPC fallback uses the normal environment's Redis for event streams.
+		c.redisStreamPool = config.ServerTypeNormal
 	} else {
 		c.redisStreamPool = key
 	}

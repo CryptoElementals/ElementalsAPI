@@ -16,8 +16,6 @@ service LobbyService {
   rpc CancelMatch(CancelMatchRequest) returns (google.protobuf.Empty);
   rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
   rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
-  rpc GetOrCreateUserProfileByAddress(GetOrCreateUserProfileByAddressRequest) returns (UserProfileResponse);
-  rpc GetOrCreateUserProfileByEmail(GetOrCreateUserProfileByEmailRequest) returns (UserProfileResponse);
   rpc EnsureUserToken(EnsureUserTokenRequest) returns (google.protobuf.Empty);
   rpc CreditUserTokens(CreditUserTokensRequest) returns (GetPlayerTokenResponse);
   rpc SetUserTokenAmount(SetUserTokenAmountRequest) returns (GetPlayerTokenResponse);
@@ -38,15 +36,6 @@ service LobbyService {
 
 message RegisterBotsForLobbyRequest {
   repeated PlayerAddress Addresses = 1;
-}
-
-message GetOrCreateUserProfileByAddressRequest {
-  string Address = 1;
-}
-
-message GetOrCreateUserProfileByEmailRequest {
-  string Email = 1;
-  string Name = 2;
 }
 
 message UserProfileResponse {

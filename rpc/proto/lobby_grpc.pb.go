@@ -26,8 +26,6 @@ const (
 	LobbyService_CancelMatch_FullMethodName                                 = "/rpc.LobbyService/CancelMatch"
 	LobbyService_GetPlayerStatus_FullMethodName                             = "/rpc.LobbyService/GetPlayerStatus"
 	LobbyService_GetPlayerToken_FullMethodName                              = "/rpc.LobbyService/GetPlayerToken"
-	LobbyService_GetOrCreateUserProfileByAddress_FullMethodName             = "/rpc.LobbyService/GetOrCreateUserProfileByAddress"
-	LobbyService_GetOrCreateUserProfileByEmail_FullMethodName               = "/rpc.LobbyService/GetOrCreateUserProfileByEmail"
 	LobbyService_EnsureUserToken_FullMethodName                             = "/rpc.LobbyService/EnsureUserToken"
 	LobbyService_CreditUserTokens_FullMethodName                            = "/rpc.LobbyService/CreditUserTokens"
 	LobbyService_SetUserTokenAmount_FullMethodName                          = "/rpc.LobbyService/SetUserTokenAmount"
@@ -54,8 +52,6 @@ type LobbyServiceClient interface {
 	CancelMatch(ctx context.Context, in *CancelMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error)
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
-	GetOrCreateUserProfileByAddress(ctx context.Context, in *GetOrCreateUserProfileByAddressRequest, opts ...grpc.CallOption) (*UserProfileResponse, error)
-	GetOrCreateUserProfileByEmail(ctx context.Context, in *GetOrCreateUserProfileByEmailRequest, opts ...grpc.CallOption) (*UserProfileResponse, error)
 	EnsureUserToken(ctx context.Context, in *EnsureUserTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CreditUserTokens(ctx context.Context, in *CreditUserTokensRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	SetUserTokenAmount(ctx context.Context, in *SetUserTokenAmountRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
@@ -136,26 +132,6 @@ func (c *lobbyServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTo
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
 	err := c.cc.Invoke(ctx, LobbyService_GetPlayerToken_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *lobbyServiceClient) GetOrCreateUserProfileByAddress(ctx context.Context, in *GetOrCreateUserProfileByAddressRequest, opts ...grpc.CallOption) (*UserProfileResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UserProfileResponse)
-	err := c.cc.Invoke(ctx, LobbyService_GetOrCreateUserProfileByAddress_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *lobbyServiceClient) GetOrCreateUserProfileByEmail(ctx context.Context, in *GetOrCreateUserProfileByEmailRequest, opts ...grpc.CallOption) (*UserProfileResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UserProfileResponse)
-	err := c.cc.Invoke(ctx, LobbyService_GetOrCreateUserProfileByEmail_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -285,8 +261,6 @@ type LobbyServiceServer interface {
 	CancelMatch(context.Context, *CancelMatchRequest) (*emptypb.Empty, error)
 	GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error)
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
-	GetOrCreateUserProfileByAddress(context.Context, *GetOrCreateUserProfileByAddressRequest) (*UserProfileResponse, error)
-	GetOrCreateUserProfileByEmail(context.Context, *GetOrCreateUserProfileByEmailRequest) (*UserProfileResponse, error)
 	EnsureUserToken(context.Context, *EnsureUserTokenRequest) (*emptypb.Empty, error)
 	CreditUserTokens(context.Context, *CreditUserTokensRequest) (*GetPlayerTokenResponse, error)
 	SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error)
@@ -330,12 +304,6 @@ func (UnimplementedLobbyServiceServer) GetPlayerStatus(context.Context, *PlayerA
 }
 func (UnimplementedLobbyServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
-}
-func (UnimplementedLobbyServiceServer) GetOrCreateUserProfileByAddress(context.Context, *GetOrCreateUserProfileByAddressRequest) (*UserProfileResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetOrCreateUserProfileByAddress not implemented")
-}
-func (UnimplementedLobbyServiceServer) GetOrCreateUserProfileByEmail(context.Context, *GetOrCreateUserProfileByEmailRequest) (*UserProfileResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetOrCreateUserProfileByEmail not implemented")
 }
 func (UnimplementedLobbyServiceServer) EnsureUserToken(context.Context, *EnsureUserTokenRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EnsureUserToken not implemented")
@@ -495,42 +463,6 @@ func _LobbyService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LobbyServiceServer).GetPlayerToken(ctx, req.(*GetPlayerTokenRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _LobbyService_GetOrCreateUserProfileByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetOrCreateUserProfileByAddressRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LobbyServiceServer).GetOrCreateUserProfileByAddress(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LobbyService_GetOrCreateUserProfileByAddress_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LobbyServiceServer).GetOrCreateUserProfileByAddress(ctx, req.(*GetOrCreateUserProfileByAddressRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _LobbyService_GetOrCreateUserProfileByEmail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetOrCreateUserProfileByEmailRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LobbyServiceServer).GetOrCreateUserProfileByEmail(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LobbyService_GetOrCreateUserProfileByEmail_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LobbyServiceServer).GetOrCreateUserProfileByEmail(ctx, req.(*GetOrCreateUserProfileByEmailRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -763,14 +695,6 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPlayerToken",
 			Handler:    _LobbyService_GetPlayerToken_Handler,
-		},
-		{
-			MethodName: "GetOrCreateUserProfileByAddress",
-			Handler:    _LobbyService_GetOrCreateUserProfileByAddress_Handler,
-		},
-		{
-			MethodName: "GetOrCreateUserProfileByEmail",
-			Handler:    _LobbyService_GetOrCreateUserProfileByEmail_Handler,
 		},
 		{
 			MethodName: "EnsureUserToken",

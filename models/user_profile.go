@@ -17,6 +17,7 @@ type UserProfile struct {
 	BackgroundURL            string     `gorm:"type:varchar(200)" json:"background_url"`
 	CollectedRewardAt        *time.Time `gorm:"default:null" json:"collected_reward_at"`          // 记录用户领取每日奖励的时间
 	CollectedNewUserRewardAt *time.Time `gorm:"default:null" json:"collected_new_user_reward_at"` // 记录用户领取新手奖励的时间
+	ServerType               string     `gorm:"column:server_type;type:varchar(16);not null;default:trial" json:"server_type"`
 	CreatedAt                time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt                time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }

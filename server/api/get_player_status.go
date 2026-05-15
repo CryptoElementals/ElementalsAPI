@@ -94,7 +94,7 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"

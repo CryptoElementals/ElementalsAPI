@@ -90,7 +90,7 @@ func (task *SetUserTokenTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	targetToken := task.Request.Token
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")
 	}

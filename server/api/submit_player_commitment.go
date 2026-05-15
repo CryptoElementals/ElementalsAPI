@@ -131,7 +131,7 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 	log.Infof("%s, Signature decoded: length=%d, recovery_id=%d (raw format: 0 or 1)", task.Request.RequestUUID, len(signatureBytes), recoveryID)
 
 	// 通过gRPC调用RoomServer的SubmitPlayerCommitment
-	rpcClient := client.GetGlobalRpcClient()
+	rpcClient := client.RoomClientForType(ServerTypeFromGin(c))
 	if rpcClient == nil {
 		log.Errorf("%s, gRPC client not initialized", task.Request.RequestUUID)
 		task.Response.BaseResponse.RetCode = 1002

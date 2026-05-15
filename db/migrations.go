@@ -44,7 +44,7 @@ func Migrate() error {
 	if err != nil {
 		return err
 	}
-	return nil
+	return BackfillUserProfileServerTypes()
 }
 
 func MigrateMemDb() error {
@@ -94,5 +94,5 @@ func MigrateMemDb() error {
 	if err := SeedTournamentTierRewardConfigs(); err != nil {
 		return err
 	}
-	return nil
+	return BackfillUserProfileServerTypes()
 }

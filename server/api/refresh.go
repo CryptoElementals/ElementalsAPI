@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/gin-contrib/sessions"
@@ -98,6 +100,11 @@ func (task *RefreshDillTask) Run(c *gin.Context) (Response, error) {
 	}
 	//2 写入会话 user
 	session.Set(SESSION_USER_KEY, userID)
+	serverType := config.ServerTypeTrial
+	if profile, err := db.GetUserProfileByPlayerID(userID); err == nil {
+		serverType = db.EffectiveServerType(profile)
+	}
+	session.Set(SESSION_SERVER_TYPE_KEY, config.NormalizeServerType(serverType))
 	err = session.Save()
 	if err != nil {
 		log.Errorf("%s, delete nonce from session failed, %s", task.Request.RequestUUID, err.Error())

@@ -79,7 +79,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	rpcClient := client.GetGlobalRpcClient()
+	rpcClient := client.RoomClientForType(ServerTypeFromGin(c))
 	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC client not initialized"

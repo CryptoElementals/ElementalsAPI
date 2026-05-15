@@ -1,14 +1,16 @@
-package events
+package client
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/rpc/client"
+	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/redis"
 )
 
-// ConnectionHealthMonitor 连接健康监控器
+// ConnectionHealthMonitor probes gRPC and Redis used by the event pipeline.
 type ConnectionHealthMonitor struct {
 	mu              sync.RWMutex
 	lastHealthCheck time.Time
@@ -18,7 +20,7 @@ type ConnectionHealthMonitor struct {
 	totalChecks     int
 }
 
-// NewConnectionHealthMonitor 创建连接健康监控器
+// NewConnectionHealthMonitor creates a connection health monitor.
 func NewConnectionHealthMonitor() *ConnectionHealthMonitor {
 	return &ConnectionHealthMonitor{
 		lastHealthCheck: time.Now(),
@@ -26,7 +28,7 @@ func NewConnectionHealthMonitor() *ConnectionHealthMonitor {
 	}
 }
 
-// CheckHealth 检查连接健康状态
+// CheckHealth runs a health check and returns whether dependencies are reachable.
 func (chm *ConnectionHealthMonitor) CheckHealth() bool {
 	chm.mu.Lock()
 	defer chm.mu.Unlock()
@@ -34,29 +36,37 @@ func (chm *ConnectionHealthMonitor) CheckHealth() bool {
 	chm.totalChecks++
 	chm.lastHealthCheck = time.Now()
 
-	// 获取gRPC客户端
-	rpcClient := client.GetGlobalRpcClient()
-	if rpcClient == nil {
+	if GetGlobalRpcClient() == nil {
 		chm.isHealthy = false
 		chm.failureCount++
-		log.Warnf("连接健康检查失败: gRPC客户端未初始化")
+		log.Warnf("connection health check failed: gRPC room client not initialized")
 		return false
 	}
 
-	if err := client.CheckRedisPing(); err != nil {
-		chm.isHealthy = false
-		chm.failureCount++
-		log.Warnf("连接健康检查失败: Redis: %v", err)
-		return false
+	for _, env := range []string{dao.ServerTypeTrial, dao.ServerTypeNormal} {
+		if err := pingNamedPool(env); err != nil {
+			chm.isHealthy = false
+			chm.failureCount++
+			log.Warnf("connection health check failed: redis %q: %v", env, err)
+			return false
+		}
 	}
 
 	chm.isHealthy = true
 	chm.successCount++
-	log.Debugf("连接健康检查成功")
+	log.Debugf("connection health check succeeded")
 	return true
 }
 
-// GetHealthStats 获取健康状态统计
+func pingNamedPool(name string) error {
+	op, err := redis.Pool(name)
+	if err != nil {
+		return err
+	}
+	return op.Ping()
+}
+
+// GetHealthStats returns monitor statistics.
 func (chm *ConnectionHealthMonitor) GetHealthStats() map[string]interface{} {
 	chm.mu.RLock()
 	defer chm.mu.RUnlock()
@@ -73,24 +83,36 @@ func (chm *ConnectionHealthMonitor) GetHealthStats() map[string]interface{} {
 		"success_count":    chm.successCount,
 		"failure_count":    chm.failureCount,
 		"success_rate_pct": successRate,
+		"checked_pools":    []string{dao.ServerTypeTrial, dao.ServerTypeNormal},
 	}
 }
 
-// IsHealthy 返回当前健康状态
+// IsHealthy returns the last recorded health status.
 func (chm *ConnectionHealthMonitor) IsHealthy() bool {
 	chm.mu.RLock()
 	defer chm.mu.RUnlock()
 	return chm.isHealthy
 }
 
-// 为全局事件管理器添加健康监控
-var globalHealthMonitor *ConnectionHealthMonitor
-var healthMonitorOnce sync.Once
+var (
+	globalHealthMonitor *ConnectionHealthMonitor
+	healthMonitorOnce   sync.Once
+)
 
-// GetGlobalHealthMonitor 获取全局健康监控器
+// GetGlobalHealthMonitor returns the shared connection health monitor.
 func GetGlobalHealthMonitor() *ConnectionHealthMonitor {
 	healthMonitorOnce.Do(func() {
 		globalHealthMonitor = NewConnectionHealthMonitor()
 	})
 	return globalHealthMonitor
+}
+
+// PingAllStreamPools returns an error describing the first unreachable stream Redis pool.
+func PingAllStreamPools() error {
+	for _, env := range []string{dao.ServerTypeTrial, dao.ServerTypeNormal} {
+		if err := pingNamedPool(env); err != nil {
+			return fmt.Errorf("%s: %w", env, err)
+		}
+	}
+	return nil
 }

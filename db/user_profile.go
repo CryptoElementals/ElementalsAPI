@@ -50,8 +50,19 @@ func GetUserProfileByPlayerIDInt(playerID int64) (*dao.UserProfile, error) {
 	return &userProfile, nil
 }
 
+// EffectiveServerType returns the profile server type or trial when unset.
+func EffectiveServerType(profile *dao.UserProfile) string {
+	if profile == nil {
+		return dao.ServerTypeTrial
+	}
+	return dao.NormalizeServerType(profile.ServerType)
+}
+
 // CreateUserProfile 创建用户档案
 func CreateUserProfile(userProfile *dao.UserProfile) error {
+	if userProfile != nil {
+		userProfile.ServerType = dao.NormalizeServerType(userProfile.ServerType)
+	}
 	return Get().Create(userProfile).Error
 }
 
@@ -88,7 +99,8 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 			// 使用事务确保用户档案和 token 记录同时创建
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
-					Address: strings.ToLower(address),
+					Address:    strings.ToLower(address),
+					ServerType: dao.DefaultServerTypeForNewUser,
 				}
 				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
 				if err = userProfile.BeforeCreate(tx); err != nil {
@@ -136,7 +148,8 @@ func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile,
 			// 使用事务确保用户档案和 token 记录同时创建
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
-					Email: email,
+					Email:      email,
+					ServerType: dao.DefaultServerTypeForNewUser,
 				}
 				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
 				if err = userProfile.BeforeCreate(tx); err != nil {
