@@ -43,6 +43,7 @@ type UserInfo struct {
 	Level              int               `json:"Level"`
 	CurrentLevelPoints int               `json:"CurrentLevelPoints"`
 	NextLevelPoints    int               `json:"NextLevelPoints"`
+	ServerType         string            `json:"ServerType"`
 	CardStatInfo       []db.CardStatInfo `json:"CardStatInfo"`
 }
 
@@ -196,6 +197,7 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		Level:              level,
 		CurrentLevelPoints: currentLevelPoints,
 		NextLevelPoints:    nextLevelPoints,
+		ServerType:         db.EffectiveServerType(userProfile),
 		CardStatInfo:       cardStatInfo,
 	}
 
