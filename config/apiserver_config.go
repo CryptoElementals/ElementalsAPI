@@ -11,17 +11,39 @@ import (
 var RoomServerAddress string
 var GConf ApiServerConfig
 
+// EnvironmentConfig is one logical game shard: its own Redis pool (when registered as a named pool),
+// room gRPC, and lobby gRPC. The first entry in ApiServerConfig.EnvironmentConfigs is the primary
+// (default Redis pool + InitGlobalClients); further entries register named Redis pools and
+// InitClientContext(name, ...).
+type EnvironmentConfig struct {
+	Name               string       `mapstructure:"name"`
+	RedisCfg           redis.Config `mapstructure:"redis"`
+	RoomServerAddress  string       `mapstructure:"room-server-address"`
+	LobbyServerAddress string       `mapstructure:"lobby-server-address"`
+}
+
 // ApiServerConfig represents the complete application configuration structure
 type ApiServerConfig struct {
 	LogCfg             log.Config      `mapstructure:"log"`
-	RedisCfg           redis.Config    `mapstructure:"redis"`
 	DbCfg              db.Config       `mapstructure:"database"`
 	Snowflake          SnowflakeConfig `mapstructure:"snowflake"`
 	ServerCfg          ServerConfig    `mapstructure:"server"`
-	RoomServerAddress  string          `mapstructure:"room-server-address"`
-	LobbyServerAddress string          `mapstructure:"lobby-server-address"`
 	GameParams         GameParamConfig `mapstructure:"game-params"`
 	S3Config           S3Config        `mapstructure:"s3"`
+	EnvironmentConfigs []EnvironmentConfig `mapstructure:"environments"`
+}
+
+// EnvironmentByName returns the environment with the given name and whether it exists.
+func (cfg *ApiServerConfig) EnvironmentByName(name string) (EnvironmentConfig, bool) {
+	if name == "" || cfg == nil {
+		return EnvironmentConfig{}, false
+	}
+	for i := range cfg.EnvironmentConfigs {
+		if cfg.EnvironmentConfigs[i].Name == name {
+			return cfg.EnvironmentConfigs[i], true
+		}
+	}
+	return EnvironmentConfig{}, false
 }
 
 // LoadApiServerConfig loads the complete application configuration from file
@@ -35,8 +57,10 @@ func LoadApiServerConfig(configPath string) (*ApiServerConfig, error) {
 	// Set default values
 	setDefaultValues(cfg)
 
-	// 将房间服地址写入全局变量
-	RoomServerAddress = cfg.RoomServerAddress
+	// 将主环境房间服地址写入全局变量
+	if len(cfg.EnvironmentConfigs) > 0 {
+		RoomServerAddress = cfg.EnvironmentConfigs[0].RoomServerAddress
+	}
 
 	// 设置全局配置
 	GConf = *cfg
@@ -54,9 +78,32 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 		return fmt.Errorf("log config validation failed: %w", err)
 	}
 
-	// Validate Redis configuration
-	if err := validateRedisConfig(&cfg.RedisCfg); err != nil {
-		return fmt.Errorf("redis config validation failed: %w", err)
+	if len(cfg.EnvironmentConfigs) < 1 {
+		return fmt.Errorf("at least one environment is required in environments")
+	}
+
+	seen := make(map[string]struct{}, len(cfg.EnvironmentConfigs))
+	for i, env := range cfg.EnvironmentConfigs {
+		if env.Name == "" {
+			return fmt.Errorf("environment[%d]: name cannot be empty", i)
+		}
+		if env.Name == "default" {
+			return fmt.Errorf("environment[%d]: name %q is reserved", i, env.Name)
+		}
+		if _, dup := seen[env.Name]; dup {
+			return fmt.Errorf("duplicate environment name: %q", env.Name)
+		}
+		seen[env.Name] = struct{}{}
+
+		if err := validateRedisConfig(&env.RedisCfg); err != nil {
+			return fmt.Errorf("environment %q redis: %w", env.Name, err)
+		}
+		if env.RoomServerAddress == "" {
+			return fmt.Errorf("environment %q: room server address cannot be empty", env.Name)
+		}
+		if env.LobbyServerAddress == "" {
+			return fmt.Errorf("environment %q: lobby server address cannot be empty", env.Name)
+		}
 	}
 
 	// Validate database configuration
@@ -72,14 +119,6 @@ func ValidateApiServerConfig(cfg *ApiServerConfig) error {
 	// Validate S3 configuration
 	if err := validateS3Config(&cfg.S3Config); err != nil {
 		return fmt.Errorf("s3 config validation failed: %w", err)
-	}
-
-	// Validate room server address
-	if cfg.RoomServerAddress == "" {
-		return fmt.Errorf("room server address cannot be empty")
-	}
-	if cfg.LobbyServerAddress == "" {
-		return fmt.Errorf("lobby server address cannot be empty")
 	}
 
 	return nil
@@ -114,6 +153,18 @@ func validateServerConfig(cfg *ServerConfig) error {
 	return nil
 }
 
+func applyRedisDefaults(rc *redis.Config) {
+	if rc.Address == "" {
+		rc.Address = "localhost:6379"
+	}
+	if rc.Size == 0 {
+		rc.Size = 10
+	}
+	if rc.SessionExpire == 0 {
+		rc.SessionExpire = 43200 // 12小时
+	}
+}
+
 // setDefaultValues sets default values for configuration fields
 func setDefaultValues(cfg *ApiServerConfig) {
 	// Set default log configuration
@@ -136,16 +187,14 @@ func setDefaultValues(cfg *ApiServerConfig) {
 		cfg.LogCfg.RotationTime = 24
 	}
 
-	// Set default Redis configuration
-	if cfg.RedisCfg.Address == "" {
-		cfg.RedisCfg.Address = "localhost:6379"
-	}
-	if cfg.RedisCfg.Size == 0 {
-		cfg.RedisCfg.Size = 10
-	}
-	// Set default Redis session expire time
-	if cfg.RedisCfg.SessionExpire == 0 {
-		cfg.RedisCfg.SessionExpire = 43200 // 12小时
+	for i := range cfg.EnvironmentConfigs {
+		applyRedisDefaults(&cfg.EnvironmentConfigs[i].RedisCfg)
+		if cfg.EnvironmentConfigs[i].RoomServerAddress == "" {
+			cfg.EnvironmentConfigs[i].RoomServerAddress = "127.0.0.1:50051"
+		}
+		if cfg.EnvironmentConfigs[i].LobbyServerAddress == "" {
+			cfg.EnvironmentConfigs[i].LobbyServerAddress = "127.0.0.1:50052"
+		}
 	}
 
 	// Set default database configuration
@@ -174,14 +223,6 @@ func setDefaultValues(cfg *ApiServerConfig) {
 	}
 	if cfg.ServerCfg.ServiceName == "" {
 		cfg.ServerCfg.ServiceName = "DILL"
-	}
-
-	// 默认 RoomServer / Lobby 地址
-	if cfg.RoomServerAddress == "" {
-		cfg.RoomServerAddress = "127.0.0.1:50051"
-	}
-	if cfg.LobbyServerAddress == "" {
-		cfg.LobbyServerAddress = "127.0.0.1:50052"
 	}
 
 	// Set default S3 configuration

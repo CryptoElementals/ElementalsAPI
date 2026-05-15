@@ -70,9 +70,21 @@ func startServer() error {
 	}
 	log.Infof("snowflake node id=%d", snowflakeNode)
 
-	// Initialize Redis
-	if err := redis.Init(&cfg.RedisCfg); err != nil {
-		return fmt.Errorf("failed to initialize Redis: %w", err)
+	// Initialize Redis: primary pool (index 0) + named pools for additional environments
+	primary := &cfg.EnvironmentConfigs[0]
+	var named []*redis.ConfigWithName
+	for i := 1; i < len(cfg.EnvironmentConfigs); i++ {
+		env := &cfg.EnvironmentConfigs[i]
+		named = append(named, &redis.ConfigWithName{Name: env.Name, Cfg: &env.RedisCfg})
+	}
+	var redisInitErr error
+	if len(named) == 0 {
+		redisInitErr = redis.Init(&primary.RedisCfg)
+	} else {
+		redisInitErr = redis.Init(&primary.RedisCfg, named...)
+	}
+	if redisInitErr != nil {
+		return fmt.Errorf("failed to initialize Redis: %w", redisInitErr)
 	}
 	log.Info("Redis connection initialized successfully")
 
@@ -82,9 +94,15 @@ func startServer() error {
 	}
 	log.Info("Database connection initialized successfully")
 
-	// Initialize gRPC client manager
-	if err := client.InitGlobalClients(cfg.RoomServerAddress, cfg.LobbyServerAddress); err != nil {
+	// Initialize gRPC client manager (primary = GLOBAL)
+	if err := client.InitGlobalClients(primary.RoomServerAddress, primary.LobbyServerAddress); err != nil {
 		return fmt.Errorf("failed to initialize gRPC clients: %w", err)
+	}
+	for i := 1; i < len(cfg.EnvironmentConfigs); i++ {
+		env := cfg.EnvironmentConfigs[i]
+		if err := client.InitClientContext(env.Name, env.RoomServerAddress, env.LobbyServerAddress); err != nil {
+			return fmt.Errorf("failed to initialize gRPC clients for environment %q: %w", env.Name, err)
+		}
 	}
 	log.Info("gRPC clients initialized successfully")
 

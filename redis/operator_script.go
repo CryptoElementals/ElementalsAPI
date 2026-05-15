@@ -4,13 +4,13 @@ import (
 	redigo "github.com/gomodule/redigo/redis"
 )
 
-func (o *redisOperator) ScriptLoad(script string) (string, error) {
+func (o *RedisOperator) ScriptLoad(script string) (string, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	return redigo.String(conn.Do(SCRIPT_LOAD_COMMAND, "LOAD", script))
 }
 
-func (o *redisOperator) EvalSha(sha string, keys []string, args ...interface{}) (interface{}, error) {
+func (o *RedisOperator) EvalSha(sha string, keys []string, args ...interface{}) (interface{}, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	cmdArgs := make([]interface{}, 0, 2+len(keys)+len(args))
@@ -22,7 +22,7 @@ func (o *redisOperator) EvalSha(sha string, keys []string, args ...interface{}) 
 	return conn.Do(EVALSHA_COMMAND, cmdArgs...)
 }
 
-func (o *redisOperator) Eval(script string, keys []string, args ...interface{}) (interface{}, error) {
+func (o *RedisOperator) Eval(script string, keys []string, args ...interface{}) (interface{}, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	cmdArgs := make([]interface{}, 0, 2+len(keys)+len(args))
@@ -35,21 +35,21 @@ func (o *redisOperator) Eval(script string, keys []string, args ...interface{}) 
 }
 
 // ScriptDo runs a compiled script using this operator's pool.
-func (o *redisOperator) ScriptDo(s *Script, keysAndArgs ...interface{}) (interface{}, error) {
+func (o *RedisOperator) ScriptDo(s *Script, keysAndArgs ...interface{}) (interface{}, error) {
 	return ScriptDo(o.pool, s, keysAndArgs...)
 }
 
 // ScriptInt runs the script and parses the reply as an integer.
-func (o *redisOperator) ScriptInt(s *Script, keysAndArgs ...interface{}) (int, error) {
+func (o *RedisOperator) ScriptInt(s *Script, keysAndArgs ...interface{}) (int, error) {
 	return ScriptInt(o.pool, s, keysAndArgs...)
 }
 
 // ScriptString runs the script and parses the reply as a string.
-func (o *redisOperator) ScriptString(s *Script, keysAndArgs ...interface{}) (string, error) {
+func (o *RedisOperator) ScriptString(s *Script, keysAndArgs ...interface{}) (string, error) {
 	return ScriptString(o.pool, s, keysAndArgs...)
 }
 
 // ScriptValues runs the script and parses the reply as a slice of values.
-func (o *redisOperator) ScriptValues(s *Script, keysAndArgs ...interface{}) ([]interface{}, error) {
+func (o *RedisOperator) ScriptValues(s *Script, keysAndArgs ...interface{}) ([]interface{}, error) {
 	return ScriptValues(o.pool, s, keysAndArgs...)
 }

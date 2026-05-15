@@ -26,15 +26,16 @@ func defaultGRPCDialOptions() []grpc.DialOption {
 
 // ClientContext holds room/lobby gRPC clients and the shared event stream for one logical bundle (e.g. one shard).
 type ClientContext struct {
-	RoomAddr     string
-	LobbyAddr    string
-	Conn         *grpc.ClientConn
-	LobbyConn    *grpc.ClientConn
-	RpcClient    pb.RoomServiceClient
-	LobbyClient  pb.LobbyServiceClient
-	EventStream  stream.Stream
-	Mutex        sync.RWMutex
-	initComplete bool
+	RoomAddr        string
+	LobbyAddr       string
+	redisStreamPool string // empty: default Redis pool; otherwise named pool key from [redis.Init]
+	Conn            *grpc.ClientConn
+	LobbyConn       *grpc.ClientConn
+	RpcClient       pb.RoomServiceClient
+	LobbyClient     pb.LobbyServiceClient
+	EventStream     stream.Stream
+	Mutex           sync.RWMutex
+	initComplete    bool
 }
 
 func NewClientContext(roomAddress, lobbyAddress string) *ClientContext {
@@ -94,7 +95,13 @@ func (c *ClientContext) dialLocked() error {
 	c.RpcClient = pb.NewRoomServiceClient(roomConn)
 	c.LobbyClient = pb.NewLobbyServiceClient(lobbyConn)
 	if c.EventStream == nil {
-		st, err := stream.NewRedisStream()
+		var st stream.Stream
+		var err error
+		if c.redisStreamPool == "" {
+			st, err = stream.NewRedisStream()
+		} else {
+			st, err = stream.NewRedisStreamForPool(c.redisStreamPool)
+		}
 		if err != nil {
 			_ = roomConn.Close()
 			_ = lobbyConn.Close()
@@ -138,6 +145,11 @@ func InitClientContext(key, roomAddress, lobbyAddress string) error {
 	cfg := NewClientContext(roomAddress, lobbyAddress)
 	c.RoomAddr = cfg.RoomAddr
 	c.LobbyAddr = cfg.LobbyAddr
+	if key == GlobalContextKey {
+		c.redisStreamPool = ""
+	} else {
+		c.redisStreamPool = key
+	}
 	return c.Init()
 }
 

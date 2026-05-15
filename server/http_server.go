@@ -249,6 +249,13 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 		_ = session.Save()
 
+		oauthEnvHint := ""
+		if envVal != nil {
+			if s, ok := envVal.(string); ok {
+				oauthEnvHint = s
+			}
+		}
+
 		// exchange code for token
 		form := url.Values{}
 		form.Set("code", code)
@@ -301,6 +308,11 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
 		lobbyClient := client.GetGlobalLobbyClient()
+		if _, ok := config.GConf.EnvironmentByName(oauthEnvHint); ok && oauthEnvHint != "" {
+			if alt := client.GetLobbyServiceClient(oauthEnvHint); alt != nil {
+				lobbyClient = alt
+			}
+		}
 		if lobbyClient == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "gRPC lobby client not initialized"})
 			return
@@ -326,12 +338,7 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 
 		// decide frontend redirect target based on env hint
-		var env string
-		if envVal != nil {
-			if s, ok := envVal.(string); ok {
-				env = s
-			}
-		}
+		env := oauthEnvHint
 
 		var frontendURL string
 		switch env {

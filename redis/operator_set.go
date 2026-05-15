@@ -4,7 +4,7 @@ import (
 	redigo "github.com/gomodule/redigo/redis"
 )
 
-func (o *redisOperator) SAdd(key string, members ...interface{}) (int, error) {
+func (o *RedisOperator) SAdd(key string, members ...interface{}) (int, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	args := make([]interface{}, 0, len(members)+1)
@@ -13,7 +13,7 @@ func (o *redisOperator) SAdd(key string, members ...interface{}) (int, error) {
 	return redigo.Int(conn.Do(SADD_COMMAND, args...))
 }
 
-func (o *redisOperator) SRem(key string, members ...interface{}) (int, error) {
+func (o *RedisOperator) SRem(key string, members ...interface{}) (int, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	args := make([]interface{}, 0, len(members)+1)
@@ -22,31 +22,31 @@ func (o *redisOperator) SRem(key string, members ...interface{}) (int, error) {
 	return redigo.Int(conn.Do(SREM_COMMAND, args...))
 }
 
-func (o *redisOperator) SMove(source, destination string, member interface{}) (bool, error) {
+func (o *RedisOperator) SMove(source, destination string, member interface{}) (bool, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	return redigo.Bool(conn.Do(SMOVE_COMMAND, source, destination, member))
 }
 
-func (o *redisOperator) SMembers(key string) ([]string, error) {
+func (o *RedisOperator) SMembers(key string) ([]string, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	return redigo.Strings(conn.Do(SMEMBERS_COMMAND, key))
 }
 
-func (o *redisOperator) SIsMember(key string, member interface{}) (bool, error) {
+func (o *RedisOperator) SIsMember(key string, member interface{}) (bool, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	return redigo.Bool(conn.Do(SISMEMBER_CMD, key, member))
 }
 
-func (o *redisOperator) SCard(key string) (int, error) {
+func (o *RedisOperator) SCard(key string) (int, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	return redigo.Int(conn.Do(SCARD_COMMAND, key))
 }
 
-func (o *redisOperator) SPop(key string) (string, error) {
+func (o *RedisOperator) SPop(key string) (string, error) {
 	conn := o.pool.Get()
 	defer o.closeConn(conn)
 	return redigo.String(conn.Do(SPOP_COMMAND, key))
