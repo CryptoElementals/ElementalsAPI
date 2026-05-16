@@ -242,5 +242,4 @@ func setDefaultValues(cfg *ApiServerConfig) {
 		cfg.S3Config.PresignExpire = 3600 // 1小时过期
 	}
 
-	// 游戏参数的初始化逻辑已移动到 InitializeGameParams 函数中
 }

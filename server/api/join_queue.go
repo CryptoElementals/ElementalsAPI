@@ -119,10 +119,8 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	_, err = lobbyClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
 		shortErr := ShortGRPCError(err)
-		// 检查apiserver的TokenThreshold配置是否与roomserver一致
 		if strings.Contains(shortErr, "user token is not enough") {
 			task.Response.BaseResponse.RetCode = 1004
-			//task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
 			task.Response.BaseResponse.Message = "Insufficient available tokens"
 			return task.Response, nil
 		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_IN_GAME") {

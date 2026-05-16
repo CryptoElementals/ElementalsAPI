@@ -75,19 +75,6 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		ListenPort: 30011,
 		GameArgsID: ga.ID,
 	}
-	config.InitializeGameParams(&config.GameParamConfig{
-		SystemFeeRate:   0.016,
-		WinnerPointRate: 0.012,
-		LoserPointRate:  0.004,
-		TieTokenRate:    0.008,
-		TiePointRate:    0.008,
-		BaseStake:       1000,
-		MaxRounds:       3,
-		InitialHP:       3000,
-	})
-	if config.GameParams.BaseStake == 0 {
-		config.GameParams.BaseStake = 1000
-	}
 	redisAddr := os.Getenv("ELEMENTALS_REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "127.0.0.1:6379"
