@@ -96,7 +96,6 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 	err := Get().Where("address = ?", address).First(&userProfile).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 使用事务确保用户档案和 token 记录同时创建
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
 					Address:    strings.ToLower(address),
@@ -112,17 +111,6 @@ func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
 					return err
 				}
 
-				// 创建对应的 user_token 记录
-				userToken := dao.UserToken{
-					PlayerId:    userProfile.PlayerID,
-					Points:      0,
-					TokenAmount: 0,
-				}
-				if err = tx.Create(&userToken).Error; err != nil {
-					log.Errorf("failed to create user_token for player_id=%d: %v", userProfile.PlayerID, err)
-					return err
-				}
-				log.Infof("created user_profile and user_token for address=%s, player_id=%d", address, userProfile.PlayerID)
 				return nil
 			})
 			if err != nil {
@@ -145,7 +133,6 @@ func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile,
 	if err != nil {
 		log.Infof("GetOrCreateUserProfileByEmail: errors.Is(err, gorm.ErrRecordNotFound): %v", errors.Is(err, gorm.ErrRecordNotFound))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 使用事务确保用户档案和 token 记录同时创建
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
 					Email:      email,
@@ -162,18 +149,6 @@ func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile,
 					log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
 					return err
 				}
-
-				// 创建对应的 user_token 记录
-				userToken := dao.UserToken{
-					PlayerId:    userProfile.PlayerID,
-					Points:      0,
-					TokenAmount: 0,
-				}
-				if err = tx.Create(&userToken).Error; err != nil {
-					log.Errorf("failed to create user_token for player_id=%d: %v", userProfile.PlayerID, err)
-					return err
-				}
-				log.Infof("created user_profile and user_token for email=%s, player_id=%d", email, userProfile.PlayerID)
 				return nil
 			})
 			if err != nil {

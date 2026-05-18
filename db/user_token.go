@@ -169,21 +169,11 @@ func RecordTournamentEntryLedgerTx(
 func LockUserToken(ctx context.Context, playerId int64, tempAddress string, tokenAmount int32, tournamentID string) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
 		// resolve user by address
-		profile, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
-		if perr != nil {
-			return perr
-		}
 		userToken := &dao.UserToken{}
 		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {
 			if err != gorm.ErrRecordNotFound {
-				return err
-			}
-			// save a record if locked token is zero
-			// mostly used in test
-			if tokenAmount == 0 {
-				userToken.PlayerId = profile.PlayerID
-				tx.Save(userToken)
+				return errors.New("user token amount is not enough")
 			}
 		}
 		lockedAmount := int32(0)
@@ -280,21 +270,11 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 		for i := range playerIds {
 			playerId := playerIds[i]
 			tempAddress := tempAddresses[i]
-			profile, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
-			if perr != nil {
-				return perr
-			}
 			userToken := &dao.UserToken{}
 			err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 			if err != nil {
 				if err != gorm.ErrRecordNotFound {
 					return err
-				}
-				// save a record if locked token is zero
-				// mostly used in test
-				if tokenAmount == 0 {
-					userToken.PlayerId = profile.PlayerID
-					tx.Save(userToken)
 				}
 			}
 			lockedAmount := int32(0)
@@ -485,6 +465,14 @@ func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error)
 	var userToken dao.UserToken
 	err := Get().Where("player_id = ?", playerId).Preload("LockedTokens").First(&userToken).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &dao.UserToken{
+				PlayerId:     playerId,
+				Points:       0,
+				TokenAmount:  0,
+				LockedTokens: []*dao.LockedUserToken{},
+			}, nil
+		}
 		return nil, err
 	}
 	// filter locked tokens by time
