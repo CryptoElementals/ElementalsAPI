@@ -72,15 +72,8 @@ func (s *TournamentQueueService) handleJoinTournamentEvent(TournamentID string, 
 	if address.Id == 0 {
 		return fmt.Errorf("invalid player id: 0")
 	}
-	if _, err := db.GetUserProfileByPlayerIDInt(address.Id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("player not found for player_id %d", address.Id)
-		}
-		return fmt.Errorf("load user profile for player_id %d: %w", address.Id, err)
-	}
 
 	now := time.Now().UTC()
-
 	if err := db.Get().Transaction(func(tx *gorm.DB) error {
 		var lockedT dao.Tournament
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
