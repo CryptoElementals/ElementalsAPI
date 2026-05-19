@@ -30,18 +30,7 @@ func (u *UserProfile) BeforeCreate(tx *gorm.DB) (err error) {
 	return nil
 }
 
-type DevTempKey struct {
-	ID             uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	TempPrivateKey string `gorm:"type:varchar(100);not null" json:"temp_private_key"`
-	TempAddress    string `gorm:"type:varchar(100);not null" json:"temp_address"`
-	Address        string `gorm:"type:varchar(100)" json:"address"`
-}
-
 // TableName 指定表名
 func (UserProfile) TableName() string {
 	return "user_profiles"
-}
-
-func (DevTempKey) TableName() string {
-	return "dev_temp_keys"
 }

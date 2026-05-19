@@ -72,7 +72,11 @@ func NewHasCollectedDailyRewardTask(data *map[string]interface{}) (Task, error) 
 
 func (task *HasCollectedDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	playerID := strings.TrimSpace(task.Request.PlayerID)
-	if !config.GameParams.EnableDailyReward {
+	env, ok := config.GConf.EnvironmentForServerType(ServerTypeFromGin(c))
+	if !ok {
+		return nil, errors.ActionError("Environment not configured")
+	}
+	if !env.EnableDailyReward {
 		log.Errorf("%s, daily reward disabled by config (player_id=%s)", task.Request.RequestUUID, playerID)
 		return nil, errors.ActionError("Daily reward is not enabled")
 	}

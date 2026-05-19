@@ -18,6 +18,15 @@ type EnvironmentConfig struct {
 	RedisCfg           redis.Config `mapstructure:"redis"`
 	RoomServerAddress  string       `mapstructure:"room-server-address"`
 	LobbyServerAddress string       `mapstructure:"lobby-server-address"`
+
+	DailyRewardStartDate        string `mapstructure:"daily-reward-start-date"`
+	DailyRewardEndDate          string `mapstructure:"daily-reward-end-date"`
+	FirstTimeRewardTokens       int    `mapstructure:"first-time-reward-tokens"`
+	DailyRewardTokensAfterFirst int    `mapstructure:"daily-reward-tokens-after-first"`
+	EnableDailyReward           bool   `mapstructure:"enable-daily-reward"`
+
+	NewUserRewardTokens int  `mapstructure:"new-user-reward-tokens"`
+	EnableNewUserReward bool `mapstructure:"enable-new-user-reward"`
 }
 
 // ApiServerConfig represents the complete application configuration structure
@@ -27,9 +36,13 @@ type ApiServerConfig struct {
 	RedisCfg           redis.Config        `mapstructure:"redis"` // API server default Redis (sessions, refresh-token cache)
 	Snowflake          SnowflakeConfig     `mapstructure:"snowflake"`
 	ServerCfg          ServerConfig        `mapstructure:"server"`
-	GameParams         GameParamConfig     `mapstructure:"game-params"`
 	S3Config           S3Config            `mapstructure:"s3"`
 	EnvironmentConfigs []EnvironmentConfig `mapstructure:"environments"`
+}
+
+// EnvironmentForServerType returns the environment for trial/normal server type.
+func (cfg *ApiServerConfig) EnvironmentForServerType(serverType string) (EnvironmentConfig, bool) {
+	return cfg.EnvironmentByName(NormalizeServerType(serverType))
 }
 
 // EnvironmentByName returns the environment with the given name and whether it exists.
@@ -63,9 +76,6 @@ func LoadApiServerConfig(configPath string) (*ApiServerConfig, error) {
 
 	// 设置全局配置
 	GConf = *cfg
-
-	// 初始化游戏参数
-	InitializeGameParams(&cfg.GameParams)
 
 	return cfg, nil
 }
@@ -164,6 +174,18 @@ func validateServerConfig(cfg *ServerConfig) error {
 	return nil
 }
 
+func applyEnvironmentRewardDefaults(env *EnvironmentConfig) {
+	if env.FirstTimeRewardTokens == 0 {
+		env.FirstTimeRewardTokens = 10000
+	}
+	if env.DailyRewardTokensAfterFirst == 0 {
+		env.DailyRewardTokensAfterFirst = 3000
+	}
+	if env.NewUserRewardTokens == 0 {
+		env.NewUserRewardTokens = 5000
+	}
+}
+
 func applyRedisDefaults(rc *redis.Config) {
 	if rc.Address == "" {
 		rc.Address = "localhost:6379"
@@ -207,6 +229,7 @@ func setDefaultValues(cfg *ApiServerConfig) {
 		if cfg.EnvironmentConfigs[i].LobbyServerAddress == "" {
 			cfg.EnvironmentConfigs[i].LobbyServerAddress = "127.0.0.1:50052"
 		}
+		applyEnvironmentRewardDefaults(&cfg.EnvironmentConfigs[i])
 	}
 
 	// Set default database configuration

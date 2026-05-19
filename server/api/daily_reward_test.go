@@ -21,7 +21,7 @@ func setupTestDBForDailyRewardAPI(t *testing.T) {
 
 func TestDailyReward_DisabledByConfig(t *testing.T) {
 	setupTestDBForDailyRewardAPI(t)
-	config.InitializeGameParams(&config.GameParamConfig{
+	setTestTrialEnvironment(config.EnvironmentConfig{
 		EnableDailyReward: false,
 	})
 

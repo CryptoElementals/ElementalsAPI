@@ -50,7 +50,6 @@ const (
 	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"
 	SSE_EXAMPLE_LABEL              = "SSEExample"
 	SURRENDER_LABEL                = "Surrender"
-	GET_GAME_CONFIG_LABEL          = "GetGameConfig"
 	SUBMIT_PLAYER_COMMITMENT_LABEL = "SubmitPlayerCommitment"
 	SUBMIT_PLAYER_CARD_LABEL       = "SubmitPlayerCard"
 	GET_PLAYER_STATUS_LABEL        = "GetPlayerStatus"

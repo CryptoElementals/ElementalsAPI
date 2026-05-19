@@ -73,11 +73,15 @@ func NewCollectNewUserRewardTask(data *map[string]interface{}) (Task, error) {
 
 func (task *CollectNewUserRewardTask) Run(c *gin.Context) (Response, error) {
 	playerID := strings.TrimSpace(task.Request.PlayerID)
-	if !config.GameParams.EnableNewUserReward {
+	env, ok := config.GConf.EnvironmentForServerType(ServerTypeFromGin(c))
+	if !ok {
+		return nil, cmnErrors.ActionError("Environment not configured")
+	}
+	if !env.EnableNewUserReward {
 		log.Errorf("%s, new user reward disabled by config (player_id=%s)", task.Request.RequestUUID, playerID)
 		return nil, cmnErrors.ActionError("New user reward is not enabled")
 	}
-	rewardAmount := int32(config.GameParams.NewUserRewardTokens)
+	rewardAmount := int32(env.NewUserRewardTokens)
 	if rewardAmount <= 0 {
 		log.Errorf("%s, invalid new user reward tokens config: %d", task.Request.RequestUUID, rewardAmount)
 		return nil, cmnErrors.ActionError("New user reward not configured")

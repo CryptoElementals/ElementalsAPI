@@ -29,6 +29,13 @@ func setupTestDBForNewUserRewardAPI(t *testing.T) {
 	setupTestLobbyClientForRewards(t)
 }
 
+func setTestTrialEnvironment(env config.EnvironmentConfig) {
+	env.Name = config.ServerTypeTrial
+	config.GConf = config.ApiServerConfig{
+		EnvironmentConfigs: []config.EnvironmentConfig{env},
+	}
+}
+
 func setupGinContext() *gin.Context {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -77,7 +84,7 @@ func setupTestLobbyClientForRewards(t *testing.T) {
 
 func TestCollectNewUserReward_OnlyOnce(t *testing.T) {
 	setupTestDBForNewUserRewardAPI(t)
-	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 1234, EnableNewUserReward: true})
+	setTestTrialEnvironment(config.EnvironmentConfig{NewUserRewardTokens: 1234, EnableNewUserReward: true})
 
 	profile := &dao.UserProfile{
 		PlayerID: 4001,
@@ -119,7 +126,7 @@ func TestCollectNewUserReward_OnlyOnce(t *testing.T) {
 
 func TestHasCollectedNewUserReward_StatusChangesAfterClaim(t *testing.T) {
 	setupTestDBForNewUserRewardAPI(t)
-	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 200, EnableNewUserReward: true})
+	setTestTrialEnvironment(config.EnvironmentConfig{NewUserRewardTokens: 200, EnableNewUserReward: true})
 
 	profile := &dao.UserProfile{
 		PlayerID: 4002,
@@ -163,7 +170,7 @@ func TestHasCollectedNewUserReward_StatusChangesAfterClaim(t *testing.T) {
 
 func TestNewUserReward_DisabledByConfig(t *testing.T) {
 	setupTestDBForNewUserRewardAPI(t)
-	config.InitializeGameParams(&config.GameParamConfig{NewUserRewardTokens: 999, EnableNewUserReward: false})
+	setTestTrialEnvironment(config.EnvironmentConfig{NewUserRewardTokens: 999, EnableNewUserReward: false})
 
 	profile := &dao.UserProfile{
 		PlayerID: 4003,

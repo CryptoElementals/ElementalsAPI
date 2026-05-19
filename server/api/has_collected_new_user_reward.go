@@ -69,7 +69,11 @@ func NewHasCollectedNewUserRewardTask(data *map[string]interface{}) (Task, error
 
 func (task *HasCollectedNewUserRewardTask) Run(c *gin.Context) (Response, error) {
 	playerID := strings.TrimSpace(task.Request.PlayerID)
-	if !config.GameParams.EnableNewUserReward {
+	env, ok := config.GConf.EnvironmentForServerType(ServerTypeFromGin(c))
+	if !ok {
+		return nil, errors.ActionError("Environment not configured")
+	}
+	if !env.EnableNewUserReward {
 		// Feature off: report as already handled so clients can hide the claim UI without calling collect.
 		task.Response.Collected = true
 		log.Infof("%s, new user reward disabled by config; returning Collected=true (player_id=%s)", task.Request.RequestUUID, playerID)
