@@ -85,6 +85,7 @@ func (q *Queue) handleBotDispatchTick() error {
 	if n <= 0 {
 		return nil
 	}
+	log.Infow("found long waitting players", "count", n)
 	for {
 		if q.ctx.Err() != nil {
 			return nil
@@ -107,7 +108,7 @@ func (q *Queue) handleBotDispatchTick() error {
 			log.Errorw("publish pvp match pending after bot dispatch failed", "match_id", gm.ID, "bot", botPlayer.String(), "err", err)
 			break
 		}
-		log.Infow("found long waitting player, dispatch a bot", "match_id", gm.ID, "bot", botPlayer.String())
+		log.Infow("dispatch a bot for long waitting player", "match_id", gm.ID, "bot", botPlayer.String())
 	}
 	return nil
 }
