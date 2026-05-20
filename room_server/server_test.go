@@ -131,28 +131,6 @@ func TestInsertCards(t *testing.T) {
 	prepareCards(t)
 }
 
-func TestInsertUserProfile(t *testing.T) {
-	require.NoError(t, snowflake.Init(1))
-	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
-	require.NoError(t, err)
-	userProfile1 := dao.UserProfile{
-		Address:       "0x1a8aea9401d35cd6d6a955a386480e7917d0d89b",
-		Name:          "bot1",
-		AvatarURL:     "avatar_6.png",
-		BackgroundURL: "bg_6.png",
-	}
-	userProfile2 := dao.UserProfile{
-		Address:       "0xcd57ac6115d73b401ce53e34b1320e6265261a91",
-		Name:          "bot2",
-		AvatarURL:     "avatar_5.png",
-		BackgroundURL: "bg_5.png",
-	}
-	err = db.CreateUserProfile(&userProfile1)
-	require.NoError(t, err)
-	err = db.CreateUserProfile(&userProfile2)
-	require.NoError(t, err)
-}
-
 func prepareCards(t *testing.T) {
 	t.Helper()
 	cards := []dao.Card{

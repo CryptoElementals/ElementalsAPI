@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -317,10 +316,6 @@ func LockUserTokenForContinue(ctx context.Context, playerIds []int64, tempAddres
 
 func UnlockUserToken(ctx context.Context, playerId int64, tempAddress string, isTournament bool) (err error) {
 	return Get().Transaction(func(tx *gorm.DB) error {
-		_, perr := GetUserProfileByPlayerIDWithDB(strconv.FormatInt(playerId, 10), tx)
-		if perr != nil {
-			return perr
-		}
 		userToken := &dao.UserToken{}
 		err = tx.Where("player_id = ?", playerId).Preload("LockedTokens").First(userToken).Error
 		if err != nil {

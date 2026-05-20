@@ -29,7 +29,6 @@ const (
 	LobbyService_EnsureUserToken_FullMethodName                             = "/rpc.LobbyService/EnsureUserToken"
 	LobbyService_CreditUserTokens_FullMethodName                            = "/rpc.LobbyService/CreditUserTokens"
 	LobbyService_SetUserTokenAmount_FullMethodName                          = "/rpc.LobbyService/SetUserTokenAmount"
-	LobbyService_CreateBotAccount_FullMethodName                            = "/rpc.LobbyService/CreateBotAccount"
 	LobbyService_RegisterBots_FullMethodName                                = "/rpc.LobbyService/RegisterBots"
 	LobbyService_UnregisterBots_FullMethodName                              = "/rpc.LobbyService/UnregisterBots"
 	LobbyService_JoinTournament_FullMethodName                              = "/rpc.LobbyService/JoinTournament"
@@ -55,7 +54,6 @@ type LobbyServiceClient interface {
 	EnsureUserToken(ctx context.Context, in *EnsureUserTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CreditUserTokens(ctx context.Context, in *CreditUserTokensRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	SetUserTokenAmount(ctx context.Context, in *SetUserTokenAmountRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
-	CreateBotAccount(ctx context.Context, in *CreateBotAccountRequest, opts ...grpc.CallOption) (*UserProfileWithTokenResponse, error)
 	// Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
 	RegisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UnregisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -168,16 +166,6 @@ func (c *lobbyServiceClient) SetUserTokenAmount(ctx context.Context, in *SetUser
 	return out, nil
 }
 
-func (c *lobbyServiceClient) CreateBotAccount(ctx context.Context, in *CreateBotAccountRequest, opts ...grpc.CallOption) (*UserProfileWithTokenResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UserProfileWithTokenResponse)
-	err := c.cc.Invoke(ctx, LobbyService_CreateBotAccount_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *lobbyServiceClient) RegisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -264,7 +252,6 @@ type LobbyServiceServer interface {
 	EnsureUserToken(context.Context, *EnsureUserTokenRequest) (*emptypb.Empty, error)
 	CreditUserTokens(context.Context, *CreditUserTokensRequest) (*GetPlayerTokenResponse, error)
 	SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error)
-	CreateBotAccount(context.Context, *CreateBotAccountRequest) (*UserProfileWithTokenResponse, error)
 	// Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
 	RegisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error)
 	UnregisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error)
@@ -313,9 +300,6 @@ func (UnimplementedLobbyServiceServer) CreditUserTokens(context.Context, *Credit
 }
 func (UnimplementedLobbyServiceServer) SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetUserTokenAmount not implemented")
-}
-func (UnimplementedLobbyServiceServer) CreateBotAccount(context.Context, *CreateBotAccountRequest) (*UserProfileWithTokenResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateBotAccount not implemented")
 }
 func (UnimplementedLobbyServiceServer) RegisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterBots not implemented")
@@ -521,24 +505,6 @@ func _LobbyService_SetUserTokenAmount_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LobbyService_CreateBotAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateBotAccountRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(LobbyServiceServer).CreateBotAccount(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: LobbyService_CreateBotAccount_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LobbyServiceServer).CreateBotAccount(ctx, req.(*CreateBotAccountRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _LobbyService_RegisterBots_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterBotsForLobbyRequest)
 	if err := dec(in); err != nil {
@@ -707,10 +673,6 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetUserTokenAmount",
 			Handler:    _LobbyService_SetUserTokenAmount_Handler,
-		},
-		{
-			MethodName: "CreateBotAccount",
-			Handler:    _LobbyService_CreateBotAccount_Handler,
 		},
 		{
 			MethodName: "RegisterBots",

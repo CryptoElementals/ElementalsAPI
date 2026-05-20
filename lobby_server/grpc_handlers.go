@@ -2,7 +2,6 @@ package lobbyserver
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/conversion"
@@ -131,35 +130,6 @@ func (s *GRPCServices) SetUserTokenAmount(ctx context.Context, req *proto.SetUse
 		return nil, status.Errorf(codes.Internal, "set user token failed: %v", err)
 	}
 	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
-}
-
-func (s *GRPCServices) CreateBotAccount(ctx context.Context, req *proto.CreateBotAccountRequest) (*proto.UserProfileWithTokenResponse, error) {
-	_ = ctx
-	if req == nil || req.GetPlayerID() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "invalid player id")
-	}
-	profile, token, err := db.CreateBot(
-		req.GetPlayerID(),
-		strings.TrimSpace(req.GetName()),
-		strings.TrimSpace(req.GetAvatarURL()),
-		strings.TrimSpace(req.GetBackgroundURL()),
-		req.GetTokenAmount(),
-		req.GetPoints(),
-	)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "create bot account failed: %v", err)
-	}
-	return &proto.UserProfileWithTokenResponse{
-		Profile: &proto.UserProfileResponse{
-			PlayerID:      profile.PlayerID,
-			Address:       profile.Address,
-			Email:         profile.Email,
-			Name:          profile.Name,
-			AvatarURL:     profile.AvatarURL,
-			BackgroundURL: profile.BackgroundURL,
-		},
-		Token: conversion.DbUserTokenToProtoGetPlayerTokenResponse(token),
-	}, nil
 }
 
 // HandleGameCompletedFromRoom runs queue settlement after the room publishes TYPE_GAME_COMPLETED (game id only).
