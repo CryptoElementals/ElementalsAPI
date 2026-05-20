@@ -43,6 +43,9 @@ func Migrate() error {
 	if err != nil {
 		return err
 	}
+	if err := BackfillGameArgsRewardRates(); err != nil {
+		return err
+	}
 	return BackfillUserProfileServerTypes()
 }
 
@@ -81,6 +84,9 @@ func MigrateMemDb() error {
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {
+		return err
+	}
+	if err := BackfillGameArgsRewardRates(); err != nil {
 		return err
 	}
 	for _, table := range migrates {

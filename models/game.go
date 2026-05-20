@@ -33,6 +33,13 @@ type GameArgs struct {
 	MaxHP     int64 `validate:"gte=0" gorm:"not null" json:"max_hp"`
 	// BaseStake is copied from the room template row into each match; lobby settlement uses this (not config).
 	BaseStake int64 `validate:"gt=0" gorm:"not null;default:1000" json:"base_stake"`
+	// Reward rates are basis points (bps): 100 bps = 1%.
+	TieTokenRateBps          int64 `validate:"gte=0,lte=10000" gorm:"not null;default:80" json:"tie_token_rate_bps"`
+	TiePointRateBps          int64 `validate:"gte=0,lte=10000" gorm:"not null;default:80" json:"tie_point_rate_bps"`
+	SystemFeeRateBps         int64 `validate:"gte=0,lte=10000" gorm:"not null;default:160" json:"system_fee_rate_bps"`
+	NormalWinnerPointRateBps int64 `validate:"gte=0,lte=10000" gorm:"not null;default:120" json:"normal_winner_point_rate_bps"`
+	NormalLoserPointRateBps  int64 `validate:"gte=0,lte=10000" gorm:"not null;default:40" json:"normal_loser_point_rate_bps"`
+	KOWinnerPointRateBps     int64 `validate:"gte=0,lte=10000" gorm:"not null;default:160" json:"ko_winner_point_rate_bps"`
 
 	// timeouts
 	ConfirmationTimeout         int64 `validate:"gt=0" gorm:"not null" json:"confirmation_timeout"`          // Timeout for game match and round confirmation

@@ -396,7 +396,7 @@ func BattleResultSettlement(gr *dao.GameResult) (skippedDuplicate bool, err erro
 		if err != nil {
 			return err
 		}
-		battlereward.ComputeBattleRewardAmounts(gr, reward, int(baseStake))
+		battlereward.ComputeBattleRewardAmounts(gr, reward, ga)
 
 		type playerReward struct {
 			playerId    int64

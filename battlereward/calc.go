@@ -10,8 +10,8 @@ import (
 
 // ComputeBattleRewardAmounts fills TokenChange, PointChange on each PlayerReward and SystemFee on BattleRewardPVP
 // using GameResult.PlayerResultInfos for winner and forfeit (offline/surrender). Room persists zero amounts until settlement.
-func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, baseStake int) {
-	if gr == nil || br == nil || len(br.PlayerRewards) == 0 {
+func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, ga *dao.GameArgs) {
+	if gr == nil || br == nil || ga == nil || len(br.PlayerRewards) == 0 {
 		return
 	}
 	prs := br.PlayerRewards
@@ -32,8 +32,8 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, bas
 
 	switch gr.GameResultType {
 	case proto.GameResultType_GAME_TIE:
-		tokenDeduction := int(float64(baseStake) * 0.008)
-		pointGain := int(float64(baseStake) * 0.008)
+		tokenDeduction := applyBps(ga.BaseStake, ga.TieTokenRateBps)
+		pointGain := applyBps(ga.BaseStake, ga.TiePointRateBps)
 		br.SystemFee = int32(tokenDeduction * len(prs))
 		for _, pr := range prs {
 			pr.TokenChange = int32(-tokenDeduction)
@@ -53,17 +53,18 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, bas
 		if poolMul < 1 {
 			poolMul = 1
 		}
-		totalPool := int(float64(baseStake) * float64(poolMul))
+		totalPool := int(ga.BaseStake * int64(poolMul))
 
-		winnerTokenPerPlayer := int(float64(totalPool) * (1.0 - 0.016))
+		systemFee := applyBps(int64(totalPool), ga.SystemFeeRateBps)
+		winnerTokenPerPlayer := totalPool - systemFee
 		loserTokenPerPlayer := totalPool / loserCount
 
 		var winnerPointPerPlayer, loserPointPerPlayer int
 		if gr.GameResultType == proto.GameResultType_GAME_NORMAL {
-			winnerPointPerPlayer = int(float64(totalPool) * 0.012)
-			loserPointPerPlayer = int(float64(totalPool)*0.004) / loserCount
+			winnerPointPerPlayer = applyBps(int64(totalPool), ga.NormalWinnerPointRateBps)
+			loserPointPerPlayer = applyBps(int64(totalPool), ga.NormalLoserPointRateBps) / loserCount
 		} else {
-			winnerPointPerPlayer = int(float64(totalPool) * 0.016)
+			winnerPointPerPlayer = applyBps(int64(totalPool), ga.KOWinnerPointRateBps)
 			loserPointPerPlayer = 0
 		}
 
@@ -77,7 +78,7 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, bas
 			}
 		}
 
-		br.SystemFee = int32(int(float64(totalPool) * 0.016))
+		br.SystemFee = int32(systemFee)
 
 		for _, pr := range prs {
 			if pr.PlayerId == winnerPID {
@@ -93,6 +94,13 @@ func ComputeBattleRewardAmounts(gr *dao.GameResult, br *dao.BattleRewardPVP, bas
 			}
 		}
 	}
+}
+
+func applyBps(amount int64, bps int64) int {
+	if amount <= 0 || bps <= 0 {
+		return 0
+	}
+	return int((amount * bps) / 10000)
 }
 
 func winnerFromPlayerResultInfos(infos []*dao.PlayerResultInfo) (playerId int64, temp string, ok bool) {
