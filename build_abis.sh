@@ -7,3 +7,5 @@ abigen --abi ./contracts/RoomV2.abi --pkg $go_pkg --type RoomV2Contract --out ./
 abigen --abi ./contracts/room_v3.abi --pkg $go_pkg --type RoomV3Contract --out ./contracts/room_v3.go
 abigen --abi ./contracts/player_state.abi --pkg $go_pkg --type PlayerStateContract --out ./contracts/player_state.go
 abigen --abi ./contracts/room_manager.abi --pkg $go_pkg --type RoomManagerContract --out ./contracts/room_manager.go
+abigen --abi ./contracts/wallet_manager.abi --pkg $go_pkg --type WalletManagerContract --out ./contracts/wallet_manager.go
+abigen --abi ./contracts/token_collector.abi --pkg $go_pkg --type TokenCollectorContract --out ./contracts/token_collector.go

@@ -5,9 +5,29 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// SignTokenCollectorWithdraw matches TokenCollector._withdraw:
+// keccak256(abi.encodePacked(depositAddr, amount, playerId)) then EIP-191 ("\x19Ethereum Signed Message:\n32", hash).
+// The recovered signer must equal depositAddr (Credited.depositAddr).
+func SignTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *big.Int, privateKey *ecdsa.PrivateKey) ([]byte, error) {
+	payloadHash, err := SolidityPackedKeccak256([]any{depositAddr, amount, playerID})
+	if err != nil {
+		return nil, err
+	}
+	sig, err := crypto.Sign(accounts.TextHash(payloadHash.Bytes()), privateKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(sig) == crypto.SignatureLength && sig[crypto.RecoveryIDOffset] < 27 {
+		sig = append([]byte(nil), sig...)
+		sig[crypto.RecoveryIDOffset] += 27
+	}
+	return sig, nil
+}
 
 func Sign(values []any, privateKey *ecdsa.PrivateKey) (signature []byte, err error) {
 	hash, err := SolidityPackedKeccak256(values)
