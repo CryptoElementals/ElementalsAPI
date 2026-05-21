@@ -135,6 +135,10 @@ var botRegistryAddCmd = &cobra.Command{
 			fmt.Printf("Failed to remove from in-game set: %v\n", err)
 			os.Exit(1)
 		}
+		if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
+			fmt.Printf("Failed to remove from token-insufficient set: %v\n", err)
+			os.Exit(1)
+		}
 		if _, err := redis.ZAdd(keys.lastSeenKey, float64(nowMs), key); err != nil {
 			fmt.Printf("Failed to set last_seen zset score: %v\n", err)
 			os.Exit(1)
@@ -164,6 +168,10 @@ var botRegistryRemoveCmd = &cobra.Command{
 		}
 		if _, err := redis.SRem(keys.inGameKey, key); err != nil {
 			fmt.Printf("Failed to remove from in-game set: %v\n", err)
+			os.Exit(1)
+		}
+		if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
+			fmt.Printf("Failed to remove from token-insufficient set: %v\n", err)
 			os.Exit(1)
 		}
 		if _, err := redis.SRem(keys.allKey, key); err != nil {
@@ -221,6 +229,10 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 				fmt.Printf("Failed to remove in-game membership: %v\n", err)
 				os.Exit(1)
 			}
+			if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
+				fmt.Printf("Failed to remove token-insufficient membership: %v\n", err)
+				os.Exit(1)
+			}
 			if _, err := redis.ZAdd(keys.lastSeenKey, float64(lastSeenMs), key); err != nil {
 				fmt.Printf("Failed to set last_seen score: %v\n", err)
 				os.Exit(1)
@@ -232,6 +244,10 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 			}
 			if _, err := redis.SAdd(keys.inGameKey, key); err != nil {
 				fmt.Printf("Failed to add in-game membership: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
+				fmt.Printf("Failed to remove token-insufficient membership: %v\n", err)
 				os.Exit(1)
 			}
 			if _, err := redis.ZAdd(keys.lastSeenKey, float64(lastSeenMs), key); err != nil {
@@ -250,6 +266,10 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 			}
 			if _, err := redis.SRem(keys.inGameKey, key); err != nil {
 				fmt.Printf("Failed to remove in-game membership: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
+				fmt.Printf("Failed to remove token-insufficient membership: %v\n", err)
 				os.Exit(1)
 			}
 			if _, err := redis.ZAdd(keys.lastSeenKey, 1, key); err != nil {
@@ -311,6 +331,10 @@ var botRegistryCleanLastSeenGreaterThanCmd = &cobra.Command{
 				fmt.Printf("Failed to remove from in-game set: %v\n", err)
 				os.Exit(1)
 			}
+			if _, err := redis.SRem(keys.tokenInsufficientKey, memberArgs...); err != nil {
+				fmt.Printf("Failed to remove from token-insufficient set: %v\n", err)
+				os.Exit(1)
+			}
 			if _, err := redis.ZRem(keys.lastSeenKey, memberArgs...); err != nil {
 				fmt.Printf("Failed to remove from last_seen zset: %v\n", err)
 				os.Exit(1)
@@ -324,18 +348,20 @@ var botRegistryCleanLastSeenGreaterThanCmd = &cobra.Command{
 }
 
 type botRegistryRedisKeys struct {
-	allKey      string
-	idleKey     string
-	inGameKey   string
-	lastSeenKey string
+	allKey                string
+	idleKey               string
+	inGameKey             string
+	lastSeenKey           string
+	tokenInsufficientKey  string
 }
 
 func botRegistryKeys(namespace string) botRegistryRedisKeys {
 	return botRegistryRedisKeys{
-		allKey:      namespace + ":bots:all:set",
-		idleKey:     namespace + ":bots:idle:set",
-		inGameKey:   namespace + ":bots:ingame:set",
-		lastSeenKey: namespace + ":bots:last_seen:zset",
+		allKey:               namespace + ":bots:all:set",
+		idleKey:              namespace + ":bots:idle:set",
+		inGameKey:            namespace + ":bots:ingame:set",
+		lastSeenKey:          namespace + ":bots:last_seen:zset",
+		tokenInsufficientKey: namespace + ":bots:token_insufficient:set",
 	}
 }
 
