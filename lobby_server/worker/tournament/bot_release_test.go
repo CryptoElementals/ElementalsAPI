@@ -3,6 +3,7 @@ package tournament
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -42,15 +43,25 @@ func reserveBot(t *testing.T, store *bot_manager.RedisStore, addr types.PlayerAd
 	t.Helper()
 	now := time.Now().UnixMilli()
 	require.NoError(t, store.UpsertAliveBots(now, addr))
-	popped, err := store.PopFreshIdleBotForMatch(now, 60_000)
+	popped, err := store.PopFreshIdleBotForMatch(now, 60_000, proto.GameType_TOURNAMENT)
 	require.NoError(t, err)
 	require.NotNil(t, popped)
 	require.Equal(t, addr.String(), popped.String())
+	gameTypeStr, err := redis.HGet(botRedisNamespace+":bots:ingame:hash", addr.String())
+	require.NoError(t, err)
+	require.Equal(t, strconv.Itoa(int(proto.GameType_TOURNAMENT)), gameTypeStr)
 }
 
 func botInRedisSet(t *testing.T, setSuffix string, addr types.PlayerAddress) bool {
 	t.Helper()
 	ok, err := redis.SIsMember(botRedisNamespace+setSuffix, addr.String())
+	require.NoError(t, err)
+	return ok
+}
+
+func botInRedisInGameHash(t *testing.T, addr types.PlayerAddress) bool {
+	t.Helper()
+	ok, err := redis.HExists(botRedisNamespace+":bots:ingame:hash", addr.String())
 	require.NoError(t, err)
 	return ok
 }
@@ -68,7 +79,7 @@ func TestOnGameCompleted_AbortedGame_ReleasesBots(t *testing.T) {
 	bot := types.PlayerAddress{Id: 8001, TemporaryAddress: "0xbot8001"}
 	human := types.PlayerAddress{Id: 8002, TemporaryAddress: "0xhuman8002"}
 	reserveBot(t, botStore, bot)
-	require.True(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.True(t, botInRedisInGameHash(t, bot))
 
 	gameID := int64(88001)
 	match := &dao.TournamentMatch{
@@ -94,7 +105,7 @@ func TestOnGameCompleted_AbortedGame_ReleasesBots(t *testing.T) {
 	coord := newCoordinator(context.Background(), noopPublisher{}, noopPublisher{}, botStore, &noopGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
 	require.NoError(t, coord.onGameCompleted(gameID))
 
-	require.False(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.False(t, botInRedisInGameHash(t, bot))
 	require.True(t, botInRedisSet(t, ":bots:idle:set", bot))
 }
 
@@ -105,7 +116,7 @@ func TestStartGamesForNewMatches_CreateFailure_ReleasesBots(t *testing.T) {
 	bot := types.PlayerAddress{Id: 8101, TemporaryAddress: "0xbot8101"}
 	human := types.PlayerAddress{Id: 8102, TemporaryAddress: "0xhuman8102"}
 	reserveBot(t, botStore, bot)
-	require.True(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.True(t, botInRedisInGameHash(t, bot))
 
 	match := &dao.TournamentMatch{
 		TournamentID:       "99002",
@@ -122,6 +133,6 @@ func TestStartGamesForNewMatches_CreateFailure_ReleasesBots(t *testing.T) {
 	coord := newCoordinator(context.Background(), noopPublisher{}, noopPublisher{}, botStore, &failTournamentGameCreator{}, 1000, 2, 3600, 180, 180, 15, 10)
 	require.False(t, coord.startGamesForNewMatches([]uint{match.ID}))
 
-	require.False(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.False(t, botInRedisInGameHash(t, bot))
 	require.True(t, botInRedisSet(t, ":bots:idle:set", bot))
 }

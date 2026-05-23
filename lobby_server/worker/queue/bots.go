@@ -6,6 +6,7 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/timer"
 )
 
@@ -31,7 +32,7 @@ func (q *Queue) isPlayerBot(addr types.PlayerAddress) bool {
 }
 
 func (q *Queue) popBotForMatch() (types.PlayerAddress, bool) {
-	addr, err := q.botStore.PopFreshIdleBotForMatch(time.Now().UnixMilli(), q.botFreshness.Milliseconds())
+	addr, err := q.botStore.PopFreshIdleBotForMatch(time.Now().UnixMilli(), q.botFreshness.Milliseconds(), proto.GameType_PVP)
 	if err != nil {
 		log.Errorw("redis pop fresh idle bot failed", "err", err)
 		return types.PlayerAddress{}, false

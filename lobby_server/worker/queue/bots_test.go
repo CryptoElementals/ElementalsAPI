@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,15 +27,25 @@ func reserveBotForTest(t *testing.T, store *bot_manager.RedisStore, addr types.P
 	t.Helper()
 	now := time.Now().UnixMilli()
 	require.NoError(t, store.UpsertAliveBots(now, addr))
-	popped, err := store.PopFreshIdleBotForMatch(now, 60_000)
+	popped, err := store.PopFreshIdleBotForMatch(now, 60_000, proto.GameType_PVP)
 	require.NoError(t, err)
 	require.NotNil(t, popped)
 	require.Equal(t, addr.String(), popped.String())
+	gameTypeStr, err := redis.HGet(botRedisNamespace+":bots:ingame:hash", addr.String())
+	require.NoError(t, err)
+	require.Equal(t, strconv.Itoa(int(proto.GameType_PVP)), gameTypeStr)
 }
 
 func botInRedisSet(t *testing.T, setSuffix string, addr types.PlayerAddress) bool {
 	t.Helper()
 	ok, err := redis.SIsMember(botRedisNamespace+setSuffix, addr.String())
+	require.NoError(t, err)
+	return ok
+}
+
+func botInRedisInGameHash(t *testing.T, addr types.PlayerAddress) bool {
+	t.Helper()
+	ok, err := redis.HExists(botRedisNamespace+":bots:ingame:hash", addr.String())
 	require.NoError(t, err)
 	return ok
 }
@@ -55,7 +66,7 @@ func TestAbortPendingMatch_ReleasesInGameBot(t *testing.T) {
 	bot := types.PlayerAddress{Id: 901, TemporaryAddress: "0xbot901"}
 	human := types.PlayerAddress{Id: 902, TemporaryAddress: "0xhuman902"}
 	reserveBotForTest(t, botStore, bot)
-	require.True(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.True(t, botInRedisInGameHash(t, bot))
 
 	require.NoError(t, db.Get().Create(&dao.UserToken{PlayerId: human.Id, TokenAmount: 10000}).Error)
 	require.NoError(t, db.LockUserToken(context.Background(), human.Id, human.TemporaryAddress, 1000, ""))
@@ -72,7 +83,7 @@ func TestAbortPendingMatch_ReleasesInGameBot(t *testing.T) {
 
 	require.NoError(t, q.abortPendingMatch(gm.ID, false, false))
 
-	require.False(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.False(t, botInRedisInGameHash(t, bot))
 	require.True(t, botInRedisSet(t, ":bots:idle:set", bot))
 
 	require.NoError(t, db.Get().First(&gm, "id = ?", gm.ID).Error)
@@ -85,7 +96,7 @@ func TestBotNotifyFailureCleanup_ReleasesInGameBot(t *testing.T) {
 	bot := types.PlayerAddress{Id: 903, TemporaryAddress: "0xbot903"}
 	human := types.PlayerAddress{Id: 904, TemporaryAddress: "0xhuman904"}
 	reserveBotForTest(t, botStore, bot)
-	require.True(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.True(t, botInRedisInGameHash(t, bot))
 
 	require.NoError(t, db.Get().Create(&dao.UserToken{PlayerId: human.Id, TokenAmount: 10000}).Error)
 	require.NoError(t, db.LockUserToken(context.Background(), human.Id, human.TemporaryAddress, 1000, ""))
@@ -106,6 +117,6 @@ func TestBotNotifyFailureCleanup_ReleasesInGameBot(t *testing.T) {
 	_ = q.releaseInGameBot(bot)
 	_ = q.abortPendingMatch(gm.ID, false, false)
 
-	require.False(t, botInRedisSet(t, ":bots:ingame:set", bot))
+	require.False(t, botInRedisInGameHash(t, bot))
 	require.True(t, botInRedisSet(t, ":bots:idle:set", bot))
 }

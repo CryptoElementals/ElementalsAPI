@@ -327,7 +327,7 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 		burst = stageCap
 	}
 	for i := 0; i < burst; i++ {
-		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
+		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds(), proto.GameType_TOURNAMENT)
 		if err != nil {
 			return err
 		}

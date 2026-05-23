@@ -12,6 +12,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/spf13/cobra"
 )
 
@@ -51,19 +52,15 @@ var botRegistryInspectCmd = &cobra.Command{
 			fmt.Printf("Failed to read idle bots set: %v\n", err)
 			os.Exit(1)
 		}
-		inGameBots, err := redis.SMembers(keys.inGameKey)
+		inGameBots, err := redis.HGetAll(keys.inGameKey)
 		if err != nil {
-			fmt.Printf("Failed to read in-game bots set: %v\n", err)
+			fmt.Printf("Failed to read in-game bots hash: %v\n", err)
 			os.Exit(1)
 		}
 
 		idleSet := make(map[string]struct{}, len(idleBots))
 		for _, b := range idleBots {
 			idleSet[b] = struct{}{}
-		}
-		inGameSet := make(map[string]struct{}, len(inGameBots))
-		for _, b := range inGameBots {
-			inGameSet[b] = struct{}{}
 		}
 		sort.Strings(allBots)
 
@@ -90,16 +87,26 @@ var botRegistryInspectCmd = &cobra.Command{
 			}
 			fresh := hasSeen && lastSeen >= nowMs-freshnessMs
 			state := "orphan"
-			if _, ok := inGameSet[botKey]; ok {
+			gameTypeLabel := ""
+			if gt, ok := inGameBots[botKey]; ok {
 				state = "ingame"
+				gameTypeLabel = formatBotRegistryGameType(gt)
 			} else if _, ok := idleSet[botKey]; ok {
 				state = "idle"
 			}
 			if parseErr != nil {
-				fmt.Printf("%s state=%s fresh=%t last_seen_ms=%d parse_err=%v\n", botKey, state, fresh, lastSeen, parseErr)
+				if gameTypeLabel != "" {
+					fmt.Printf("%s state=%s game_type=%s fresh=%t last_seen_ms=%d parse_err=%v\n", botKey, state, gameTypeLabel, fresh, lastSeen, parseErr)
+				} else {
+					fmt.Printf("%s state=%s fresh=%t last_seen_ms=%d parse_err=%v\n", botKey, state, fresh, lastSeen, parseErr)
+				}
 				continue
 			}
-			fmt.Printf("%d_%s state=%s fresh=%t last_seen_ms=%d\n", parsed.Id, parsed.TemporaryAddress, state, fresh, lastSeen)
+			if gameTypeLabel != "" {
+				fmt.Printf("%d_%s state=%s game_type=%s fresh=%t last_seen_ms=%d\n", parsed.Id, parsed.TemporaryAddress, state, gameTypeLabel, fresh, lastSeen)
+			} else {
+				fmt.Printf("%d_%s state=%s fresh=%t last_seen_ms=%d\n", parsed.Id, parsed.TemporaryAddress, state, fresh, lastSeen)
+			}
 		}
 	},
 }
@@ -131,8 +138,8 @@ var botRegistryAddCmd = &cobra.Command{
 			fmt.Printf("Failed to add to idle set: %v\n", err)
 			os.Exit(1)
 		}
-		if _, err := redis.SRem(keys.inGameKey, key); err != nil {
-			fmt.Printf("Failed to remove from in-game set: %v\n", err)
+		if _, err := redis.HDel(keys.inGameKey, key); err != nil {
+			fmt.Printf("Failed to remove from in-game hash: %v\n", err)
 			os.Exit(1)
 		}
 		if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
@@ -166,8 +173,8 @@ var botRegistryRemoveCmd = &cobra.Command{
 			fmt.Printf("Failed to remove from idle set: %v\n", err)
 			os.Exit(1)
 		}
-		if _, err := redis.SRem(keys.inGameKey, key); err != nil {
-			fmt.Printf("Failed to remove from in-game set: %v\n", err)
+		if _, err := redis.HDel(keys.inGameKey, key); err != nil {
+			fmt.Printf("Failed to remove from in-game hash: %v\n", err)
 			os.Exit(1)
 		}
 		if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
@@ -219,13 +226,16 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		gameTypeFlag, _ := cmd.Flags().GetString("game-type")
+		gameType, gameTypeErr := parseBotRegistryGameType(gameTypeFlag)
+
 		switch status {
 		case "idle":
 			if _, err := redis.SAdd(keys.idleKey, key); err != nil {
 				fmt.Printf("Failed to add idle membership: %v\n", err)
 				os.Exit(1)
 			}
-			if _, err := redis.SRem(keys.inGameKey, key); err != nil {
+			if _, err := redis.HDel(keys.inGameKey, key); err != nil {
 				fmt.Printf("Failed to remove in-game membership: %v\n", err)
 				os.Exit(1)
 			}
@@ -238,11 +248,15 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		case "ingame":
+			if gameTypeErr != nil {
+				fmt.Printf("Invalid game type: %v\n", gameTypeErr)
+				os.Exit(1)
+			}
 			if _, err := redis.SRem(keys.idleKey, key); err != nil {
 				fmt.Printf("Failed to remove idle membership: %v\n", err)
 				os.Exit(1)
 			}
-			if _, err := redis.SAdd(keys.inGameKey, key); err != nil {
+			if _, err := redis.HSet(keys.inGameKey, key, int32(gameType)); err != nil {
 				fmt.Printf("Failed to add in-game membership: %v\n", err)
 				os.Exit(1)
 			}
@@ -264,7 +278,7 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 				fmt.Printf("Failed to remove idle membership: %v\n", err)
 				os.Exit(1)
 			}
-			if _, err := redis.SRem(keys.inGameKey, key); err != nil {
+			if _, err := redis.HDel(keys.inGameKey, key); err != nil {
 				fmt.Printf("Failed to remove in-game membership: %v\n", err)
 				os.Exit(1)
 			}
@@ -327,8 +341,12 @@ var botRegistryCleanLastSeenGreaterThanCmd = &cobra.Command{
 				fmt.Printf("Failed to remove from idle set: %v\n", err)
 				os.Exit(1)
 			}
-			if _, err := redis.SRem(keys.inGameKey, memberArgs...); err != nil {
-				fmt.Printf("Failed to remove from in-game set: %v\n", err)
+			inGameFields := make([]string, 0, len(members))
+			for _, m := range members {
+				inGameFields = append(inGameFields, m)
+			}
+			if _, err := redis.HDel(keys.inGameKey, inGameFields...); err != nil {
+				fmt.Printf("Failed to remove from in-game hash: %v\n", err)
 				os.Exit(1)
 			}
 			if _, err := redis.SRem(keys.tokenInsufficientKey, memberArgs...); err != nil {
@@ -359,7 +377,7 @@ func botRegistryKeys(namespace string) botRegistryRedisKeys {
 	return botRegistryRedisKeys{
 		allKey:               namespace + ":bots:all:set",
 		idleKey:              namespace + ":bots:idle:set",
-		inGameKey:            namespace + ":bots:ingame:set",
+		inGameKey:            namespace + ":bots:ingame:hash",
 		lastSeenKey:          namespace + ":bots:last_seen:zset",
 		tokenInsufficientKey: namespace + ":bots:token_insufficient:set",
 	}
@@ -443,5 +461,28 @@ func init() {
 
 	botRegistryAddCmd.Flags().Int64("last-seen-ms", 0, "last seen timestamp in unix milliseconds (default now)")
 	botRegistryUpdateStatusCmd.Flags().String("status", "", "new status: idle|ingame|touch|stopping")
+	botRegistryUpdateStatusCmd.Flags().String("game-type", "pvp", "game type when status=ingame: pvp|tournament")
 	botRegistryUpdateStatusCmd.Flags().Int64("last-seen-ms", 0, "last seen timestamp in unix milliseconds (default now, ignored for stopping)")
+}
+
+func parseBotRegistryGameType(s string) (proto.GameType, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "pvp":
+		return proto.GameType_PVP, nil
+	case "tournament":
+		return proto.GameType_TOURNAMENT, nil
+	default:
+		return proto.GameType_GAME_TYPE_UNKNOWN, fmt.Errorf("unsupported game type %q (pvp|tournament)", s)
+	}
+}
+
+func formatBotRegistryGameType(value string) string {
+	n, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return value
+	}
+	if name, ok := proto.GameType_name[int32(n)]; ok {
+		return strings.ToLower(strings.TrimPrefix(name, "GAME_TYPE_"))
+	}
+	return value
 }
