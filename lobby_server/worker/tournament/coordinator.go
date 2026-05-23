@@ -620,6 +620,7 @@ func (tc *coordinator) startGamesForNewMatches(matchIDs []uint) bool {
 		gameID, gerr := tc.gameCreator.CreateTournamentGameAndRun(players, int64(matchID), tournamentIDNum, int64(m.RoundNo))
 		if gerr != nil {
 			log.Errorw("tournament: create game failed", "match_id", matchID, "err", gerr)
+			tc.releaseBotsIfNeeded(tc.filterBotsForRelease(players))
 			continue
 		}
 		log.Infow("tournament: create game success", "TournamentID", m.TournamentID, "round_no", m.RoundNo,
@@ -742,6 +743,18 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 		return err
 	}
 	if gr.GameResultType == proto.GameResultType_GAME_ABORTED {
+		m0, merr := db.TournamentGetMatchByGameID(gameID)
+		if merr != nil {
+			if errors.Is(merr, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return merr
+		}
+		participants := []types.PlayerAddress{
+			{Id: m0.Player1ID, TemporaryAddress: m0.Player1TempAddress},
+			{Id: m0.Player2ID, TemporaryAddress: m0.Player2TempAddress},
+		}
+		tc.releaseBotsIfNeeded(tc.filterBotsForRelease(participants))
 		return nil
 	}
 	m0, err := db.TournamentGetMatchByGameID(gameID)

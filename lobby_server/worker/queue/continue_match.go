@@ -64,6 +64,7 @@ func (q *Queue) abortPendingMatch(matchID int64, notifyMatchCanceled bool, fromT
 	}
 	for _, p := range players {
 		if q.isPlayerBot(p) {
+			_ = q.releaseInGameBot(p)
 			continue
 		}
 		if err := q.unlockToken(&p); err != nil {

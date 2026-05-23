@@ -15,7 +15,7 @@ import (
 type noopGameCreator struct{}
 type noopPublisher struct{}
 
-func (n *noopGameCreator) CreateGameAndRun(_ []types.PlayerAddress, _ proto.GameType, _ int64) (int64, error) {
+func (n *noopGameCreator) CreateTournamentGameAndRun(_ []types.PlayerAddress, _ int64, _ int64, _ int64) (int64, error) {
 	return 1, nil
 }
 
