@@ -18,6 +18,14 @@ import (
 
 const defaultPoolBatchSize = 10
 
+// Room V3 batchSubmitTasks task indices (must match on-chain task router).
+const (
+	roomV3TaskIndexCreateRoom     uint8 = 1
+	roomV3TaskIndexStartNewTurn   uint8 = 2
+	roomV3TaskIndexSubmitCardHash uint8 = 3
+	roomV3TaskIndexSubmitCard     uint8 = 4
+)
+
 // roomBatchSubmitter posts encoded tasks to the RoomV3 client (or a test double).
 type roomBatchSubmitter interface {
 	SubmitTasks([]types.RoomContractTask) error
@@ -227,22 +235,16 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 			log.Errorw("create_room pool row: bad json", "id", r.ID, "err", err)
 			return t, false, true
 		}
-		out := encodeCreateRoomEventsToTasks([]*types.RequireGameCreationEvent{&evt})
-		if len(out) == 0 {
-			return t, false, true
-		}
-		return out[0], true, false
+		t, ok = encodeCreateRoomEventToTask(&evt)
+		return t, ok, !ok
 	case dao.ChainTxPoolKindSetTurnReady:
 		var evt types.RequireSetupNewTurnEvent
 		if err := json.Unmarshal(r.Payload, &evt); err != nil {
 			log.Errorw("set_turn pool row: bad json", "id", r.ID, "err", err)
 			return t, false, true
 		}
-		out := encodeSetTurnReadyEventsToTasks([]*types.RequireSetupNewTurnEvent{&evt})
-		if len(out) == 0 {
-			return t, false, true
-		}
-		return out[0], true, false
+		t, ok = encodeSetTurnReadyEventToTask(&evt)
+		return t, ok, !ok
 	case dao.ChainTxPoolKindCommitment:
 		var msg proto.SubmitPlayerCommitmentRequest
 		if err := goproto.Unmarshal(r.Payload, &msg); err != nil {
@@ -253,11 +255,8 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 			log.Errorw("commitment event missing GameID", "id", r.ID)
 			return t, false, true
 		}
-		out := encodeCommitmentEventsToTasks([]*proto.SubmitPlayerCommitmentRequest{&msg})
-		if len(out) == 0 {
-			return t, false, true
-		}
-		return out[0], true, false
+		t, ok = encodeCommitmentEventToTask(&msg)
+		return t, ok, !ok
 	case dao.ChainTxPoolKindCard:
 		var msg proto.SubmitPlayerCardRequest
 		if err := goproto.Unmarshal(r.Payload, &msg); err != nil {
@@ -268,123 +267,117 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 			log.Errorw("card event missing GameID", "id", r.ID)
 			return t, false, true
 		}
-		out := encodeCardEventsToTasks([]*proto.SubmitPlayerCardRequest{&msg})
-		if len(out) == 0 {
-			return t, false, true
-		}
-		return out[0], true, false
+		t, ok = encodeCardEventToTask(&msg)
+		return t, ok, !ok
 	default:
 		log.Errorw("unknown chain tx pool kind", "id", r.ID, "kind", r.Kind)
 		return t, false, true
 	}
 }
 
-func encodeCreateRoomEventsToTasks(events []*types.RequireGameCreationEvent) []types.RoomContractTask {
-	tasks := make([]types.RoomContractTask, 0, len(events))
-	for _, evt := range events {
-		if len(evt.Players) < 2 {
-			log.Errorw("failed to encode create room task: need 2 players", "game_id", evt.GameID)
-			continue
+func encodeCreateRoomEventToTask(evt *types.RequireGameCreationEvent) (types.RoomContractTask, bool) {
+	if evt == nil || len(evt.Players) < 2 {
+		gameID := int64(0)
+		if evt != nil {
+			gameID = evt.GameID
 		}
-		player1 := evt.Players[0]
-		player2 := evt.Players[1]
-		player1ID := big.NewInt(player1.Id)
-		player2ID := big.NewInt(player2.Id)
-		player1Addr := common.HexToAddress(player1.TemporaryAddress)
-		player2Addr := common.HexToAddress(player2.TemporaryAddress)
-		roundTimeout := big.NewInt(evt.RoundTimeout)
-		totalRound := big.NewInt(evt.MaxRoundNumber)
-		totalCardIndex := big.NewInt(3)
-		initialHP := big.NewInt(evt.InitialHP)
-		gameID := new(big.Int).SetInt64(evt.GameID)
-		tournamentID := new(big.Int).SetInt64(evt.TournamentID)
-		tierNo := new(big.Int).SetInt64(evt.TierNo)
-		payload, err := EncodeCreateRoomTask(
-			player1ID,
-			player2ID,
-			player1Addr,
-			player2Addr,
-			roundTimeout,
-			totalRound,
-			totalCardIndex,
-			initialHP,
-			gameID,
-			tournamentID,
-			tierNo,
-		)
-		if err != nil {
-			log.Errorw("failed to encode create room task", "error", err, "game_id", evt.GameID)
-			continue
-		}
-		tasks = append(tasks, types.RoomContractTask{Index: 1, Task: payload})
+		log.Errorw("failed to encode create room task: need 2 players", "game_id", gameID)
+		return types.RoomContractTask{}, false
 	}
-	return tasks
+	player1 := evt.Players[0]
+	player2 := evt.Players[1]
+	player1ID := big.NewInt(player1.Id)
+	player2ID := big.NewInt(player2.Id)
+	player1Addr := common.HexToAddress(player1.TemporaryAddress)
+	player2Addr := common.HexToAddress(player2.TemporaryAddress)
+	roundTimeout := big.NewInt(evt.RoundTimeout)
+	totalRound := big.NewInt(evt.MaxRoundNumber)
+	totalCardIndex := big.NewInt(3)
+	initialHP := big.NewInt(evt.InitialHP)
+	gameID := new(big.Int).SetInt64(evt.GameID)
+	tournamentID := new(big.Int).SetInt64(evt.TournamentID)
+	tierNo := new(big.Int).SetInt64(evt.TierNo)
+	payload, err := EncodeCreateRoomTask(
+		player1ID,
+		player2ID,
+		player1Addr,
+		player2Addr,
+		roundTimeout,
+		totalRound,
+		totalCardIndex,
+		initialHP,
+		gameID,
+		tournamentID,
+		tierNo,
+	)
+	if err != nil {
+		log.Errorw("failed to encode create room task", "error", err, "game_id", evt.GameID)
+		return types.RoomContractTask{}, false
+	}
+	return types.RoomContractTask{Index: roomV3TaskIndexCreateRoom, Task: payload}, true
 }
 
-func encodeSetTurnReadyEventsToTasks(events []*types.RequireSetupNewTurnEvent) []types.RoomContractTask {
-	tasks := make([]types.RoomContractTask, 0, len(events))
-	for _, evt := range events {
-		gameID := new(big.Int).SetInt64(evt.GameID)
-		payload, err := EncodeStartNewTurnTask(gameID)
-		if err != nil {
-			log.Errorw("failed to encode set turn ready task", "error", err, "game_id", evt.GameID)
-			continue
-		}
-		tasks = append(tasks, types.RoomContractTask{Index: 2, Task: payload})
+func encodeSetTurnReadyEventToTask(evt *types.RequireSetupNewTurnEvent) (types.RoomContractTask, bool) {
+	if evt == nil {
+		return types.RoomContractTask{}, false
 	}
-	return tasks
+	gameID := new(big.Int).SetInt64(evt.GameID)
+	payload, err := EncodeStartNewTurnTask(gameID)
+	if err != nil {
+		log.Errorw("failed to encode set turn ready task", "error", err, "game_id", evt.GameID)
+		return types.RoomContractTask{}, false
+	}
+	return types.RoomContractTask{Index: roomV3TaskIndexStartNewTurn, Task: payload}, true
 }
 
-func encodeCommitmentEventsToTasks(events []*proto.SubmitPlayerCommitmentRequest) []types.RoomContractTask {
-	tasks := make([]types.RoomContractTask, 0, len(events))
-	for _, evt := range events {
-		if len(evt.Commitment) != 32 {
-			log.Errorw("commitment must be 32 bytes", "len", len(evt.Commitment), "game_id", evt.GetGameID())
-			continue
-		}
-		var commitmentHash [32]byte
-		copy(commitmentHash[:], evt.Commitment)
-		gameID := new(big.Int).SetInt64(evt.GetGameID())
-		cardIndex := big.NewInt(int64(evt.TurnNumber))
-		round := big.NewInt(int64(evt.RoundNumber))
-		payload, err := EncodeSubmitCardHashTask(
-			gameID,
-			commitmentHash,
-			cardIndex,
-			round,
-			evt.Signature,
-		)
-		if err != nil {
-			log.Errorw("failed to encode commitment task", "error", err, "game_id", evt.GetGameID())
-			continue
-		}
-		tasks = append(tasks, types.RoomContractTask{Index: 3, Task: payload})
+func encodeCommitmentEventToTask(evt *proto.SubmitPlayerCommitmentRequest) (types.RoomContractTask, bool) {
+	if evt == nil {
+		return types.RoomContractTask{}, false
 	}
-	return tasks
+	if len(evt.Commitment) != 32 {
+		log.Errorw("commitment must be 32 bytes", "len", len(evt.Commitment), "game_id", evt.GetGameID())
+		return types.RoomContractTask{}, false
+	}
+	var commitmentHash [32]byte
+	copy(commitmentHash[:], evt.Commitment)
+	gameID := new(big.Int).SetInt64(evt.GetGameID())
+	cardIndex := big.NewInt(int64(evt.TurnNumber))
+	round := big.NewInt(int64(evt.RoundNumber))
+	payload, err := EncodeSubmitCardHashTask(
+		gameID,
+		commitmentHash,
+		cardIndex,
+		round,
+		evt.Signature,
+	)
+	if err != nil {
+		log.Errorw("failed to encode commitment task", "error", err, "game_id", evt.GetGameID())
+		return types.RoomContractTask{}, false
+	}
+	return types.RoomContractTask{Index: roomV3TaskIndexSubmitCardHash, Task: payload}, true
 }
 
-func encodeCardEventsToTasks(events []*proto.SubmitPlayerCardRequest) []types.RoomContractTask {
-	tasks := make([]types.RoomContractTask, 0, len(events))
-	for _, evt := range events {
-		gameID := new(big.Int).SetInt64(evt.GetGameID())
-		card := big.NewInt(int64(evt.Card))
-		cardIndex := big.NewInt(int64(evt.TurnNumber))
-		round := big.NewInt(int64(evt.RoundNumber))
-		payload, err := EncodeSubmitCardTask(
-			gameID,
-			card,
-			evt.Salt,
-			cardIndex,
-			round,
-			evt.Signature,
-		)
-		if err != nil {
-			log.Errorw("failed to encode card task", "error", err, "game_id", evt.GetGameID())
-			continue
-		}
-		tasks = append(tasks, types.RoomContractTask{Index: 4, Task: payload})
+func encodeCardEventToTask(evt *proto.SubmitPlayerCardRequest) (types.RoomContractTask, bool) {
+	if evt == nil {
+		return types.RoomContractTask{}, false
 	}
-	return tasks
+	gameID := new(big.Int).SetInt64(evt.GetGameID())
+	card := big.NewInt(int64(evt.Card))
+	cardIndex := big.NewInt(int64(evt.TurnNumber))
+	round := big.NewInt(int64(evt.RoundNumber))
+	payload, err := EncodeSubmitCardTask(
+		gameID,
+		card,
+		evt.Salt,
+		cardIndex,
+		round,
+		evt.Signature,
+	)
+	if err != nil {
+		log.Errorw("failed to encode card task", "error", err, "game_id", evt.GetGameID())
+		return types.RoomContractTask{}, false
+	}
+	return types.RoomContractTask{Index: roomV3TaskIndexSubmitCard, Task: payload}, true
 }
 
 // --- Chain implements game.TxPoolEnqueuer (method set below) ---
