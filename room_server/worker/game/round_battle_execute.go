@@ -19,7 +19,7 @@ func (r *round) executeCardIndex() (bool, *dao.GameResult, error) {
 	if r.isServerTimeout() {
 		return r.handleServerTimeout()
 	}
-	isGameOver, gameResult := r.checkGameOverFromGamePlayersPreExecution()
+	isGameOver, gameResult := r.checkGameOver(false)
 	if isGameOver {
 		return isGameOver, gameResult, nil
 	}
@@ -46,7 +46,7 @@ func (r *round) executeCardIndex() (bool, *dao.GameResult, error) {
 		r.processCardBattle(p1, p2, card1, card2)
 	}
 
-	isGameOver, gameResult = r.checkGameOverFromGamePlayersPostExecution()
+	isGameOver, gameResult = r.checkGameOver(true)
 	return isGameOver, gameResult, nil
 }
 

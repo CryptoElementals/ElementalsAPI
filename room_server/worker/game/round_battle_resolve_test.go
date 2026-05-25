@@ -44,11 +44,11 @@ func TestCheckGameOverByHP_regulationHPSpreadEndsBeforeOvertime(t *testing.T) {
 	require.False(t, r.isGameEndsByRoundAndTurn())
 	require.True(t, r.isGameEndsByRegulationRoundAndTurn())
 
-	states := []*gameEndState{
-		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
-		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
+	r.gamePlayers = map[string]*gamePlayer{
+		"a": {player: &dao.GamePlayerInfo{PlayerId: 1, TemporaryAddress: "a"}, currentHP: 1100, status: playerStatusOnline},
+		"b": {player: &dao.GamePlayerInfo{PlayerId: 2, TemporaryAddress: "b"}, currentHP: 1000, status: playerStatusOnline},
 	}
-	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, false, true)
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(false, true)
 	require.True(t, ok)
 	require.Equal(t, gameResultNormal, grType)
 	require.Equal(t, int64(1), winnerID)
@@ -70,11 +70,11 @@ func TestCheckGameOverByHP_overtimeHPSpreadEndsImmediately(t *testing.T) {
 	require.False(t, r.isGameEndsByRoundAndTurn())
 	require.True(t, r.isGameEndsByRegulationRoundAndTurn())
 
-	states := []*gameEndState{
-		{HP: 1100, PlayerId: 1, TemporaryAddress: "a", Status: playerStatusOnline},
-		{HP: 1000, PlayerId: 2, TemporaryAddress: "b", Status: playerStatusOnline},
+	r.gamePlayers = map[string]*gamePlayer{
+		"a": {player: &dao.GamePlayerInfo{PlayerId: 1, TemporaryAddress: "a"}, currentHP: 1100, status: playerStatusOnline},
+		"b": {player: &dao.GamePlayerInfo{PlayerId: 2, TemporaryAddress: "b"}, currentHP: 1000, status: playerStatusOnline},
 	}
-	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(states, false, true)
+	ok, grType, winnerID, winnerTemp, _ := r.checkGameOverByHP(false, true)
 	require.True(t, ok)
 	require.Equal(t, gameResultNormal, grType)
 	require.Equal(t, int64(1), winnerID)

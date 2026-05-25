@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -165,7 +166,17 @@ func (s *RedisStore) MarkBotsStopping(addrs ...types.PlayerAddress) error {
 		return nil
 	}
 	const shutdownScore int64 = 1
-	return s.HeartbeatBots(shutdownScore, addrs...)
+	if err := s.HeartbeatBots(shutdownScore, addrs...); err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		log.Debugw("bot_status_switched",
+			"player", toPlayerKey(addr),
+			"from", "unknown",
+			"to", "stopping",
+		)
+	}
+	return nil
 }
 
 func (s *RedisStore) PopFreshIdleBotForMatch(nowMs int64, freshnessMs int64, gameType proto.GameType) (*types.PlayerAddress, error) {
@@ -181,6 +192,12 @@ func (s *RedisStore) PopFreshIdleBotForMatch(nowMs int64, freshnessMs int64, gam
 	if err := out.Parse(key); err != nil {
 		return nil, err
 	}
+	log.Debugw("bot_status_switched",
+		"player", key,
+		"from", "idle",
+		"to", "ingame",
+		"game_type", gameType.String(),
+	)
 	return &out, nil
 }
 
@@ -194,11 +211,28 @@ func (s *RedisStore) ReleaseInGameBot(ctx context.Context, addr types.PlayerAddr
 	} else {
 		playerTokens = int64(ut.TokenAmount)
 	}
-	ok, err := redis.ScriptInt(s.pool, releaseInGameBotScript, s.idleKey, s.inGameKey, s.tokenInsufficientKey, toPlayerKey(addr), s.tokenInsufficientThreshold, playerTokens)
+	playerKey := toPlayerKey(addr)
+	ok, err := redis.ScriptInt(s.pool, releaseInGameBotScript, s.idleKey, s.inGameKey, s.tokenInsufficientKey, playerKey, s.tokenInsufficientThreshold, playerTokens)
 	if err != nil {
 		return false, err
 	}
-	return ok == 1, nil
+	if ok != 1 {
+		return false, nil
+	}
+	to := "idle"
+	if s.tokenInsufficientThreshold > 0 && playerTokens < s.tokenInsufficientThreshold {
+		to = "token_insufficient"
+	}
+	logArgs := []interface{}{
+		"player", playerKey,
+		"from", "ingame",
+		"to", to,
+	}
+	if s.tokenInsufficientThreshold > 0 {
+		logArgs = append(logArgs, "tokens", playerTokens, "token_threshold", s.tokenInsufficientThreshold)
+	}
+	log.Debugw("bot_status_switched", logArgs...)
+	return true, nil
 }
 
 func (s *RedisStore) IsBot(addr types.PlayerAddress) (bool, error) {
