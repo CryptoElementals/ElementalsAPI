@@ -313,6 +313,32 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 	return nil
 }
 
+// AbortAllActiveGames aborts every game with status != GAME_END using the internal-error abort path.
+func (r *GameManager) AbortAllActiveGames() (*proto.AbortAllActiveGamesResponse, error) {
+	games, err := db.GetAllActiveGames()
+	if err != nil {
+		return nil, err
+	}
+	resp := &proto.AbortAllActiveGamesResponse{}
+	for _, gameInfo := range games {
+		if gameInfo == nil {
+			continue
+		}
+		gameID := gameInfo.ID
+		if err := r.executeOnGame(gameID, func(g *Game) error {
+			return g.handleGameAbortInternalError()
+		}); err != nil {
+			resp.Failures = append(resp.Failures, &proto.AbortGameError{
+				GameId:  gameID,
+				Message: err.Error(),
+			})
+			continue
+		}
+		resp.AbortedGameIds = append(resp.AbortedGameIds, gameID)
+	}
+	return resp, nil
+}
+
 // validatePlayersNotInGame checks if any of the players are already in a game
 func (r *GameManager) validatePlayersNotInGame(players []types.PlayerAddress) error {
 	for _, player := range players {
