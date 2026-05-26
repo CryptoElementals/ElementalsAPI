@@ -129,9 +129,9 @@ func (r *round) isGameEndsByRegulationRoundAndTurn() bool {
 func (r *round) checkGameOver(checkRoundTurnLimit bool) (bool, *dao.GameResult) {
 	for _, player := range r.gamePlayers {
 		if player.status != playerStatusSurrendered {
-			submittedCard := player.getLastSubmittedCard()
-			hasSubmittedCommitment := submittedCard != nil && len(submittedCard.CommitmentHash) > 0
-			hasSubmittedCard := submittedCard != nil && submittedCard.CardID > 0
+			pti := player.getCurrentPlayerTurnInfo()
+			hasCommitmentOnChain := pti != nil && pti.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN
+			hasCardOnChain := pti != nil && pti.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN
 
 			switch r.getTurnStatus() {
 			case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
@@ -139,11 +139,11 @@ func (r *round) checkGameOver(checkRoundTurnLimit bool) (bool, *dao.GameResult) 
 					player.status = playerStatusOffline
 				}
 			case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
-				if !hasSubmittedCommitment {
+				if !hasCommitmentOnChain {
 					player.status = playerStatusOffline
 				}
 			case proto.TurnStatus_TURN_WAITTING_CARDS:
-				if !hasSubmittedCard {
+				if !hasCardOnChain {
 					player.status = playerStatusOffline
 				}
 			}

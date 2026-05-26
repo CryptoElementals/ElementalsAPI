@@ -16,9 +16,6 @@ func (r *round) executeCardIndex() (bool, *dao.GameResult, error) {
 	if err := r.validateRound(); err != nil {
 		return false, nil, err
 	}
-	if r.isServerTimeout() {
-		return r.handleServerTimeout()
-	}
 	isGameOver, gameResult := r.checkGameOver(false)
 	if isGameOver {
 		return isGameOver, gameResult, nil
@@ -66,11 +63,6 @@ func (r *round) validateRound() error {
 	}
 
 	return nil
-}
-
-func (r *round) isServerTimeout() bool {
-	return r.completeReason == proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_CHAIN_TIMEOUT ||
-		r.completeReason == proto.RoundCompleteReason_ROUND_COMPLETE_SERVER_INTERNAL_TIMEOUT
 }
 
 func (r *round) processCardBattle(p1, p2 *gamePlayer, card1, card2 *dao.Card) {
