@@ -36,7 +36,8 @@ const (
 	RoomV3ContractSubmitCardHashEventName = "submitCardHash"
 	RoomV3ContractSubmitCardEventName     = "submitCard"
 
-	rpcSubmitTimeout = 3 * time.Second
+	rpcSubmitTimeout     = 3 * time.Second
+	catchupExitWaitTimeout = 30 * time.Second
 )
 
 type eventSigHashCache struct {
@@ -63,6 +64,7 @@ type Scanner struct {
 	toSubmitHeight            uint64
 	toSubmitHeightMutex       sync.RWMutex // 添加同步机制
 	headNumberOnChain         uint64
+	catchupWg                 sync.WaitGroup
 	eventSigHashCache         eventSigHashCache // 封装后的缓存
 }
 
@@ -172,7 +174,8 @@ func (s *Scanner) RunCatchUp() {
 
 		if catchupCancel != nil {
 			catchupCancel() // cancels catchupCtx; stops previous CatchUpChain (not s.ctx)
-			log.Info("Stopped previous CatchUpChain goroutine")
+			s.waitCatchupExit()
+			s.alignScannedHeightToSubmit()
 		}
 		catchupCtx, cancel := context.WithCancel(s.ctx)
 		catchupCancel = cancel
@@ -220,6 +223,44 @@ func (s *Scanner) SetHeadNumberOnChain(height uint64) {
 	s.headNumberOnChain = height
 }
 
+// waitCatchupExit blocks until the previous CatchUpChain goroutine exits (or times out).
+func (s *Scanner) waitCatchupExit() {
+	done := make(chan struct{})
+	go func() {
+		s.catchupWg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		log.Info("Previous CatchUpChain fully exited")
+	case <-time.After(catchupExitWaitTimeout):
+		log.Warnf("Previous CatchUpChain did not exit within %v; proceeding with reconnect", catchupExitWaitTimeout)
+	}
+}
+
+// alignScannedHeightToSubmit rewinds the scan cursor so in-flight blocks are rescanned after reconnect.
+func (s *Scanner) alignScannedHeightToSubmit() {
+	s.toSubmitHeightMutex.RLock()
+	submitH := s.toSubmitHeight
+	s.toSubmitHeightMutex.RUnlock()
+
+	s.currentScannedHeightMutex.Lock()
+	prev := s.currentScannedHeight
+	if prev != submitH {
+		s.currentScannedHeight = submitH
+		log.Infof("WS reconnect: aligned currentScannedHeight %d -> %d (toSubmitHeight)", prev, submitH)
+	}
+	s.currentScannedHeightMutex.Unlock()
+}
+
+// requeueBlock puts a block back on the queue; exits without blocking if ctx is cancelled.
+func requeueBlock(ctx context.Context, blockQueue chan<- uint64, blockNum uint64) {
+	select {
+	case blockQueue <- blockNum:
+	case <-ctx.Done():
+	}
+}
+
 // 新增：有序的交易提交结构
 type orderedTxBatch struct {
 	blockNumber uint64
@@ -234,10 +275,18 @@ func (s *Scanner) CatchUpChain(ctx context.Context) {
 
 	blockQueue := make(chan uint64, 200)
 
-	log.Infof("CatchUpChain started: currentScannedHeight=%d, headNumberOnChain=%d", s.currentScannedHeight, s.headNumberOnChain)
+	s.catchupWg.Add(1)
+	defer s.catchupWg.Done()
+
+	var wg sync.WaitGroup
+
+	log.Infof("CatchUpChain started: currentScannedHeight=%d, toSubmitHeight=%d, headNumberOnChain=%d",
+		s.currentScannedHeight, s.toSubmitHeight, s.headNumberOnChain)
 
 	// 任务分发协程：基于 toSubmitHeight 控制投递，避免投递过多未处理的区块
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-ctx.Done():
@@ -262,7 +311,9 @@ func (s *Scanner) CatchUpChain(ctx context.Context) {
 
 	// worker 并发消费 blockNumber，失败重试，不跳过
 	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
 		go func(workerID int) {
+			defer wg.Done()
 			for {
 				select {
 				case <-ctx.Done():
@@ -281,7 +332,7 @@ func (s *Scanner) CatchUpChain(ctx context.Context) {
 						// 失败重试，重新放回队列
 						go func(bn uint64) {
 							log.Debugf("Worker %d retrying block %d, adding back to queue", workerID, bn)
-							blockQueue <- bn
+							requeueBlock(ctx, blockQueue, bn)
 						}(blockNumber)
 						time.Sleep(time.Second * 3)
 						continue
@@ -310,7 +361,7 @@ func (s *Scanner) CatchUpChain(ctx context.Context) {
 							// 失败重试，重新放回队列
 							go func(bn uint64) {
 								log.Debugf("Worker %d retrying submit for block %d, adding back to queue", workerID, bn)
-								blockQueue <- bn
+								requeueBlock(ctx, blockQueue, bn)
 							}(blockNumber)
 							time.Sleep(time.Second * 3)
 							continue
@@ -344,13 +395,18 @@ func (s *Scanner) CatchUpChain(ctx context.Context) {
 		}(i)
 	}
 	// 启动专门的提交 goroutine（保证顺序）
-	go s.orderedSubmitWorker(ctx, submitChan)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.orderedSubmitWorker(ctx, submitChan)
+	}()
 
 	// 退出：catchup 重连只取消 catchupCtx；进程退出时 s.ctx 取消才关闭 rpcClient
 	<-ctx.Done()
 	if s.ctx.Err() != nil {
 		s.rpcClient.Close()
 	}
+	wg.Wait()
 	log.Info("CatchUpChain exited")
 }
 
