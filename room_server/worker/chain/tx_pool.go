@@ -177,8 +177,7 @@ func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 	log.Infow("request added to tx pool", "kind", "set_turn_ready", "gameID", evt.GameID, "chain_id", p.chainID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 }
 
-// runPoolTickForOrderedRows submits pending work for this chain. Rows must already be in flush order
-// (see db.chainItemsToPendingRowsInFlushOrder).
+// runPoolTickForOrderedRows submits pending work for this chain.
 func (p *txPool) runPoolTickForOrderedRows(ordered []db.ChainTxPoolPendingRow) {
 	flatTasks, rowIDs, dropIDs, err := p.loadPendingTasksFromRows(ordered)
 	if err != nil {
@@ -211,6 +210,36 @@ func (p *txPool) runPoolTickForOrderedRows(ordered []db.ChainTxPoolPendingRow) {
 	}
 }
 
+func (p *txPool) runDrainLoop() error {
+	for {
+		rows, err := db.PopChainTxPoolBatchForChain(p.chainID, p.batchSize)
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+
+		flatTasks, _, dropIDs, err := p.loadPendingTasksFromRows(rows)
+		if err != nil {
+			log.Errorw("loadPendingTasksFromRows", "err", err, "chain_id", p.chainID)
+			continue
+		}
+		if len(dropIDs) > 0 {
+			log.Errorw("dropped invalid pool rows during drain", "chain_id", p.chainID, "count", len(dropIDs), "ids", dropIDs)
+		}
+		if len(flatTasks) == 0 {
+			continue
+		}
+
+		if err := p.sub.SubmitTasks(flatTasks); err != nil {
+			log.Errorw("failed to submit tasks batch to chain", "error", err, "count", len(flatTasks), "chain_id", p.chainID)
+			return nil
+		}
+		log.Infow("submitted tasks batch to chain", "count", len(flatTasks), "chain_id", p.chainID)
+	}
+}
+
 func (p *txPool) loadPendingTasksFromRows(rows []db.ChainTxPoolPendingRow) (tasks []types.RoomContractTask, rowIDs []uint, dropIDs []uint, err error) {
 	for _, r := range rows {
 		t, ok, drop := p.pendingRowToTask(r)
@@ -227,7 +256,70 @@ func (p *txPool) loadPendingTasksFromRows(rows []db.ChainTxPoolPendingRow) (task
 	return tasks, rowIDs, dropIDs, nil
 }
 
+func chainTxPoolKindLabel(kind uint8) string {
+	switch kind {
+	case dao.ChainTxPoolKindCreateRoom:
+		return "create_room"
+	case dao.ChainTxPoolKindSetTurnReady:
+		return "set_turn_ready"
+	case dao.ChainTxPoolKindCommitment:
+		return "commitment"
+	case dao.ChainTxPoolKindCard:
+		return "card"
+	default:
+		return fmt.Sprintf("unknown(%d)", kind)
+	}
+}
+
+func (p *txPool) debugLogPendingRowToTask(r db.ChainTxPoolPendingRow, playerIDs []int64) {
+	args := []any{
+		"pool_row_id", r.ID,
+		"chain_id", p.chainID,
+		"type", chainTxPoolKindLabel(r.Kind),
+		"kind", r.Kind,
+		"game_id", r.GameID,
+		"round", r.RoundNumber,
+		"turn", r.TurnNumber,
+	}
+	if r.PlayerTemporaryAddr != "" {
+		args = append(args, "player_temporary_addr", r.PlayerTemporaryAddr)
+	}
+	switch len(playerIDs) {
+	case 1:
+		if playerIDs[0] != 0 {
+			args = append(args, "player_id", playerIDs[0])
+		}
+	case 0:
+	default:
+		args = append(args, "player_ids", playerIDs)
+	}
+	log.Debugw("chain tx pool pending row to task", args...)
+}
+
+func playerIDsFromCreateRoomEvent(evt *types.RequireGameCreationEvent) []int64 {
+	if evt == nil {
+		return nil
+	}
+	var ids []int64
+	for _, pl := range evt.Players {
+		if pl.Id != 0 {
+			ids = append(ids, pl.Id)
+		}
+	}
+	return ids
+}
+
+func playerIDFromProtoAddress(addr *proto.PlayerAddress) int64 {
+	if addr == nil {
+		return 0
+	}
+	return addr.GetId()
+}
+
 func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContractTask, ok bool, drop bool) {
+	var playerIDs []int64
+	defer func() { p.debugLogPendingRowToTask(r, playerIDs) }()
+
 	switch r.Kind {
 	case dao.ChainTxPoolKindCreateRoom:
 		var evt types.RequireGameCreationEvent
@@ -235,6 +327,7 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 			log.Errorw("create_room pool row: bad json", "id", r.ID, "err", err)
 			return t, false, true
 		}
+		playerIDs = playerIDsFromCreateRoomEvent(&evt)
 		t, ok = encodeCreateRoomEventToTask(&evt)
 		return t, ok, !ok
 	case dao.ChainTxPoolKindSetTurnReady:
@@ -255,6 +348,9 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 			log.Errorw("commitment event missing GameID", "id", r.ID)
 			return t, false, true
 		}
+		if id := playerIDFromProtoAddress(msg.GetAddress()); id != 0 {
+			playerIDs = []int64{id}
+		}
 		t, ok = encodeCommitmentEventToTask(&msg)
 		return t, ok, !ok
 	case dao.ChainTxPoolKindCard:
@@ -266,6 +362,9 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 		if msg.GetGameID() == 0 {
 			log.Errorw("card event missing GameID", "id", r.ID)
 			return t, false, true
+		}
+		if id := playerIDFromProtoAddress(msg.GetAddress()); id != 0 {
+			playerIDs = []int64{id}
 		}
 		t, ok = encodeCardEventToTask(&msg)
 		return t, ok, !ok
