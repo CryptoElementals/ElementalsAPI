@@ -742,21 +742,6 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 		}
 		return err
 	}
-	if gr.GameResultType == proto.GameResultType_GAME_ABORTED {
-		m0, merr := db.TournamentGetMatchByGameID(gameID)
-		if merr != nil {
-			if errors.Is(merr, gorm.ErrRecordNotFound) {
-				return nil
-			}
-			return merr
-		}
-		participants := []types.PlayerAddress{
-			{Id: m0.Player1ID, TemporaryAddress: m0.Player1TempAddress},
-			{Id: m0.Player2ID, TemporaryAddress: m0.Player2TempAddress},
-		}
-		tc.releaseBotsIfNeeded(tc.filterBotsForRelease(participants))
-		return nil
-	}
 	m0, err := db.TournamentGetMatchByGameID(gameID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1134,7 +1119,7 @@ func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, gr *dao.GameRes
 	}
 
 	switch gr.GameResultType {
-	case proto.GameResultType_GAME_TIE:
+	case proto.GameResultType_GAME_TIE, proto.GameResultType_GAME_ABORTED:
 		p1Part, err := db.TournamentGetParticipantByPlayerTx(tx, m.TournamentID, p1id, p1t)
 		if err != nil {
 			return 0, "", fmt.Errorf("tournament tie: load participant: %w", err)
