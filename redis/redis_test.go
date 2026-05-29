@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/require"
 )
@@ -83,4 +84,31 @@ func TestRedisGetSet(t *testing.T) {
 	ex, err = Exist(key)
 	require.NoError(t, err)
 	require.False(t, ex)
+}
+
+// TestZInitRegistersNamedPoolsFromConfigs runs last (name prefix "TestZ") so other tests still
+// use the Redis from TestMain. It verifies Init builds and registers named pools from cfgs.
+func TestZInitRegistersNamedPoolsFromConfigs(t *testing.T) {
+	sDefault := miniredis.RunT(t)
+	sExtra := miniredis.RunT(t)
+	t.Cleanup(sDefault.Close)
+	t.Cleanup(sExtra.Close)
+
+	base := &Config{Address: sDefault.Addr(), Size: 2}
+	extraCfg := &Config{Address: sExtra.Addr(), Size: 2}
+	require.NoError(t, Init(base, &ConfigWithName{Name: "namedFromInit", Cfg: extraCfg}))
+
+	op, err := Pool("namedFromInit")
+	require.NoError(t, err)
+	require.NoError(t, op.Set("ik", "iv", 0))
+	v, err := op.Get("ik")
+	require.NoError(t, err)
+	require.Equal(t, "iv", v)
+
+	_, err = Get("ik")
+	require.Equal(t, redis.ErrNil, err)
+
+	gotCfg, err := GetPoolConfig("namedFromInit")
+	require.NoError(t, err)
+	require.Equal(t, extraCfg.Address, gotCfg.Address)
 }

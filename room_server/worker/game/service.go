@@ -121,3 +121,8 @@ func (s *Service) GetGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress)
 	addr.FromProto(req)
 	return s.gameManager.GetGamePhase(addr)
 }
+
+func (s *Service) AbortAllActiveGamesRPC(ctx context.Context, _ *emptypb.Empty) (*proto.AbortAllActiveGamesResponse, error) {
+	_ = ctx
+	return s.gameManager.AbortAllActiveGames()
+}

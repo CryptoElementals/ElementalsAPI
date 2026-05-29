@@ -26,6 +26,9 @@ const (
 	LobbyService_CancelMatch_FullMethodName                                 = "/rpc.LobbyService/CancelMatch"
 	LobbyService_GetPlayerStatus_FullMethodName                             = "/rpc.LobbyService/GetPlayerStatus"
 	LobbyService_GetPlayerToken_FullMethodName                              = "/rpc.LobbyService/GetPlayerToken"
+	LobbyService_EnsureUserToken_FullMethodName                             = "/rpc.LobbyService/EnsureUserToken"
+	LobbyService_CreditUserTokens_FullMethodName                            = "/rpc.LobbyService/CreditUserTokens"
+	LobbyService_SetUserTokenAmount_FullMethodName                          = "/rpc.LobbyService/SetUserTokenAmount"
 	LobbyService_RegisterBots_FullMethodName                                = "/rpc.LobbyService/RegisterBots"
 	LobbyService_UnregisterBots_FullMethodName                              = "/rpc.LobbyService/UnregisterBots"
 	LobbyService_JoinTournament_FullMethodName                              = "/rpc.LobbyService/JoinTournament"
@@ -48,6 +51,9 @@ type LobbyServiceClient interface {
 	CancelMatch(ctx context.Context, in *CancelMatchRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetPlayerStatus(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GetPlayerStatusResponse, error)
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
+	EnsureUserToken(ctx context.Context, in *EnsureUserTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CreditUserTokens(ctx context.Context, in *CreditUserTokensRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
+	SetUserTokenAmount(ctx context.Context, in *SetUserTokenAmountRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
 	RegisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UnregisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -124,6 +130,36 @@ func (c *lobbyServiceClient) GetPlayerToken(ctx context.Context, in *GetPlayerTo
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
 	err := c.cc.Invoke(ctx, LobbyService_GetPlayerToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lobbyServiceClient) EnsureUserToken(ctx context.Context, in *EnsureUserTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, LobbyService_EnsureUserToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lobbyServiceClient) CreditUserTokens(ctx context.Context, in *CreditUserTokensRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPlayerTokenResponse)
+	err := c.cc.Invoke(ctx, LobbyService_CreditUserTokens_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lobbyServiceClient) SetUserTokenAmount(ctx context.Context, in *SetUserTokenAmountRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPlayerTokenResponse)
+	err := c.cc.Invoke(ctx, LobbyService_SetUserTokenAmount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +249,9 @@ type LobbyServiceServer interface {
 	CancelMatch(context.Context, *CancelMatchRequest) (*emptypb.Empty, error)
 	GetPlayerStatus(context.Context, *PlayerAddress) (*GetPlayerStatusResponse, error)
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
+	EnsureUserToken(context.Context, *EnsureUserTokenRequest) (*emptypb.Empty, error)
+	CreditUserTokens(context.Context, *CreditUserTokensRequest) (*GetPlayerTokenResponse, error)
+	SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error)
 	// Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
 	RegisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error)
 	UnregisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error)
@@ -252,6 +291,15 @@ func (UnimplementedLobbyServiceServer) GetPlayerStatus(context.Context, *PlayerA
 }
 func (UnimplementedLobbyServiceServer) GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayerToken not implemented")
+}
+func (UnimplementedLobbyServiceServer) EnsureUserToken(context.Context, *EnsureUserTokenRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnsureUserToken not implemented")
+}
+func (UnimplementedLobbyServiceServer) CreditUserTokens(context.Context, *CreditUserTokensRequest) (*GetPlayerTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreditUserTokens not implemented")
+}
+func (UnimplementedLobbyServiceServer) SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetUserTokenAmount not implemented")
 }
 func (UnimplementedLobbyServiceServer) RegisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterBots not implemented")
@@ -399,6 +447,60 @@ func _LobbyService_GetPlayerToken_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LobbyServiceServer).GetPlayerToken(ctx, req.(*GetPlayerTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LobbyService_EnsureUserToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnsureUserTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LobbyServiceServer).EnsureUserToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LobbyService_EnsureUserToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LobbyServiceServer).EnsureUserToken(ctx, req.(*EnsureUserTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LobbyService_CreditUserTokens_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreditUserTokensRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LobbyServiceServer).CreditUserTokens(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LobbyService_CreditUserTokens_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LobbyServiceServer).CreditUserTokens(ctx, req.(*CreditUserTokensRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LobbyService_SetUserTokenAmount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserTokenAmountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LobbyServiceServer).SetUserTokenAmount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LobbyService_SetUserTokenAmount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LobbyServiceServer).SetUserTokenAmount(ctx, req.(*SetUserTokenAmountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -559,6 +661,18 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPlayerToken",
 			Handler:    _LobbyService_GetPlayerToken_Handler,
+		},
+		{
+			MethodName: "EnsureUserToken",
+			Handler:    _LobbyService_EnsureUserToken_Handler,
+		},
+		{
+			MethodName: "CreditUserTokens",
+			Handler:    _LobbyService_CreditUserTokens_Handler,
+		},
+		{
+			MethodName: "SetUserTokenAmount",
+			Handler:    _LobbyService_SetUserTokenAmount_Handler,
 		},
 		{
 			MethodName: "RegisterBots",

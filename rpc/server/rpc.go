@@ -50,6 +50,10 @@ func (s *Rpc) GetGamePhase(ctx context.Context, req *proto.PlayerAddress) (*prot
 	return s.gameHandler.GetGamePhaseRPC(ctx, req)
 }
 
+func (s *Rpc) AbortAllActiveGames(ctx context.Context, req *emptypb.Empty) (*proto.AbortAllActiveGamesResponse, error) {
+	return s.gameHandler.AbortAllActiveGamesRPC(ctx, req)
+}
+
 type GameProcessHandler interface {
 	SubmitTransactions(req *proto.TransactionBatch) error
 	ConfirmBattle(req *proto.ConfirmBattleRequest) error
@@ -60,4 +64,5 @@ type GameProcessHandler interface {
 	CreateGameAndRunRPC(ctx context.Context, req *proto.CreateGameAndRunRequest) (*proto.CreateGameAndRunResponse, error)
 	SyncGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*emptypb.Empty, error)
 	GetGamePhaseRPC(ctx context.Context, req *proto.PlayerAddress) (*proto.GamePhase, error)
+	AbortAllActiveGamesRPC(ctx context.Context, req *emptypb.Empty) (*proto.AbortAllActiveGamesResponse, error)
 }

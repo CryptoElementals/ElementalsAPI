@@ -65,7 +65,7 @@ func TestChainTxPoolCreateRoomDuplicate(t *testing.T) {
 	require.Equal(t, []byte("first"), pending[0].Payload)
 }
 
-func TestChainTxPoolListOrderAndDelete(t *testing.T) {
+func TestChainTxPoolListAndDelete(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
@@ -93,10 +93,15 @@ func TestChainTxPoolListOrderAndDelete(t *testing.T) {
 	pending, err := ListChainTxPoolPendingForChain(1)
 	require.NoError(t, err)
 	require.Len(t, pending, 4)
-	require.Equal(t, uint8(1), pending[0].Kind)
-	require.Equal(t, uint8(2), pending[1].Kind)
-	require.Equal(t, uint8(3), pending[2].Kind)
-	require.Equal(t, uint8(4), pending[3].Kind)
+	kinds := make(map[uint8]struct{})
+	for _, p := range pending {
+		kinds[p.Kind] = struct{}{}
+	}
+	require.Len(t, kinds, 4)
+	require.Contains(t, kinds, dao.ChainTxPoolKindCreateRoom)
+	require.Contains(t, kinds, dao.ChainTxPoolKindSetTurnReady)
+	require.Contains(t, kinds, dao.ChainTxPoolKindCommitment)
+	require.Contains(t, kinds, dao.ChainTxPoolKindCard)
 
 	ids := []uint{pending[0].ID, pending[1].ID}
 	require.NoError(t, DeleteChainTxPoolItemsByIDs(ids))
@@ -140,4 +145,40 @@ func TestChainTxPoolDeleteForGame(t *testing.T) {
 	var n int64
 	require.NoError(t, Get().Model(&dao.ChainTxPoolItem{}).Where("game_id = ?", 99).Count(&n).Error)
 	require.EqualValues(t, 0, n)
+}
+
+func TestPopChainTxPoolBatchForChainDrainsByLimit(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	for i := 0; i < 3; i++ {
+		require.NoError(t, InsertChainTxPoolItem(&dao.ChainTxPoolItem{
+			ChainID:             1,
+			Kind:                dao.ChainTxPoolKindCommitment,
+			GameID:              int64(100 + i),
+			PlayerTemporaryAddr: "0xa",
+			RoundNumber:         1,
+			TurnNumber:          uint32(i),
+			Payload:             []byte{byte(i + 1)},
+		}))
+	}
+
+	b1, err := PopChainTxPoolBatchForChain(1, 2)
+	require.NoError(t, err)
+	require.Len(t, b1, 2)
+
+	var n int64
+	require.NoError(t, Get().Model(&dao.ChainTxPoolItem{}).Where("chain_id = ?", 1).Count(&n).Error)
+	require.EqualValues(t, 1, n)
+
+	b2, err := PopChainTxPoolBatchForChain(1, 2)
+	require.NoError(t, err)
+	require.Len(t, b2, 1)
+
+	require.NoError(t, Get().Model(&dao.ChainTxPoolItem{}).Where("chain_id = ?", 1).Count(&n).Error)
+	require.EqualValues(t, 0, n)
+
+	b3, err := PopChainTxPoolBatchForChain(1, 2)
+	require.NoError(t, err)
+	require.Len(t, b3, 0)
 }

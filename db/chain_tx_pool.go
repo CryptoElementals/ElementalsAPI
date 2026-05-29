@@ -3,11 +3,11 @@ package db
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	dao "github.com/CryptoElementals/common/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrChainTxPoolDuplicate is returned when inserting a row that violates the unique natural key.
@@ -40,54 +40,47 @@ func InsertChainTxPoolItem(row *dao.ChainTxPoolItem) error {
 	return nil
 }
 
-// ChainTxPoolPendingRow is one queued item for a chain, in flush order.
+// ChainTxPoolPendingRow is one queued item for a chain.
 type ChainTxPoolPendingRow struct {
-	ID      uint
-	Kind    uint8
-	Payload []byte
+	ID                  uint
+	Kind                uint8
+	GameID              int64
+	PlayerTemporaryAddr string
+	RoundNumber         uint32
+	TurnNumber          uint32
+	Payload             []byte
 }
 
-// chainItemsToPendingRowsInFlushOrder orders items for one chain: create → set turn → commitment →
-// card, with id order within each kind (matches the legacy in-memory pool).
-func chainItemsToPendingRowsInFlushOrder(items []dao.ChainTxPoolItem) []ChainTxPoolPendingRow {
-	var byKind [5][]dao.ChainTxPoolItem
+func chainItemsToPendingRows(items []dao.ChainTxPoolItem) []ChainTxPoolPendingRow {
+	var out []ChainTxPoolPendingRow
 	for i := range items {
 		k := items[i].Kind
 		if k < 1 || k > 4 {
 			continue
 		}
-		byKind[k] = append(byKind[k], items[i])
-	}
-	for k := 1; k <= 4; k++ {
-		s := byKind[k]
-		sort.Slice(s, func(i, j int) bool { return s[i].ID < s[j].ID })
-	}
-	var out []ChainTxPoolPendingRow
-	for _, k := range []uint8{
-		dao.ChainTxPoolKindCreateRoom,
-		dao.ChainTxPoolKindSetTurnReady,
-		dao.ChainTxPoolKindCommitment,
-		dao.ChainTxPoolKindCard,
-	} {
-		for j := range byKind[k] {
-			r := &byKind[k][j]
-			out = append(out, ChainTxPoolPendingRow{ID: r.ID, Kind: r.Kind, Payload: append([]byte(nil), r.Payload...)})
-		}
+		out = append(out, ChainTxPoolPendingRow{
+			ID:                  items[i].ID,
+			Kind:                items[i].Kind,
+			GameID:              items[i].GameID,
+			PlayerTemporaryAddr: items[i].PlayerTemporaryAddr,
+			RoundNumber:         items[i].RoundNumber,
+			TurnNumber:          items[i].TurnNumber,
+			Payload:             append([]byte(nil), items[i].Payload...),
+		})
 	}
 	return out
 }
 
-// ListChainTxPoolPendingForChain returns pending items for a chain in flush order.
+// ListChainTxPoolPendingForChain returns pending items for a chain.
 func ListChainTxPoolPendingForChain(chainID int64) ([]ChainTxPoolPendingRow, error) {
 	var items []dao.ChainTxPoolItem
 	if err := Get().Where("chain_id = ?", chainID).Find(&items).Error; err != nil {
 		return nil, err
 	}
-	return chainItemsToPendingRowsInFlushOrder(items), nil
+	return chainItemsToPendingRows(items), nil
 }
 
-// ListChainTxPoolPendingByChain loads all non-deleted pool items in one query, classifies by chain_id,
-// and returns each chain's rows in the same flush order as ListChainTxPoolPendingForChain.
+// ListChainTxPoolPendingByChain loads all non-deleted pool items in one query, grouped by chain_id.
 func ListChainTxPoolPendingByChain() (map[int64][]ChainTxPoolPendingRow, error) {
 	var all []dao.ChainTxPoolItem
 	if err := Get().Find(&all).Error; err != nil {
@@ -100,9 +93,50 @@ func ListChainTxPoolPendingByChain() (map[int64][]ChainTxPoolPendingRow, error) 
 	}
 	out := make(map[int64][]ChainTxPoolPendingRow, len(byItems))
 	for cid, items := range byItems {
-		out[cid] = chainItemsToPendingRowsInFlushOrder(items)
+		out[cid] = chainItemsToPendingRows(items)
 	}
 	return out, nil
+}
+
+// PopChainTxPoolBatchForChain atomically locks, loads, deletes, and returns one batch for a chain.
+func PopChainTxPoolBatchForChain(chainID int64, limit int) ([]ChainTxPoolPendingRow, error) {
+	if chainID == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 1
+	}
+
+	var popped []ChainTxPoolPendingRow
+	err := Get().Transaction(func(tx *gorm.DB) error {
+		var items []dao.ChainTxPoolItem
+		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("chain_id = ?", chainID).
+			Order("id ASC").
+			Limit(limit).
+			Find(&items).Error; err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			return nil
+		}
+
+		popped = chainItemsToPendingRows(items)
+		if len(popped) == 0 {
+			return nil
+		}
+
+		ids := make([]uint, 0, len(popped))
+		for i := range popped {
+			ids = append(ids, popped[i].ID)
+		}
+		return tx.Where("id IN ?", ids).Delete(&dao.ChainTxPoolItem{}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return popped, nil
 }
 
 // DeleteChainTxPoolItemsByIDs removes submitted pool rows.

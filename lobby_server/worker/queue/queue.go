@@ -19,6 +19,7 @@ import (
 	pb "github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/timer"
 	"google.golang.org/grpc"
+	"gorm.io/gorm"
 )
 
 // EventPublisher publishes outbound player notifications (same contract as game.Publisher).
@@ -233,7 +234,9 @@ func (q *Queue) GameResultSettlement(event *types.GameCompletedEvent) error {
 func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 	ok, err := q.lobbyState.IsInQueue(q.ctx, address)
 	if err != nil {
-		log.Debugw("lobby is in queue check failed", "player", address.String(), "err", err)
+		if err != gorm.ErrRecordNotFound {
+			log.Errorw("lobby is in queue check failed", "player", address.String(), "err", err)
+		}
 		return false
 	}
 	return ok
@@ -242,7 +245,9 @@ func (q *Queue) isPlayerInQueue(address types.PlayerAddress) bool {
 func (q *Queue) isPlayerInGame(address types.PlayerAddress) bool {
 	ok, _, err := q.lobbyState.GetGameIDByPlayer(q.ctx, address)
 	if err != nil {
-		log.Debugw("lobby is in game check failed", "player", address.String(), "err", err)
+		if err != gorm.ErrRecordNotFound {
+			log.Errorw("lobby is in game check failed", "player", address.String(), "err", err)
+		}
 		return false
 	}
 	return ok

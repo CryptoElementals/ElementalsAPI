@@ -79,7 +79,7 @@ func (task *ConfirmMatchTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
@@ -104,4 +104,3 @@ func (task *ConfirmMatchTask) Run(c *gin.Context) (Response, error) {
 	task.Response.BaseResponse.Message = "Successfully confirmed match"
 	return task.Response, nil
 }
-

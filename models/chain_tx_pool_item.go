@@ -15,7 +15,7 @@ const (
 type ChainTxPoolItem struct {
 	BaseModel
 
-	ChainID int64 `gorm:"not null" json:"chain_id"`
+	ChainID int64 `gorm:"not null;index:idx_chain_tx_pool_items_chain_id" json:"chain_id"`
 	GameID  int64 `gorm:"not null;uniqueIndex:ux_chain_tx_pool_natural" json:"game_id"`
 	Kind    uint8 `gorm:"not null;uniqueIndex:ux_chain_tx_pool_natural" json:"kind"`
 	// PlayerTemporaryAddr is empty for create_room; used for commitment/card matching event key.

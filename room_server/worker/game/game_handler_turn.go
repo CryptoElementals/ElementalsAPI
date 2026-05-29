@@ -153,6 +153,28 @@ func (g *Game) haveAllPlayersCardOnChain() bool {
 	return true
 }
 
+// anyPlayerPendingOnChain returns true if a player has submitted to the server
+// but chain confirmation for the current phase is still pending.
+func (g *Game) anyPlayerPendingOnChain() bool {
+	switch g.currentRound.getTurnStatus() {
+	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS:
+		for _, p := range g.currentRound.gamePlayers {
+			pti := p.getCurrentPlayerTurnInfo()
+			if pti != nil && pti.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED {
+				return true
+			}
+		}
+	case proto.TurnStatus_TURN_WAITTING_CARDS:
+		for _, p := range g.currentRound.gamePlayers {
+			pti := p.getCurrentPlayerTurnInfo()
+			if pti != nil && pti.PlayerStatus == proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // handleTurnEnd handles the end of a turn: executes the card, sends events, and checks if round/game ends
 func (g *Game) handleTurnEnd() error {
 	turnNumber := g.currentRound.getCurrentTurnNumber()

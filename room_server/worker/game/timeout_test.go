@@ -51,6 +51,122 @@ func TestTimeoutFromCurrentRound_IgnoresUnknownStatus(t *testing.T) {
 	require.Zero(t, g.timeoutFromCurentRound())
 }
 
+func setPlayerTurnStatuses(t *testing.T, g *Game, statuses ...proto.PlayerTurnStatus) {
+	t.Helper()
+	curTurn := g.currentRound.getCurrentTurn()
+	require.NotNil(t, curTurn, "current turn required")
+	i := 0
+	for _, p := range g.currentRound.gamePlayers {
+		if i >= len(statuses) {
+			break
+		}
+		pti := p.getCurrentPlayerTurnInfo()
+		require.NotNil(t, pti)
+		pti.PlayerStatus = statuses[i]
+		i++
+	}
+}
+
+func TestAnyPlayerPendingOnChain_CommitmentsPhase(t *testing.T) {
+	g := newTimeoutTestGame()
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_COMMITMENTS)
+
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
+		proto.PlayerTurnStatus_PLAYER_TURN_UNKNOWN,
+	)
+	require.False(t, g.anyPlayerPendingOnChain())
+
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_SUBMITTED,
+	)
+	require.True(t, g.anyPlayerPendingOnChain())
+}
+
+func TestAnyPlayerPendingOnChain_CardsPhase(t *testing.T) {
+	g := newTimeoutTestGame()
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
+
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN,
+	)
+	require.False(t, g.anyPlayerPendingOnChain())
+
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_CARD_ON_CHAIN,
+		proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED,
+	)
+	require.True(t, g.anyPlayerPendingOnChain())
+}
+
+func TestAnyPlayerPendingOnChain_OtherTurnStatuses(t *testing.T) {
+	g := newTimeoutTestGame()
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED,
+		proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED,
+	)
+
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION)
+	require.False(t, g.anyPlayerPendingOnChain())
+
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_SETUP_ON_CHAIN)
+	require.False(t, g.anyPlayerPendingOnChain())
+}
+
+func TestHandleTimerEvent_CardsPhasePendingOnChain_Aborts(t *testing.T) {
+	g := newTimeoutTestGame()
+	g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN,
+		proto.PlayerTurnStatus_PLAYER_TURN_CARD_SUBMITTED,
+	)
+	require.True(t, g.anyPlayerPendingOnChain())
+
+	event := &timerEvent{
+		GameID:            g.gameInfo.ID,
+		currentGameStatus: g.gameInfo.Status,
+		currentRound:      g.currentRound.roundNumber,
+		currentTurnNumber: g.currentRound.getCurrentTurnNumber(),
+		currentTurnStatus: g.currentRound.getTurnStatus(),
+	}
+	func() {
+		defer func() { _ = recover() }()
+		g.handleTimerEvent(event)
+	}()
+
+	require.Equal(t, proto.GameStatus_GAME_END, g.gameInfo.Status)
+	require.NotNil(t, g.gameInfo.GameResult)
+	require.Equal(t, proto.GameResultType_GAME_ABORTED, g.gameInfo.GameResult.GameResultType)
+}
+
+func TestHandleTimerEvent_CardsPhaseNoPendingOnChain_DoesNotAbort(t *testing.T) {
+	g := newTimeoutTestGame()
+	g.gameInfo.Status = proto.GameStatus_GAME_RUNNING
+	g.currentRound.setTurnStatus(proto.TurnStatus_TURN_WAITTING_CARDS)
+	setPlayerTurnStatuses(t, g,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN,
+		proto.PlayerTurnStatus_PLAYER_TURN_COMMITMENT_ON_CHAIN,
+	)
+	require.False(t, g.anyPlayerPendingOnChain())
+
+	event := &timerEvent{
+		GameID:            g.gameInfo.ID,
+		currentGameStatus: g.gameInfo.Status,
+		currentRound:      g.currentRound.roundNumber,
+		currentTurnNumber: g.currentRound.getCurrentTurnNumber(),
+		currentTurnStatus: g.currentRound.getTurnStatus(),
+	}
+	g.handleTimerEvent(event)
+
+	if g.gameInfo.GameResult != nil {
+		require.NotEqual(t, proto.GameResultType_GAME_ABORTED, g.gameInfo.GameResult.GameResultType)
+	}
+	require.NotEqual(t, proto.GameStatus_GAME_END, g.gameInfo.Status)
+}
+
 func TestHandleTimerEvent_IgnoresUnknownStatus(t *testing.T) {
 	g := newTimeoutTestGame()
 	g.gameInfo.Status = proto.GameStatus_GAME_UNKNOWN

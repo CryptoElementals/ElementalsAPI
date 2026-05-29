@@ -3,7 +3,7 @@ package api
 import (
 	"time"
 
-	"github.com/CryptoElementals/common/server/events"
+	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -24,7 +24,6 @@ type HealthCheckResponse struct {
 	BaseResponse
 	System     map[string]interface{} `json:"system"`
 	Connection map[string]interface{} `json:"connection,omitempty"`
-	EventStats map[string]interface{} `json:"event_stats,omitempty"`
 }
 
 type HealthCheckTask struct {
@@ -80,18 +79,10 @@ func (task *HealthCheckTask) Run(c *gin.Context) (Response, error) {
 
 	// 如果需要检查连接
 	if task.Request.CheckConnection {
-		healthMonitor := events.GetGlobalHealthMonitor()
-
-		// 执行实时健康检查
+		healthMonitor := client.GetGlobalHealthMonitor()
 		isHealthy := healthMonitor.CheckHealth()
-
-		// 获取连接统计信息
 		task.Response.Connection = healthMonitor.GetHealthStats()
 		task.Response.Connection["current_status"] = isHealthy
-
-		// 获取事件管理器统计
-		eventManager := events.GetGlobalEventManager()
-		task.Response.EventStats = eventManager.GetStats()
 	}
 
 	task.Response.BaseResponse.RetCode = 0

@@ -10,13 +10,12 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/redis"
 	pb "github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/event_v2"
 	"github.com/CryptoElementals/common/stream"
 )
 
 type PubSubClient struct {
 	stream   stream.Stream
-	eventBus event_v2.EventBus
+	eventBus EventBus
 	mu       sync.RWMutex
 	subs     map[string]func()
 }
@@ -28,7 +27,7 @@ func NewPubSubClient(st stream.Stream) *PubSubClient {
 		subs:   make(map[string]func()),
 	}
 	if st != nil {
-		c.eventBus = event_v2.NewEventBus(
+		c.eventBus = NewEventBus(
 			pubsub.NewStreamSubscriber(st),
 			pubsub.TopicRoom,
 			pubsub.TopicLobby,
@@ -55,7 +54,7 @@ func (c *PubSubClient) Subscribe(subscriberID string, self *pb.PlayerAddress, ev
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	key := subscriberID
-	busSubscriberID := event_v2.SubscriberID{
+	busSubscriberID := SubscriberID{
 		Address:  self,
 		ClientID: key,
 	}

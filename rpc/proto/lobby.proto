@@ -16,6 +16,9 @@ service LobbyService {
   rpc CancelMatch(CancelMatchRequest) returns (google.protobuf.Empty);
   rpc GetPlayerStatus(PlayerAddress) returns (GetPlayerStatusResponse);
   rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
+  rpc EnsureUserToken(EnsureUserTokenRequest) returns (google.protobuf.Empty);
+  rpc CreditUserTokens(CreditUserTokensRequest) returns (GetPlayerTokenResponse);
+  rpc SetUserTokenAmount(SetUserTokenAmountRequest) returns (GetPlayerTokenResponse);
   // Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
   rpc RegisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
   rpc UnregisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
@@ -32,6 +35,21 @@ service LobbyService {
 
 message RegisterBotsForLobbyRequest {
   repeated PlayerAddress Addresses = 1;
+}
+
+message EnsureUserTokenRequest {
+  int64 PlayerID = 1;
+}
+
+message CreditUserTokensRequest {
+  int64 PlayerID = 1;
+  int32 Delta = 2;
+  string Reason = 3;
+}
+
+message SetUserTokenAmountRequest {
+  int64 PlayerID = 1;
+  int32 TokenAmount = 2;
 }
 
 message JoinTournamentRequest {

@@ -10,12 +10,3 @@ const (
 	gameResultKO
 	gameResultTie
 )
-
-// gameEndState is a player's snapshot for win/loss/tie logic.
-type gameEndState struct {
-	HP               int
-	Multiplier       uint32
-	PlayerId         int64
-	TemporaryAddress string
-	Status           playerStatus
-}

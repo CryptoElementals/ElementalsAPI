@@ -2,14 +2,13 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
-	"github.com/CryptoElementals/common/server/events"
+	"github.com/CryptoElementals/common/server/sse"
 	"github.com/gin-gonic/gin"
 )
 
@@ -121,49 +120,30 @@ func handleSSEMode(c *gin.Context, task api.Task, action, requestUUID string) {
 	log.Infof("SSE connection started - Action: %s, RequestUUID: %s", action, requestUUID)
 
 	// 发送连接建立事件
-	startEvent := events.Event{
-		Type: events.EventTypeNotification,
+	startEvent := sse.Event{
+		Type: sse.EventTypeNotification,
 		Data: map[string]interface{}{
 			"Status": "connecting",
 		},
 		Timestamp:   time.Now(),
 		RequestUUID: requestUUID,
 	}
-	sendSSEEvent(c.Writer, flusher, startEvent)
+	_ = sse.Write(c.Writer, flusher, startEvent)
 
 	// 开始 SSE 流 - 直接使用 Run 方法
 	_, err := task.Run(c)
 	if err != nil {
 		log.Errorf("SSE error for action %s: %v", action, err)
-		errorEvent := events.Event{
-			Type: events.EventTypeError,
+		errorEvent := sse.Event{
+			Type: sse.EventTypeError,
 			Data: map[string]interface{}{
 				"error": err.Error(),
 			},
 			Timestamp:   time.Now(),
 			RequestUUID: requestUUID,
 		}
-		sendSSEEvent(c.Writer, flusher, errorEvent)
+		_ = sse.Write(c.Writer, flusher, errorEvent)
 	}
 
 	log.Infof("SSE connection ended - Action: %s, RequestUUID: %s", action, requestUUID)
-}
-
-// sendSSEEvent 发送 SSE 事件
-func sendSSEEvent(writer http.ResponseWriter, flusher http.Flusher, event events.Event) {
-	jsonData, err := json.Marshal(event)
-	if err != nil {
-		log.Errorf("Failed to marshal SSE event: %v", err)
-		return
-	}
-
-	// SSE 格式：data: {json}\n\n
-	eventStr := fmt.Sprintf("data: %s\n\n", string(jsonData))
-	_, err = writer.Write([]byte(eventStr))
-	if err != nil {
-		log.Errorf("Failed to write SSE event: %v", err)
-		return
-	}
-
-	flusher.Flush()
 }

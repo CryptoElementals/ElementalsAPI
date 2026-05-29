@@ -48,11 +48,11 @@ func TestMain(m *testing.M) {
 	if err := redis.Init(&redis.Config{Address: testMiniRedis.Addr(), Size: 4}); err != nil {
 		panic(err)
 	}
-	for _, p := range []dao.UserProfile{
-		{PlayerID: 1, Name: "queue_test_p1", Address: "addr1"},
-		{PlayerID: 2, Name: "queue_test_p2", Address: "addr2"},
+	for _, ut := range []dao.UserToken{
+		{PlayerId: 1, TokenAmount: 100000, Points: 0},
+		{PlayerId: 2, TokenAmount: 100000, Points: 0},
 	} {
-		if err := db.Get().Save(&p).Error; err != nil {
+		if err := db.Get().Create(&ut).Error; err != nil {
 			panic(err)
 		}
 	}

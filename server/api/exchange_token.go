@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -92,6 +94,11 @@ func (task *ExchangeTokenTask) Run(c *gin.Context) (Response, error) {
 		HttpOnly: true,                  // 防止 XSS 攻击
 	})
 	session.Set(SESSION_USER_KEY, userID)
+	serverType := config.ServerTypeTrial
+	if profile, err := db.GetUserProfileByPlayerID(userID); err == nil {
+		serverType = db.EffectiveServerType(profile)
+	}
+	session.Set(SESSION_SERVER_TYPE_KEY, config.NormalizeServerType(serverType))
 	err = session.Save()
 	if err != nil {
 		log.Errorf("%s, save session failed, err: %v", task.Request.RequestUUID, err)

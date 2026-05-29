@@ -28,6 +28,7 @@ const (
 	RoomService_CreateGameAndRun_FullMethodName       = "/rpc.RoomService/CreateGameAndRun"
 	RoomService_SyncGamePhase_FullMethodName          = "/rpc.RoomService/SyncGamePhase"
 	RoomService_GetGamePhase_FullMethodName           = "/rpc.RoomService/GetGamePhase"
+	RoomService_AbortAllActiveGames_FullMethodName    = "/rpc.RoomService/AbortAllActiveGames"
 )
 
 // RoomServiceClient is the client API for RoomService service.
@@ -48,6 +49,8 @@ type RoomServiceClient interface {
 	CreateGameAndRun(ctx context.Context, in *CreateGameAndRunRequest, opts ...grpc.CallOption) (*CreateGameAndRunResponse, error)
 	SyncGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetGamePhase(ctx context.Context, in *PlayerAddress, opts ...grpc.CallOption) (*GamePhase, error)
+	// ops / tools: abort every game where status != GAME_END
+	AbortAllActiveGames(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*AbortAllActiveGamesResponse, error)
 }
 
 type roomServiceClient struct {
@@ -138,6 +141,16 @@ func (c *roomServiceClient) GetGamePhase(ctx context.Context, in *PlayerAddress,
 	return out, nil
 }
 
+func (c *roomServiceClient) AbortAllActiveGames(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*AbortAllActiveGamesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AbortAllActiveGamesResponse)
+	err := c.cc.Invoke(ctx, RoomService_AbortAllActiveGames_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RoomServiceServer is the server API for RoomService service.
 // All implementations must embed UnimplementedRoomServiceServer
 // for forward compatibility.
@@ -156,6 +169,8 @@ type RoomServiceServer interface {
 	CreateGameAndRun(context.Context, *CreateGameAndRunRequest) (*CreateGameAndRunResponse, error)
 	SyncGamePhase(context.Context, *PlayerAddress) (*emptypb.Empty, error)
 	GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error)
+	// ops / tools: abort every game where status != GAME_END
+	AbortAllActiveGames(context.Context, *emptypb.Empty) (*AbortAllActiveGamesResponse, error)
 	mustEmbedUnimplementedRoomServiceServer()
 }
 
@@ -189,6 +204,9 @@ func (UnimplementedRoomServiceServer) SyncGamePhase(context.Context, *PlayerAddr
 }
 func (UnimplementedRoomServiceServer) GetGamePhase(context.Context, *PlayerAddress) (*GamePhase, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGamePhase not implemented")
+}
+func (UnimplementedRoomServiceServer) AbortAllActiveGames(context.Context, *emptypb.Empty) (*AbortAllActiveGamesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AbortAllActiveGames not implemented")
 }
 func (UnimplementedRoomServiceServer) mustEmbedUnimplementedRoomServiceServer() {}
 func (UnimplementedRoomServiceServer) testEmbeddedByValue()                     {}
@@ -355,6 +373,24 @@ func _RoomService_GetGamePhase_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RoomService_AbortAllActiveGames_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoomServiceServer).AbortAllActiveGames(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoomService_AbortAllActiveGames_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoomServiceServer).AbortAllActiveGames(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RoomService_ServiceDesc is the grpc.ServiceDesc for RoomService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -393,6 +429,10 @@ var RoomService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetGamePhase",
 			Handler:    _RoomService_GetGamePhase_Handler,
+		},
+		{
+			MethodName: "AbortAllActiveGames",
+			Handler:    _RoomService_AbortAllActiveGames_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -28,11 +28,13 @@ const (
 	LIST_AVATARS_LABEL = "ListAvatars"
 
 	// 用户相关
-	SET_USER_PROFILE_LABEL           = "SetUserProfile"
-	GET_USER_PROFILE_LABEL           = "GetUserProfile"
-	HAS_COLLECTED_DAILY_REWARD_LABEL = "HasCollectedDailyReward"
-	COLLECT_DAILY_REWARD_LABEL       = "CollectDailyReward"
-	SET_USER_TOKEN_LABEL             = "SetUserToken"
+	SET_USER_PROFILE_LABEL              = "SetUserProfile"
+	GET_USER_PROFILE_LABEL              = "GetUserProfile"
+	HAS_COLLECTED_DAILY_REWARD_LABEL    = "HasCollectedDailyReward"
+	COLLECT_DAILY_REWARD_LABEL          = "CollectDailyReward"
+	HAS_COLLECTED_NEW_USER_REWARD_LABEL = "HasCollectedNewUserReward"
+	COLLECT_NEW_USER_REWARD_LABEL       = "CollectNewUserReward"
+	SET_USER_TOKEN_LABEL                = "SetUserToken"
 
 	// 匹配与对战
 	JOIN_QUEUE_LABEL               = "JoinQueue"
@@ -48,7 +50,6 @@ const (
 	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"
 	SSE_EXAMPLE_LABEL              = "SSEExample"
 	SURRENDER_LABEL                = "Surrender"
-	GET_GAME_CONFIG_LABEL          = "GetGameConfig"
 	SUBMIT_PLAYER_COMMITMENT_LABEL = "SubmitPlayerCommitment"
 	SUBMIT_PLAYER_CARD_LABEL       = "SubmitPlayerCard"
 	GET_PLAYER_STATUS_LABEL        = "GetPlayerStatus"

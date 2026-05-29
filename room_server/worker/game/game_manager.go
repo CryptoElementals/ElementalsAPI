@@ -156,23 +156,6 @@ func (r *GameManager) Start() error {
 	if err := r.preloadGameArgsCache(); err != nil {
 		return err
 	}
-
-	// On startup, abort any games that were left active (non-ended/non-aborted).
-	// This matches the "stateless" model: we do not attempt to recover/resume games after restart.
-	games, err := db.GetAllActiveGames()
-	if err != nil {
-		return err
-	}
-	for _, gameInfo := range games {
-		if gameInfo == nil {
-			continue
-		}
-		if err := r.withGameMutation(gameInfo.ID, func(g *Game) error {
-			return g.handleGameAbortInternalError()
-		}); err != nil {
-			log.Errorw("startup abort active game failed", "game id", gameInfo.ID, "err", err)
-		}
-	}
 	return nil
 }
 
@@ -328,6 +311,32 @@ func (r *GameManager) SubmitTransactions(txs *proto.TransactionBatch) error {
 
 	log.Info("SubmitTransactions done")
 	return nil
+}
+
+// AbortAllActiveGames aborts every game with status != GAME_END using the internal-error abort path.
+func (r *GameManager) AbortAllActiveGames() (*proto.AbortAllActiveGamesResponse, error) {
+	games, err := db.GetAllActiveGames()
+	if err != nil {
+		return nil, err
+	}
+	resp := &proto.AbortAllActiveGamesResponse{}
+	for _, gameInfo := range games {
+		if gameInfo == nil {
+			continue
+		}
+		gameID := gameInfo.ID
+		if err := r.executeOnGame(gameID, func(g *Game) error {
+			return g.handleGameAbortInternalError()
+		}); err != nil {
+			resp.Failures = append(resp.Failures, &proto.AbortGameError{
+				GameId:  gameID,
+				Message: err.Error(),
+			})
+			continue
+		}
+		resp.AbortedGameIds = append(resp.AbortedGameIds, gameID)
+	}
+	return resp, nil
 }
 
 // validatePlayersNotInGame checks if any of the players are already in a game

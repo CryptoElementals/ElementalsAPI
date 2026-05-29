@@ -17,8 +17,7 @@ import (
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/server/event_v2"
-	"github.com/CryptoElementals/common/server/events"
+	"github.com/CryptoElementals/common/server/sse"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -50,26 +49,31 @@ type SubscribeGameInfoTask struct {
 }
 
 var (
-	subscribeGameInfoEventBusOnce sync.Once
-	subscribeGameInfoEventBus     event_v2.EventBus
-	subscribeGameInfoEventBusErr  error
+	subscribeGameInfoBusMu    sync.Mutex
+	subscribeGameInfoBuses    = make(map[string]client.EventBus)
+	subscribeGameInfoBusErrs  = make(map[string]error)
 )
 
-func getSubscribeGameInfoEventBus() (event_v2.EventBus, error) {
-	subscribeGameInfoEventBusOnce.Do(func() {
-		eventStream := client.GetGlobalEventStream()
-		if eventStream == nil {
-			subscribeGameInfoEventBusErr = fmt.Errorf("event stream is nil")
-			return
-		}
-		subscribeGameInfoEventBus = event_v2.NewEventBus(
-			pubsub.NewStreamSubscriber(eventStream),
-			pubsub.TopicRoom,
-			pubsub.TopicLobby,
-			pubsub.TopicTournamentRoster,
-		)
-	})
-	return subscribeGameInfoEventBus, subscribeGameInfoEventBusErr
+func getSubscribeGameInfoEventBus(serverType string) (client.EventBus, error) {
+	subscribeGameInfoBusMu.Lock()
+	defer subscribeGameInfoBusMu.Unlock()
+	if bus, ok := subscribeGameInfoBuses[serverType]; ok {
+		return bus, subscribeGameInfoBusErrs[serverType]
+	}
+	eventStream := client.EventStreamForType(serverType)
+	if eventStream == nil {
+		err := fmt.Errorf("event stream is nil for server type %q", serverType)
+		subscribeGameInfoBusErrs[serverType] = err
+		return nil, err
+	}
+	bus := client.NewEventBus(
+		pubsub.NewStreamSubscriber(eventStream),
+		pubsub.TopicRoom,
+		pubsub.TopicLobby,
+		pubsub.TopicTournamentRoster,
+	)
+	subscribeGameInfoBuses[serverType] = bus
+	return bus, subscribeGameInfoBusErrs[serverType]
 }
 
 type TurnCompletedDTO struct {
@@ -181,34 +185,35 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 
 	clientID := task.Request.RequestUUID
 	self := &proto.PlayerAddress{Id: playerID, TemporaryAddress: temp_address}
-	eventBus, err := getSubscribeGameInfoEventBus()
+	serverType := ServerTypeFromGin(c)
+	eventBus, err := getSubscribeGameInfoEventBus(serverType)
 	if err != nil {
-		log.Errorf("failed to initialize event_v2 bus: %v", err)
-		errorEvent := events.Event{
-			Type:        events.EventTypeError,
+		log.Errorf("failed to initialize event bus: %v", err)
+		errorEvent := sse.Event{
+			Type:        sse.EventTypeError,
 			Data:        map[string]interface{}{"error": fmt.Sprintf("failed to initialize event bus: %v", err)},
 			Timestamp:   time.Now(),
 			RequestUUID: task.Request.RequestUUID,
 		}
-		sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+		sse.Write(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
-	subscriberID := event_v2.SubscriberID{Address: self, ClientID: clientID}
+	subscriberID := client.SubscriberID{Address: self, ClientID: clientID}
 	msgCh, errCh := eventBus.RegisterSubscriber(subscriberID)
 	defer eventBus.UnregisterSubscriber(subscriberID)
 
 	// After stream subscribe, sync game phase only when lobby says player is currently in-game.
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(serverType)
 	if lobbyClient == nil {
 		err := fmt.Errorf("gRPC lobby client not initialized")
 		log.Errorf("failed to get lobby client: %v", err)
-		errorEvent := events.Event{
-			Type:        events.EventTypeError,
+		errorEvent := sse.Event{
+			Type:        sse.EventTypeError,
 			Data:        map[string]interface{}{"error": err.Error()},
 			Timestamp:   time.Now(),
 			RequestUUID: task.Request.RequestUUID,
 		}
-		_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+		_ = sse.Write(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
 
@@ -222,52 +227,52 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 	statusResp, err := lobbyClient.GetPlayerStatus(context.Background(), self)
 	if err != nil {
 		log.Errorf("failed to get player status from lobby: %v", err)
-		errorEvent := events.Event{
-			Type:        events.EventTypeError,
+		errorEvent := sse.Event{
+			Type:        sse.EventTypeError,
 			Data:        map[string]interface{}{"error": fmt.Sprintf("Lobby GetPlayerStatus failed: %v", err)},
 			Timestamp:   time.Now(),
 			RequestUUID: task.Request.RequestUUID,
 		}
-		_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+		_ = sse.Write(c.Writer, c.Writer.(http.Flusher), errorEvent)
 		return nil, err
 	}
 	if statusResp.GetStatus() == proto.PlayerStatus_PLAYER_IN_GAME ||
 		statusResp.GetStatus() == proto.PlayerStatus_PLAYER_TOURNAMENT_IN_PROGRESS {
-		rpcClient := client.GetGlobalRpcClient()
+		rpcClient := client.RoomClientForType(serverType)
 		if rpcClient == nil {
 			err := fmt.Errorf("gRPC room client not initialized")
 			log.Errorf("failed to get room rpc client: %v", err)
-			errorEvent := events.Event{
-				Type:        events.EventTypeError,
+			errorEvent := sse.Event{
+				Type:        sse.EventTypeError,
 				Data:        map[string]interface{}{"error": err.Error()},
 				Timestamp:   time.Now(),
 				RequestUUID: task.Request.RequestUUID,
 			}
-			_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+			_ = sse.Write(c.Writer, c.Writer.(http.Flusher), errorEvent)
 			return nil, err
 		}
 		if _, err := rpcClient.SyncGamePhase(context.Background(), self); err != nil {
 			log.Errorf("RoomServer SyncGamePhase failed: %v", err)
-			errorEvent := events.Event{
-				Type:        events.EventTypeError,
+			errorEvent := sse.Event{
+				Type:        sse.EventTypeError,
 				Data:        map[string]interface{}{"error": fmt.Sprintf("RoomServer SyncGamePhase failed: %v", err)},
 				Timestamp:   time.Now(),
 				RequestUUID: task.Request.RequestUUID,
 			}
-			_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+			_ = sse.Write(c.Writer, c.Writer.(http.Flusher), errorEvent)
 			return nil, err
 		}
 	}
 
-	connectedEvent := events.Event{
-		Type: events.EventTypeNotification,
+	connectedEvent := sse.Event{
+		Type: sse.EventTypeNotification,
 		Data: map[string]interface{}{
 			"Status": "connected",
 		},
 		Timestamp:   time.Now(),
 		RequestUUID: task.Request.RequestUUID,
 	}
-	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), connectedEvent); err != nil {
+	if err := sse.Write(c.Writer, c.Writer.(http.Flusher), connectedEvent); err != nil {
 		return nil, err
 	}
 
@@ -287,13 +292,13 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 			log.Infof("SSE connection stopped manually - RequestUUID: %s", task.Request.RequestUUID)
 			return task.Response, nil
 		case <-ticker.C:
-			heartbeatEvent := events.Event{
-				Type:        events.EventTypeHeartbeat,
+			heartbeatEvent := sse.Event{
+				Type:        sse.EventTypeHeartbeat,
 				Data:        map[string]interface{}{},
 				Timestamp:   time.Now(),
 				RequestUUID: task.Request.RequestUUID,
 			}
-			if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), heartbeatEvent); err != nil {
+			if err := sse.Write(c.Writer, c.Writer.(http.Flusher), heartbeatEvent); err != nil {
 				log.Errorf("failed to send heartbeat: %v", err)
 			}
 		case msg, ok := <-msgCh:
@@ -319,7 +324,7 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 				}
 			} else {
 				sseEvent := task.convertRoomServerEventToSSE(msg, task.Request.RequestUUID)
-				if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
+				if err := sse.Write(c.Writer, c.Writer.(http.Flusher), sseEvent); err != nil {
 					log.Errorf("failed to send SSE event: %v", err)
 				}
 			}
@@ -331,25 +336,25 @@ func (task *SubscribeGameInfoTask) Run(c *gin.Context) (Response, error) {
 				continue
 			}
 			log.Errorf("event bus subscriber error: %v", err)
-			errorEvent := events.Event{
-				Type:        events.EventTypeError,
+			errorEvent := sse.Event{
+				Type:        sse.EventTypeError,
 				Data:        map[string]interface{}{"error": fmt.Sprintf("event bus subscriber error: %v", err)},
 				Timestamp:   time.Now(),
 				RequestUUID: task.Request.RequestUUID,
 			}
-			_ = sendSSEEvent(c.Writer, c.Writer.(http.Flusher), errorEvent)
+			_ = sse.Write(c.Writer, c.Writer.(http.Flusher), errorEvent)
 			return nil, err
 		}
 	}
 }
 
-func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) events.Event {
+func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Message, requestUUID string) sse.Event {
 	messageID := msg.Event.GetMessageId()
 	switch msg.Event.Type {
 	case proto.EventType_TYPE_MATCHED:
 		gameMatched := msg.Event.GetGameMatched()
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "matched",
@@ -360,8 +365,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_PART_CONFIRMED:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "partConfirmed",
@@ -371,8 +376,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		}
 	case proto.EventType_TYPE_GAME_CREATED:
 		gameReady := msg.Event.GetGameReady()
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "gameCreated",
@@ -383,8 +388,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_ROUND_READY:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "roundReady",
@@ -394,8 +399,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_TURN_READY:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "turnReady",
@@ -405,8 +410,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_COMMITMENTS_ON_CHAIN:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "commitmentsOnChain",
@@ -418,8 +423,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 	case proto.EventType_TYPE_TURN_COMPLETE:
 		turnCompleted := msg.Event.GetTurnCompleted()
 		turnCompletedDTO := buildTurnCompletedDTO(task, turnCompleted)
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "turnComplete",
@@ -430,8 +435,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		}
 	case proto.EventType_TYPE_GAME_PHASE_SYNC:
 		gamePhase := msg.Event.GetGamePhase()
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "gamePhaseSync",
@@ -442,8 +447,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_NOT_MATCHABLE:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "notMatchable",
@@ -453,8 +458,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_MATCH_CANCELED:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "matchCanceled",
@@ -464,8 +469,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_GAME_SETTLEMENT_RESULT:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "gameSettlementResult",
@@ -475,8 +480,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 			RequestUUID: requestUUID,
 		}
 	case proto.EventType_TYPE_TOURNAMENT_MATCH_OUTCOME:
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "tournamentMatchOutcome",
@@ -489,8 +494,8 @@ func (task *SubscribeGameInfoTask) convertRoomServerEventToSSE(msg *proto.Messag
 		fallthrough
 	default:
 		jsonData, _ := json.Marshal(msg)
-		return events.Event{
-			Type: events.EventTypeStatusUpdate,
+		return sse.Event{
+			Type: sse.EventTypeStatusUpdate,
 			Data: map[string]interface{}{
 				"MessageID": messageID,
 				"EventType": "unknown",
@@ -872,8 +877,8 @@ func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, sel
 		log.Errorf("decode tournament snapshot: %v", err)
 		return fmt.Errorf("decode tournament snapshot: %w", err)
 	}
-	snapEvent := events.Event{
-		Type: events.EventTypeStatusUpdate,
+	snapEvent := sse.Event{
+		Type: sse.EventTypeStatusUpdate,
 		Data: map[string]interface{}{
 			"MessageID": sourceMessageID,
 			"EventType": "tournamentSnapshot",
@@ -882,26 +887,8 @@ func (task *SubscribeGameInfoTask) sendTournamentSnapshotSSE(c *gin.Context, sel
 		Timestamp:   time.Now(),
 		RequestUUID: task.Request.RequestUUID,
 	}
-	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), snapEvent); err != nil {
-		return fmt.Errorf("sendSSEEvent tournament snapshot: %w", err)
+	if err := sse.Write(c.Writer, c.Writer.(http.Flusher), snapEvent); err != nil {
+		return fmt.Errorf("sse.Write tournament snapshot: %w", err)
 	}
-	return nil
-}
-
-// sendSSEEvent 发送 SSE 事件
-func sendSSEEvent(writer http.ResponseWriter, flusher http.Flusher, event events.Event) error {
-	jsonData, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	// SSE 格式：data: {json}\n\n
-	eventStr := fmt.Sprintf("data: %s\n\n", string(jsonData))
-	_, err = writer.Write([]byte(eventStr))
-	if err != nil {
-		return err
-	}
-
-	flusher.Flush()
 	return nil
 }

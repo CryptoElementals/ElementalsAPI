@@ -2,12 +2,9 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/CryptoElementals/common/config"
-	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -107,30 +104,7 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	// 检查用户token数量是否足够（仅按总 TokenAmount 判断，不再扣除锁仓）
-	userToken, err := db.GetPlayerToken(c.Request.Context(), playerID)
-	if err != nil {
-		task.Response.BaseResponse.RetCode = 1003
-		task.Response.BaseResponse.Message = "Failed to get user token information"
-		return task.Response, nil
-	}
-
-	var currentTokens int32 = 0
-	if userToken != nil {
-		currentTokens = userToken.TokenAmount
-	}
-
-	// 计算可用代币数量：仅使用当前总 token 数量
-	availableTokens := int(currentTokens)
-
-	// 要求用户至少有10000个可用代币才能加入匹配队列
-	if availableTokens < config.GameParams.TokenThreshold {
-		task.Response.BaseResponse.RetCode = 1004
-		task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
-		return task.Response, nil
-	}
-
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC lobby client not initialized"
@@ -145,10 +119,8 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	_, err = lobbyClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
 		shortErr := ShortGRPCError(err)
-		// 检查apiserver的TokenThreshold配置是否与roomserver一致
 		if strings.Contains(shortErr, "user token is not enough") {
 			task.Response.BaseResponse.RetCode = 1004
-			//task.Response.BaseResponse.Message = fmt.Sprintf("Insufficient available tokens, need at least %d tokens to join match queue", config.GameParams.TokenThreshold)
 			task.Response.BaseResponse.Message = "Insufficient available tokens"
 			return task.Response, nil
 		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_IN_GAME") {

@@ -226,7 +226,6 @@ func provisionBotAccountByHTTP(ctx context.Context, apiServerEndpoint string) (*
 }
 
 func (s *Service) runBots() {
-	log.Infow("run bots", types.ToJsonLoggable(s.addresses))
 	for _, b := range s.bots {
 		s.wg.Add(1)
 		go func() {

@@ -13,19 +13,41 @@ import (
 
 var _ Stream = (*RedisStream)(nil)
 
-type RedisStream struct{}
+// RedisStream implements Stream against a fixed [redis.RedisOperator] (default or named pool from [redis.Init]).
+type RedisStream struct {
+	op *redis.RedisOperator
+}
 
-// NewRedisStream returns a Redis-backed Stream. Requires redis.Init to be called first.
+// NewRedisStream returns a Redis-backed Stream on the default pool. Requires redis.Init to be called first.
 func NewRedisStream() (Stream, error) {
-	if err := redis.Ping(); err != nil {
+	op, err := redis.DefaultOperator()
+	if err != nil {
 		return nil, err
 	}
-	return &RedisStream{}, nil
+	if err := op.Ping(); err != nil {
+		return nil, err
+	}
+	return &RedisStream{op: op}, nil
+}
+
+// NewRedisStreamForPool returns a Stream backed by the named Redis pool. Empty poolName is equivalent to [NewRedisStream].
+func NewRedisStreamForPool(poolName string) (Stream, error) {
+	if poolName == "" {
+		return NewRedisStream()
+	}
+	op, err := redis.Pool(poolName)
+	if err != nil {
+		return nil, err
+	}
+	if err := op.Ping(); err != nil {
+		return nil, err
+	}
+	return &RedisStream{op: op}, nil
 }
 
 func (r *RedisStream) Publish(ctx context.Context, stream string, topic string, payload []byte, ts int64) (string, error) {
 	payloadB64 := base64.StdEncoding.EncodeToString(payload)
-	reply, err := redis.XAdd(stream, "*", map[string]interface{}{
+	reply, err := r.op.XAdd(stream, "*", map[string]interface{}{
 		"topic":   topic,
 		"payload": payloadB64,
 		"ts":      ts,
@@ -41,7 +63,7 @@ func (r *RedisStream) Read(ctx context.Context, streamName string, startID strin
 		blockMs = 0
 	}
 
-	reply, err := redis.XRead(streamName, startID, 100, blockMs)
+	reply, err := r.op.XRead(streamName, startID, 100, blockMs)
 	if err != nil {
 		return nil, err
 	}
@@ -53,11 +75,11 @@ func (r *RedisStream) Read(ctx context.Context, streamName string, startID strin
 }
 
 func (r *RedisStream) Len(ctx context.Context, stream string) (int, error) {
-	return redis.XLen(stream)
+	return r.op.XLen(stream)
 }
 
 func (r *RedisStream) Range(ctx context.Context, stream string, startID, endID string) ([]Entry, error) {
-	reply, err := redis.XRange(stream, startID, endID, 0)
+	reply, err := r.op.XRange(stream, startID, endID, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -65,15 +87,15 @@ func (r *RedisStream) Range(ctx context.Context, stream string, startID, endID s
 }
 
 func (r *RedisStream) GroupCreate(ctx context.Context, stream, group, startID string, mkstream bool) error {
-	return redis.XGroupCreate(stream, group, startID, mkstream)
+	return r.op.XGroupCreate(stream, group, startID, mkstream)
 }
 
 func (r *RedisStream) GroupDestroy(ctx context.Context, stream, group string) (int, error) {
-	return redis.XGroupDestroy(stream, group)
+	return r.op.XGroupDestroy(stream, group)
 }
 
 func (r *RedisStream) GroupDelConsumer(ctx context.Context, stream, group, consumer string) (int, error) {
-	return redis.XGroupDelConsumer(stream, group, consumer)
+	return r.op.XGroupDelConsumer(stream, group, consumer)
 }
 
 func (r *RedisStream) ReadGroup(ctx context.Context, streamName, group, consumer, readID string, count int, blockMs int) ([]Entry, error) {
@@ -84,7 +106,7 @@ func (r *RedisStream) ReadGroup(ctx context.Context, streamName, group, consumer
 		count = 100
 	}
 
-	reply, err := redis.XReadGroup(group, consumer, streamName, readID, count, blockMs)
+	reply, err := r.op.XReadGroup(group, consumer, streamName, readID, count, blockMs)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +120,11 @@ func (r *RedisStream) Ack(ctx context.Context, stream, group string, messageIDs 
 	if len(messageIDs) == 0 {
 		return 0, nil
 	}
-	return redis.XAck(stream, group, messageIDs...)
+	return r.op.XAck(stream, group, messageIDs...)
 }
 
 func (r *RedisStream) Pending(ctx context.Context, stream, group string) (PendingSummary, error) {
-	reply, err := redis.XPending(stream, group)
+	reply, err := r.op.XPending(stream, group)
 	if err != nil {
 		return PendingSummary{}, err
 	}
@@ -116,7 +138,7 @@ func (r *RedisStream) Claim(ctx context.Context, stream, group, consumer string,
 	if len(messageIDs) == 0 {
 		return nil, fmt.Errorf("claim: at least one message id is required")
 	}
-	reply, err := redis.XClaim(stream, group, consumer, minIdleMs, messageIDs...)
+	reply, err := r.op.XClaim(stream, group, consumer, minIdleMs, messageIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +155,7 @@ func (r *RedisStream) AutoClaim(ctx context.Context, streamName, group, consumer
 	if count <= 0 {
 		count = 100
 	}
-	reply, err := redis.XAutoClaim(streamName, group, consumer, minIdleMs, start, count)
+	reply, err := r.op.XAutoClaim(streamName, group, consumer, minIdleMs, start, count)
 	if err != nil {
 		return AutoClaimResult{}, err
 	}
@@ -148,12 +170,12 @@ func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Durat
 	cutoff := time.Now().Add(-maxAge)
 	minID := fmt.Sprintf("%d-0", cutoff.UnixMilli())
 
-	n, err := redis.XTrimMinID(stream, minID)
+	n, err := r.op.XTrimMinID(stream, minID)
 	if err == nil {
 		return n, nil
 	}
 
-	reply, err := redis.XRange(stream, "-", minID, 0)
+	reply, err := r.op.XRange(stream, "-", minID, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -168,7 +190,7 @@ func (r *RedisStream) Trim(ctx context.Context, stream string, maxAge time.Durat
 		if msgID >= minID {
 			continue
 		}
-		n, e := redis.XDel(stream, msgID)
+		n, e := r.op.XDel(stream, msgID)
 		if e == nil {
 			deleted += n
 		}

@@ -20,7 +20,7 @@ func init() {
 // SubmitPlayerCardRequest 请求结构体
 type SubmitPlayerCardRequest struct {
 	BaseRequest
-	GameID      int64 `mapstructure:"GameID" validate:"required"`
+	GameID      int64  `mapstructure:"GameID" validate:"required"`
 	RoundNumber uint32 `mapstructure:"RoundNumber" validate:"required"`
 	TurnNumber  uint32 `mapstructure:"TurnNumber" validate:"required"`
 	Card        uint32 `mapstructure:"Card" validate:"required"`
@@ -116,7 +116,7 @@ func (task *SubmitPlayerCardTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	// 通过gRPC调用RoomServer的SubmitPlayerCard
-	rpcClient := client.GetGlobalRpcClient()
+	rpcClient := client.RoomClientForType(ServerTypeFromGin(c))
 	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC client not initialized"
