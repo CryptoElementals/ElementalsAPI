@@ -68,6 +68,8 @@ func AuthMiddleware(serverMode string) gin.HandlerFunc {
 			(*params)["Email"] = profile.Email
 			(*params)["PlayerID"] = strconv.FormatInt(profile.PlayerID, 10)
 
+			api.ApplyServerTypeToParams(params, db.EffectiveServerType(profile))
+
 			log.Infof("params: %+v", *params)
 		}
 

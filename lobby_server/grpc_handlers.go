@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/CryptoElementals/common/conversion"
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
 	"github.com/CryptoElementals/common/log"
@@ -93,6 +95,41 @@ func (s *GRPCServices) GetPlayerStatus(ctx context.Context, req *proto.PlayerAdd
 
 func (s *GRPCServices) GetPlayerToken(ctx context.Context, req *proto.GetPlayerTokenRequest) (*proto.GetPlayerTokenResponse, error) {
 	return s.queueSvc.GetPlayerToken(req.Id)
+}
+
+func (s *GRPCServices) EnsureUserToken(ctx context.Context, req *proto.EnsureUserTokenRequest) (*emptypb.Empty, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	if _, err := db.EnsureUserTokenByPlayerID(req.GetPlayerID()); err != nil {
+		return nil, status.Errorf(codes.Internal, "ensure user token failed: %v", err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *GRPCServices) CreditUserTokens(ctx context.Context, req *proto.CreditUserTokensRequest) (*proto.GetPlayerTokenResponse, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	userToken, err := db.CreditUserTokenAmount(req.GetPlayerID(), req.GetDelta())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "credit user token failed: %v", err)
+	}
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+}
+
+func (s *GRPCServices) SetUserTokenAmount(ctx context.Context, req *proto.SetUserTokenAmountRequest) (*proto.GetPlayerTokenResponse, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	userToken, err := db.SetUserTokenAmount(req.GetPlayerID(), req.GetTokenAmount())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "set user token failed: %v", err)
+	}
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
 }
 
 // HandleGameCompletedFromRoom runs queue settlement after the room publishes TYPE_GAME_COMPLETED (game id only).

@@ -1,17 +1,17 @@
 package api
 
 import (
+	"context"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"gorm.io/gorm"
-
-	dao "github.com/CryptoElementals/common/models"
 )
 
 func init() {
@@ -90,26 +90,15 @@ func (task *SetUserTokenTask) Run(c *gin.Context) (Response, error) {
 	}
 
 	targetToken := task.Request.Token
-
-	var userToken *dao.UserToken
-	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.OperateDbFailed()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
+	if lobbyClient == nil {
+		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")
 	}
-
-	if userToken == nil {
-		userToken = &dao.UserToken{
-			PlayerId:    profile.PlayerID,
-			Points:      0,
-			TokenAmount: targetToken,
-		}
-	} else {
-		userToken.TokenAmount = targetToken
-	}
-
-	if err = db.SaveUserToken(*userToken); err != nil {
-		log.Errorf("%s, failed to save user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+	if _, err = lobbyClient.SetUserTokenAmount(context.Background(), &proto.SetUserTokenAmountRequest{
+		PlayerID:    profile.PlayerID,
+		TokenAmount: targetToken,
+	}); err != nil {
+		log.Errorf("%s, failed to set user token via lobby for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 

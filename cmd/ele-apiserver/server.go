@@ -15,7 +15,6 @@ import (
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/server"
-	"github.com/CryptoElementals/common/server/events"
 	"github.com/CryptoElementals/common/session"
 	"github.com/CryptoElementals/common/snowflake"
 	"github.com/spf13/cobra"
@@ -70,8 +69,13 @@ func startServer() error {
 	}
 	log.Infof("snowflake node id=%d", snowflakeNode)
 
-	// Initialize Redis
-	if err := redis.Init(&cfg.RedisCfg); err != nil {
+	// Initialize Redis: default pool for API server (sessions, cache) + named pools per game environment (streams).
+	var envRedis []*redis.ConfigWithName
+	for i := range cfg.EnvironmentConfigs {
+		env := &cfg.EnvironmentConfigs[i]
+		envRedis = append(envRedis, &redis.ConfigWithName{Name: env.Name, Cfg: &env.RedisCfg})
+	}
+	if err := redis.Init(&cfg.RedisCfg, envRedis...); err != nil {
 		return fmt.Errorf("failed to initialize Redis: %w", err)
 	}
 	log.Info("Redis connection initialized successfully")
@@ -82,18 +86,27 @@ func startServer() error {
 	}
 	log.Info("Database connection initialized successfully")
 
-	// Initialize gRPC client manager
-	if err := client.InitGlobalClients(cfg.RoomServerAddress, cfg.LobbyServerAddress); err != nil {
+	// Initialize gRPC clients: GLOBAL aliases normal; trial and other envs use named contexts.
+	normalEnv, ok := cfg.EnvironmentByName(config.ServerTypeNormal)
+	if !ok {
+		return fmt.Errorf("environment %q is required", config.ServerTypeNormal)
+	}
+	if err := client.InitGlobalClients(normalEnv.RoomServerAddress, normalEnv.LobbyServerAddress); err != nil {
 		return fmt.Errorf("failed to initialize gRPC clients: %w", err)
 	}
-	log.Info("gRPC clients initialized successfully")
-
-	// Initialize global event manager
-	eventManager := events.GetGlobalEventManager()
-	if err := eventManager.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize global event manager: %w", err)
+	if err := client.InitClientContext(config.ServerTypeNormal, normalEnv.RoomServerAddress, normalEnv.LobbyServerAddress); err != nil {
+		return fmt.Errorf("failed to initialize gRPC clients for environment %q: %w", config.ServerTypeNormal, err)
 	}
-	log.Info("Global event manager initialized successfully")
+	for i := range cfg.EnvironmentConfigs {
+		env := cfg.EnvironmentConfigs[i]
+		if env.Name == config.ServerTypeNormal {
+			continue
+		}
+		if err := client.InitClientContext(env.Name, env.RoomServerAddress, env.LobbyServerAddress); err != nil {
+			return fmt.Errorf("failed to initialize gRPC clients for environment %q: %w", env.Name, err)
+		}
+	}
+	log.Info("gRPC clients initialized successfully")
 
 	// Get Redis connection pool
 	pool, err := redis.GetRedigoPool()
@@ -139,9 +152,6 @@ func startServer() error {
 
 	// 取消上下文，停止调度器
 	cancel()
-
-	// Shutdown global event manager
-	eventManager.Shutdown()
 
 	// Close gRPC clients
 	if err := client.CloseGlobalClients(); err != nil {

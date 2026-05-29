@@ -22,7 +22,7 @@ func init() {
 // SubmitPlayerCommitmentRequest 请求结构体
 type SubmitPlayerCommitmentRequest struct {
 	BaseRequest
-	GameID      int64 `mapstructure:"GameID" validate:"required"`
+	GameID      int64  `mapstructure:"GameID" validate:"required"`
 	RoundNumber uint32 `mapstructure:"RoundNumber" validate:"required"`
 	TurnNumber  uint32 `mapstructure:"TurnNumber" validate:"required"`
 	Commitment  string `mapstructure:"Commitment" validate:"required"` // hex 字符串
@@ -131,7 +131,7 @@ func (task *SubmitPlayerCommitmentTask) Run(c *gin.Context) (Response, error) {
 	log.Infof("%s, Signature decoded: length=%d, recovery_id=%d (raw format: 0 or 1)", task.Request.RequestUUID, len(signatureBytes), recoveryID)
 
 	// 通过gRPC调用RoomServer的SubmitPlayerCommitment
-	rpcClient := client.GetGlobalRpcClient()
+	rpcClient := client.RoomClientForType(ServerTypeFromGin(c))
 	if rpcClient == nil {
 		log.Errorf("%s, gRPC client not initialized", task.Request.RequestUUID)
 		task.Response.BaseResponse.RetCode = 1002

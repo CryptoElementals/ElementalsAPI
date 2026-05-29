@@ -172,16 +172,9 @@ func (h *Chain) Start() error {
 }
 
 func (h *Chain) runAllPoolTicks() {
-	byChain, err := db.ListChainTxPoolPendingByChain()
-	if err != nil {
-		log.Errorw("ListChainTxPoolPendingByChain", "err", err)
-		return
-	}
 	for chainID, p := range h.pools {
-		rows := byChain[chainID]
-		if len(rows) == 0 {
-			continue
+		if err := p.runDrainLoop(); err != nil {
+			log.Errorw("runDrainLoop", "err", err, "chain_id", chainID)
 		}
-		p.runPoolTickForOrderedRows(rows)
 	}
 }

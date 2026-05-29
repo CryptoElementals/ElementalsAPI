@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"math"
 	"strconv"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -40,6 +43,7 @@ type UserInfo struct {
 	Level              int               `json:"Level"`
 	CurrentLevelPoints int               `json:"CurrentLevelPoints"`
 	NextLevelPoints    int               `json:"NextLevelPoints"`
+	ServerType         string            `json:"ServerType"`
 	CardStatInfo       []db.CardStatInfo `json:"CardStatInfo"`
 }
 
@@ -165,9 +169,12 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		log.Errorf("%s, failed to get user stat by player_id=%s: %v", task.Request.RequestUUID, playerID, e)
 	}
 
-	if userToken, e := db.GetPlayerToken(c.Request.Context(), userProfile.PlayerID); e == nil && userToken != nil {
-		points = int(userToken.Points)
-		tokenAmount = int(userToken.TokenAmount)
+	lobbyClient := client.LobbyClientForType(db.EffectiveServerType(userProfile))
+	if lobbyClient != nil {
+		if userToken, e := lobbyClient.GetPlayerToken(context.Background(), &proto.GetPlayerTokenRequest{Id: userProfile.PlayerID}); e == nil && userToken != nil {
+			points = int(userToken.GetPoints())
+			tokenAmount = int(userToken.GetTokens())
+		}
 	}
 
 	cardStatInfo := []db.CardStatInfo{}
@@ -190,6 +197,7 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		Level:              level,
 		CurrentLevelPoints: currentLevelPoints,
 		NextLevelPoints:    nextLevelPoints,
+		ServerType:         db.EffectiveServerType(userProfile),
 		CardStatInfo:       cardStatInfo,
 	}
 

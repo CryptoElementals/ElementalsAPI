@@ -24,7 +24,6 @@ func Migrate() error {
 		&dao.BlockSync{},
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
-		&dao.DevTempKey{},
 		&dao.UserStat{},
 		&dao.Tournament{},
 		&dao.TournamentParticipant{},
@@ -44,7 +43,10 @@ func Migrate() error {
 	if err != nil {
 		return err
 	}
-	return nil
+	if err := BackfillGameArgsRewardRates(); err != nil {
+		return err
+	}
+	return BackfillUserProfileServerTypes()
 }
 
 func MigrateMemDb() error {
@@ -65,7 +67,6 @@ func MigrateMemDb() error {
 		&dao.BlockSync{},
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
-		&dao.DevTempKey{},
 		&dao.UserStat{},
 		&dao.Tournament{},
 		&dao.TournamentParticipant{},
@@ -85,6 +86,9 @@ func MigrateMemDb() error {
 	if err != nil {
 		return err
 	}
+	if err := BackfillGameArgsRewardRates(); err != nil {
+		return err
+	}
 	for _, table := range migrates {
 		exist := Get().Migrator().HasTable(table)
 		if !exist {
@@ -94,5 +98,5 @@ func MigrateMemDb() error {
 	if err := SeedTournamentTierRewardConfigs(); err != nil {
 		return err
 	}
-	return nil
+	return BackfillUserProfileServerTypes()
 }

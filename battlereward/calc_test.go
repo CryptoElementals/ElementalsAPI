@@ -10,6 +10,18 @@ import (
 
 const testBaseStake = 1000
 
+func testGameArgs() *dao.GameArgs {
+	return &dao.GameArgs{
+		BaseStake:                testBaseStake,
+		TieTokenRateBps:          80,
+		TiePointRateBps:          80,
+		SystemFeeRateBps:         160,
+		NormalWinnerPointRateBps: 120,
+		NormalLoserPointRateBps:  40,
+		KOWinnerPointRateBps:     160,
+	}
+}
+
 func TestComputeBattleRewardAmounts_Tie(t *testing.T) {
 	gr := &dao.GameResult{
 		GameResultType: proto.GameResultType_GAME_TIE,
@@ -25,7 +37,7 @@ func TestComputeBattleRewardAmounts_Tie(t *testing.T) {
 			{PlayerId: 2},
 		},
 	}
-	ComputeBattleRewardAmounts(gr, br, testBaseStake)
+	ComputeBattleRewardAmounts(gr, br, testGameArgs())
 	require.Equal(t, int32(16), br.SystemFee)
 	require.Equal(t, int32(-8), br.PlayerRewards[0].TokenChange)
 	require.Equal(t, int32(8), br.PlayerRewards[0].PointChange)
@@ -39,7 +51,7 @@ func TestComputeBattleRewardAmounts_TimeoutTieZeroPayout(t *testing.T) {
 	br := &dao.BattleRewardPVP{
 		PlayerRewards: []*dao.PlayerReward{{PlayerId: 1}, {PlayerId: 2}},
 	}
-	ComputeBattleRewardAmounts(gr, br, testBaseStake)
+	ComputeBattleRewardAmounts(gr, br, testGameArgs())
 	require.Equal(t, int32(0), br.SystemFee)
 	for _, pr := range br.PlayerRewards {
 		require.Equal(t, int32(0), pr.TokenChange)
@@ -62,7 +74,7 @@ func TestComputeBattleRewardAmounts_NormalWinOfflineLoserBonus(t *testing.T) {
 			{PlayerId: 2},
 		},
 	}
-	ComputeBattleRewardAmounts(gr, br, testBaseStake)
+	ComputeBattleRewardAmounts(gr, br, testGameArgs())
 	require.Equal(t, int32(984), br.PlayerRewards[0].TokenChange)
 	require.Equal(t, int32(-1000), br.PlayerRewards[1].TokenChange)
 	require.Equal(t, int32(0), br.PlayerRewards[1].PointChange)
@@ -84,7 +96,41 @@ func TestComputeBattleRewardAmounts_KO(t *testing.T) {
 			{PlayerId: 2},
 		},
 	}
-	ComputeBattleRewardAmounts(gr, br, testBaseStake)
+	ComputeBattleRewardAmounts(gr, br, testGameArgs())
 	require.Equal(t, int32(16), br.PlayerRewards[0].PointChange)
 	require.Equal(t, int32(0), br.PlayerRewards[1].PointChange)
+}
+
+func TestComputeBattleRewardAmounts_UsesConfigurableRates(t *testing.T) {
+	gr := &dao.GameResult{
+		GameResultType: proto.GameResultType_GAME_NORMAL,
+		Multiplier:     2,
+		PlayerResultInfos: []*dao.PlayerResultInfo{
+			{PlayerId: 1, IsWinner: true, PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_WIN},
+			{PlayerId: 2, PlayerGameResultStatus: proto.PlayerGameResultStatus_PLAYER_LOSE},
+		},
+	}
+	br := &dao.BattleRewardPVP{
+		PlayerRewards: []*dao.PlayerReward{
+			{PlayerId: 1},
+			{PlayerId: 2},
+		},
+	}
+	ga := &dao.GameArgs{
+		BaseStake:                1000,
+		TieTokenRateBps:          50,
+		TiePointRateBps:          70,
+		SystemFeeRateBps:         200,
+		NormalWinnerPointRateBps: 300,
+		NormalLoserPointRateBps:  100,
+		KOWinnerPointRateBps:     250,
+	}
+
+	ComputeBattleRewardAmounts(gr, br, ga)
+
+	require.Equal(t, int32(40), br.SystemFee)
+	require.Equal(t, int32(1960), br.PlayerRewards[0].TokenChange)
+	require.Equal(t, int32(-2000), br.PlayerRewards[1].TokenChange)
+	require.Equal(t, int32(60), br.PlayerRewards[0].PointChange)
+	require.Equal(t, int32(20), br.PlayerRewards[1].PointChange)
 }

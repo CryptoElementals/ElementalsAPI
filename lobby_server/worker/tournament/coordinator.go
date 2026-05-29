@@ -327,7 +327,7 @@ func (tc *coordinator) fillTournamentWithBotsIfNeeded(now time.Time, tournamentI
 		burst = stageCap
 	}
 	for i := 0; i < burst; i++ {
-		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds())
+		bot, err := tc.botStore.PopFreshIdleBotForMatch(now.UnixMilli(), tc.botFreshness.Milliseconds(), proto.GameType_TOURNAMENT)
 		if err != nil {
 			return err
 		}
@@ -620,6 +620,7 @@ func (tc *coordinator) startGamesForNewMatches(matchIDs []uint) bool {
 		gameID, gerr := tc.gameCreator.CreateTournamentGameAndRun(players, int64(matchID), tournamentIDNum, int64(m.RoundNo))
 		if gerr != nil {
 			log.Errorw("tournament: create game failed", "match_id", matchID, "err", gerr)
+			tc.releaseBotsIfNeeded(tc.filterBotsForRelease(players))
 			continue
 		}
 		log.Infow("tournament: create game success", "TournamentID", m.TournamentID, "round_no", m.RoundNo,
@@ -740,9 +741,6 @@ func (tc *coordinator) onGameCompleted(gameID int64) error {
 			return nil
 		}
 		return err
-	}
-	if gr.GameResultType == proto.GameResultType_GAME_ABORTED {
-		return nil
 	}
 	m0, err := db.TournamentGetMatchByGameID(gameID)
 	if err != nil {
@@ -1121,7 +1119,7 @@ func pickTournamentWinnerTx(tx *gorm.DB, m *dao.TournamentMatch, gr *dao.GameRes
 	}
 
 	switch gr.GameResultType {
-	case proto.GameResultType_GAME_TIE:
+	case proto.GameResultType_GAME_TIE, proto.GameResultType_GAME_ABORTED:
 		p1Part, err := db.TournamentGetParticipantByPlayerTx(tx, m.TournamentID, p1id, p1t)
 		if err != nil {
 			return 0, "", fmt.Errorf("tournament tie: load participant: %w", err)

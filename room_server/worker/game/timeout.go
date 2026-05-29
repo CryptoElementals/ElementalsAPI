@@ -173,8 +173,23 @@ func (g *Game) handleTimerEvent(event *timerEvent) {
 		}
 		return
 	case proto.TurnStatus_TURN_WAITTING_COMMITMENTS,
-		proto.TurnStatus_TURN_WAITTING_CARDS,
-		proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
+		proto.TurnStatus_TURN_WAITTING_CARDS:
+		/*
+			Check if any tx are pending on chain here
+		*/
+		if g.anyPlayerPendingOnChain() {
+			err := g.handleGameAbortInternalError()
+			if err != nil {
+				log.Errorf("abort game failed, err: %s", err.Error())
+			}
+			return
+		}
+		err := g.handleTurnEnd()
+		if err != nil {
+			log.Errorf("handle turn end failed, err: %s", err.Error())
+		}
+		return
+	case proto.TurnStatus_TURN_WAITTING_BATTLE_CONFIRMATION:
 		err := g.handleTurnEnd()
 		if err != nil {
 			log.Errorf("handle turn end failed, err: %s", err.Error())

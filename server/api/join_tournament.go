@@ -86,7 +86,7 @@ func (task *JoinTournamentTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	lobbyClient := client.GetGlobalLobbyClient()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
 	if lobbyClient == nil {
 		task.Response.RetCode = 1002
 		task.Response.Message = "gRPC lobby client not initialized"

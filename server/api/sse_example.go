@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/events"
+	"github.com/CryptoElementals/common/server/sse"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -81,8 +81,8 @@ func (task *SSEExampleTask) Run(c *gin.Context) (Response, error) {
 		task.Request.EventTypes, task.Request.Duration, task.Request.RequestUUID)
 
 	// 发送开始事件
-	startEvent := events.Event{
-		Type: events.EventTypeStatusUpdate,
+	startEvent := sse.Event{
+		Type: sse.EventTypeStatusUpdate,
 		Data: map[string]interface{}{
 			"status":     "started",
 			"eventTypes": task.Request.EventTypes,
@@ -90,7 +90,7 @@ func (task *SSEExampleTask) Run(c *gin.Context) (Response, error) {
 		},
 		RequestUUID: task.Request.RequestUUID,
 	}
-	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), startEvent); err != nil {
+	if err := sse.Write(c.Writer, c.Writer.(http.Flusher), startEvent); err != nil {
 		return nil, err
 	}
 
@@ -112,14 +112,14 @@ func (task *SSEExampleTask) Run(c *gin.Context) (Response, error) {
 	close(done)
 
 	// 发送结束事件
-	endEvent := events.Event{
-		Type: events.EventTypeStatusUpdate,
+	endEvent := sse.Event{
+		Type: sse.EventTypeStatusUpdate,
 		Data: map[string]interface{}{
 			"status": "completed",
 		},
 		RequestUUID: task.Request.RequestUUID,
 	}
-	if err := sendSSEEvent(c.Writer, c.Writer.(http.Flusher), endEvent); err != nil {
+	if err := sse.Write(c.Writer, c.Writer.(http.Flusher), endEvent); err != nil {
 		return nil, err
 	}
 
@@ -139,10 +139,10 @@ func (task *SSEExampleTask) startEventSimulator(ctx context.Context, writer http
 				count++
 				idx := (count - 1) % len(eventTypes)
 				now := time.Now().Format("2006-01-02 15:04:05")
-				var event events.Event
+				var event sse.Event
 				switch eventTypes[idx] {
 				case "data_change":
-					event = events.Event{
+					event = sse.Event{
 						Type: "data_change",
 						Data: map[string]interface{}{
 							"dataType": "user_balance",
@@ -158,7 +158,7 @@ func (task *SSEExampleTask) startEventSimulator(ctx context.Context, writer http
 						},
 					}
 				case "status_update":
-					event = events.Event{
+					event = sse.Event{
 						Type: "status_update",
 						Data: map[string]interface{}{
 							"status": fmt.Sprintf("status_%d", count),
@@ -171,7 +171,7 @@ func (task *SSEExampleTask) startEventSimulator(ctx context.Context, writer http
 						},
 					}
 				case "notification":
-					event = events.Event{
+					event = sse.Event{
 						Type: "notification",
 						Data: map[string]interface{}{
 							"message": fmt.Sprintf("Example notification #%d", count),
@@ -185,7 +185,7 @@ func (task *SSEExampleTask) startEventSimulator(ctx context.Context, writer http
 						},
 					}
 				case "error":
-					event = events.Event{
+					event = sse.Event{
 						Type: "error",
 						Data: map[string]interface{}{
 							"error": fmt.Sprintf("Example error #%d", count),
@@ -199,7 +199,7 @@ func (task *SSEExampleTask) startEventSimulator(ctx context.Context, writer http
 						},
 					}
 				}
-				sendSSEEvent(writer, flusher, event)
+				sse.Write(writer, flusher, event)
 			case <-ctx.Done():
 				return
 			case <-done:
@@ -207,35 +207,4 @@ func (task *SSEExampleTask) startEventSimulator(ctx context.Context, writer http
 			}
 		}
 	}()
-}
-
-// EventListener 事件监听器
-type EventListener struct {
-	eventTypes   []string
-	writer       http.ResponseWriter
-	flusher      http.Flusher
-	requestUUID  string
-	stopChan     chan struct{}
-	eventManager *events.GlobalEventManager
-}
-
-func NewEventListener(eventTypes []string, writer http.ResponseWriter, flusher http.Flusher, requestUUID string) *EventListener {
-	return &EventListener{
-		eventTypes:   eventTypes,
-		writer:       writer,
-		flusher:      flusher,
-		requestUUID:  requestUUID,
-		stopChan:     make(chan struct{}),
-		eventManager: events.GetGlobalEventManager(),
-	}
-}
-
-func (el *EventListener) Start() {
-
-	log.Infof("Event listener started for types: %v, RequestUUID: %s", el.eventTypes, el.requestUUID)
-}
-
-func (el *EventListener) Stop() {
-	close(el.stopChan)
-	log.Infof("Event listener stopped for RequestUUID: %s", el.requestUUID)
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/timer"
 )
 
@@ -31,7 +32,7 @@ func (q *Queue) isPlayerBot(addr types.PlayerAddress) bool {
 }
 
 func (q *Queue) popBotForMatch() (types.PlayerAddress, bool) {
-	addr, err := q.botStore.PopFreshIdleBotForMatch(time.Now().UnixMilli(), q.botFreshness.Milliseconds())
+	addr, err := q.botStore.PopFreshIdleBotForMatch(time.Now().UnixMilli(), q.botFreshness.Milliseconds(), proto.GameType_PVP)
 	if err != nil {
 		log.Errorw("redis pop fresh idle bot failed", "err", err)
 		return types.PlayerAddress{}, false
@@ -85,6 +86,7 @@ func (q *Queue) handleBotDispatchTick() error {
 	if n <= 0 {
 		return nil
 	}
+	log.Infow("found long waitting players", "count", n)
 	for {
 		if q.ctx.Err() != nil {
 			return nil
@@ -107,7 +109,7 @@ func (q *Queue) handleBotDispatchTick() error {
 			log.Errorw("publish pvp match pending after bot dispatch failed", "match_id", gm.ID, "bot", botPlayer.String(), "err", err)
 			break
 		}
-		log.Infow("found long waitting player, dispatch a bot", "match_id", gm.ID, "bot", botPlayer.String())
+		log.Infow("dispatch a bot for long waitting player", "match_id", gm.ID, "bot", botPlayer.String())
 	}
 	return nil
 }

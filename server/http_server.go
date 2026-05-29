@@ -248,6 +248,13 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 		_ = session.Save()
 
+		oauthEnvHint := ""
+		if envVal != nil {
+			if s, ok := envVal.(string); ok {
+				oauthEnvHint = s
+			}
+		}
+
 		// exchange code for token
 		form := url.Values{}
 		form.Set("code", code)
@@ -299,12 +306,12 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: id_token: %s", tokenPayload.IdToken)
 		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
-		userProfile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
+		profile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
 			return
 		}
-		playerIDStr := fmt.Sprintf("%d", userProfile.PlayerID)
+		playerIDStr := fmt.Sprintf("%d", profile.PlayerID)
 		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
@@ -317,12 +324,7 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 
 		// decide frontend redirect target based on env hint
-		var env string
-		if envVal != nil {
-			if s, ok := envVal.(string); ok {
-				env = s
-			}
-		}
+		env := oauthEnvHint
 
 		var frontendURL string
 		switch env {
@@ -346,7 +348,6 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		q.Set("code", tempCode)
 		u.RawQuery = q.Encode()
 		c.Redirect(http.StatusFound, u.String())
-		return
 	}
 }
 

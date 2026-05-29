@@ -1,4 +1,4 @@
-package event_v2
+package client
 
 import (
 	"context"
@@ -6,16 +6,18 @@ import (
 	"sync"
 
 	"github.com/CryptoElementals/common/pubsub"
-	"github.com/CryptoElementals/common/rpc/proto"
+	pb "github.com/CryptoElementals/common/rpc/proto"
 )
 
+// SubscriberID identifies an event bus subscriber.
 type SubscriberID struct {
-	Address  *proto.PlayerAddress
+	Address  *pb.PlayerAddress
 	ClientID string
 }
 
+// EventBus fans out Redis stream messages to registered subscribers.
 type EventBus interface {
-	RegisterSubscriber(subscriberID SubscriberID) (chan *proto.Message, chan error)
+	RegisterSubscriber(subscriberID SubscriberID) (chan *pb.Message, chan error)
 	UnregisterSubscriber(subscriberID SubscriberID)
 }
 
@@ -32,13 +34,14 @@ type eventBus struct {
 
 type subscriberState struct {
 	id       SubscriberID
-	msgCh    chan *proto.Message
+	msgCh    chan *pb.Message
 	errCh    chan error
 	doneOnce sync.Once
 	mu       sync.RWMutex
 	closed   bool
 }
 
+// NewEventBus subscribes to Redis stream topics and dispatches messages to registered subscribers.
 func NewEventBus(subscriber *pubsub.StreamSubscriber, topics ...string) EventBus {
 	if subscriber == nil {
 		panic("stream subscriber is nil")
@@ -59,10 +62,10 @@ func NewEventBus(subscriber *pubsub.StreamSubscriber, topics ...string) EventBus
 	return b
 }
 
-func (b *eventBus) RegisterSubscriber(subscriberID SubscriberID) (chan *proto.Message, chan error) {
+func (b *eventBus) RegisterSubscriber(subscriberID SubscriberID) (chan *pb.Message, chan error) {
 	state := &subscriberState{
 		id:    subscriberID,
-		msgCh: make(chan *proto.Message, 32),
+		msgCh: make(chan *pb.Message, 32),
 		errCh: make(chan error, 1),
 	}
 	addressMapKey := subscriberKey(subscriberID)
@@ -127,7 +130,7 @@ func (b *eventBus) start() {
 	}
 }
 
-func (b *eventBus) dispatch(msg *proto.Message) {
+func (b *eventBus) dispatch(msg *pb.Message) {
 	ev := msg.GetEvent()
 	if msg.GetTopic() == pubsub.TopicTournamentRoster {
 		b.dispatchBroadcast(msg)
@@ -136,11 +139,9 @@ func (b *eventBus) dispatch(msg *proto.Message) {
 	receivers := ev.GetReceivers()
 
 	if len(receivers) == 0 {
-		// Ignore events with empty receivers.
 		return
 	}
 
-	// Direct targeting: lookup subscribers by receiver key instead of full scan.
 	for _, r := range receivers {
 		if r == nil {
 			continue
@@ -167,7 +168,7 @@ func (b *eventBus) dispatch(msg *proto.Message) {
 	}
 }
 
-func (b *eventBus) dispatchBroadcast(msg *proto.Message) {
+func (b *eventBus) dispatchBroadcast(msg *pb.Message) {
 	b.mu.RLock()
 	targets := make([]*subscriberState, 0)
 	for _, group := range b.subscribers {
@@ -214,7 +215,7 @@ func (b *eventBus) closeSubscriber(sub *subscriberState, err error) {
 	})
 }
 
-func (b *eventBus) sendToSubscriber(sub *subscriberState, msg *proto.Message) bool {
+func (b *eventBus) sendToSubscriber(sub *subscriberState, msg *pb.Message) bool {
 	sub.mu.RLock()
 	defer sub.mu.RUnlock()
 	if sub.closed {
@@ -236,7 +237,7 @@ func subscriberKey(id SubscriberID) string {
 	return addressKey(id.Address)
 }
 
-func addressKey(addr *proto.PlayerAddress) string {
+func addressKey(addr *pb.PlayerAddress) string {
 	if addr == nil {
 		return "anonymous"
 	}

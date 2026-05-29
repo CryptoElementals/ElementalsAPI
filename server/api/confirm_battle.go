@@ -19,7 +19,7 @@ func init() {
 // ConfirmBattleRequest 请求结构体
 type ConfirmBattleRequest struct {
 	BaseRequest
-	GameID      int64 `mapstructure:"GameID" validate:"required"`
+	GameID      int64  `mapstructure:"GameID" validate:"required"`
 	RoundNumber uint   `mapstructure:"RoundNumber" validate:"required,min=1"`
 	TurnNumber  uint   `mapstructure:"TurnNumber" validate:"required,min=1"`
 	TempAddress string `mapstructure:"TempAddress" validate:"required"`
@@ -93,7 +93,7 @@ func (task *ConfirmBattleTask) Run(c *gin.Context) (Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的ConfirmBattle
-	rpcClient := client.GetGlobalRpcClient()
+	rpcClient := client.RoomClientForType(ServerTypeFromGin(c))
 	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC client not initialized"

@@ -24,6 +24,9 @@ service RoomService {
     rpc CreateGameAndRun(CreateGameAndRunRequest) returns (CreateGameAndRunResponse);
     rpc SyncGamePhase(PlayerAddress) returns (google.protobuf.Empty);
     rpc GetGamePhase(PlayerAddress) returns (GamePhase);
+
+    // ops / tools: abort every game where status != GAME_END
+    rpc AbortAllActiveGames(google.protobuf.Empty) returns (AbortAllActiveGamesResponse);
 }
 
 message TimeoutConfig {
@@ -265,4 +268,14 @@ message CreateGameAndRunRequest {
 
 message CreateGameAndRunResponse {
   int64 game_id = 1;
+}
+
+message AbortAllActiveGamesResponse {
+  repeated int64 AbortedGameIds = 1;
+  repeated AbortGameError Failures = 2;
+}
+
+message AbortGameError {
+  int64 GameId = 1;
+  string Message = 2;
 }

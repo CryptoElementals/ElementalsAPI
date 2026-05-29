@@ -75,19 +75,6 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		ListenPort: 30011,
 		GameArgsID: ga.ID,
 	}
-	config.InitializeGameParams(&config.GameParamConfig{
-		SystemFeeRate:   0.016,
-		WinnerPointRate: 0.012,
-		LoserPointRate:  0.004,
-		TieTokenRate:    0.008,
-		TiePointRate:    0.008,
-		BaseStake:       1000,
-		MaxRounds:       3,
-		InitialHP:       3000,
-	})
-	if config.GameParams.BaseStake == 0 {
-		config.GameParams.BaseStake = 1000
-	}
 	redisAddr := os.Getenv("ELEMENTALS_REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "127.0.0.1:6379"
@@ -142,28 +129,6 @@ func TestInsertCards(t *testing.T) {
 	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
 	require.NoError(t, err)
 	prepareCards(t)
-}
-
-func TestInsertUserProfile(t *testing.T) {
-	require.NoError(t, snowflake.Init(1))
-	err := db.Init(&db.Config{Endpoint: "10.9.176.247:3306", User: "root", Password: "KYq9gcN82dKWCRTb", DbName: "elementals"})
-	require.NoError(t, err)
-	userProfile1 := dao.UserProfile{
-		Address:       "0x1a8aea9401d35cd6d6a955a386480e7917d0d89b",
-		Name:          "bot1",
-		AvatarURL:     "avatar_6.png",
-		BackgroundURL: "bg_6.png",
-	}
-	userProfile2 := dao.UserProfile{
-		Address:       "0xcd57ac6115d73b401ce53e34b1320e6265261a91",
-		Name:          "bot2",
-		AvatarURL:     "avatar_5.png",
-		BackgroundURL: "bg_5.png",
-	}
-	err = db.CreateUserProfile(&userProfile1)
-	require.NoError(t, err)
-	err = db.CreateUserProfile(&userProfile2)
-	require.NoError(t, err)
 }
 
 func prepareCards(t *testing.T) {

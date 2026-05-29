@@ -21,7 +21,7 @@ func init() {
 type SurrenderRequest struct {
 	BaseRequest
 	TempAddress string `mapstructure:"TempAddress" validate:"required"` // 临时地址
-	GameID      int64 `mapstructure:"GameID" validate:"required"`      // 游戏ID
+	GameID      int64  `mapstructure:"GameID" validate:"required"`      // 游戏ID
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
 }
 
@@ -92,7 +92,7 @@ func (task *SurrenderTask) Run(c *gin.Context) (Response, error) {
 	tempAddress := strings.ToLower(task.Request.TempAddress)
 
 	// 通过gRPC调用RoomServer的Surrender
-	rpcClient := client.GetGlobalRpcClient()
+	rpcClient := client.RoomClientForType(ServerTypeFromGin(c))
 	if rpcClient == nil {
 		task.Response.BaseResponse.RetCode = 1002
 		task.Response.BaseResponse.Message = "gRPC client not initialized"

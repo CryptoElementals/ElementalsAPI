@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/cache"
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
@@ -163,12 +164,16 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 	//2 generate refresh token for user(addr)
 	// 先确保/获取用户档案，得到 player_id
 	var playerIDStr string
+	var serverType string
 	if task.Request.Address != "" {
 		lowercaseAddress := strings.ToLower(task.Request.Address)
-		profile, _ := db.GetOrCreateUserProfile(lowercaseAddress)
-		if profile != nil {
-			playerIDStr = fmt.Sprintf("%d", profile.PlayerID)
+		apiProfile, pErr := db.GetOrCreateUserProfile(lowercaseAddress)
+		if pErr != nil {
+			log.Errorf("%s, GetOrCreateUserProfile failed: %v", task.Request.RequestUUID, pErr)
+			return nil, errors.OperateDbFailed()
 		}
+		playerIDStr = strconv.FormatInt(apiProfile.PlayerID, 10)
+		serverType = db.EffectiveServerType(apiProfile)
 	}
 	err = withRetry(10, func(retryTime int) error {
 		var saveErr error
@@ -183,6 +188,7 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 	//3 set user to session object
 	if playerIDStr != "" {
 		session.Set(SESSION_USER_KEY, playerIDStr)
+		session.Set(SESSION_SERVER_TYPE_KEY, config.NormalizeServerType(serverType))
 	}
 	// 删除一次性的nonce，退出当前登录需要重新生成nonce，之前的session-id无法再使用，会慢慢过期
 	session.Delete(key)

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -8,12 +9,11 @@ import (
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/rpc/client"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-	"gorm.io/gorm"
-
-	dao "github.com/CryptoElementals/common/models"
 )
 
 func init() {
@@ -76,6 +76,14 @@ func NewCollectDailyRewardTask(data *map[string]interface{}) (Task, error) {
 func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	// 统一流程：检查活动期间 -> 校验是否已领取 -> 判断第一天还是后续天 -> 发放并保存代币 -> 更新领取时间
 	requestPlayerID := strings.TrimSpace(task.Request.PlayerID)
+	env, ok := config.GConf.EnvironmentForServerType(ServerTypeFromGin(c))
+	if !ok {
+		return nil, cmnErrors.ActionError("Environment not configured")
+	}
+	if !env.EnableDailyReward {
+		log.Errorf("%s, daily reward disabled by config (player_id=%s)", task.Request.RequestUUID, requestPlayerID)
+		return nil, cmnErrors.ActionError("Daily reward is not enabled")
+	}
 	profile, err := db.GetUserProfileByPlayerID(requestPlayerID)
 	if err != nil {
 		log.Errorf("%s, failed to get user profile by player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
@@ -84,14 +92,14 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 
 	// 检查活动是否在有效期内（使用UTC时间统一判断）
 	now := time.Now().UTC()
-	startDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardStartDate)
+	startDate, err := time.Parse("2006-01-02", env.DailyRewardStartDate)
 	if err != nil {
-		log.Errorf("%s, invalid daily reward start date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardStartDate, err)
+		log.Errorf("%s, invalid daily reward start date: %s, error: %v", task.Request.RequestUUID, env.DailyRewardStartDate, err)
 		return nil, cmnErrors.ActionError("Daily reward activity not configured")
 	}
-	endDate, err := time.Parse("2006-01-02", config.GameParams.DailyRewardEndDate)
+	endDate, err := time.Parse("2006-01-02", env.DailyRewardEndDate)
 	if err != nil {
-		log.Errorf("%s, invalid daily reward end date: %s, error: %v", task.Request.RequestUUID, config.GameParams.DailyRewardEndDate, err)
+		log.Errorf("%s, invalid daily reward end date: %s, error: %v", task.Request.RequestUUID, env.DailyRewardEndDate, err)
 		return nil, cmnErrors.ActionError("Daily reward activity not configured")
 	}
 
@@ -137,31 +145,24 @@ func (task *CollectDailyRewardTask) Run(c *gin.Context) (Response, error) {
 	// 根据是否是活动期间内第一次领取决定发放的token数量
 	var dailyRewardTokens int32
 	if isFirstTimeInActivity {
-		dailyRewardTokens = int32(config.GameParams.FirstTimeRewardTokens)
+		dailyRewardTokens = int32(env.FirstTimeRewardTokens)
 		log.Infof("%s, player_id=%s collecting first time reward in activity: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	} else {
-		dailyRewardTokens = int32(config.GameParams.DailyRewardTokensAfterFirst)
+		dailyRewardTokens = int32(env.DailyRewardTokensAfterFirst)
 		log.Infof("%s, player_id=%s collecting daily reward: %d tokens", task.Request.RequestUUID, requestPlayerID, dailyRewardTokens)
 	}
 
-	// 发放 token
-	var userToken *dao.UserToken
-	userToken, err = db.GetPlayerToken(c.Request.Context(), profile.PlayerID)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		log.Errorf("%s, failed to get user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
-		return nil, cmnErrors.OperateDbFailed()
+	lobbyClient := client.LobbyClientForType(ServerTypeFromGin(c))
+	if lobbyClient == nil {
+		log.Errorf("%s, gRPC lobby client not initialized", task.Request.RequestUUID)
+		return nil, cmnErrors.ActionError("gRPC lobby client not initialized")
 	}
-	if userToken == nil {
-		userToken = &dao.UserToken{
-			PlayerId:    profile.PlayerID,
-			Points:      0,
-			TokenAmount: dailyRewardTokens,
-		}
-	} else {
-		userToken.TokenAmount += dailyRewardTokens
-	}
-	if err = db.SaveUserToken(*userToken); err != nil {
-		log.Errorf("%s, failed to save user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
+	if _, err = lobbyClient.CreditUserTokens(context.Background(), &proto.CreditUserTokensRequest{
+		PlayerID: profile.PlayerID,
+		Delta:    dailyRewardTokens,
+		Reason:   "daily_reward",
+	}); err != nil {
+		log.Errorf("%s, failed to credit user token for player_id=%s: %v", task.Request.RequestUUID, requestPlayerID, err)
 		return nil, cmnErrors.OperateDbFailed()
 	}
 

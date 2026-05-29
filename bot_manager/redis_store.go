@@ -6,8 +6,10 @@ import (
 	"fmt"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +36,7 @@ func NewRedisStore(namespace string) (*RedisStore, error) {
 	return &RedisStore{
 		pool:                 pool,
 		idleKey:              namespace + ":bots:idle:set",
-		inGameKey:            namespace + ":bots:ingame:set",
+		inGameKey:            namespace + ":bots:ingame:hash",
 		allKey:               namespace + ":bots:all:set",
 		lastSeenKey:          namespace + ":bots:last_seen:zset",
 		tokenInsufficientKey: namespace + ":bots:token_insufficient:set",
@@ -52,7 +54,7 @@ func (s *RedisStore) SetTokenInsufficientThreshold(threshold int64) {
 
 var upsertAliveScript = redis.NewScript(5, `
 -- KEYS[1] idle set
--- KEYS[2] ingame set
+-- KEYS[2] ingame hash
 -- KEYS[3] all set
 -- KEYS[4] last_seen zset
 -- KEYS[5] token_insufficient set
@@ -67,7 +69,7 @@ for i = 2, #ARGV do
 	redis.call("SADD", KEYS[3], p)
 	redis.call("ZADD", KEYS[4], now, p)
 	-- Only promote to idle when not reserved for a match or token-insufficient quarantine.
-	if redis.call("SISMEMBER", KEYS[2], p) == 0 and redis.call("SISMEMBER", KEYS[5], p) == 0 then
+	if redis.call("HEXISTS", KEYS[2], p) == 0 and redis.call("SISMEMBER", KEYS[5], p) == 0 then
 		redis.call("SADD", KEYS[1], p)
 	end
 end
@@ -91,9 +93,10 @@ return math.max(0, #ARGV - 1)
 
 var popFreshIdleForMatchScript = redis.NewScript(3, `
 -- KEYS[1] idle set
--- KEYS[2] ingame set
+-- KEYS[2] ingame hash
 -- KEYS[3] last_seen zset
 -- ARGV[1] cutoff ms
+-- ARGV[2] game type
 local cutoff = tonumber(ARGV[1])
 if not cutoff then
 	return ""
@@ -105,7 +108,7 @@ while true do
 	end
 	local score = redis.call("ZSCORE", KEYS[3], bot)
 	if score and tonumber(score) and tonumber(score) >= cutoff then
-		redis.call("SADD", KEYS[2], bot)
+		redis.call("HSET", KEYS[2], bot, ARGV[2])
 		return bot
 	end
 end
@@ -113,19 +116,19 @@ end
 
 var releaseInGameBotScript = redis.NewScript(3, `
 -- KEYS[1] idle set
--- KEYS[2] ingame set
+-- KEYS[2] ingame hash
 -- KEYS[3] token_insufficient set
 -- Freshness is enforced when popping from idle (see popFreshIdleForMatchScript).
 -- ARGV[1] bot player key
 -- ARGV[2] token threshold (0 = disabled)
 -- ARGV[3] current token amount
 local p = ARGV[1]
-if redis.call("SISMEMBER", KEYS[2], p) == 0 then
+if redis.call("HEXISTS", KEYS[2], p) == 0 then
 	return 0
 end
 local thresh = tonumber(ARGV[2])
 local tokens = tonumber(ARGV[3])
-redis.call("SREM", KEYS[2], p)
+redis.call("HDEL", KEYS[2], p)
 if thresh and thresh > 0 and tokens and tokens < thresh then
 	redis.call("SADD", KEYS[3], p)
 else
@@ -163,12 +166,22 @@ func (s *RedisStore) MarkBotsStopping(addrs ...types.PlayerAddress) error {
 		return nil
 	}
 	const shutdownScore int64 = 1
-	return s.HeartbeatBots(shutdownScore, addrs...)
+	if err := s.HeartbeatBots(shutdownScore, addrs...); err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		log.Debugw("bot_status_switched",
+			"player", toPlayerKey(addr),
+			"from", "unknown",
+			"to", "stopping",
+		)
+	}
+	return nil
 }
 
-func (s *RedisStore) PopFreshIdleBotForMatch(nowMs int64, freshnessMs int64) (*types.PlayerAddress, error) {
+func (s *RedisStore) PopFreshIdleBotForMatch(nowMs int64, freshnessMs int64, gameType proto.GameType) (*types.PlayerAddress, error) {
 	cutoff := nowMs - freshnessMs
-	key, err := redis.ScriptString(s.pool, popFreshIdleForMatchScript, s.idleKey, s.inGameKey, s.lastSeenKey, cutoff)
+	key, err := redis.ScriptString(s.pool, popFreshIdleForMatchScript, s.idleKey, s.inGameKey, s.lastSeenKey, cutoff, int32(gameType))
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +192,12 @@ func (s *RedisStore) PopFreshIdleBotForMatch(nowMs int64, freshnessMs int64) (*t
 	if err := out.Parse(key); err != nil {
 		return nil, err
 	}
+	log.Debugw("bot_status_switched",
+		"player", key,
+		"from", "idle",
+		"to", "ingame",
+		"game_type", gameType.String(),
+	)
 	return &out, nil
 }
 
@@ -192,11 +211,28 @@ func (s *RedisStore) ReleaseInGameBot(ctx context.Context, addr types.PlayerAddr
 	} else {
 		playerTokens = int64(ut.TokenAmount)
 	}
-	ok, err := redis.ScriptInt(s.pool, releaseInGameBotScript, s.idleKey, s.inGameKey, s.tokenInsufficientKey, toPlayerKey(addr), s.tokenInsufficientThreshold, playerTokens)
+	playerKey := toPlayerKey(addr)
+	ok, err := redis.ScriptInt(s.pool, releaseInGameBotScript, s.idleKey, s.inGameKey, s.tokenInsufficientKey, playerKey, s.tokenInsufficientThreshold, playerTokens)
 	if err != nil {
 		return false, err
 	}
-	return ok == 1, nil
+	if ok != 1 {
+		return false, nil
+	}
+	to := "idle"
+	if s.tokenInsufficientThreshold > 0 && playerTokens < s.tokenInsufficientThreshold {
+		to = "token_insufficient"
+	}
+	logArgs := []interface{}{
+		"player", playerKey,
+		"from", "ingame",
+		"to", to,
+	}
+	if s.tokenInsufficientThreshold > 0 {
+		logArgs = append(logArgs, "tokens", playerTokens, "token_threshold", s.tokenInsufficientThreshold)
+	}
+	log.Debugw("bot_status_switched", logArgs...)
+	return true, nil
 }
 
 func (s *RedisStore) IsBot(addr types.PlayerAddress) (bool, error) {
