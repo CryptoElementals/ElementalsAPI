@@ -8,46 +8,42 @@ import (
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
-	"github.com/CryptoElementals/common/room_server/worker/chain"
+	"github.com/CryptoElementals/common/room_server/chainclient"
 	"github.com/CryptoElementals/common/room_server/worker/game"
 	"github.com/CryptoElementals/common/rpc/middleware"
 	"github.com/CryptoElementals/common/rpc/proto"
 	rpc "github.com/CryptoElementals/common/rpc/server"
 	"github.com/CryptoElementals/common/stream"
 	"github.com/CryptoElementals/common/timer"
-	"github.com/CryptoElementals/common/wallet"
 	"google.golang.org/grpc"
 )
 
 type Service struct {
-	ctx       context.Context
-	cfg       *config.RoomServerConfig
-	server    *grpc.Server
-	chainSvc  *chain.Chain
-	gameSvc   *game.Service
-	rpcServer *rpc.Rpc
+	ctx        context.Context
+	cfg        *config.RoomServerConfig
+	server     *grpc.Server
+	chainConn  *chainclient.Client
+	gameSvc    *game.Service
+	rpcServer  *rpc.Rpc
 }
 
 func New(ctx context.Context,
 	cfg *config.RoomServerConfig,
 	isDevelop ...bool) (*Service, error) {
+	_ = isDevelop
 	s := &Service{
 		ctx: ctx,
 		cfg: cfg,
 	}
-	wallets := make([]*wallet.Wallet, 0, len(cfg.WalletPaths))
-	for _, path := range cfg.WalletPaths {
-		w, err := wallet.LoadWallet(path)
-		if err != nil {
-			return nil, err
-		}
-		wallets = append(wallets, w)
+	if cfg.ChainServerAddress == "" {
+		return nil, fmt.Errorf("chain-server-address is required")
 	}
-	chainSvc, err := chain.NewChain(ctx, cfg, wallets, isDevelop...)
+	chainConn, err := chainclient.Dial(ctx, cfg.ChainServerAddress)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("dial chain server: %w", err)
 	}
-	s.chainSvc = chainSvc
+	s.chainConn = chainConn
+
 	st, err := stream.NewRedisStream()
 	if err != nil {
 		return nil, fmt.Errorf("redis stream: %w", err)
@@ -55,10 +51,9 @@ func New(ctx context.Context,
 	roomEventPub := pubsub.NewStreamPublisher(st, pubsub.TopicRoom)
 	settlementPVPPub := pubsub.NewStreamPublisher(st, pubsub.TopicRoomSettlementPVP)
 	settlementTournamentPub := pubsub.NewStreamPublisher(st, pubsub.TopicRoomSettlementTournament)
-	s.gameSvc = game.NewService(ctx, roomEventPub, cfg.GameArgsID, chainSvc)
+	s.gameSvc = game.NewService(ctx, roomEventPub, cfg.GameArgsID, chainConn)
 	s.gameSvc.SetGameResultSettler(newSettlementStreamPublisher(ctx, settlementPVPPub, settlementTournamentPub))
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
-	// game.Service implements chain/player/game handlers.
 	rpcServer := rpc.NewRpc(s.gameSvc)
 	s.rpcServer = rpcServer
 	proto.RegisterRoomServiceServer(server, s.rpcServer)
@@ -67,14 +62,8 @@ func New(ctx context.Context,
 }
 
 func (s *Service) Start() error {
-	log.Info("starting chain service")
-	err := s.chainSvc.Start()
-	if err != nil {
-		return err
-	}
-	log.Info("chain service started")
 	log.Info("starting game service")
-	err = s.gameSvc.Start()
+	err := s.gameSvc.Start()
 	if err != nil {
 		return err
 	}
@@ -98,6 +87,9 @@ func (s *Service) Stop() {
 	log.Info("stopping grpc server")
 	s.server.GracefulStop()
 	log.Info("grpc server stopped")
+	if s.chainConn != nil {
+		_ = s.chainConn.Close()
+	}
 }
 
 func (s *Service) startListener() error {

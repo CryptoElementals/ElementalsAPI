@@ -1,4 +1,4 @@
-package chain
+package worker
 
 import (
 	"encoding/json"
@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
-	"github.com/CryptoElementals/common/room_server/worker/types"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/ethereum/go-ethereum/common"
 	goproto "google.golang.org/protobuf/proto"
@@ -26,30 +26,41 @@ const (
 	roomV3TaskIndexSubmitCard     uint8 = 4
 )
 
+var (
+	claimChainTxPoolBatchForChain = func(chainID int64, limit int, claimTimeout time.Duration) ([]db.ChainTxPoolPendingRow, error) {
+		return db.ClaimChainTxPoolBatchForChain(chainID, limit, claimTimeout)
+	}
+	deleteChainTxPoolItemsByIDs = db.DeleteChainTxPoolItemsByIDs
+)
+
 // roomBatchSubmitter posts encoded tasks to the RoomV3 client (or a test double).
 type roomBatchSubmitter interface {
-	SubmitTasks([]types.RoomContractTask) error
+	SubmitTasks([]RoomContractTask) error
 }
 
 type txPool struct {
-	chainID int64
-	sub     roomBatchSubmitter
-
-	batchSize int
+	chainID      int64
+	sub          roomBatchSubmitter
+	batchSize    int
+	claimTimeout time.Duration
 }
 
-func newTxPool(rt *chainRuntime, batchSize int) *txPool {
-	return newTxPoolWithSubmitter(rt, rt.chainID, batchSize)
+func newTxPool(rt *chainRuntime, batchSize int, claimTimeout time.Duration) *txPool {
+	return newTxPoolWithSubmitter(rt, rt.chainID, batchSize, claimTimeout)
 }
 
-func newTxPoolWithSubmitter(sub roomBatchSubmitter, chainID int64, batchSize int) *txPool {
+func newTxPoolWithSubmitter(sub roomBatchSubmitter, chainID int64, batchSize int, claimTimeout time.Duration) *txPool {
 	if batchSize <= 0 {
 		batchSize = defaultPoolBatchSize
 	}
+	if claimTimeout <= 0 {
+		claimTimeout = db.DefaultChainTxPoolClaimTimeout
+	}
 	return &txPool{
-		chainID:   chainID,
-		sub:       sub,
-		batchSize: batchSize,
+		chainID:      chainID,
+		sub:          sub,
+		batchSize:    batchSize,
+		claimTimeout: claimTimeout,
 	}
 }
 
@@ -57,8 +68,7 @@ func (p *txPool) addCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
 	if evt == nil || evt.Address == nil {
 		return fmt.Errorf("invalid commitment request")
 	}
-	var addr types.PlayerAddress
-	addr.FromProto(evt.Address)
+	addr := PlayerAddressFromProto(evt.Address)
 	gameID := evt.GetGameID()
 	taddr := strings.ToLower(addr.TemporaryAddress)
 
@@ -90,8 +100,7 @@ func (p *txPool) addCard(evt *proto.SubmitPlayerCardRequest) error {
 	if evt == nil || evt.Address == nil {
 		return fmt.Errorf("invalid card request")
 	}
-	var addr types.PlayerAddress
-	addr.FromProto(evt.Address)
+	addr := PlayerAddressFromProto(evt.Address)
 	gameID := evt.GetGameID()
 	taddr := strings.ToLower(addr.TemporaryAddress)
 
@@ -119,7 +128,7 @@ func (p *txPool) addCard(evt *proto.SubmitPlayerCardRequest) error {
 	return nil
 }
 
-func (p *txPool) addCreateRoom(evt *types.RequireGameCreationEvent) {
+func (p *txPool) addCreateRoom(evt *RequireGameCreationEvent) {
 	if evt == nil {
 		return
 	}
@@ -148,7 +157,7 @@ func (p *txPool) addCreateRoom(evt *types.RequireGameCreationEvent) {
 	log.Infow("request added to tx pool", "kind", "create_room", "gameID", evt.GameID, "chain_id", p.chainID)
 }
 
-func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
+func (p *txPool) addSetTurnReady(evt *RequireSetupNewTurnEvent) {
 	if evt == nil {
 		return
 	}
@@ -177,42 +186,9 @@ func (p *txPool) addSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
 	log.Infow("request added to tx pool", "kind", "set_turn_ready", "gameID", evt.GameID, "chain_id", p.chainID, "round", evt.RoundNumber, "turn", evt.TurnNumber)
 }
 
-// runPoolTickForOrderedRows submits pending work for this chain.
-func (p *txPool) runPoolTickForOrderedRows(ordered []db.ChainTxPoolPendingRow) {
-	flatTasks, rowIDs, dropIDs, err := p.loadPendingTasksFromRows(ordered)
-	if err != nil {
-		log.Errorw("loadPendingTasksFromRows", "err", err, "chain_id", p.chainID)
-		return
-	}
-	if len(dropIDs) > 0 {
-		if derr := db.DeleteChainTxPoolItemsByIDs(dropIDs); derr != nil {
-			log.Errorw("delete dropped pool rows", "err", derr, "chain_id", p.chainID)
-		}
-	}
-	if len(flatTasks) == 0 {
-		return
-	}
-	for start := 0; start < len(flatTasks); start += p.batchSize {
-		end := start + p.batchSize
-		if end > len(flatTasks) {
-			end = len(flatTasks)
-		}
-		batch := flatTasks[start:end]
-		ids := rowIDs[start:end]
-		if err := p.sub.SubmitTasks(batch); err != nil {
-			log.Errorw("failed to submit tasks batch to chain", "error", err, "count", len(batch), "chain_id", p.chainID)
-			break
-		}
-		if derr := db.DeleteChainTxPoolItemsByIDs(ids); derr != nil {
-			log.Errorw("delete after submit: chain tx pool rows", "err", derr, "chain_id", p.chainID, "ids", ids)
-		}
-		log.Infow("submitted tasks batch to chain", "count", len(batch), "chain_id", p.chainID)
-	}
-}
-
 func (p *txPool) runDrainLoop() error {
 	for {
-		rows, err := db.PopChainTxPoolBatchForChain(p.chainID, p.batchSize)
+		rows, err := claimChainTxPoolBatchForChain(p.chainID, p.batchSize, p.claimTimeout)
 		if err != nil {
 			return err
 		}
@@ -220,13 +196,15 @@ func (p *txPool) runDrainLoop() error {
 			return nil
 		}
 
-		flatTasks, _, dropIDs, err := p.loadPendingTasksFromRows(rows)
+		flatTasks, rowIDs, dropIDs, err := p.loadPendingTasksFromRows(rows)
 		if err != nil {
 			log.Errorw("loadPendingTasksFromRows", "err", err, "chain_id", p.chainID)
 			continue
 		}
 		if len(dropIDs) > 0 {
-			log.Errorw("dropped invalid pool rows during drain", "chain_id", p.chainID, "count", len(dropIDs), "ids", dropIDs)
+			if derr := deleteChainTxPoolItemsByIDs(dropIDs); derr != nil {
+				log.Errorw("delete dropped pool rows", "err", derr, "chain_id", p.chainID)
+			}
 		}
 		if len(flatTasks) == 0 {
 			continue
@@ -236,11 +214,14 @@ func (p *txPool) runDrainLoop() error {
 			log.Errorw("failed to submit tasks batch to chain", "error", err, "count", len(flatTasks), "chain_id", p.chainID)
 			return nil
 		}
+		if derr := deleteChainTxPoolItemsByIDs(rowIDs); derr != nil {
+			log.Errorw("delete after submit: chain tx pool rows", "err", derr, "chain_id", p.chainID, "ids", rowIDs)
+		}
 		log.Infow("submitted tasks batch to chain", "count", len(flatTasks), "chain_id", p.chainID)
 	}
 }
 
-func (p *txPool) loadPendingTasksFromRows(rows []db.ChainTxPoolPendingRow) (tasks []types.RoomContractTask, rowIDs []uint, dropIDs []uint, err error) {
+func (p *txPool) loadPendingTasksFromRows(rows []db.ChainTxPoolPendingRow) (tasks []RoomContractTask, rowIDs []uint, dropIDs []uint, err error) {
 	for _, r := range rows {
 		t, ok, drop := p.pendingRowToTask(r)
 		if drop {
@@ -296,7 +277,7 @@ func (p *txPool) debugLogPendingRowToTask(r db.ChainTxPoolPendingRow, playerIDs 
 	log.Debugw("chain tx pool pending row to task", args...)
 }
 
-func playerIDsFromCreateRoomEvent(evt *types.RequireGameCreationEvent) []int64 {
+func playerIDsFromCreateRoomEvent(evt *RequireGameCreationEvent) []int64 {
 	if evt == nil {
 		return nil
 	}
@@ -316,13 +297,13 @@ func playerIDFromProtoAddress(addr *proto.PlayerAddress) int64 {
 	return addr.GetId()
 }
 
-func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContractTask, ok bool, drop bool) {
+func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t RoomContractTask, ok bool, drop bool) {
 	var playerIDs []int64
 	defer func() { p.debugLogPendingRowToTask(r, playerIDs) }()
 
 	switch r.Kind {
 	case dao.ChainTxPoolKindCreateRoom:
-		var evt types.RequireGameCreationEvent
+		var evt RequireGameCreationEvent
 		if err := json.Unmarshal(r.Payload, &evt); err != nil {
 			log.Errorw("create_room pool row: bad json", "id", r.ID, "err", err)
 			return t, false, true
@@ -331,7 +312,7 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 		t, ok = encodeCreateRoomEventToTask(&evt)
 		return t, ok, !ok
 	case dao.ChainTxPoolKindSetTurnReady:
-		var evt types.RequireSetupNewTurnEvent
+		var evt RequireSetupNewTurnEvent
 		if err := json.Unmarshal(r.Payload, &evt); err != nil {
 			log.Errorw("set_turn pool row: bad json", "id", r.ID, "err", err)
 			return t, false, true
@@ -374,14 +355,14 @@ func (p *txPool) pendingRowToTask(r db.ChainTxPoolPendingRow) (t types.RoomContr
 	}
 }
 
-func encodeCreateRoomEventToTask(evt *types.RequireGameCreationEvent) (types.RoomContractTask, bool) {
+func encodeCreateRoomEventToTask(evt *RequireGameCreationEvent) (RoomContractTask, bool) {
 	if evt == nil || len(evt.Players) < 2 {
 		gameID := int64(0)
 		if evt != nil {
 			gameID = evt.GameID
 		}
 		log.Errorw("failed to encode create room task: need 2 players", "game_id", gameID)
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
 	player1 := evt.Players[0]
 	player2 := evt.Players[1]
@@ -411,31 +392,31 @@ func encodeCreateRoomEventToTask(evt *types.RequireGameCreationEvent) (types.Roo
 	)
 	if err != nil {
 		log.Errorw("failed to encode create room task", "error", err, "game_id", evt.GameID)
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
-	return types.RoomContractTask{Index: roomV3TaskIndexCreateRoom, Task: payload}, true
+	return RoomContractTask{Index: roomV3TaskIndexCreateRoom, Task: payload}, true
 }
 
-func encodeSetTurnReadyEventToTask(evt *types.RequireSetupNewTurnEvent) (types.RoomContractTask, bool) {
+func encodeSetTurnReadyEventToTask(evt *RequireSetupNewTurnEvent) (RoomContractTask, bool) {
 	if evt == nil {
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
 	gameID := new(big.Int).SetInt64(evt.GameID)
 	payload, err := EncodeStartNewTurnTask(gameID)
 	if err != nil {
 		log.Errorw("failed to encode set turn ready task", "error", err, "game_id", evt.GameID)
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
-	return types.RoomContractTask{Index: roomV3TaskIndexStartNewTurn, Task: payload}, true
+	return RoomContractTask{Index: roomV3TaskIndexStartNewTurn, Task: payload}, true
 }
 
-func encodeCommitmentEventToTask(evt *proto.SubmitPlayerCommitmentRequest) (types.RoomContractTask, bool) {
+func encodeCommitmentEventToTask(evt *proto.SubmitPlayerCommitmentRequest) (RoomContractTask, bool) {
 	if evt == nil {
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
 	if len(evt.Commitment) != 32 {
 		log.Errorw("commitment must be 32 bytes", "len", len(evt.Commitment), "game_id", evt.GetGameID())
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
 	var commitmentHash [32]byte
 	copy(commitmentHash[:], evt.Commitment)
@@ -451,14 +432,14 @@ func encodeCommitmentEventToTask(evt *proto.SubmitPlayerCommitmentRequest) (type
 	)
 	if err != nil {
 		log.Errorw("failed to encode commitment task", "error", err, "game_id", evt.GetGameID())
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
-	return types.RoomContractTask{Index: roomV3TaskIndexSubmitCardHash, Task: payload}, true
+	return RoomContractTask{Index: roomV3TaskIndexSubmitCardHash, Task: payload}, true
 }
 
-func encodeCardEventToTask(evt *proto.SubmitPlayerCardRequest) (types.RoomContractTask, bool) {
+func encodeCardEventToTask(evt *proto.SubmitPlayerCardRequest) (RoomContractTask, bool) {
 	if evt == nil {
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
 	gameID := new(big.Int).SetInt64(evt.GetGameID())
 	card := big.NewInt(int64(evt.Card))
@@ -474,65 +455,7 @@ func encodeCardEventToTask(evt *proto.SubmitPlayerCardRequest) (types.RoomContra
 	)
 	if err != nil {
 		log.Errorw("failed to encode card task", "error", err, "game_id", evt.GetGameID())
-		return types.RoomContractTask{}, false
+		return RoomContractTask{}, false
 	}
-	return types.RoomContractTask{Index: roomV3TaskIndexSubmitCard, Task: payload}, true
-}
-
-// --- Chain implements game.TxPoolEnqueuer (method set below) ---
-
-func (h *Chain) poolForGame(gameID int64) (*txPool, error) {
-	cid, err := db.GetChainIDForGame(gameID)
-	if err != nil {
-		return nil, err
-	}
-	p, ok := h.pools[cid]
-	if !ok {
-		return nil, fmt.Errorf("no tx pool for chain_id %d", cid)
-	}
-	return p, nil
-}
-
-// AddSetTurnReady implements the game TxPoolEnqueuer contract.
-func (h *Chain) AddSetTurnReady(evt *types.RequireSetupNewTurnEvent) {
-	if evt == nil {
-		return
-	}
-	p, err := h.poolForGame(evt.GameID)
-	if err != nil {
-		log.Errorw("AddSetTurnReady: resolve pool", "gameID", evt.GameID, "err", err)
-		return
-	}
-	p.addSetTurnReady(evt)
-}
-
-// AddCommitment implements the game TxPoolEnqueuer contract.
-func (h *Chain) AddCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
-	if evt == nil {
-		return fmt.Errorf("nil request")
-	}
-	p, err := h.poolForGame(evt.GetGameID())
-	if err != nil {
-		return err
-	}
-	return p.addCommitment(evt)
-}
-
-// AddCard implements the game TxPoolEnqueuer contract.
-func (h *Chain) AddCard(evt *proto.SubmitPlayerCardRequest) error {
-	if evt == nil {
-		return fmt.Errorf("nil request")
-	}
-	p, err := h.poolForGame(evt.GetGameID())
-	if err != nil {
-		return err
-	}
-	return p.addCard(evt)
-}
-
-// ClearGameInfo implements the game TxPoolEnqueuer contract.
-func (h *Chain) ClearGameInfo(gameID int64) {
-	if err := db.DeleteChainTxPoolItemsForGame(gameID); err != nil {
-		log.Errorw("ClearGameInfo: delete chain tx pool rows", "gameID", gameID, "err", err)
-	}
+	return RoomContractTask{Index: roomV3TaskIndexSubmitCard, Task: payload}, true
 }

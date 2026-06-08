@@ -43,6 +43,9 @@ func Migrate() error {
 	if err != nil {
 		return err
 	}
+	if err := DropLegacyChainTxPoolIndexes(); err != nil {
+		return err
+	}
 	if err := BackfillGameArgsRewardRates(); err != nil {
 		return err
 	}
@@ -84,6 +87,9 @@ func MigrateMemDb() error {
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {
+		return err
+	}
+	if err := DropLegacyChainTxPoolIndexes(); err != nil {
 		return err
 	}
 	if err := BackfillGameArgsRewardRates(); err != nil {
