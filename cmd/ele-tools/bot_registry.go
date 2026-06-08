@@ -57,15 +57,25 @@ var botRegistryInspectCmd = &cobra.Command{
 			fmt.Printf("Failed to read in-game bots hash: %v\n", err)
 			os.Exit(1)
 		}
+		tokenInsufficientBots, err := redis.SMembers(keys.tokenInsufficientKey)
+		if err != nil {
+			fmt.Printf("Failed to read token-insufficient bots set: %v\n", err)
+			os.Exit(1)
+		}
 
 		idleSet := make(map[string]struct{}, len(idleBots))
 		for _, b := range idleBots {
 			idleSet[b] = struct{}{}
 		}
+		tokenInsufficientSet := make(map[string]struct{}, len(tokenInsufficientBots))
+		for _, b := range tokenInsufficientBots {
+			tokenInsufficientSet[b] = struct{}{}
+		}
 		sort.Strings(allBots)
 
 		fmt.Printf("namespace: %s\n", botRegistryNamespace)
-		fmt.Printf("all=%d idle=%d ingame=%d freshness_sec=%d\n", len(allBots), len(idleBots), len(inGameBots), freshnessSec)
+		fmt.Printf("all=%d idle=%d ingame=%d token_insufficient=%d freshness_sec=%d\n",
+			len(allBots), len(idleBots), len(inGameBots), len(tokenInsufficientBots), freshnessSec)
 		fmt.Println("----")
 
 		for _, botKey := range allBots {
@@ -86,27 +96,12 @@ var botRegistryInspectCmd = &cobra.Command{
 				lastSeen = int64(score)
 			}
 			fresh := hasSeen && lastSeen >= nowMs-freshnessMs
-			state := "orphan"
-			gameTypeLabel := ""
-			if gt, ok := inGameBots[botKey]; ok {
-				state = "ingame"
-				gameTypeLabel = formatBotRegistryGameType(gt)
-			} else if _, ok := idleSet[botKey]; ok {
-				state = "idle"
+			resolved := resolveBotRegistryState(botKey, idleSet, inGameBots, tokenInsufficientSet)
+			displayKey := botKey
+			if parseErr == nil {
+				displayKey = fmt.Sprintf("%d_%s", parsed.Id, parsed.TemporaryAddress)
 			}
-			if parseErr != nil {
-				if gameTypeLabel != "" {
-					fmt.Printf("%s state=%s game_type=%s fresh=%t last_seen_ms=%d parse_err=%v\n", botKey, state, gameTypeLabel, fresh, lastSeen, parseErr)
-				} else {
-					fmt.Printf("%s state=%s fresh=%t last_seen_ms=%d parse_err=%v\n", botKey, state, fresh, lastSeen, parseErr)
-				}
-				continue
-			}
-			if gameTypeLabel != "" {
-				fmt.Printf("%d_%s state=%s game_type=%s fresh=%t last_seen_ms=%d\n", parsed.Id, parsed.TemporaryAddress, state, gameTypeLabel, fresh, lastSeen)
-			} else {
-				fmt.Printf("%d_%s state=%s fresh=%t last_seen_ms=%d\n", parsed.Id, parsed.TemporaryAddress, state, fresh, lastSeen)
-			}
+			printBotRegistryInspectLine(displayKey, resolved, fresh, lastSeen, parseErr)
 		}
 	},
 }
@@ -196,7 +191,7 @@ var botRegistryRemoveCmd = &cobra.Command{
 var botRegistryUpdateStatusCmd = &cobra.Command{
 	Use:   "update-status",
 	Short: "Update bot status manually",
-	Long:  "status can be: idle, ingame, touch, stopping",
+	Long:  "status can be: idle, ingame, touch, stopping, token-insufficient",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := initBotRegistryRuntime(); err != nil {
 			fmt.Printf("Failed to initialize bot registry tools: %v\n", err)
@@ -210,7 +205,7 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 		status, _ := cmd.Flags().GetString("status")
 		status = strings.ToLower(strings.TrimSpace(status))
 		if status == "" {
-			fmt.Println("status is required: idle|ingame|touch|stopping")
+			fmt.Println("status is required: idle|ingame|touch|stopping|token-insufficient")
 			os.Exit(1)
 		}
 
@@ -291,8 +286,26 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 				os.Exit(1)
 			}
 			lastSeenMs = 1
+		case "token-insufficient", "token_insufficient":
+			status = "token_insufficient"
+			if _, err := redis.SRem(keys.idleKey, key); err != nil {
+				fmt.Printf("Failed to remove idle membership: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.HDel(keys.inGameKey, key); err != nil {
+				fmt.Printf("Failed to remove in-game membership: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.SAdd(keys.tokenInsufficientKey, key); err != nil {
+				fmt.Printf("Failed to add token-insufficient membership: %v\n", err)
+				os.Exit(1)
+			}
+			if _, err := redis.ZAdd(keys.lastSeenKey, float64(lastSeenMs), key); err != nil {
+				fmt.Printf("Failed to set last_seen score: %v\n", err)
+				os.Exit(1)
+			}
 		default:
-			fmt.Printf("unsupported status %q, choose idle|ingame|touch|stopping\n", status)
+			fmt.Printf("unsupported status %q, choose idle|ingame|touch|stopping|token-insufficient\n", status)
 			os.Exit(1)
 		}
 		fmt.Printf("Updated bot %s status=%s last_seen_ms=%d\n", key, status, lastSeenMs)
@@ -460,7 +473,7 @@ func init() {
 	}
 
 	botRegistryAddCmd.Flags().Int64("last-seen-ms", 0, "last seen timestamp in unix milliseconds (default now)")
-	botRegistryUpdateStatusCmd.Flags().String("status", "", "new status: idle|ingame|touch|stopping")
+	botRegistryUpdateStatusCmd.Flags().String("status", "", "new status: idle|ingame|touch|stopping|token-insufficient")
 	botRegistryUpdateStatusCmd.Flags().String("game-type", "pvp", "game type when status=ingame: pvp|tournament")
 	botRegistryUpdateStatusCmd.Flags().Int64("last-seen-ms", 0, "last seen timestamp in unix milliseconds (default now, ignored for stopping)")
 }
@@ -474,6 +487,77 @@ func parseBotRegistryGameType(s string) (proto.GameType, error) {
 	default:
 		return proto.GameType_GAME_TYPE_UNKNOWN, fmt.Errorf("unsupported game type %q (pvp|tournament)", s)
 	}
+}
+
+type botRegistryState struct {
+	State    string
+	GameType string
+	Warnings []string
+}
+
+func resolveBotRegistryState(
+	botKey string,
+	idleSet map[string]struct{},
+	inGame map[string]string,
+	tokenInsufficientSet map[string]struct{},
+) botRegistryState {
+	_, inIdle := idleSet[botKey]
+	gameTypeRaw, inGameBot := inGame[botKey]
+	_, inTokenInsufficient := tokenInsufficientSet[botKey]
+
+	var memberships []string
+	if inGameBot {
+		memberships = append(memberships, "ingame")
+	}
+	if inIdle {
+		memberships = append(memberships, "idle")
+	}
+	if inTokenInsufficient {
+		memberships = append(memberships, "token_insufficient")
+	}
+
+	var warnings []string
+	if len(memberships) > 1 {
+		warnings = append(warnings, "conflict:"+strings.Join(memberships, ","))
+	}
+
+	out := botRegistryState{Warnings: warnings}
+	switch {
+	case inGameBot:
+		out.State = "ingame"
+		out.GameType = formatBotRegistryGameType(gameTypeRaw)
+	case inIdle:
+		out.State = "idle"
+	case inTokenInsufficient:
+		out.State = "token_insufficient"
+	default:
+		out.State = "orphan"
+	}
+	return out
+}
+
+func printBotRegistryInspectLine(displayKey string, resolved botRegistryState, fresh bool, lastSeen int64, parseErr error) {
+	warnSuffix := ""
+	if len(resolved.Warnings) > 0 {
+		warnSuffix = fmt.Sprintf(" warn=%s", strings.Join(resolved.Warnings, ";"))
+	}
+	if parseErr != nil {
+		if resolved.GameType != "" {
+			fmt.Printf("%s state=%s game_type=%s fresh=%t last_seen_ms=%d parse_err=%v%s\n",
+				displayKey, resolved.State, resolved.GameType, fresh, lastSeen, parseErr, warnSuffix)
+			return
+		}
+		fmt.Printf("%s state=%s fresh=%t last_seen_ms=%d parse_err=%v%s\n",
+			displayKey, resolved.State, fresh, lastSeen, parseErr, warnSuffix)
+		return
+	}
+	if resolved.GameType != "" {
+		fmt.Printf("%s state=%s game_type=%s fresh=%t last_seen_ms=%d%s\n",
+			displayKey, resolved.State, resolved.GameType, fresh, lastSeen, warnSuffix)
+		return
+	}
+	fmt.Printf("%s state=%s fresh=%t last_seen_ms=%d%s\n",
+		displayKey, resolved.State, fresh, lastSeen, warnSuffix)
 }
 
 func formatBotRegistryGameType(value string) string {
