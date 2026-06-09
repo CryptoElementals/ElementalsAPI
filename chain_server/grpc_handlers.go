@@ -2,6 +2,7 @@ package chainserver
 
 import (
 	"context"
+	"errors"
 
 	"github.com/CryptoElementals/common/chain_server/worker"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -68,4 +69,30 @@ func (s *GRPCServices) ClearGameInfo(ctx context.Context, req *proto.ClearGameIn
 	}
 	s.chain.ClearGameInfo(req.GetGameId())
 	return &emptypb.Empty{}, nil
+}
+
+func (s *GRPCServices) CollectToken(ctx context.Context, req *proto.CollectTokenRequest) (*proto.CollectTokenResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	if req.GetPlayerId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "player_id must be positive")
+	}
+	if req.GetPlayerAddress() == "" {
+		return nil, status.Error(codes.InvalidArgument, "player_address is required")
+	}
+	if req.GetTokenAmount() == "" {
+		return nil, status.Error(codes.InvalidArgument, "token_amount is required")
+	}
+	res, err := s.chain.CollectToken(ctx, req.GetPlayerId(), req.GetPlayerAddress(), req.GetTokenAmount())
+	if err != nil {
+		if errors.Is(err, worker.ErrWalletChainNotConfigured) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "collect token: %v", err)
+	}
+	return &proto.CollectTokenResponse{
+		TxHash:   res.TxHash,
+		LedgerId: res.LedgerID,
+	}, nil
 }

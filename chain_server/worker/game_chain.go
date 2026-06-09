@@ -80,6 +80,8 @@ type Chain struct {
 	claimTimeout           time.Duration
 
 	ticker *poolTicker
+
+	walletRuntime *walletRuntime
 }
 
 // NewChain builds chain runtimes from chain server config (EffectiveChains).
@@ -140,6 +142,15 @@ func NewChain(
 		h.poolTickerDur = time.Second
 	}
 	h.ticker = newPoolTicker(ctx, h, h.poolTickerDur)
+
+	if cfg.WalletChain != nil {
+		wr, err := newWalletRuntime(ctx, cfg.WalletChain, wallets, isDevelop...)
+		if err != nil {
+			return nil, fmt.Errorf("init wallet runtime: %w", err)
+		}
+		h.walletRuntime = wr
+	}
+
 	return h, nil
 }
 
@@ -233,6 +244,16 @@ func (h *Chain) AddCard(evt *proto.SubmitPlayerCardRequest) error {
 		return err
 	}
 	return p.addCard(evt)
+}
+
+var ErrWalletChainNotConfigured = errors.New("wallet-chain not configured")
+
+// CollectToken resolves the player's token collector and broadcasts a collect tx.
+func (h *Chain) CollectToken(ctx context.Context, playerID int64, playerAddr, tokenAmount string) (*CollectTokenResult, error) {
+	if h.walletRuntime == nil {
+		return nil, ErrWalletChainNotConfigured
+	}
+	return h.walletRuntime.CollectToken(ctx, playerID, playerAddr, tokenAmount)
 }
 
 // ClearGameInfo removes pending tx pool rows for a finished game.

@@ -13,6 +13,7 @@ service ChainService {
     rpc AddCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
     rpc AddCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
     rpc ClearGameInfo(ClearGameInfoRequest) returns (google.protobuf.Empty);
+    rpc CollectToken(CollectTokenRequest) returns (CollectTokenResponse);
 }
 
 message RequireGameCreationEvent {
@@ -33,4 +34,15 @@ message RequireSetupNewTurnEvent {
 
 message ClearGameInfoRequest {
     int64 game_id = 1;
+}
+
+message CollectTokenRequest {
+    int64 player_id = 1;
+    string player_address = 2;
+    string token_amount = 3;
+}
+
+message CollectTokenResponse {
+    string tx_hash = 1;
+    uint64 ledger_id = 2;
 }

@@ -25,6 +25,7 @@ const (
 	ChainService_AddCommitment_FullMethodName   = "/rpc.ChainService/AddCommitment"
 	ChainService_AddCard_FullMethodName         = "/rpc.ChainService/AddCard"
 	ChainService_ClearGameInfo_FullMethodName   = "/rpc.ChainService/ClearGameInfo"
+	ChainService_CollectToken_FullMethodName    = "/rpc.ChainService/CollectToken"
 )
 
 // ChainServiceClient is the client API for ChainService service.
@@ -36,6 +37,7 @@ type ChainServiceClient interface {
 	AddCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ClearGameInfo(ctx context.Context, in *ClearGameInfoRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CollectToken(ctx context.Context, in *CollectTokenRequest, opts ...grpc.CallOption) (*CollectTokenResponse, error)
 }
 
 type chainServiceClient struct {
@@ -96,6 +98,16 @@ func (c *chainServiceClient) ClearGameInfo(ctx context.Context, in *ClearGameInf
 	return out, nil
 }
 
+func (c *chainServiceClient) CollectToken(ctx context.Context, in *CollectTokenRequest, opts ...grpc.CallOption) (*CollectTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CollectTokenResponse)
+	err := c.cc.Invoke(ctx, ChainService_CollectToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChainServiceServer is the server API for ChainService service.
 // All implementations must embed UnimplementedChainServiceServer
 // for forward compatibility.
@@ -105,6 +117,7 @@ type ChainServiceServer interface {
 	AddCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error)
 	AddCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error)
 	ClearGameInfo(context.Context, *ClearGameInfoRequest) (*emptypb.Empty, error)
+	CollectToken(context.Context, *CollectTokenRequest) (*CollectTokenResponse, error)
 	mustEmbedUnimplementedChainServiceServer()
 }
 
@@ -129,6 +142,9 @@ func (UnimplementedChainServiceServer) AddCard(context.Context, *SubmitPlayerCar
 }
 func (UnimplementedChainServiceServer) ClearGameInfo(context.Context, *ClearGameInfoRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ClearGameInfo not implemented")
+}
+func (UnimplementedChainServiceServer) CollectToken(context.Context, *CollectTokenRequest) (*CollectTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CollectToken not implemented")
 }
 func (UnimplementedChainServiceServer) mustEmbedUnimplementedChainServiceServer() {}
 func (UnimplementedChainServiceServer) testEmbeddedByValue()                      {}
@@ -241,6 +257,24 @@ func _ChainService_ClearGameInfo_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChainService_CollectToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CollectTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChainServiceServer).CollectToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChainService_CollectToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChainServiceServer).CollectToken(ctx, req.(*CollectTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChainService_ServiceDesc is the grpc.ServiceDesc for ChainService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -267,6 +301,10 @@ var ChainService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ClearGameInfo",
 			Handler:    _ChainService_ClearGameInfo_Handler,
+		},
+		{
+			MethodName: "CollectToken",
+			Handler:    _ChainService_CollectToken_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

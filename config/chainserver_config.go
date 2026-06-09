@@ -13,6 +13,12 @@ type ChainEntry struct {
 	ContractConfig `mapstructure:"contract"`
 }
 
+type WalletChainConfig struct {
+	ChainID int64 `mapstructure:"chain-id"`
+	NodeConfig `mapstructure:"node"`
+	WalletManagerAddress string `mapstructure:"wallet-manager-address"`
+}
+
 type ChainServerConfig struct {
 	LogCfg log.Config `mapstructure:"log"`
 	DbCfg  db.Config  `mapstructure:"database"`
@@ -26,6 +32,8 @@ type ChainServerConfig struct {
 	PoolClaimTimeoutSeconds int `mapstructure:"pool-claim-timeout-seconds"`
 
 	Chains []ChainEntry `mapstructure:"chains"`
+
+	WalletChain *WalletChainConfig `mapstructure:"wallet-chain"`
 }
 
 func (c *ChainServerConfig) EffectiveChains() []ChainEntry {
