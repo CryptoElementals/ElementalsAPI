@@ -30,7 +30,7 @@ type GetPlayerStatusResponse struct {
 	StatusName     string `json:"StatusName"`               // UNKNOWN, IN_QUEUE, MATCHED, IN_GAME, tournament names, etc.
 	Since          *int64 `json:"Since,omitempty"`          // Detail: queue join ms, match pending since, or in-game since (Unix ms)
 	MatchID        *int64 `json:"MatchID,omitempty"`        // Pending match id when awaiting confirmations
-	MatchTimeoutMs *int64 `json:"MatchTimeoutMs,omitempty"` // Confirmation window in ms (MATCHED / pending queue match)
+	MatchTimeout *int64 `json:"MatchTimeout,omitempty"` // Confirmation window in ms (MATCHED / pending queue match)
 	GameID         *int64 `json:"GameID,omitempty"`         // Active PVP game id when in game
 }
 
@@ -124,7 +124,7 @@ func (task *GetPlayerStatusTask) Run(c *gin.Context) (Response, error) {
 		s := m.Since
 		task.Response.Since = &s
 		t := m.Timeout
-		task.Response.MatchTimeoutMs = &t
+		task.Response.MatchTimeout = &t
 	} else if g := resp.GetInGame(); g != nil {
 		gid := g.ID
 		task.Response.GameID = &gid
@@ -143,7 +143,7 @@ func getPlayerStatusName(status proto.PlayerStatus) string {
 		return "UNKNOWN"
 	case proto.PlayerStatus_PLAYER_IN_QUEUE:
 		return "IN_QUEUE"
-	case proto.PlayerStatus_PLAYER_MATCHED, proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
+	case proto.PlayerStatus_PLAYER_PENDING_QUEUE_MATCH:
 		return "MATCHED"
 	case proto.PlayerStatus_PLAYER_IN_GAME:
 		return "IN_GAME"
