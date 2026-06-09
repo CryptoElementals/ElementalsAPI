@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/CryptoElementals/common/config"
 	contract "github.com/CryptoElementals/common/contracts"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum"
@@ -19,8 +21,8 @@ import (
 )
 
 const (
-	tokenCollectGasLimit         = 300_000
-	tokenCollectGasBufferPercent = 110
+	batchWithdrawGasLimit         = 1_000_000
+	batchWithdrawGasBufferPercent = 110
 )
 
 type walletRuntime struct {
@@ -78,7 +80,7 @@ func newWalletRuntime(
 			Context:  ctx,
 			From:     w.GetAddr(),
 			Signer:   w.BuildTxSinger(big.NewInt(chainID)),
-			GasLimit: tokenCollectGasLimit,
+			GasLimit: batchWithdrawGasLimit,
 			Nonce:    new(big.Int).SetUint64(nonce),
 		}
 		if len(isDevelop) != 0 && isDevelop[0] {
@@ -95,52 +97,129 @@ func newWalletRuntime(
 	}, nil
 }
 
-type CollectTokenResult struct {
-	TxHash   string
-	LedgerID uint64
+type BatchWithdrawItem struct {
+	PlayerID  int64
+	Amount    int64
+	Signature []byte
 }
 
-func (r *walletRuntime) CollectToken(ctx context.Context, playerID int64, playerAddr string, tokenAmount string) (*CollectTokenResult, error) {
-	if r == nil {
-		return nil, errors.New("wallet runtime not configured")
-	}
-	if playerID <= 0 {
-		return nil, fmt.Errorf("invalid player_id: %d", playerID)
-	}
-	playerAddr = strings.TrimSpace(playerAddr)
-	if !common.IsHexAddress(playerAddr) {
-		return nil, fmt.Errorf("invalid player_address: %q", playerAddr)
-	}
-	toAddress := common.HexToAddress(playerAddr)
+type BatchWithdrawResult struct {
+	TxHash           string
+	LedgerID         uint64
+	CollectorAddress string
+}
 
-	amount := new(big.Int)
-	if _, ok := amount.SetString(strings.TrimSpace(tokenAmount), 10); !ok || amount.Sign() <= 0 {
-		return nil, fmt.Errorf("invalid token_amount: %q", tokenAmount)
+type resolvedBatchWithdrawItem struct {
+	playerID  int64
+	amount    *big.Int
+	signature []byte
+	collector common.Address
+}
+
+func (r *walletRuntime) BatchWithdraw(ctx context.Context, items []BatchWithdrawItem) ([]BatchWithdrawResult, error) {
+	if len(items) == 0 {
+		return nil, errors.New("items is required")
+	}
+
+	resolved := make([]resolvedBatchWithdrawItem, 0, len(items))
+	for _, item := range items {
+		parsed, err := r.resolveBatchWithdrawItem(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, parsed)
+	}
+
+	groups := groupBatchWithdrawItems(resolved)
+	collectorAddrs := make([]string, 0, len(groups))
+	for addr := range groups {
+		collectorAddrs = append(collectorAddrs, addr)
+	}
+	sort.Strings(collectorAddrs)
+
+	results := make([]BatchWithdrawResult, 0, len(resolved))
+	for _, collectorAddr := range collectorAddrs {
+		group := groups[collectorAddr]
+		groupResults, err := r.batchWithdrawGroup(ctx, group)
+		if err != nil {
+			if len(results) > 0 {
+				log.Errorw("batch withdraw partial failure",
+					"completed", results,
+					"failed_collector", collectorAddr,
+					"err", err,
+				)
+			}
+			return nil, err
+		}
+		results = append(results, groupResults...)
+	}
+	return results, nil
+}
+
+func (r *walletRuntime) resolveBatchWithdrawItem(ctx context.Context, item BatchWithdrawItem) (resolvedBatchWithdrawItem, error) {
+	if item.PlayerID <= 0 {
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("invalid player_id: %d", item.PlayerID)
+	}
+	if item.Amount <= 0 {
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("invalid amount for player %d: %d", item.PlayerID, item.Amount)
+	}
+	amount := big.NewInt(item.Amount)
+	if len(item.Signature) == 0 {
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("signature is required for player %d", item.PlayerID)
 	}
 
 	callOpts := &bind.CallOpts{Context: ctx}
-	playerIDBig := big.NewInt(playerID)
+	playerIDBig := big.NewInt(item.PlayerID)
 
 	walletIndex, err := r.walletManager.GetWalletIndexForPlayerId(callOpts, playerIDBig)
 	if err != nil {
-		return nil, fmt.Errorf("get wallet index for player: %w", err)
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("get wallet index for player %d: %w", item.PlayerID, err)
 	}
 
 	slot, err := r.walletManager.GetWalletSlot(callOpts, walletIndex)
 	if err != nil {
-		return nil, fmt.Errorf("get wallet slot: %w", err)
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("get wallet slot for player %d: %w", item.PlayerID, err)
 	}
 	if !slot.Exists {
-		return nil, fmt.Errorf("wallet slot %s does not exist", walletIndex.String())
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("wallet slot %s does not exist for player %d", walletIndex.String(), item.PlayerID)
 	}
 	if !slot.IsActive {
-		return nil, fmt.Errorf("wallet slot %s is not active", walletIndex.String())
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("wallet slot %s is not active for player %d", walletIndex.String(), item.PlayerID)
 	}
 	if slot.CurrentAddress == (common.Address{}) {
-		return nil, fmt.Errorf("wallet slot %s has no current address", walletIndex.String())
+		return resolvedBatchWithdrawItem{}, fmt.Errorf("wallet slot %s has no current address for player %d", walletIndex.String(), item.PlayerID)
 	}
 
-	tc, err := contract.NewTokenCollectorContract(slot.CurrentAddress, r.client)
+	return resolvedBatchWithdrawItem{
+		playerID:  item.PlayerID,
+		amount:    amount,
+		signature: item.Signature,
+		collector: slot.CurrentAddress,
+	}, nil
+}
+
+func groupBatchWithdrawItems(items []resolvedBatchWithdrawItem) map[string][]resolvedBatchWithdrawItem {
+	groups := make(map[string][]resolvedBatchWithdrawItem)
+	for _, item := range items {
+		key := strings.ToLower(item.collector.Hex())
+		groups[key] = append(groups[key], item)
+	}
+	return groups
+}
+
+func (r *walletRuntime) batchWithdrawGroup(ctx context.Context, group []resolvedBatchWithdrawItem) ([]BatchWithdrawResult, error) {
+	collector := group[0].collector
+	playerIDs := make([]*big.Int, len(group))
+	amounts := make([]*big.Int, len(group))
+	signatures := make([][]byte, len(group))
+
+	for i, item := range group {
+		playerIDs[i] = big.NewInt(item.playerID)
+		amounts[i] = item.amount
+		signatures[i] = item.signature
+	}
+
+	tc, err := contract.NewTokenCollectorContract(collector, r.client)
 	if err != nil {
 		return nil, fmt.Errorf("new token collector contract: %w", err)
 	}
@@ -154,77 +233,86 @@ func (r *walletRuntime) CollectToken(ctx context.Context, playerID int64, player
 		r.optsPool <- bindOpts
 	}()
 
-	estimatedGas, err := estimateTokenCollectGas(ctx, r.client, bindOpts.From, slot.CurrentAddress, toAddress, amount)
+	estimatedGas, err := estimateBatchWithdrawGas(ctx, r.client, bindOpts.From, collector, playerIDs, amounts, signatures)
 	if err != nil {
-		return nil, err
+		log.Errorw("estimate batch withdraw gas", "collector", collector.Hex(), "err", err)
+		return nil, fmt.Errorf("estimate batch withdraw gas: %w", err)
 	}
 	bindOpts.GasLimit = gasLimitWithBuffer(estimatedGas)
 
-	tx, err := tc.Collect(bindOpts, toAddress, amount)
+	tx, err := tc.BatchWithdraw(bindOpts, playerIDs, amounts, signatures)
 	sendErr = err
 	if err != nil {
-		return nil, fmt.Errorf("collect token: %w", err)
+		log.Errorw("batch withdraw tx", "collector", collector.Hex(), "err", err)
+		return nil, fmt.Errorf("batch withdraw: %w", err)
 	}
 
 	txHash := strings.ToLower(tx.Hash().String())
-	ledgerID, err := db.InsertTokenCollectLedger(&dao.TokenCollectLedger{
-		PlayerID:         playerID,
-		PlayerAddress:    toAddress.Hex(),
-		WalletIndex:      walletIndex.Uint64(),
-		CollectorAddress: slot.CurrentAddress.Hex(),
-		TokenAmount:      amount.String(),
-		TxHash:           txHash,
-		ChainID:          r.chainID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("insert token collect ledger: %w", err)
+	collectorHex := strings.ToLower(collector.Hex())
+	results := make([]BatchWithdrawResult, 0, len(group))
+	for _, item := range group {
+		ledgerID, err := db.InsertBatchWithdrawLedger(&dao.BatchWithdrawLedger{
+			PlayerID:         item.playerID,
+			Amount:           item.amount.Int64(),
+			Signature:        db.FormatWithdrawSignatureHex(item.signature),
+			CollectorAddress: collectorHex,
+			ChainID:          r.chainID,
+			TxHash:           txHash,
+		})
+		if err != nil {
+			log.Errorw("insert batch withdraw ledger",
+				"collector", collectorHex,
+				"player_id", item.playerID,
+				"tx_hash", txHash,
+				"err", err,
+			)
+			return nil, fmt.Errorf("insert batch withdraw ledger: %w", err)
+		}
+		results = append(results, BatchWithdrawResult{
+			TxHash:           txHash,
+			LedgerID:         uint64(ledgerID),
+			CollectorAddress: collectorHex,
+		})
 	}
-
-	return &CollectTokenResult{
-		TxHash:   txHash,
-		LedgerID: uint64(ledgerID),
-	}, nil
+	return results, nil
 }
 
-func estimateTokenCollectGas(
+func estimateBatchWithdrawGas(
 	ctx context.Context,
 	client *ethclient.Client,
 	from common.Address,
 	collector common.Address,
-	to common.Address,
-	amount *big.Int,
+	playerIds []*big.Int,
+	amounts []*big.Int,
+	signatures [][]byte,
 ) (uint64, error) {
 	parsed, err := contract.TokenCollectorContractMetaData.GetAbi()
 	if err != nil {
 		return 0, fmt.Errorf("load token collector abi: %w", err)
 	}
-	data, err := parsed.Pack("collect", to, amount)
+	data, err := parsed.Pack("batchWithdraw", playerIds, amounts, signatures)
 	if err != nil {
-		return 0, fmt.Errorf("pack collect calldata: %w", err)
+		return 0, fmt.Errorf("pack batchWithdraw calldata: %w", err)
 	}
 
-	collectorAddr := collector
 	gas, err := client.EstimateGas(ctx, ethereum.CallMsg{
 		From: from,
-		To:   &collectorAddr,
+		To:   &collector,
 		Data: data,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("estimate collect gas: %w", err)
+		return 0, fmt.Errorf("estimate batchWithdraw gas: %w", err)
 	}
 	return gas, nil
 }
 
 func gasLimitWithBuffer(estimated uint64) uint64 {
 	if estimated == 0 {
-		return tokenCollectGasLimit
+		return batchWithdrawGasLimit
 	}
-	buffered := estimated * tokenCollectGasBufferPercent / 100
-	if buffered < estimated {
-		buffered = estimated + estimated/10
-	}
-	if buffered > tokenCollectGasLimit {
-		return tokenCollectGasLimit
+	buffered := estimated * batchWithdrawGasBufferPercent / 100
+	if buffered > batchWithdrawGasLimit {
+		return batchWithdrawGasLimit
 	}
 	return buffered
 }

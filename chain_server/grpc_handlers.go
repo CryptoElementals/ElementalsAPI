@@ -71,28 +71,42 @@ func (s *GRPCServices) ClearGameInfo(ctx context.Context, req *proto.ClearGameIn
 	return &emptypb.Empty{}, nil
 }
 
-func (s *GRPCServices) CollectToken(ctx context.Context, req *proto.CollectTokenRequest) (*proto.CollectTokenResponse, error) {
+func (s *GRPCServices) BatchWithdraw(ctx context.Context, req *proto.BatchWithdrawRequest) (*proto.BatchWithdrawResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "nil request")
 	}
-	if req.GetPlayerId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "player_id must be positive")
+	if len(req.GetItems()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "items is required")
 	}
-	if req.GetPlayerAddress() == "" {
-		return nil, status.Error(codes.InvalidArgument, "player_address is required")
+	items := make([]worker.BatchWithdrawItem, len(req.GetItems()))
+	for i, item := range req.GetItems() {
+		if item == nil {
+			return nil, status.Error(codes.InvalidArgument, "item is required")
+		}
+		items[i] = worker.BatchWithdrawItem{
+			PlayerID:  item.GetPlayerId(),
+			Amount:    item.GetAmount(),
+			Signature: item.GetSignature(),
+		}
 	}
-	if req.GetTokenAmount() == "" {
-		return nil, status.Error(codes.InvalidArgument, "token_amount is required")
-	}
-	res, err := s.chain.CollectToken(ctx, req.GetPlayerId(), req.GetPlayerAddress(), req.GetTokenAmount())
+
+	results, err := s.chain.BatchWithdraw(ctx, items)
 	if err != nil {
 		if errors.Is(err, worker.ErrWalletChainNotConfigured) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, "collect token: %v", err)
+		return nil, status.Errorf(codes.Internal, "batch withdraw: %v", err)
 	}
-	return &proto.CollectTokenResponse{
-		TxHash:   res.TxHash,
-		LedgerId: res.LedgerID,
-	}, nil
+
+	resp := &proto.BatchWithdrawResponse{
+		Results: make([]*proto.BatchWithdrawResult, len(results)),
+	}
+	for i, res := range results {
+		resp.Results[i] = &proto.BatchWithdrawResult{
+			TxHash:           res.TxHash,
+			LedgerId:         res.LedgerID,
+			CollectorAddress: res.CollectorAddress,
+		}
+	}
+	return resp, nil
 }
