@@ -104,3 +104,40 @@ func getString(m map[string]interface{}, key string) string {
 	}
 	return ""
 }
+
+// GetChainID returns the chain ID from eth_chainId.
+func GetChainID(ctx context.Context, rpcUrl string) (uint64, error) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "eth_chainId",
+		"params":  []interface{}{},
+		"id":      1,
+	}
+	data, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(ctx, "POST", rpcUrl, bytes.NewBuffer(data))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResp struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return 0, fmt.Errorf("failed to decode response: %w", err)
+	}
+	if rpcResp.Result == "" {
+		return 0, fmt.Errorf("empty chain id from rpc")
+	}
+	var chainID uint64
+	if _, err := fmt.Sscanf(rpcResp.Result, "0x%x", &chainID); err != nil {
+		return 0, fmt.Errorf("parse chain id %q: %w", rpcResp.Result, err)
+	}
+	return chainID, nil
+}
