@@ -25,6 +25,31 @@ var lobbyRPCCmd = &cobra.Command{
 	Short: "Call lobby server gRPC methods",
 }
 
+func resolveLobbyEndpoint(override string) string {
+	if override != "" {
+		return override
+	}
+	if config.ToolsGConf.Game.LobbyServerEndpoint != "" {
+		return config.ToolsGConf.Game.LobbyServerEndpoint
+	}
+	return "127.0.0.1:50052"
+}
+
+func dialLobbyGRPC(addr string) (proto.LobbyServiceClient, func(), error) {
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(4*1024*1024),
+			grpc.MaxCallSendMsgSize(4*1024*1024),
+		),
+	}
+	conn, err := grpc.NewClient(addr, dialOpts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial lobby %s: %w", addr, err)
+	}
+	return proto.NewLobbyServiceClient(conn), func() { _ = conn.Close() }, nil
+}
+
 var lobbyRPCSetUserTokenAmountCmd = &cobra.Command{
 	Use:   "set-user-token-amount",
 	Short: "Call LobbyService.SetUserTokenAmount",
@@ -33,32 +58,17 @@ var lobbyRPCSetUserTokenAmountCmd = &cobra.Command{
 			fmt.Printf("Failed to load config: %v\n", err)
 			os.Exit(1)
 		}
-		addr := lobbyRPCAddrOverride
-		if addr == "" {
-			addr = config.ToolsGConf.Game.LobbyServerEndpoint
-		}
-		if addr == "" {
-			addr = "127.0.0.1:50052"
-		}
 
-		dialOpts := []grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultCallOptions(
-				grpc.MaxCallRecvMsgSize(4*1024*1024),
-				grpc.MaxCallSendMsgSize(4*1024*1024),
-			),
-		}
-		conn, err := grpc.NewClient(addr, dialOpts...)
+		client, closeFn, err := dialLobbyGRPC(resolveLobbyEndpoint(lobbyRPCAddrOverride))
 		if err != nil {
-			fmt.Printf("Failed to dial lobby %s: %v\n", addr, err)
+			fmt.Printf("%v\n", err)
 			os.Exit(1)
 		}
-		defer conn.Close()
+		defer closeFn()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		client := proto.NewLobbyServiceClient(conn)
 		resp, err := client.SetUserTokenAmount(ctx, &proto.SetUserTokenAmountRequest{
 			PlayerID:    setTokenPlayerID,
 			TokenAmount: setTokenAmount,

@@ -226,20 +226,8 @@ var botRegistryUpdateStatusCmd = &cobra.Command{
 
 		switch status {
 		case "idle":
-			if _, err := redis.SAdd(keys.idleKey, key); err != nil {
-				fmt.Printf("Failed to add idle membership: %v\n", err)
-				os.Exit(1)
-			}
-			if _, err := redis.HDel(keys.inGameKey, key); err != nil {
-				fmt.Printf("Failed to remove in-game membership: %v\n", err)
-				os.Exit(1)
-			}
-			if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
-				fmt.Printf("Failed to remove token-insufficient membership: %v\n", err)
-				os.Exit(1)
-			}
-			if _, err := redis.ZAdd(keys.lastSeenKey, float64(lastSeenMs), key); err != nil {
-				fmt.Printf("Failed to set last_seen score: %v\n", err)
+			if err := promoteBotRegistryToIdle(keys, key, lastSeenMs); err != nil {
+				fmt.Printf("Failed to promote bot to idle: %v\n", err)
 				os.Exit(1)
 			}
 		case "ingame":
@@ -394,6 +382,22 @@ func botRegistryKeys(namespace string) botRegistryRedisKeys {
 		lastSeenKey:          namespace + ":bots:last_seen:zset",
 		tokenInsufficientKey: namespace + ":bots:token_insufficient:set",
 	}
+}
+
+func promoteBotRegistryToIdle(keys botRegistryRedisKeys, key string, lastSeenMs int64) error {
+	if _, err := redis.SAdd(keys.idleKey, key); err != nil {
+		return fmt.Errorf("add idle membership: %w", err)
+	}
+	if _, err := redis.HDel(keys.inGameKey, key); err != nil {
+		return fmt.Errorf("remove in-game membership: %w", err)
+	}
+	if _, err := redis.SRem(keys.tokenInsufficientKey, key); err != nil {
+		return fmt.Errorf("remove token-insufficient membership: %w", err)
+	}
+	if _, err := redis.ZAdd(keys.lastSeenKey, float64(lastSeenMs), key); err != nil {
+		return fmt.Errorf("set last_seen score: %w", err)
+	}
+	return nil
 }
 
 func initBotRegistryRuntime() error {
