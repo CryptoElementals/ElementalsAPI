@@ -40,7 +40,7 @@ func init() {
 	rootCmd.AddCommand(contractCmd)
 	contractCmd.AddCommand(contractInspectCmd)
 
-	contractInspectCmd.Flags().StringVarP(&contractInspectConfigPath, "config", "c", "", "room-server config file path")
+	contractInspectCmd.Flags().StringVarP(&contractInspectConfigPath, "config", "c", "", "chain-server config file path")
 	contractInspectCmd.Flags().StringVar(&contractInspectRPC, "rpc", "", "chain HTTP RPC endpoint")
 	contractInspectCmd.Flags().StringVar(&contractInspectAddress, "contract-address", "", "RoomV3 contract address")
 	contractInspectCmd.Flags().Int64VarP(&contractInspectGameID, "game-id", "i", 0, "game id")
@@ -49,22 +49,23 @@ func init() {
 
 func runContractInspect() error {
 	if contractInspectConfigPath != "" {
-		if err := config.InitRSConfig(contractInspectConfigPath); err != nil {
-			return fmt.Errorf("load room-server config: %w", err)
+		if err := config.InitCSConfig(contractInspectConfigPath); err != nil {
+			return fmt.Errorf("load chain-server config: %w", err)
 		}
-		if contractInspectRPC == "" {
-			contractInspectRPC = config.RSGConf.ChainCfg.HttpRpc
+		chains := config.CSGConf.EffectiveChains()
+		if contractInspectRPC == "" && len(chains) > 0 {
+			contractInspectRPC = chains[0].HttpRpc
 		}
-		if contractInspectAddress == "" {
-			contractInspectAddress = config.RSGConf.ChainCfg.RoomV3ContractAddress
+		if contractInspectAddress == "" && len(chains) > 0 {
+			contractInspectAddress = chains[0].RoomV3ContractAddress
 		}
 	}
 
 	if contractInspectRPC == "" {
-		return fmt.Errorf("rpc is required (flag --rpc or room-server config chain.node.http-rpc)")
+		return fmt.Errorf("rpc is required (flag --rpc or chain-server config chains[].node.http-rpc)")
 	}
 	if contractInspectAddress == "" {
-		return fmt.Errorf("contract-address is required (flag --contract-address or room-server config chain.contract.room-v3-contract-address)")
+		return fmt.Errorf("contract-address is required (flag --contract-address or chain-server config chains[].contract.room-v3-contract-address)")
 	}
 	if !common.IsHexAddress(contractInspectAddress) {
 		return fmt.Errorf("invalid contract-address: %s", contractInspectAddress)

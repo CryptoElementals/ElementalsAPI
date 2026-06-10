@@ -142,11 +142,6 @@ func StartTimer(scope Scope) {
 func StopTimer(scope Scope) {
 	serversMu.Lock()
 	defer serversMu.Unlock()
-	if scope == ScopeRoom {
-		if err := UnregisterRoomChainTxPoolRecurring(); err != nil {
-			log.Errorw("stop timer: unregister room chain tx pool cron", "err", err)
-		}
-	}
 	if scope == ScopeLobby {
 		shutdownPeriodicAsynqScheduler()
 	}

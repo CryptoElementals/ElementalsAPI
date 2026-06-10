@@ -38,9 +38,13 @@ func Migrate() error {
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
+		&dao.BatchWithdrawLedger{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
+		return err
+	}
+	if err := DropLegacyChainTxPoolIndexes(); err != nil {
 		return err
 	}
 	if err := BackfillGameArgsRewardRates(); err != nil {
@@ -81,9 +85,13 @@ func MigrateMemDb() error {
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
+		&dao.BatchWithdrawLedger{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {
+		return err
+	}
+	if err := DropLegacyChainTxPoolIndexes(); err != nil {
 		return err
 	}
 	if err := BackfillGameArgsRewardRates(); err != nil {

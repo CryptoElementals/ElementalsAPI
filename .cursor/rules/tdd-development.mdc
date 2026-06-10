@@ -1,0 +1,68 @@
+---
+alwaysApply: false
+---
+# TDD 开发流程
+
+**铁律：没有先失败的测试，不写生产代码。**
+
+先写实现再补测试 → 删除实现，从测试重新开始。不允许「保留作参考」或边写测试边改实现。
+
+## 适用场景
+
+- 新功能、Bug 修复、行为变更、重构
+- 例外（需人工确认）：一次性原型、生成代码（`rpc/proto/` 生成物）、纯配置
+
+## Red → Green → Refactor
+
+1. **RED**：写一个最小失败测试，命名清晰（`TestXxx_whenYyy_expectZzz`），只测一个行为
+2. **验证 RED**：运行测试，确认因功能缺失而失败（非 typo / 编译错误）
+3. **GREEN**：写最少代码让测试通过，不加测试未要求的功能
+4. **验证 GREEN**：目标测试 + 相关包测试全部通过
+5. **REFACTOR**：测试仍绿的前提下去重、改命名、提取 helper
+
+## 本项目约定
+
+- 测试文件：与源文件同目录 `*_test.go`，package 与源文件一致
+- 断言：优先 `github.com/stretchr/testify/require`
+- 依赖隔离：优先 miniredis / 包内 fake（如 `fakeBatchSubmitter`），避免 mock 被测行为本身
+- 可注入依赖：用包级变量或构造函数注入，便于测试替换（参考 `chain/tx_pool_drain_test.go`）
+
+## 好测试 vs 坏测试
+
+```go
+// ✅ 测真实行为，命名清晰
+func TestMustValidateGameArgs_panics(t *testing.T) {
+    ga := validGameArgs()
+    ga.MaxNormalRounds = 0
+    require.Panics(t, func() { MustValidateGameArgs(ga) })
+}
+
+// ❌ 模糊命名，测 mock 调用次数而非业务结果
+func TestRetry(t *testing.T) { /* mock 被调 3 次 */ }
+```
+
+## 运行命令
+
+```bash
+go test ./room_server/worker/chain/ -run TestRunDrainLoopSubmitsUntilPoolDrained -v
+go test ./path/to/package/ -v
+```
+
+## 完成前检查
+
+- [ ] 每个新行为都有对应测试
+- [ ] 亲眼看到测试先失败后通过
+- [ ] 失败原因是功能缺失，不是测试写错
+- [ ] 实现代码是满足测试的最小改动
+- [ ] `go test` 相关包全部通过
+
+## 常见借口 → 正确做法
+
+| 借口 | 现实 |
+|------|------|
+| 「太简单不用测」 | 简单代码也会坏，测试只需几秒 |
+| 「手动测过了」 | 手动不可复现，改代码后无法回归 |
+| 「先实现再补测试」 | 测试立即通过证明不了什么，重来 |
+| 「删了 X 小时太浪费」 | 保留未验证代码才是技术债 |
+
+Bug 修复：先写复现 Bug 的失败测试，再修复，测试即回归保护。

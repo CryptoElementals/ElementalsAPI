@@ -119,16 +119,16 @@ func (task *JoinQueueTask) Run(c *gin.Context) (Response, error) {
 	_, err = lobbyClient.JoinQueue(context.Background(), playerAddr)
 	if err != nil {
 		shortErr := ShortGRPCError(err)
-		if strings.Contains(shortErr, "user token is not enough") {
+		if strings.Contains(shortErr, "user token amount is not enough") {
 			task.Response.BaseResponse.RetCode = 1004
 			task.Response.BaseResponse.Message = "Insufficient available tokens"
 			return task.Response, nil
-		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_IN_GAME") {
+		} else if strings.Contains(shortErr, "player already in game") || strings.Contains(shortErr, "lobby: player already in game") {
 			// 玩家已经在对局中，不能再次加入匹配队列，返回业务错误码 1006
 			task.Response.BaseResponse.RetCode = 1006
 			task.Response.BaseResponse.Message = "Player is already in game and cannot join match queue"
 			return task.Response, nil
-		} else if strings.Contains(shortErr, "player cannot join queue, player status: PLAYER_MATCHED") {
+		} else if strings.Contains(shortErr, "player pending match confirmation") || strings.Contains(shortErr, "lobby: player already in pending match") {
 			// 玩家已经匹配上在等待确认，不能再次加入匹配队列，返回业务错误码 1007
 			task.Response.BaseResponse.RetCode = 1007
 			task.Response.BaseResponse.Message = "Player is already matched and cannot join match queue"

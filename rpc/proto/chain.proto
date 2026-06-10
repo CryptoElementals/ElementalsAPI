@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package rpc;
+
+import "google/protobuf/empty.proto";
+import "rpc/proto/rpc.proto";
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+service ChainService {
+    rpc AddCreateRoom(RequireGameCreationEvent) returns (google.protobuf.Empty);
+    rpc AddSetTurnReady(RequireSetupNewTurnEvent) returns (google.protobuf.Empty);
+    rpc AddCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
+    rpc AddCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
+    rpc ClearGameInfo(ClearGameInfoRequest) returns (google.protobuf.Empty);
+    rpc BatchWithdraw(BatchWithdrawRequest) returns (BatchWithdrawResponse);
+}
+
+message RequireGameCreationEvent {
+    int64 game_id = 1;
+    int64 initial_hp = 2;
+    int64 round_timeout = 3;
+    int64 max_round_number = 4;
+    int64 tournament_id = 5;
+    int64 tier_no = 6;
+    repeated PlayerAddress players = 7;
+}
+
+message RequireSetupNewTurnEvent {
+    int64 game_id = 1;
+    uint32 round_number = 2;
+    uint32 turn_number = 3;
+}
+
+message ClearGameInfoRequest {
+    int64 game_id = 1;
+}
+
+message BatchWithdrawItem {
+    int64 player_id = 1;
+    int64 amount = 2;
+    bytes signature = 3;
+}
+
+message BatchWithdrawRequest {
+    repeated BatchWithdrawItem items = 1;
+}
+
+message BatchWithdrawResult {
+    string tx_hash = 1;
+    uint64 ledger_id = 2;
+    string collector_address = 3;
+}
+
+message BatchWithdrawResponse {
+    repeated BatchWithdrawResult results = 1;
+}

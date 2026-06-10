@@ -1,0 +1,66 @@
+---
+description: Go 代码风格：可读、简洁、少兜底、错误分层记录
+globs: **/*.go
+alwaysApply: false
+---
+
+# Go 代码风格
+
+## 可读性与简洁
+
+- 函数职责单一，命名表达意图，避免缩写和魔法数字
+- 优先早返回（guard clause），减少嵌套
+- 实现满足需求的最小代码；不提前抽象、不预留「以后可能用到」的扩展点
+- 复用项目已有函数与模式，新代码应与同包风格一致
+
+## 严禁不必要的兜底
+
+- 不吞错误：`if err != nil { return err }` 或记录后返回，禁止空 `catch` 或 `_ = fn()`
+- 不为「理论上可能」的极端路径写 fallback；业务上不可能的状态用 `panic` 或断言，而非静默降级
+- 不重复校验调用方已保证的前置条件
+- 不用默认值掩盖数据异常（如 `err != nil` 时返回零值假装成功）
+
+```go
+// ❌ 静默吞错、无意义兜底
+result, _ := db.GetUser(id)
+if result == nil {
+    result = &User{} // 假装成功
+}
+
+// ❌ 过度防御
+if user != nil && user.Profile != nil && user.Profile.Name != "" {
+    // 调用方契约已保证 user 非 nil
+}
+
+// ✅ 信任契约，异常即失败
+if err := db.Save(id, data); err != nil {
+    log.Errorw("save user", "id", id, "err", err)
+    return fmt.Errorf("save user: %w", err)
+}
+```
+
+## 错误处理：详记日志，简洁返回
+
+无法在本层恢复的错误：
+
+1. **日志**：`log.Errorw` 记录完整上下文（操作名、关键 ID、原始 `err`）
+2. **返回**：`fmt.Errorf("简短操作描述: %w", err)` 或 `errors.New("简短原因")`，不把堆栈/内部细节塞进对外 error
+
+```go
+// ✅ 日志详细，error 简洁
+if err := client.Dial(addr); err != nil {
+    log.Errorw("dial chain server", "addr", addr, "attempt", i, "err", err)
+    return nil, fmt.Errorf("dial chain server: %w", err)
+}
+
+// ❌ 返回冗长或重复日志内容
+return nil, fmt.Errorf("failed to dial chain server at %s after %d attempts: %v", addr, i, err)
+```
+
+- 仅当上层需要区分错误类型时，才定义 sentinel / 自定义 error 类型
+- 可恢复的错误在本层处理完毕，不必向上传递
+
+## 注释
+
+- 代码应自解释；注释只写非显而易见的业务规则或约束
+- 不写「获取用户」「处理错误」等复述代码的注释
