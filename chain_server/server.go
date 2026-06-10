@@ -10,7 +10,6 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/rpc/middleware"
 	"github.com/CryptoElementals/common/rpc/proto"
-	"github.com/CryptoElementals/common/wallet"
 	"google.golang.org/grpc"
 )
 
@@ -27,16 +26,7 @@ type Service struct {
 func New(ctx context.Context, cfg *config.ChainServerConfig, isDevelop ...bool) (*Service, error) {
 	s := &Service{ctx: ctx, cfg: cfg}
 
-	wallets := make([]*wallet.Wallet, 0, len(cfg.WalletPaths))
-	for _, path := range cfg.WalletPaths {
-		w, err := wallet.LoadWallet(path)
-		if err != nil {
-			return nil, err
-		}
-		wallets = append(wallets, w)
-	}
-
-	chainWorker, err := worker.NewChain(ctx, cfg, wallets, isDevelop...)
+	chainWorker, err := worker.NewChain(ctx, cfg, isDevelop...)
 	if err != nil {
 		return nil, err
 	}

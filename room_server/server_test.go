@@ -79,8 +79,8 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 			ContractConfig: config.ContractConfig{
 				RoomV3ContractAddress: roomV2ContractAddress,
 			},
+			WalletPaths: []string{tempFile},
 		}},
-		WalletPaths:             []string{tempFile},
 		ListenPort:              30013,
 		PoolBatchSize:           10,
 		PoolProcessingInterval:  1,

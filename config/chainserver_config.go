@@ -11,12 +11,14 @@ type ChainEntry struct {
 	ChainID int64 `mapstructure:"chain-id"`
 	NodeConfig     `mapstructure:"node"`
 	ContractConfig `mapstructure:"contract"`
+	WalletPaths    []string `mapstructure:"wallet-paths"`
 }
 
 type WalletChainConfig struct {
 	ChainID int64 `mapstructure:"chain-id"`
 	NodeConfig `mapstructure:"node"`
-	WalletManagerAddress string `mapstructure:"wallet-manager-address"`
+	WalletManagerAddress string   `mapstructure:"wallet-manager-address"`
+	WalletPaths          []string `mapstructure:"wallet-paths"`
 }
 
 type ChainServerConfig struct {
@@ -24,8 +26,6 @@ type ChainServerConfig struct {
 	DbCfg  db.Config  `mapstructure:"database"`
 
 	ListenPort int64 `mapstructure:"listen-port"`
-
-	WalletPaths []string `mapstructure:"wallet-paths"`
 
 	PoolBatchSize          int `mapstructure:"pool-batch-size"`
 	PoolProcessingInterval int `mapstructure:"pool-processing-interval"`

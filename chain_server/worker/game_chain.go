@@ -84,11 +84,22 @@ type Chain struct {
 	walletRuntime *walletRuntime
 }
 
+func loadWallets(paths []string) ([]*wallet.Wallet, error) {
+	wallets := make([]*wallet.Wallet, 0, len(paths))
+	for _, path := range paths {
+		w, err := wallet.LoadWallet(path)
+		if err != nil {
+			return nil, err
+		}
+		wallets = append(wallets, w)
+	}
+	return wallets, nil
+}
+
 // NewChain builds chain runtimes from chain server config (EffectiveChains).
 func NewChain(
 	ctx context.Context,
 	cfg *config.ChainServerConfig,
-	wallets []*wallet.Wallet,
 	isDevelop ...bool,
 ) (*Chain, error) {
 	entries := cfg.EffectiveChains()
@@ -128,7 +139,14 @@ func NewChain(
 		if _, dup := h.runtimes[chainID]; dup {
 			return nil, errors.New("duplicate chain id in configuration")
 		}
-		rt, err := newChainRuntime(ctx, chainID, client, e.RoomV3ContractAddress, wallets, isDevelop...)
+		if len(e.WalletPaths) == 0 {
+			return nil, errors.New("wallet-paths required for each chain")
+		}
+		chainWallets, err := loadWallets(e.WalletPaths)
+		if err != nil {
+			return nil, err
+		}
+		rt, err := newChainRuntime(ctx, chainID, client, e.RoomV3ContractAddress, chainWallets, isDevelop...)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +162,14 @@ func NewChain(
 	h.ticker = newPoolTicker(ctx, h, h.poolTickerDur)
 
 	if cfg.WalletChain != nil {
-		wr, err := newWalletRuntime(ctx, cfg.WalletChain, wallets, isDevelop...)
+		if len(cfg.WalletChain.WalletPaths) == 0 {
+			return nil, errors.New("wallet-paths required for wallet-chain")
+		}
+		walletChainWallets, err := loadWallets(cfg.WalletChain.WalletPaths)
+		if err != nil {
+			return nil, err
+		}
+		wr, err := newWalletRuntime(ctx, cfg.WalletChain, walletChainWallets, isDevelop...)
 		if err != nil {
 			return nil, fmt.Errorf("init wallet runtime: %w", err)
 		}
