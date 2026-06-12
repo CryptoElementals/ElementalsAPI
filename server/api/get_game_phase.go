@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"strconv"
 	"strings"
 
@@ -24,7 +25,91 @@ type GetGamePhaseRequest struct {
 
 type GetGamePhaseResponse struct {
 	BaseResponse
-	GamePhase *proto.GamePhase `json:"GamePhase,omitempty"`
+	GamePhase *GamePhaseVO `json:"GamePhase,omitempty"`
+}
+
+type TurnCardPlayingInfoVO struct {
+	TurnNumber uint32 `json:"TurnNumber,omitempty"`
+	Commitment string `json:"Commitment,omitempty"`
+	Card       uint32 `json:"Card,omitempty"`
+}
+
+type GamePhasePlayerVO struct {
+	Address              *proto.PlayerAddress       `json:"Address,omitempty"`
+	CurrentHP            uint32                     `json:"CurrentHP,omitempty"`
+	TurnCardPlayingInfos []*TurnCardPlayingInfoVO   `json:"TurnCardPlayingInfos,omitempty"`
+}
+
+type GamePhaseVO struct {
+	GameType         proto.GameType         `json:"GameType,omitempty"`
+	GameID           int64                  `json:"GameID,omitempty"`
+	RoundNumber      uint32                 `json:"RoundNumber,omitempty"`
+	TurnNumber       uint32                 `json:"TurnNumber,omitempty"`
+	TurnStartAt      int64                  `json:"TurnStartAt,omitempty"`
+	TurnStatus       proto.TurnStatus       `json:"TurnStatus"`
+	Timeout          int64                  `json:"Timeout,omitempty"`
+	PlayerTurnStatus proto.PlayerTurnStatus `json:"PlayerTurnStatus"`
+	Players          []*GamePhasePlayerVO   `json:"Players,omitempty"`
+}
+
+func toCommitmentHex(commitment []byte) string {
+	if len(commitment) == 0 {
+		return ""
+	}
+	return "0x" + hex.EncodeToString(commitment)
+}
+
+func toTurnCardPlayingInfosVO(infos []*proto.TurnCardPlayingInfo) []*TurnCardPlayingInfoVO {
+	if len(infos) == 0 {
+		return nil
+	}
+	out := make([]*TurnCardPlayingInfoVO, 0, len(infos))
+	for _, info := range infos {
+		if info == nil {
+			continue
+		}
+		out = append(out, &TurnCardPlayingInfoVO{
+			TurnNumber: info.GetTurnNumber(),
+			Commitment: toCommitmentHex(info.GetCommitment()),
+			Card:       info.GetCard(),
+		})
+	}
+	return out
+}
+
+func toGamePhasePlayersVO(players []*proto.GamePhasePlayer) []*GamePhasePlayerVO {
+	if len(players) == 0 {
+		return nil
+	}
+	out := make([]*GamePhasePlayerVO, 0, len(players))
+	for _, player := range players {
+		if player == nil {
+			continue
+		}
+		out = append(out, &GamePhasePlayerVO{
+			Address:              player.GetAddress(),
+			CurrentHP:            player.GetCurrentHP(),
+			TurnCardPlayingInfos: toTurnCardPlayingInfosVO(player.GetTurnCardPlayingInfos()),
+		})
+	}
+	return out
+}
+
+func toGamePhaseVO(gamePhase *proto.GamePhase) *GamePhaseVO {
+	if gamePhase == nil {
+		return nil
+	}
+	return &GamePhaseVO{
+		GameType:         gamePhase.GetGameType(),
+		GameID:           gamePhase.GetGameID(),
+		RoundNumber:      gamePhase.GetRoundNumber(),
+		TurnNumber:       gamePhase.GetTurnNumber(),
+		TurnStartAt:      gamePhase.GetTurnStartAt(),
+		TurnStatus:       gamePhase.GetTurnStatus(),
+		Timeout:          gamePhase.GetTimeout(),
+		PlayerTurnStatus: gamePhase.GetPlayerTurnStatus(),
+		Players:          toGamePhasePlayersVO(gamePhase.GetPlayers()),
+	}
 }
 
 type GetGamePhaseTask struct {
@@ -97,7 +182,7 @@ func (task *GetGamePhaseTask) Run(c *gin.Context) (Response, error) {
 		return task.Response, nil
 	}
 
-	task.Response.GamePhase = gp
+	task.Response.GamePhase = toGamePhaseVO(gp)
 	task.Response.BaseResponse.RetCode = 0
 	task.Response.BaseResponse.Message = "ok"
 	return task.Response, nil

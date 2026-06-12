@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/conversion"
 	"github.com/CryptoElementals/common/db"
+	chainserver "github.com/CryptoElementals/common/chain_server"
 	lobbyserver "github.com/CryptoElementals/common/lobby_server"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
@@ -26,6 +27,7 @@ import (
 
 var chainRPC = "http://152.32.231.145:8545"
 var svrUrl = "localhost:30011"
+var chainSvrUrl = "127.0.0.1:30013"
 var lobbyURL = "localhost:30012"
 var roomV2ContractAddress = "0x20ae7393Fe6eC4218E0E27452Cf158FC4c1Ba06C"
 var fakeRoomAddress = "0x22767b2ba3cba853af78c9d91c6c520a2b5cb428"
@@ -62,24 +64,38 @@ func setupTestSvc(t *testing.T, timeout ...int64) {
 		LogCfg: log.Config{
 			Development: true,
 		},
-		ChainCfg: config.ChainConfig{
+		ChainServerAddress: chainSvrUrl,
+		ListenPort:         30011,
+		GameArgsID:         ga.ID,
+	}
+	chainCfg := &config.ChainServerConfig{
+		LogCfg: cfg.LogCfg,
+		DbCfg:  cfg.DbCfg,
+		Chains: []config.ChainEntry{{
+			ChainID: 0,
 			NodeConfig: config.NodeConfig{
 				HttpRpc: chainRPC,
 			},
 			ContractConfig: config.ContractConfig{
 				RoomV3ContractAddress: roomV2ContractAddress,
 			},
-		},
-		WalletPaths: []string{tempFile},
-
-		ListenPort: 30011,
-		GameArgsID: ga.ID,
+			WalletPaths: []string{tempFile},
+		}},
+		ListenPort:              30013,
+		PoolBatchSize:           10,
+		PoolProcessingInterval:  1,
+		PoolClaimTimeoutSeconds: 2,
 	}
 	redisAddr := os.Getenv("ELEMENTALS_REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "127.0.0.1:6379"
 	}
 	require.NoError(t, redis.Init(&redis.Config{Address: redisAddr, Size: 8}))
+	cs, err := chainserver.New(context.Background(), chainCfg, true)
+	require.NoError(t, err)
+	require.NoError(t, cs.Start())
+	t.Cleanup(cs.Stop)
+	time.Sleep(time.Second)
 	svr, err := New(context.Background(), cfg, true)
 	if err != nil {
 		require.NoError(t, err)

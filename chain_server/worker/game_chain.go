@@ -1,9 +1,10 @@
-package chain
+package worker
 
 import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/room_server/worker/types"
+	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -47,7 +48,7 @@ func newChainRuntime(
 }
 
 // SubmitTasks submits a batch of tasks to this chain's RoomV3 contract.
-func (r *chainRuntime) SubmitTasks(tasks []types.RoomContractTask) error {
+func (r *chainRuntime) SubmitTasks(tasks []RoomContractTask) error {
 	if r.roomV3Client == nil {
 		return errors.New("room v3 client not initialized")
 	}
@@ -64,39 +65,60 @@ func (r *chainRuntime) SubmitTasks(tasks []types.RoomContractTask) error {
 	return err
 }
 
-// Chain is the room server chain facade: multiple L2 clients, tx pools, and game→chain routing.
+// Chain manages multiple L2 clients, tx pools, and game→chain routing.
 type Chain struct {
 	ctx context.Context
 
 	runtimes map[int64]*chainRuntime
 	pools    map[int64]*txPool
 
-	chainIDs []int64 // configured chain ids (for random pick)
+	chainIDs []int64
 
 	poolBatchSize          int
 	poolProcessingInterval int
 	poolTickerDur          time.Duration
+	claimTimeout           time.Duration
+
+	ticker *poolTicker
+
+	walletRuntime *walletRuntime
 }
 
-// NewChain builds chain runtimes from room server config (EffectiveChains).
+func loadWallets(paths []string) ([]*wallet.Wallet, error) {
+	wallets := make([]*wallet.Wallet, 0, len(paths))
+	for _, path := range paths {
+		w, err := wallet.LoadWallet(path)
+		if err != nil {
+			return nil, err
+		}
+		wallets = append(wallets, w)
+	}
+	return wallets, nil
+}
+
+// NewChain builds chain runtimes from chain server config (EffectiveChains).
 func NewChain(
 	ctx context.Context,
-	cfg *config.RoomServerConfig,
-	wallets []*wallet.Wallet,
+	cfg *config.ChainServerConfig,
 	isDevelop ...bool,
 ) (*Chain, error) {
 	entries := cfg.EffectiveChains()
 	if len(entries) == 0 {
-		return nil, errors.New("no chains configured (set chains[] or legacy chain)")
+		return nil, errors.New("no chains configured (set chains[])")
 	}
 	batch := cfg.PoolBatchSize
 	interval := cfg.PoolProcessingInterval
+	claimTimeout := time.Duration(cfg.PoolClaimTimeoutSeconds) * time.Second
+	if claimTimeout <= 0 {
+		claimTimeout = db.DefaultChainTxPoolClaimTimeout
+	}
 	h := &Chain{
 		ctx:                    ctx,
 		runtimes:               make(map[int64]*chainRuntime),
 		pools:                  make(map[int64]*txPool),
 		poolBatchSize:          batch,
 		poolProcessingInterval: interval,
+		claimTimeout:           claimTimeout,
 	}
 	for _, e := range entries {
 		if e.HttpRpc == "" {
@@ -117,19 +139,43 @@ func NewChain(
 		if _, dup := h.runtimes[chainID]; dup {
 			return nil, errors.New("duplicate chain id in configuration")
 		}
-		rt, err := newChainRuntime(ctx, chainID, client, e.RoomV3ContractAddress, wallets, isDevelop...)
+		if len(e.WalletPaths) == 0 {
+			return nil, errors.New("wallet-paths required for each chain")
+		}
+		chainWallets, err := loadWallets(e.WalletPaths)
+		if err != nil {
+			return nil, err
+		}
+		rt, err := newChainRuntime(ctx, chainID, client, e.RoomV3ContractAddress, chainWallets, isDevelop...)
 		if err != nil {
 			return nil, err
 		}
 		h.runtimes[chainID] = rt
 		h.chainIDs = append(h.chainIDs, chainID)
-		p := newTxPool(rt, batch)
+		p := newTxPool(rt, batch, claimTimeout)
 		h.pools[chainID] = p
 	}
 	h.poolTickerDur = time.Duration(interval) * time.Second
 	if h.poolTickerDur <= 0 {
 		h.poolTickerDur = time.Second
 	}
+	h.ticker = newPoolTicker(ctx, h, h.poolTickerDur)
+
+	if cfg.WalletChain != nil {
+		if len(cfg.WalletChain.WalletPaths) == 0 {
+			return nil, errors.New("wallet-paths required for wallet-chain")
+		}
+		walletChainWallets, err := loadWallets(cfg.WalletChain.WalletPaths)
+		if err != nil {
+			return nil, err
+		}
+		wr, err := newWalletRuntime(ctx, cfg.WalletChain, walletChainWallets, isDevelop...)
+		if err != nil {
+			return nil, fmt.Errorf("init wallet runtime: %w", err)
+		}
+		h.walletRuntime = wr
+	}
+
 	return h, nil
 }
 
@@ -146,7 +192,7 @@ func (h *Chain) PickChainIDForNewGame() int64 {
 }
 
 // AddCreateRoom picks a random configured chain, persists game_chain_ids, then enqueues for that chain's pool.
-func (h *Chain) AddCreateRoom(evt *types.RequireGameCreationEvent) {
+func (h *Chain) AddCreateRoom(evt *RequireGameCreationEvent) {
 	if evt == nil {
 		return
 	}
@@ -163,15 +209,89 @@ func (h *Chain) AddCreateRoom(evt *types.RequireGameCreationEvent) {
 	p.addCreateRoom(evt)
 }
 
-// Start registers the room timer handler and a periodic Asynq cron that enqueues the tx pool tick.
+// Start runs the in-process pool ticker.
 func (h *Chain) Start() error {
-	if err := h.registerTxPoolTimerHandler(); err != nil {
+	h.ticker.start()
+	return nil
+}
+
+// Stop stops the pool ticker.
+func (h *Chain) Stop() {
+	if h.ticker != nil {
+		h.ticker.stop()
+	}
+}
+
+func (h *Chain) poolForGame(gameID int64) (*txPool, error) {
+	cid, err := db.GetChainIDForGame(gameID)
+	if err != nil {
+		return nil, err
+	}
+	p, ok := h.pools[cid]
+	if !ok {
+		return nil, fmt.Errorf("no tx pool for chain_id %d", cid)
+	}
+	return p, nil
+}
+
+// AddSetTurnReady enqueues a set-turn-ready task for the game's chain.
+func (h *Chain) AddSetTurnReady(evt *RequireSetupNewTurnEvent) {
+	if evt == nil {
+		return
+	}
+	p, err := h.poolForGame(evt.GameID)
+	if err != nil {
+		log.Errorw("AddSetTurnReady: resolve pool", "gameID", evt.GameID, "err", err)
+		return
+	}
+	p.addSetTurnReady(evt)
+}
+
+// AddCommitment enqueues a commitment submission for the game's chain.
+func (h *Chain) AddCommitment(evt *proto.SubmitPlayerCommitmentRequest) error {
+	if evt == nil {
+		return fmt.Errorf("nil request")
+	}
+	p, err := h.poolForGame(evt.GetGameID())
+	if err != nil {
 		return err
 	}
-	return h.registerChainTxPoolPeriodic(&chainTxPoolTickEvent{})
+	return p.addCommitment(evt)
+}
+
+// AddCard enqueues a card submission for the game's chain.
+func (h *Chain) AddCard(evt *proto.SubmitPlayerCardRequest) error {
+	if evt == nil {
+		return fmt.Errorf("nil request")
+	}
+	p, err := h.poolForGame(evt.GetGameID())
+	if err != nil {
+		return err
+	}
+	return p.addCard(evt)
+}
+
+var ErrWalletChainNotConfigured = errors.New("wallet-chain not configured")
+
+func (h *Chain) BatchWithdraw(ctx context.Context, items []BatchWithdrawItem) ([]BatchWithdrawResult, error) {
+	if h.walletRuntime == nil {
+		return nil, ErrWalletChainNotConfigured
+	}
+	return h.walletRuntime.BatchWithdraw(ctx, items)
+}
+
+// ClearGameInfo removes pending tx pool rows for a finished game.
+func (h *Chain) ClearGameInfo(gameID int64) {
+	if err := db.DeleteChainTxPoolItemsForGame(gameID); err != nil {
+		log.Errorw("ClearGameInfo: delete chain tx pool rows", "gameID", gameID, "err", err)
+	}
 }
 
 func (h *Chain) runAllPoolTicks() {
+	cutoff := time.Now().Add(-h.claimTimeout)
+	if err := db.ReleaseStaleChainTxPoolClaims(cutoff); err != nil {
+		log.Errorw("ReleaseStaleChainTxPoolClaims", "err", err)
+	}
 	for chainID, p := range h.pools {
 		if err := p.runDrainLoop(); err != nil {
 			log.Errorw("runDrainLoop", "err", err, "chain_id", chainID)

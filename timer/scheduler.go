@@ -14,7 +14,6 @@ var (
 	periodicAsynqScheduler  *asynq.Scheduler
 	lobbyBotDispatchEntryID string
 	lobbyTournamentEntryID  string
-	roomChainTxPoolEntryID  string
 )
 
 // initPeriodicAsynqScheduler starts the shared scheduler. Invoked from InitTimer when Redis is
@@ -40,9 +39,6 @@ func shutdownPeriodicAsynqScheduler() {
 	}
 	if err := UnregisterTournamentRecurring(); err != nil {
 		log.Errorw("unregister tournament cron on scheduler shutdown", "err", err)
-	}
-	if err := UnregisterRoomChainTxPoolRecurring(); err != nil {
-		log.Errorw("unregister room chain tx pool cron on scheduler shutdown", "err", err)
 	}
 	s := periodicAsynqScheduler
 	if s == nil {
@@ -127,16 +123,4 @@ func RegisterTournamentRecurring(period time.Duration, evt TimerEvent) error {
 // UnregisterTournamentRecurring removes the tournament cron, if any.
 func UnregisterTournamentRecurring() error {
 	return unregisterRecurring(&lobbyTournamentEntryID)
-}
-
-// RegisterRoomChainTxPoolRecurring registers a repeating job that enqueues the given event
-// on @every <period> to the room timer queue. Replaces a previous room chain tx pool
-// registration. Call after InitTimer(ScopeRoom) and RegisterHandler for the same event type.
-func RegisterRoomChainTxPoolRecurring(period time.Duration, evt TimerEvent) error {
-	return registerRecurring(period, evt, ScopeRoom, &roomChainTxPoolEntryID)
-}
-
-// UnregisterRoomChainTxPoolRecurring removes the room chain tx pool cron, if any.
-func UnregisterRoomChainTxPoolRecurring() error {
-	return unregisterRecurring(&roomChainTxPoolEntryID)
 }

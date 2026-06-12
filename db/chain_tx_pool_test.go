@@ -2,6 +2,7 @@ package db
 
 import (
 	"testing"
+	"time"
 
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/stretchr/testify/require"
@@ -147,7 +148,7 @@ func TestChainTxPoolDeleteForGame(t *testing.T) {
 	require.EqualValues(t, 0, n)
 }
 
-func TestPopChainTxPoolBatchForChainDrainsByLimit(t *testing.T) {
+func TestClaimChainTxPoolBatchForChainDrainsByLimit(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
@@ -163,22 +164,59 @@ func TestPopChainTxPoolBatchForChainDrainsByLimit(t *testing.T) {
 		}))
 	}
 
-	b1, err := PopChainTxPoolBatchForChain(1, 2)
+	claimTimeout := time.Second
+	b1, err := ClaimChainTxPoolBatchForChain(1, 2, claimTimeout)
 	require.NoError(t, err)
 	require.Len(t, b1, 2)
 
 	var n int64
 	require.NoError(t, Get().Model(&dao.ChainTxPoolItem{}).Where("chain_id = ?", 1).Count(&n).Error)
-	require.EqualValues(t, 1, n)
+	require.EqualValues(t, 3, n)
 
-	b2, err := PopChainTxPoolBatchForChain(1, 2)
+	require.NoError(t, DeleteChainTxPoolItemsByIDs([]uint{b1[0].ID, b1[1].ID}))
+
+	b2, err := ClaimChainTxPoolBatchForChain(1, 2, claimTimeout)
 	require.NoError(t, err)
 	require.Len(t, b2, 1)
+
+	require.NoError(t, DeleteChainTxPoolItemsByIDs([]uint{b2[0].ID}))
 
 	require.NoError(t, Get().Model(&dao.ChainTxPoolItem{}).Where("chain_id = ?", 1).Count(&n).Error)
 	require.EqualValues(t, 0, n)
 
-	b3, err := PopChainTxPoolBatchForChain(1, 2)
+	b3, err := ClaimChainTxPoolBatchForChain(1, 2, claimTimeout)
 	require.NoError(t, err)
 	require.Len(t, b3, 0)
+}
+
+func TestClaimChainTxPoolBatchForChainStaleReclaim(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	require.NoError(t, InsertChainTxPoolItem(&dao.ChainTxPoolItem{
+		ChainID:             1,
+		Kind:                dao.ChainTxPoolKindCommitment,
+		GameID:              100,
+		PlayerTemporaryAddr: "0xa",
+		RoundNumber:         1,
+		TurnNumber:          1,
+		Payload:             []byte{1},
+	}))
+
+	claimTimeout := 50 * time.Millisecond
+	b1, err := ClaimChainTxPoolBatchForChain(1, 10, claimTimeout)
+	require.NoError(t, err)
+	require.Len(t, b1, 1)
+
+	b2, err := ClaimChainTxPoolBatchForChain(1, 10, claimTimeout)
+	require.NoError(t, err)
+	require.Len(t, b2, 0)
+
+	time.Sleep(claimTimeout + 30*time.Millisecond)
+	require.NoError(t, ReleaseStaleChainTxPoolClaims(time.Now().Add(-claimTimeout)))
+
+	b3, err := ClaimChainTxPoolBatchForChain(1, 10, claimTimeout)
+	require.NoError(t, err)
+	require.Len(t, b3, 1)
+	require.Equal(t, b1[0].ID, b3[0].ID)
 }

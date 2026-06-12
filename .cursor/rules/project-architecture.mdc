@@ -1,0 +1,79 @@
+---
+description: ElementalsAPI 项目架构与服务边界
+alwaysApply: true
+---
+
+# 项目架构
+
+Go module: `github.com/CryptoElementals/common`。BeastRoyale / Elementals 游戏后端，多进程微服务架构。
+
+## 服务进程（cmd/）
+
+| 二进制 | 职责 |
+|--------|------|
+| `ele-apiserver` | HTTP API 网关：登录、用户资料、REST 入口，转发到 lobby/room |
+| `ele-lobbyserver` | 匹配大厅：PVP 队列、锦标赛、玩家状态/代币 |
+| `ele-roomserver` | 对局执行：回合逻辑、链上交易、游戏结算 |
+| `ele-botserver` | Bot 客户端 |
+| `ele-scanner` | 链上区块扫描 |
+| `ele-stat` | 统计服务 |
+| `ele-tools` | 运维/调试 CLI |
+
+构建：`make build` 或 `make <service>`，输出到 `bin/`。
+
+## 服务间通信
+
+```
+Client → ele-apiserver (HTTP/Gin)
+              ↓ gRPC
+         ele-lobbyserver (LobbyService)
+              ↓ gRPC
+         ele-roomserver (RoomService)
+              ↓ Redis Streams
+         事件推送 (SSE / subscribe_game_info)
+```
+
+- **gRPC 定义**：`rpc/proto/`（`lobby.proto`、`rpc.proto`），生成代码勿手改，改 proto 后跑 `proto_gen.sh`
+- **LobbyService**：队列、匹配、状态、代币、锦标赛（`lobby_server/`）
+- **RoomService**：对局操作、CreateGameAndRun、链上提交（`room_server/`）
+- **Redis Streams**：`pubsub/topics.go` 定义 topic（`room_events`、`lobby_events` 等）
+- **延迟任务**：`timer/` 按 Scope 隔离（`ScopeLobby` / `ScopeRoom`），lobby/room 各启各的 asynq worker
+
+## 目录分层
+
+| 目录 | 用途 |
+|------|------|
+| `cmd/` | 各服务入口，仅启动与 wiring |
+| `server/` | apiserver：HTTP 路由、`api/` 任务、`handler/`、`middlewares/`、`sse/` |
+| `lobby_server/` | lobby 进程：`worker/queue`、`worker/tournament`、`roomclient/` |
+| `room_server/` | room 进程：`worker/game`、`worker/chain` |
+| `rpc/` | gRPC client/server 封装 |
+| `db/` | MySQL 数据访问 |
+| `models/` | 领域模型（package 名 `dao`） |
+| `config/` | 各服务配置结构与加载 |
+| `redis/` | Redis 连接池与数据结构封装 |
+| `stream/` | Redis Stream 底层 |
+| `pubsub/` | 事件发布/订阅 |
+| `docs/` | API 与流程文档 |
+
+## 环境隔离
+
+- 服务器类型：`trial`（试玩）/ `normal`（正式），定义于 `models/server_type.go`
+- apiserver 通过 `EnvironmentConfigs` 为每个环境配置独立的 lobby/room 地址与 Redis pool
+- gRPC 客户端：`rpc/client/`，`InitGlobalClients` + `InitClientContext(envName, ...)`
+
+## 新增代码放置原则
+
+- **HTTP 新接口**：`server/api/<action>.go` 注册 Task → `server/api/action.go` 加 Label
+- **匹配/队列/锦标赛逻辑**：`lobby_server/worker/`
+- **对局/回合/链上逻辑**：`room_server/worker/`
+- **跨服务 RPC**：先改 `rpc/proto/`，生成后再实现 handler
+- **DB 操作**：`db/` + `models/` 模型，不在 handler 里写 SQL
+- **共享工具/常量**：放对应包，避免在 `cmd/` 写业务逻辑
+
+## 约定
+
+- 配置：各服务 `config.Init*Config(configPath)`，启动顺序 config → log → snowflake → db → redis → timer → service
+- 日志：`log/` 包，结构化用 `log.Infow` / `log.Errorw`
+- ID 生成：snowflake，各服务独立 node ID
+- 测试：与源文件同目录 `*_test.go`，优先 miniredis / mock

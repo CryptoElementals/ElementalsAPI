@@ -93,7 +93,7 @@ message RankedPlayer {
 enum PlayerStatus {
     PLAYER_UNKNOWN = 0;
     PLAYER_IN_QUEUE = 1;
-    PLAYER_MATCHED = 2;
+    reserved 2;
     PLAYER_IN_GAME = 3;
     PLAYER_PENDING_QUEUE_MATCH = 4;
     PLAYER_TOURNAMENT_QUEUED = 5;
