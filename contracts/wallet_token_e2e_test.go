@@ -25,15 +25,34 @@ const (
 	testMockERC20      = "0x59554b201cFc12E6930a3631060C3d9CDF704F67"
 	testWalletManager  = "0xFFD251cBd389e482B0609D3B6389a1350827A6C2"
 	testTokenCollector = "0xcc49255a2639560171fc28b09DCd6CdC3b25597C"
-	defaultPlayerID    = "1"
 	envPrivateKey      = "E2E_PRIVATE_KEY"
 	envPrivateKeyFile  = "E2E_PRIVATE_KEY_FILE"
 	envAdminKeyFile    = "E2E_ADMIN_KEY_FILE"
 	envPlayerID        = "E2E_PLAYER_ID"
 	envDepositAmount   = "E2E_DEPOSIT_AMOUNT"
 	envWithdrawAmount  = "E2E_WITHDRAW_AMOUNT"
+	envRPCURL          = "E2E_RPC_URL"
+	envWalletManager   = "E2E_WALLET_MANAGER"
+	envTokenCollector  = "E2E_TOKEN_COLLECTOR"
+	envMockERC20       = "E2E_MOCK_ERC20"
 	tokenDecimals      = 18
 )
+
+// e2eChainAddresses holds deployed contract addresses (env override or testnet defaults).
+type e2eChainAddresses struct {
+	rpcURL         string
+	walletManager  common.Address
+	tokenCollector common.Address
+	mockERC20      common.Address
+}
+
+// playerStakeWallet is the on-chain collection wallet for a playerId (from WalletManager).
+// This is not a separate TokenCollector contract — deposit/withdraw still go through the
+// single TokenCollector entry contract.
+type playerStakeWallet struct {
+	Address common.Address
+	Index   *big.Int
+}
 
 /*
 BSC testnet (chain 97) E2E tests: WalletManager + TokenCollector + mock ERC20.
@@ -50,9 +69,18 @@ Environment variables (no default key file paths):
   E2E_PRIVATE_KEY_FILE  Path to depositor/user key file (hex, with or without 0x)
   E2E_PRIVATE_KEY       Depositor key as hex string (alternative to E2E_PRIVATE_KEY_FILE)
   E2E_ADMIN_KEY_FILE    Path to TokenCollector admin key file (required for withdraw tx sender)
-  E2E_PLAYER_ID         Player id (default "1"); must satisfy playerId % totalWallets == currentWalletIndex
+  E2E_RPC_URL           RPC URL (optional; default BSC testnet public node)
+  E2E_WALLET_MANAGER    WalletManager address (optional)
+  E2E_TOKEN_COLLECTOR   TokenCollector entry contract address (optional; one contract for all players)
+  E2E_MOCK_ERC20        Mock ERC20 token address (optional)
+  E2E_PLAYER_ID         Player id; deposit/withdraw default to on-chain currentWalletIndex when unset
   E2E_DEPOSIT_AMOUNT    Deposit size in wei; unset uses on-chain minDepositAmount
   E2E_WITHDRAW_AMOUNT   Withdraw size in wei; unset withdraws 10 tokens (or full credited if balance < 10 tokens)
+
+On-chain queries (no hardcoded per-player addresses):
+  - TokenCollector contract: E2E_TOKEN_COLLECTOR or testnet default (single entry for deposit/withdraw)
+  - playerId stake wallet:   WalletManager.getWalletAddr(playerId) -> (wallet, walletIndex)
+  - deposit allowed when:    playerId % TokenCollector.totalWallets() == TokenCollector.currentWalletIndex()
 
 Prerequisites:
   - User address holds enough mock USDT and has approved TokenCollector for deposit.
@@ -84,24 +112,31 @@ E2E_PRIVATE_KEY_FILE=/path/to/user_key.txt \
 // TestWalletManagerThenTokenCollectorDeposit: approve + Deposit for a playerId.
 func TestWalletManagerThenTokenCollectorDeposit(t *testing.T) {
 	userPriv, signerAddr := loadUserPrivateKey(t)
-
-	playerID, ok := new(big.Int).SetString(getEnvOrDefault(envPlayerID, defaultPlayerID), 10)
-	require.True(t, ok, "invalid E2E_PLAYER_ID")
+	chain := loadE2EChainAddresses(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	client, err := ethclient.DialContext(ctx, testRPCURL)
+	client, err := ethclient.DialContext(ctx, chain.rpcURL)
 	require.NoError(t, err)
 	defer client.Close()
 
 	callOpts := &bind.CallOpts{Context: ctx}
 
-	walletManager, err := NewWalletManagerContract(common.HexToAddress(testWalletManager), client)
+	walletManager, err := NewWalletManagerContract(chain.walletManager, client)
 	require.NoError(t, err)
 
-	tokenCollector, err := NewTokenCollectorContract(common.HexToAddress(testTokenCollector), client)
+	tokenCollector, err := NewTokenCollectorContract(chain.tokenCollector, client)
 	require.NoError(t, err)
+
+	playerID := resolvePlayerIDForWalletWindow(t, tokenCollector, callOpts)
+	stakeWallet := queryPlayerStakeWallet(t, walletManager, callOpts, playerID)
+	currentIndex, totalWallets := queryDepositWalletWindow(t, tokenCollector, callOpts)
+	t.Logf("TokenCollector entry=%s currentWalletIndex=%s totalWallets=%s",
+		chain.tokenCollector.Hex(), currentIndex.String(), totalWallets.String())
+	t.Logf("playerId=%s -> stake wallet=%s walletIndex=%s (playerId%%totalWallets=%s)",
+		playerID.String(), stakeWallet.Address.Hex(), stakeWallet.Index.String(),
+		playerIDWalletIndex(playerID, totalWallets).String())
 
 	minDeposit, err := tokenCollector.MinDepositAmount(callOpts)
 	require.NoError(t, err)
@@ -114,18 +149,12 @@ func TestWalletManagerThenTokenCollectorDeposit(t *testing.T) {
 
 	depositAmount := resolveDepositAmount(t, minDeposit)
 
-	erc20, err := bindERC20(common.HexToAddress(testMockERC20), client)
+	erc20, err := bindERC20(chain.mockERC20, client)
 	require.NoError(t, err)
 
 	balanceBefore, err := erc20BalanceOf(erc20, callOpts, signerAddr)
 	require.NoError(t, err)
 	t.Logf("[before] mock USDT balance of signer %s: %s", signerAddr.Hex(), formatWei18(balanceBefore))
-
-	walletInfo, err := walletManager.GetWalletAddr(callOpts, playerID)
-	require.NoError(t, err)
-	require.NotEqual(t, common.Address{}, walletInfo.Wallet, "wallet address is zero")
-	t.Logf("[before] playerId=%s -> stake wallet (WalletManager)=%s walletIndex=%s",
-		playerID.String(), walletInfo.Wallet.Hex(), walletInfo.WalletIndex.String())
 
 	creditedBefore, err := tokenCollector.Credited(callOpts, playerID)
 	require.NoError(t, err)
@@ -146,7 +175,7 @@ func TestWalletManagerThenTokenCollectorDeposit(t *testing.T) {
 	require.NoError(t, err)
 	approveAuth.Context = ctx
 
-	approveTx, err := erc20.Transact(approveAuth, "approve", common.HexToAddress(testTokenCollector), depositAmount)
+	approveTx, err := erc20.Transact(approveAuth, "approve", chain.tokenCollector, depositAmount)
 	require.NoError(t, err)
 
 	approveReceipt, err := bind.WaitMined(ctx, client, approveTx)
@@ -187,11 +216,11 @@ func TestWalletManagerThenTokenCollectorDeposit(t *testing.T) {
 
 	require.True(t, creditedAfter.Amount.Sign() > 0, "credited amount should be positive")
 
-	if walletInfo.Wallet == common.HexToAddress(testTokenCollector) {
-		t.Logf("WalletManager wallet equals TokenCollector contract (walletIndex=%s)",
-			walletInfo.WalletIndex.String())
+	if stakeWallet.Address == chain.tokenCollector {
+		t.Logf("stake wallet equals TokenCollector entry contract (walletIndex=%s)",
+			stakeWallet.Index.String())
 	} else {
-		t.Logf("WalletManager wallet=%s (index=%s)", walletInfo.Wallet.Hex(), walletInfo.WalletIndex.String())
+		t.Logf("stake wallet=%s (index=%s)", stakeWallet.Address.Hex(), stakeWallet.Index.String())
 	}
 	t.Logf("Credited.depositAddr=%s signer(msg.sender)=%s", creditedAfter.DepositAddr.Hex(), signerAddr.Hex())
 	require.Equal(t, signerAddr, creditedAfter.DepositAddr,
@@ -207,26 +236,28 @@ func TestWalletManagerThenTokenCollectorDeposit(t *testing.T) {
 func TestTokenCollectorWithdraw(t *testing.T) {
 	adminPriv, adminAddr := loadAdminPrivateKey(t)
 	userPriv, userAddr := loadUserPrivateKey(t)
+	chain := loadE2EChainAddresses(t)
 	t.Logf("admin (tx sender): %s", adminAddr.Hex())
 	t.Logf("user (E2E key): %s", userAddr.Hex())
-
-	playerID, ok := new(big.Int).SetString(getEnvOrDefault(envPlayerID, defaultPlayerID), 10)
-	require.True(t, ok, "invalid E2E_PLAYER_ID")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	client, err := ethclient.DialContext(ctx, testRPCURL)
+	client, err := ethclient.DialContext(ctx, chain.rpcURL)
 	require.NoError(t, err)
 	defer client.Close()
 
 	callOpts := &bind.CallOpts{Context: ctx}
-	tcAddr := common.HexToAddress(testTokenCollector)
 
-	tokenCollector, err := NewTokenCollectorContract(tcAddr, client)
+	tokenCollector, err := NewTokenCollectorContract(chain.tokenCollector, client)
 	require.NoError(t, err)
 
-	erc20, err := bindERC20(common.HexToAddress(testMockERC20), client)
+	playerID := resolvePlayerIDForWalletWindow(t, tokenCollector, callOpts)
+	currentIndex, totalWallets := queryDepositWalletWindow(t, tokenCollector, callOpts)
+	t.Logf("TokenCollector entry=%s currentWalletIndex=%s totalWallets=%s",
+		chain.tokenCollector.Hex(), currentIndex.String(), totalWallets.String())
+
+	erc20, err := bindERC20(chain.mockERC20, client)
 	require.NoError(t, err)
 
 	creditedBefore, err := tokenCollector.Credited(callOpts, playerID)
@@ -289,6 +320,68 @@ func TestTokenCollectorWithdraw(t *testing.T) {
 }
 
 // --- helpers ---
+
+func loadE2EChainAddresses(t *testing.T) e2eChainAddresses {
+	t.Helper()
+	return e2eChainAddresses{
+		rpcURL:         getEnvOrDefault(envRPCURL, testRPCURL),
+		walletManager:  common.HexToAddress(getEnvOrDefault(envWalletManager, testWalletManager)),
+		tokenCollector: common.HexToAddress(getEnvOrDefault(envTokenCollector, testTokenCollector)),
+		mockERC20:      common.HexToAddress(getEnvOrDefault(envMockERC20, testMockERC20)),
+	}
+}
+
+func queryPlayerStakeWallet(t *testing.T, wm *WalletManagerContract, opts *bind.CallOpts, playerID *big.Int) playerStakeWallet {
+	t.Helper()
+	info, err := wm.GetWalletAddr(opts, playerID)
+	require.NoError(t, err)
+	require.NotEqual(t, common.Address{}, info.Wallet, "stake wallet is zero for playerId=%s", playerID.String())
+	return playerStakeWallet{Address: info.Wallet, Index: info.WalletIndex}
+}
+
+func queryDepositWalletWindow(t *testing.T, tc *TokenCollectorContract, opts *bind.CallOpts) (current, total *big.Int) {
+	t.Helper()
+	current, err := tc.CurrentWalletIndex(opts)
+	require.NoError(t, err)
+	total, err = tc.TotalWallets(opts)
+	require.NoError(t, err)
+	require.True(t, total.Sign() > 0, "TokenCollector.totalWallets is 0")
+	return current, total
+}
+
+func playerIDWalletIndex(playerID, totalWallets *big.Int) *big.Int {
+	return new(big.Int).Mod(new(big.Int).Set(playerID), totalWallets)
+}
+
+func playerIDAllowedForWalletWindow(playerID, currentIndex, totalWallets *big.Int) bool {
+	return playerIDWalletIndex(playerID, totalWallets).Cmp(currentIndex) == 0
+}
+
+func resolvePlayerIDFromEnv(t *testing.T) *big.Int {
+	t.Helper()
+	raw := strings.TrimSpace(os.Getenv(envPlayerID))
+	if raw == "" {
+		return nil
+	}
+	playerID, ok := new(big.Int).SetString(raw, 10)
+	require.True(t, ok, "invalid %s", envPlayerID)
+	return playerID
+}
+
+// resolvePlayerIDForWalletWindow picks E2E_PLAYER_ID or falls back to currentWalletIndex on chain.
+// Deposit and withdraw both require playerId % totalWallets == currentWalletIndex.
+func resolvePlayerIDForWalletWindow(t *testing.T, tc *TokenCollectorContract, opts *bind.CallOpts) *big.Int {
+	t.Helper()
+	current, total := queryDepositWalletWindow(t, tc, opts)
+	if playerID := resolvePlayerIDFromEnv(t); playerID != nil {
+		require.True(t, playerIDAllowedForWalletWindow(playerID, current, total),
+			"E2E_PLAYER_ID=%s not allowed now: require playerId %% totalWallets == currentWalletIndex (%s); example: E2E_PLAYER_ID=%s",
+			playerID.String(), current.String(), current.String())
+		return playerID
+	}
+	t.Logf("%s unset; using on-chain currentWalletIndex=%s as playerId", envPlayerID, current.String())
+	return new(big.Int).Set(current)
+}
 
 func formatWei18(wei *big.Int) string {
 	if wei == nil || wei.Sign() == 0 {
