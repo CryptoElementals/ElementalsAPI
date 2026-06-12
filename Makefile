@@ -21,6 +21,9 @@ APISERVER_MAIN = ./cmd/ele-apiserver
 SCANNER_BIN = ele-scanner
 SCANNER_MAIN = ./cmd/ele-scanner
 
+BSC_SCANNER_BIN = ele-bsc-scanner
+BSC_SCANNER_MAIN = ./cmd/ele-bsc-scanner
+
 ROOMSERVER_BIN = ele-roomserver
 ROOMSERVER_MAIN = ./cmd/ele-roomserver
 
@@ -41,11 +44,11 @@ REDISSTREAM_MAIN = ./cmd/ele-redis-stream
 
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner roomserver lobbyserver botserver stat tools redisstream clean deps lint check-persist help
+.PHONY: all build apiserver scanner bsc-scanner roomserver lobbyserver botserver stat tools redisstream clean deps lint check-persist help
 
 all: build
 
-build: apiserver scanner roomserver lobbyserver botserver stat tools redisstream
+build: apiserver scanner bsc-scanner roomserver lobbyserver botserver stat tools redisstream
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -56,6 +59,11 @@ scanner: $(BIN_DIR)
 	@echo "Building $(SCANNER_BIN)..."
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(SCANNER_BIN) $(SCANNER_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(SCANNER_BIN)"
+
+bsc-scanner: $(BIN_DIR)
+	@echo "Building $(BSC_SCANNER_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(BSC_SCANNER_BIN) $(BSC_SCANNER_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(BSC_SCANNER_BIN)"
 
 roomserver: $(BIN_DIR)
 	@echo "Building $(ROOMSERVER_BIN)..."
@@ -92,7 +100,7 @@ $(BIN_DIR):
 
 clean:
 	@echo "Cleaning build files..."
-	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(LOBBYSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(REDISSTREAM_BIN)
+	rm -rf $(BIN_DIR)/$(APISERVER_BIN) $(BIN_DIR)/$(SCANNER_BIN) $(BIN_DIR)/$(BSC_SCANNER_BIN) $(BIN_DIR)/$(ROOMSERVER_BIN) $(BIN_DIR)/$(LOBBYSERVER_BIN) $(BIN_DIR)/$(BOTSERVER_BIN) $(BIN_DIR)/$(STAT_BIN) $(BIN_DIR)/$(TOOLS_BIN) $(BIN_DIR)/$(REDISSTREAM_BIN)
 	@echo "Clean completed"
 
 deps:
@@ -118,6 +126,7 @@ help:
 	@echo "  build         - Build all binaries (default)"
 	@echo "  apiserver     - Build ele-apiserver only"
 	@echo "  scanner       - Build ele-scanner only"
+	@echo "  bsc-scanner   - Build ele-bsc-scanner only"
 	@echo "  roomserver    - Build ele-roomserver only"
 	@echo "  botserver     - Build ele-botserver only"
 	@echo "  stat          - Build ele-stat only"
