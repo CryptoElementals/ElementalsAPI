@@ -6,7 +6,8 @@ import (
 
 type BlockSync struct {
 	gorm.Model
-	Type        string `gorm:"type:varchar(50);index" json:"type"` // e.g. "head"
+	ChainID     uint64 `gorm:"type:bigint unsigned;uniqueIndex:idx_chain_type" json:"chain_id"`
+	Type        string `gorm:"type:varchar(50);uniqueIndex:idx_chain_type" json:"type"` // e.g. "head", "finalized"
 	BlockHeight uint64 `gorm:"type:bigint unsigned" json:"block_height"`
 }
 
