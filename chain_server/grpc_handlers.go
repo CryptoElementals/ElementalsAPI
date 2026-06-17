@@ -71,42 +71,21 @@ func (s *GRPCServices) ClearGameInfo(ctx context.Context, req *proto.ClearGameIn
 	return &emptypb.Empty{}, nil
 }
 
-func (s *GRPCServices) BatchWithdraw(ctx context.Context, req *proto.BatchWithdrawRequest) (*proto.BatchWithdrawResponse, error) {
+func (s *GRPCServices) Withdraw(ctx context.Context, req *proto.WithdrawRequest) (*proto.WithdrawResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "nil request")
 	}
-	if len(req.GetItems()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "items is required")
-	}
-	items := make([]worker.BatchWithdrawItem, len(req.GetItems()))
-	for i, item := range req.GetItems() {
-		if item == nil {
-			return nil, status.Error(codes.InvalidArgument, "item is required")
-		}
-		items[i] = worker.BatchWithdrawItem{
-			PlayerID:  item.GetPlayerId(),
-			Amount:    item.GetAmount(),
-			Signature: item.GetSignature(),
-		}
-	}
-
-	results, err := s.chain.BatchWithdraw(ctx, items)
+	result, err := s.chain.Withdraw(ctx, req.GetPlayerId(), req.GetAmount(), req.GetSignature())
 	if err != nil {
 		if errors.Is(err, worker.ErrWalletChainNotConfigured) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
-		return nil, status.Errorf(codes.Internal, "batch withdraw: %v", err)
+		return nil, status.Errorf(codes.Internal, "withdraw: %v", err)
 	}
 
-	resp := &proto.BatchWithdrawResponse{
-		Results: make([]*proto.BatchWithdrawResult, len(results)),
-	}
-	for i, res := range results {
-		resp.Results[i] = &proto.BatchWithdrawResult{
-			TxHash:           res.TxHash,
-			LedgerId:         res.LedgerID,
-			CollectorAddress: res.CollectorAddress,
-		}
-	}
-	return resp, nil
+	return &proto.WithdrawResponse{
+		TxHash:           result.TxHash,
+		LedgerId:         result.LedgerID,
+		CollectorAddress: result.CollectorAddress,
+	}, nil
 }

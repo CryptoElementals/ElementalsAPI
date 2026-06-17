@@ -8,9 +8,9 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 )
 
-func InsertBatchWithdrawLedger(row *dao.BatchWithdrawLedger) (uint, error) {
+func InsertWithdrawLedger(row *dao.WithdrawLedger) (uint, error) {
 	if row == nil {
-		return 0, errors.New("nil batch withdraw ledger row")
+		return 0, errors.New("nil withdraw ledger row")
 	}
 	row.CollectorAddress = strings.ToLower(strings.TrimSpace(row.CollectorAddress))
 	row.TxHash = strings.ToLower(strings.TrimSpace(row.TxHash))

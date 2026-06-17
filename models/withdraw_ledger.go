@@ -1,6 +1,6 @@
 package dao
 
-type BatchWithdrawLedger struct {
+type WithdrawLedger struct {
 	BaseModel
 
 	PlayerID         int64  `gorm:"not null;index" json:"player_id"`
@@ -11,4 +11,4 @@ type BatchWithdrawLedger struct {
 	TxHash           string `gorm:"size:66;index" json:"tx_hash"`
 }
 
-func (BatchWithdrawLedger) TableName() string { return "batch_withdraw_ledgers" }
+func (WithdrawLedger) TableName() string { return "withdraw_ledgers" }

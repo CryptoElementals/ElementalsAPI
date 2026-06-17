@@ -9,35 +9,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFilterTokenInsufficientBots(t *testing.T) {
+func TestFilterBotRegistryKeys(t *testing.T) {
 	candidates := []string{"1_0xaaa", "2_0xbbb", "3_0xccc"}
 
 	t.Run("no filter no limit", func(t *testing.T) {
-		got, skipped := filterTokenInsufficientBots(candidates, "", 0)
+		got, skipped := filterBotRegistryKeys(candidates, "", 0)
 		require.Equal(t, candidates, got)
 		require.Equal(t, 0, skipped)
 	})
 
 	t.Run("limit", func(t *testing.T) {
-		got, skipped := filterTokenInsufficientBots(candidates, "", 2)
+		got, skipped := filterBotRegistryKeys(candidates, "", 2)
 		require.Equal(t, []string{"1_0xaaa", "2_0xbbb"}, got)
 		require.Equal(t, 0, skipped)
 	})
 
 	t.Run("player key found", func(t *testing.T) {
-		got, skipped := filterTokenInsufficientBots(candidates, "2_0xbbb", 0)
+		got, skipped := filterBotRegistryKeys(candidates, "2_0xbbb", 0)
 		require.Equal(t, []string{"2_0xbbb"}, got)
 		require.Equal(t, 0, skipped)
 	})
 
 	t.Run("player key not found", func(t *testing.T) {
-		got, skipped := filterTokenInsufficientBots(candidates, "9_0xzzz", 0)
+		got, skipped := filterBotRegistryKeys(candidates, "9_0xzzz", 0)
 		require.Nil(t, got)
 		require.Equal(t, 1, skipped)
 	})
 
 	t.Run("player key with limit", func(t *testing.T) {
-		got, skipped := filterTokenInsufficientBots(candidates, "2_0xbbb", 1)
+		got, skipped := filterBotRegistryKeys(candidates, "2_0xbbb", 1)
 		require.Equal(t, []string{"2_0xbbb"}, got)
 		require.Equal(t, 0, skipped)
 	})
