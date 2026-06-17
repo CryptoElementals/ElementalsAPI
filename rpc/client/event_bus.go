@@ -136,6 +136,17 @@ func (b *eventBus) dispatch(msg *pb.Message) {
 		b.dispatchBroadcast(msg)
 		return
 	}
+	if msg.GetTopic() == pubsub.TopicToken {
+		if ev == nil {
+			return
+		}
+		tu := ev.GetTokenUpdated()
+		if tu == nil {
+			return
+		}
+		b.dispatchToPlayerID(tu.GetPlayerId(), msg)
+		return
+	}
 	receivers := ev.GetReceivers()
 
 	if len(receivers) == 0 {
@@ -174,6 +185,22 @@ func (b *eventBus) dispatchBroadcast(msg *pb.Message) {
 	for _, group := range b.subscribers {
 		for _, sub := range group {
 			targets = append(targets, sub)
+		}
+	}
+	b.mu.RUnlock()
+	for _, sub := range targets {
+		b.sendToSubscriber(sub, msg)
+	}
+}
+
+func (b *eventBus) dispatchToPlayerID(playerID int64, msg *pb.Message) {
+	b.mu.RLock()
+	targets := make([]*subscriberState, 0)
+	for _, group := range b.subscribers {
+		for _, sub := range group {
+			if sub.id.Address != nil && sub.id.Address.GetId() == playerID {
+				targets = append(targets, sub)
+			}
 		}
 	}
 	b.mu.RUnlock()
