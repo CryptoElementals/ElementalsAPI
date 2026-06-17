@@ -12,12 +12,13 @@ var RoomServerAddress string
 var GConf ApiServerConfig
 
 // EnvironmentConfig is one logical game shard: its own named Redis pool (event streams),
-// room gRPC, and lobby gRPC.
+// room gRPC, lobby gRPC, and ledger gRPC.
 type EnvironmentConfig struct {
-	Name               string       `mapstructure:"name"`
-	RedisCfg           redis.Config `mapstructure:"redis"`
-	RoomServerAddress  string       `mapstructure:"room-server-address"`
-	LobbyServerAddress string       `mapstructure:"lobby-server-address"`
+	Name                string       `mapstructure:"name"`
+	RedisCfg            redis.Config `mapstructure:"redis"`
+	RoomServerAddress   string       `mapstructure:"room-server-address"`
+	LobbyServerAddress  string       `mapstructure:"lobby-server-address"`
+	LedgerServerAddress string       `mapstructure:"ledger-server-address"`
 
 	DailyRewardStartDate        string `mapstructure:"daily-reward-start-date"`
 	DailyRewardEndDate          string `mapstructure:"daily-reward-end-date"`

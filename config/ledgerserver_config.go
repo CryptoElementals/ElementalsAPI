@@ -9,10 +9,16 @@ import (
 var LedgerGConf = LedgerServerConfig{}
 
 type LedgerServerConfig struct {
-	LogCfg     log.Config     `mapstructure:"log"`
-	DbCfg      db.Config      `mapstructure:"database"`
-	RedisCfg   redis.Config   `mapstructure:"redis"`
-	ListenPort int64          `mapstructure:"listen-port"`
+	LogCfg     log.Config   `mapstructure:"log"`
+	DbCfg      db.Config    `mapstructure:"database"`
+	RedisCfg   redis.Config `mapstructure:"redis"`
+	UChainCfg  UChainConfig `mapstructure:"u-chain"`
+	ListenPort int64        `mapstructure:"listen-port"`
+}
+
+type UChainConfig struct {
+	ChainServerAddress string `mapstructure:"chain-server-address"`
+	ChainID            int64  `mapstructure:"chain-id"`
 }
 
 func InitLedgerServerConfig(configPath string) error {

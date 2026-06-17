@@ -18,7 +18,15 @@ func (m *mockLedgerClient) SubmitChainEvents(ctx context.Context, in *proto.Subm
 	return m.submit(ctx, in, opts...)
 }
 
-func TestGrpcSinkEmitBlockRejectedDoesNotError(t *testing.T) {
+func (m *mockLedgerClient) RequestWithdraw(ctx context.Context, in *proto.RequestWithdrawRequest, opts ...grpc.CallOption) (*proto.RequestWithdrawResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockLedgerClient) ListChainTokenLedgers(ctx context.Context, in *proto.ListChainTokenLedgersRequest, opts ...grpc.CallOption) (*proto.ListChainTokenLedgersResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func TestGrpcSinkEmitBlockFailedDoesNotError(t *testing.T) {
 	sink := &GrpcSink{
 		client: &mockLedgerClient{
 			submit: func(ctx context.Context, in *proto.SubmitChainEventsRequest, opts ...grpc.CallOption) (*proto.SubmitChainEventsResponse, error) {
@@ -27,7 +35,7 @@ func TestGrpcSinkEmitBlockRejectedDoesNotError(t *testing.T) {
 						{
 							TxHash:   "0xtx",
 							LogIndex: 1,
-							Status:   proto.EventApplyStatus_EVENT_APPLY_STATUS_REJECTED,
+							Status:   proto.EventApplyStatus_EVENT_APPLY_STATUS_FAILED,
 							Message:  "insufficient_balance",
 						},
 					},

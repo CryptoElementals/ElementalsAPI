@@ -91,10 +91,10 @@ func startServer() error {
 	if !ok {
 		return fmt.Errorf("environment %q is required", config.ServerTypeNormal)
 	}
-	if err := client.InitGlobalClients(normalEnv.RoomServerAddress, normalEnv.LobbyServerAddress); err != nil {
+	if err := client.InitGlobalClients(normalEnv.RoomServerAddress, normalEnv.LobbyServerAddress, normalEnv.LedgerServerAddress); err != nil {
 		return fmt.Errorf("failed to initialize gRPC clients: %w", err)
 	}
-	if err := client.InitClientContext(config.ServerTypeNormal, normalEnv.RoomServerAddress, normalEnv.LobbyServerAddress); err != nil {
+	if err := client.InitClientContext(config.ServerTypeNormal, normalEnv.RoomServerAddress, normalEnv.LobbyServerAddress, normalEnv.LedgerServerAddress); err != nil {
 		return fmt.Errorf("failed to initialize gRPC clients for environment %q: %w", config.ServerTypeNormal, err)
 	}
 	for i := range cfg.EnvironmentConfigs {
@@ -102,7 +102,7 @@ func startServer() error {
 		if env.Name == config.ServerTypeNormal {
 			continue
 		}
-		if err := client.InitClientContext(env.Name, env.RoomServerAddress, env.LobbyServerAddress); err != nil {
+		if err := client.InitClientContext(env.Name, env.RoomServerAddress, env.LobbyServerAddress, env.LedgerServerAddress); err != nil {
 			return fmt.Errorf("failed to initialize gRPC clients for environment %q: %w", env.Name, err)
 		}
 	}

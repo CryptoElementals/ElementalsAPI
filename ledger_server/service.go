@@ -2,21 +2,38 @@ package ledgerserver
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/internal/chainamount"
+	"github.com/CryptoElementals/common/ledger_server/chainclient"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
+// ChainWithdrawSubmitter submits withdraw transactions to chain-server.
+type ChainWithdrawSubmitter interface {
+	BatchWithdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*chainclient.BatchWithdrawResult, error)
+}
+
 // Service applies on-chain token events to the ledger and user balances.
 type Service struct {
 	publisher pubsub.Publisher
+	chain     ChainWithdrawSubmitter
+	chainID   int64
 }
 
-func NewService(publisher pubsub.Publisher) *Service {
-	return &Service{publisher: publisher}
+func NewService(publisher pubsub.Publisher, chain ChainWithdrawSubmitter, chainID int64) *Service {
+	return &Service{
+		publisher: publisher,
+		chain:     chain,
+		chainID:   chainID,
+	}
 }
 
 func (s *Service) SubmitChainEvents(ctx context.Context, req *proto.SubmitChainEventsRequest) (*proto.SubmitChainEventsResponse, error) {
@@ -36,6 +53,87 @@ func (s *Service) SubmitChainEvents(ctx context.Context, req *proto.SubmitChainE
 	return resp, nil
 }
 
+func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdrawRequest) (*proto.RequestWithdrawResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	if req.GetPlayerId() <= 0 {
+		return nil, fmt.Errorf("player_id is required")
+	}
+	if s.chain == nil {
+		return nil, fmt.Errorf("chain client is not configured")
+	}
+	if s.chainID <= 0 {
+		return nil, fmt.Errorf("chain_id is not configured")
+	}
+
+	amountWei, err := resolveWithdrawAmountWei(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(req.GetSignature()) == 0 {
+		return nil, fmt.Errorf("signature is required")
+	}
+	signature := req.GetSignature()
+	sigHex := "0x" + hex.EncodeToString(signature)
+
+	pending, err := db.CreatePendingWithdraw(ctx, db.PendingWithdrawInput{
+		ChainID:   s.chainID,
+		PlayerID:  req.GetPlayerId(),
+		AmountWei: amountWei,
+		Signature: sigHex,
+	})
+	if err != nil {
+		if errors.Is(err, db.ErrInsufficientAvailableBalance) {
+			return nil, fmt.Errorf("%w", err)
+		}
+		return nil, err
+	}
+
+	submitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	result, err := s.chain.BatchWithdraw(submitCtx, req.GetPlayerId(), amountWei, signature)
+	if err != nil {
+		_ = db.MarkPendingWithdrawFailed(ctx, pending.RequestID, "chain_submit_failed")
+		return nil, fmt.Errorf("chain batch withdraw: %w", err)
+	}
+	if err := db.UpdatePendingWithdrawTxHash(ctx, pending.RequestID, result.TxHash, result.CollectorAddress); err != nil {
+		return nil, err
+	}
+
+	return &proto.RequestWithdrawResponse{
+		RequestId:        pending.RequestID,
+		TxHash:           result.TxHash,
+		CollectorAddress: result.CollectorAddress,
+		LedgerId:         uint64(pending.LedgerID),
+		Status:           string(dao.ChainTokenLedgerStatusPending),
+	}, nil
+}
+
+func (s *Service) ListChainTokenLedgers(ctx context.Context, req *proto.ListChainTokenLedgersRequest) (*proto.ListChainTokenLedgersResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	if req.GetPlayerId() <= 0 {
+		return nil, fmt.Errorf("player_id is required")
+	}
+	list, err := db.ListChainTokenLedgers(ctx, db.ChainTokenLedgerFilter{
+		PlayerID:  req.GetPlayerId(),
+		EventType: req.GetEventType(),
+		Status:    req.GetStatus(),
+		Limit:     int(req.GetLimit()),
+		Offset:    int(req.GetOffset()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := &proto.ListChainTokenLedgersResponse{Total: list.Total}
+	for _, row := range list.Records {
+		out.Records = append(out.Records, chainTokenLedgerToProto(row))
+	}
+	return out, nil
+}
+
 func (s *Service) applyOne(ctx context.Context, ev *proto.ChainTokenEvent) (*proto.EventApplyResult, error) {
 	if ev == nil {
 		return nil, fmt.Errorf("nil event")
@@ -44,13 +142,62 @@ func (s *Service) applyOne(ctx context.Context, ev *proto.ChainTokenEvent) (*pro
 	if err != nil {
 		return nil, fmt.Errorf("invalid event: %w", err)
 	}
-	applyResult, err := db.ApplyChainTokenEvent(ctx, input)
+	var applyResult *db.ChainTokenEventApplyResult
+	if input.EventType == dao.ChainTokenLedgerEventWithdraw {
+		applyResult, err = db.FinalizeChainTokenWithdraw(ctx, input)
+	} else {
+		applyResult, err = db.ApplyChainTokenEvent(ctx, input)
+	}
 	if err != nil {
 		return nil, err
 	}
 	result := dbApplyResultToProto(ev.GetTxHash(), ev.GetLogIndex(), applyResult)
 	s.publishTokenUpdated(ctx, ev, applyResult)
 	return result, nil
+}
+
+func resolveWithdrawAmountWei(req *proto.RequestWithdrawRequest) (string, error) {
+	amountWei := strings.TrimSpace(req.GetAmountWei())
+	if amountWei != "" {
+		return amountWei, nil
+	}
+	if req.GetTokenAmount() > 0 {
+		return chainamount.GameTokenToWei(req.GetTokenAmount())
+	}
+	return "", fmt.Errorf("amount_wei or token_amount is required")
+}
+
+func chainTokenLedgerToProto(row *dao.ChainTokenLedger) *proto.ChainTokenLedgerRecord {
+	if row == nil {
+		return nil
+	}
+	rec := &proto.ChainTokenLedgerRecord{
+		Id:               uint64(row.ID),
+		ChainId:          row.ChainID,
+		TxHash:           row.TxHash,
+		LogIndex:         row.LogIndex,
+		BlockNumber:      row.BlockNumber,
+		BlockHash:        row.BlockHash,
+		EventType:        string(row.EventType),
+		PlayerId:         row.PlayerID,
+		CollectorAddress: row.CollectorAddress,
+		AmountWei:        row.AmountWei,
+		TokenDelta:       row.TokenDelta,
+		Status:           string(row.Status),
+		FailReason:       row.FailReason,
+		Signature:        row.Signature,
+		FromAddress:      row.FromAddress,
+		ToAddress:        row.ToAddress,
+		Operator:         row.Operator,
+		NewCreditedWei:   row.NewCreditedWei,
+	}
+	if row.RequestID != nil {
+		rec.RequestId = *row.RequestID
+	}
+	if !row.CreatedAt.IsZero() {
+		rec.CreatedAt = row.CreatedAt.Unix()
+	}
+	return rec
 }
 
 func protoToChainTokenEventInput(ev *proto.ChainTokenEvent) (db.ChainTokenEventInput, error) {
@@ -105,12 +252,12 @@ func dbApplyResultToProto(txHash string, logIndex uint32, r *db.ChainTokenEventA
 		NewBalance: r.NewBalance,
 	}
 	switch r.Status {
-	case db.ChainTokenEventApplyApplied:
-		out.Status = proto.EventApplyStatus_EVENT_APPLY_STATUS_APPLIED
+	case db.ChainTokenEventApplyFinalized:
+		out.Status = proto.EventApplyStatus_EVENT_APPLY_STATUS_FINALIZED
 	case db.ChainTokenEventApplyDuplicate:
 		out.Status = proto.EventApplyStatus_EVENT_APPLY_STATUS_DUPLICATE
-	case db.ChainTokenEventApplyRejected:
-		out.Status = proto.EventApplyStatus_EVENT_APPLY_STATUS_REJECTED
+	case db.ChainTokenEventApplyFailed:
+		out.Status = proto.EventApplyStatus_EVENT_APPLY_STATUS_FAILED
 	default:
 		out.Status = proto.EventApplyStatus_EVENT_APPLY_STATUS_UNSPECIFIED
 	}

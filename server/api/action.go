@@ -49,6 +49,8 @@ const (
 	CONTINUE_GAME_LABEL            = "ContinueGame"
 	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"
 	SUBSCRIBE_TOKEN_UPDATES_LABEL  = "SubscribeTokenUpdates"
+	REQUEST_WITHDRAW_LABEL           = "RequestWithdraw"
+	LIST_CHAIN_TOKEN_LEDGERS_LABEL   = "ListChainTokenLedgers"
 	SSE_EXAMPLE_LABEL              = "SSEExample"
 	SURRENDER_LABEL                = "Surrender"
 	SUBMIT_PLAYER_COMMITMENT_LABEL = "SubmitPlayerCommitment"

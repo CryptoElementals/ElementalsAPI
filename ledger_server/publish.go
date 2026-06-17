@@ -20,7 +20,7 @@ func (s *Service) publishTokenUpdated(ctx context.Context, ev *proto.ChainTokenE
 	if s == nil || s.publisher == nil || ev == nil || applyResult == nil {
 		return
 	}
-	if applyResult.Status != db.ChainTokenEventApplyApplied {
+	if applyResult.Status != db.ChainTokenEventApplyFinalized {
 		return
 	}
 

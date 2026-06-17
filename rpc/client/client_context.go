@@ -25,15 +25,18 @@ func defaultGRPCDialOptions() []grpc.DialOption {
 	}
 }
 
-// ClientContext holds room/lobby gRPC clients and the shared event stream for one logical bundle (e.g. one shard).
+// ClientContext holds room/lobby/ledger gRPC clients and the shared event stream for one logical bundle (e.g. one shard).
 type ClientContext struct {
 	RoomAddr        string
 	LobbyAddr       string
+	LedgerAddr      string
 	redisStreamPool string // named pool from [redis.Init] (game env redis); not the API server default pool
 	Conn            *grpc.ClientConn
 	LobbyConn       *grpc.ClientConn
+	LedgerConn      *grpc.ClientConn
 	RpcClient       pb.RoomServiceClient
 	LobbyClient     pb.LobbyServiceClient
+	LedgerClient    pb.LedgerServiceClient
 	EventStream     stream.Stream
 	Mutex           sync.RWMutex
 	initComplete    bool
@@ -82,6 +85,10 @@ func (c *ClientContext) dialLocked() error {
 		_ = c.LobbyConn.Close()
 		c.LobbyConn = nil
 	}
+	if c.LedgerConn != nil {
+		_ = c.LedgerConn.Close()
+		c.LedgerConn = nil
+	}
 	roomConn, err := grpc.NewClient(c.RoomAddr, defaultGRPCDialOptions()...)
 	if err != nil {
 		return fmt.Errorf("dial room %s: %w", c.RoomAddr, err)
@@ -95,6 +102,21 @@ func (c *ClientContext) dialLocked() error {
 	c.LobbyConn = lobbyConn
 	c.RpcClient = pb.NewRoomServiceClient(roomConn)
 	c.LobbyClient = pb.NewLobbyServiceClient(lobbyConn)
+	c.LedgerClient = nil
+	if c.LedgerAddr != "" {
+		ledgerConn, err := grpc.NewClient(c.LedgerAddr, defaultGRPCDialOptions()...)
+		if err != nil {
+			_ = roomConn.Close()
+			_ = lobbyConn.Close()
+			c.Conn = nil
+			c.LobbyConn = nil
+			c.RpcClient = nil
+			c.LobbyClient = nil
+			return fmt.Errorf("dial ledger %s: %w", c.LedgerAddr, err)
+		}
+		c.LedgerConn = ledgerConn
+		c.LedgerClient = pb.NewLedgerServiceClient(ledgerConn)
+	}
 	if c.EventStream == nil {
 		var st stream.Stream
 		var err error
@@ -128,12 +150,12 @@ func (c *ClientContext) Init() error {
 	}
 	c.initComplete = true
 	go c.startHealthCheck()
-	log.Infof("全局gRPC客户端初始化成功，room=%s lobby=%s", c.RoomAddr, c.LobbyAddr)
+	log.Infof("gRPC客户端初始化成功，room=%s lobby=%s ledger=%s", c.RoomAddr, c.LobbyAddr, c.LedgerAddr)
 	return nil
 }
 
-// InitClientContext connects to room (Rpc) and lobby (LobbyService) for the named context. Requires [redis.Init] first for event streams.
-func InitClientContext(key, roomAddress, lobbyAddress string) error {
+// InitClientContext connects to room, lobby, and optional ledger for the named context. Requires [redis.Init] first for event streams.
+func InitClientContext(key, roomAddress, lobbyAddress, ledgerAddress string) error {
 	if key == "" {
 		return fmt.Errorf("rpc/client: empty client context key")
 	}
@@ -146,6 +168,7 @@ func InitClientContext(key, roomAddress, lobbyAddress string) error {
 	cfg := NewClientContext(roomAddress, lobbyAddress)
 	c.RoomAddr = cfg.RoomAddr
 	c.LobbyAddr = cfg.LobbyAddr
+	c.LedgerAddr = ledgerAddress
 	if key == GlobalContextKey {
 		// GLOBAL gRPC fallback uses the normal environment's Redis for event streams.
 		c.redisStreamPool = config.ServerTypeNormal
@@ -155,9 +178,9 @@ func InitClientContext(key, roomAddress, lobbyAddress string) error {
 	return c.Init()
 }
 
-// InitGlobalClients connects to room (Rpc) and lobby (LobbyService) for [GlobalContextKey].
-func InitGlobalClients(roomAddress, lobbyAddress string) error {
-	return InitClientContext(GlobalContextKey, roomAddress, lobbyAddress)
+// InitGlobalClients connects to room (Rpc), lobby (LobbyService), and optional ledger for [GlobalContextKey].
+func InitGlobalClients(roomAddress, lobbyAddress, ledgerAddress string) error {
+	return InitClientContext(GlobalContextKey, roomAddress, lobbyAddress, ledgerAddress)
 }
 
 // startHealthCheck 启动健康检查（监控 room 连接；失败时重连 room+lobby）
@@ -240,6 +263,22 @@ func GetGlobalLobbyClient() pb.LobbyServiceClient {
 	return GetLobbyServiceClient(GlobalContextKey)
 }
 
+// GetLedgerServiceClient returns the ledger LedgerService client for key, or nil if missing or not initialized.
+func GetLedgerServiceClient(key string) pb.LedgerServiceClient {
+	c, ok := GetClientContext(key)
+	if !ok {
+		return nil
+	}
+	c.Mutex.RLock()
+	defer c.Mutex.RUnlock()
+	return c.LedgerClient
+}
+
+// GetGlobalLedgerClient returns the global ledger client.
+func GetGlobalLedgerClient() pb.LedgerServiceClient {
+	return GetLedgerServiceClient(GlobalContextKey)
+}
+
 // SetLobbyClientForTest overrides the lobby client for tests for the given context key.
 func SetLobbyClientForTest(key string, cl pb.LobbyServiceClient) {
 	if key == "" {
@@ -288,6 +327,12 @@ func CloseClientContext(key string) error {
 		}
 		c.LobbyConn = nil
 	}
+	if c.LedgerConn != nil {
+		if err := c.LedgerConn.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		c.LedgerConn = nil
+	}
 	if c.Conn != nil {
 		if err := c.Conn.Close(); err != nil && firstErr == nil {
 			firstErr = err
@@ -296,6 +341,7 @@ func CloseClientContext(key string) error {
 	}
 	c.RpcClient = nil
 	c.LobbyClient = nil
+	c.LedgerClient = nil
 	c.EventStream = nil
 	c.initComplete = false
 	return firstErr

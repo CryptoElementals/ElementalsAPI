@@ -6,13 +6,15 @@ option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 service LedgerService {
   rpc SubmitChainEvents(SubmitChainEventsRequest) returns (SubmitChainEventsResponse);
+  rpc RequestWithdraw(RequestWithdrawRequest) returns (RequestWithdrawResponse);
+  rpc ListChainTokenLedgers(ListChainTokenLedgersRequest) returns (ListChainTokenLedgersResponse);
 }
 
 enum EventApplyStatus {
   EVENT_APPLY_STATUS_UNSPECIFIED = 0;
-  EVENT_APPLY_STATUS_APPLIED = 1;
-  EVENT_APPLY_STATUS_DUPLICATE = 2;
-  EVENT_APPLY_STATUS_REJECTED = 3;
+  EVENT_APPLY_STATUS_DUPLICATE = 1;
+  EVENT_APPLY_STATUS_FINALIZED = 2;
+  EVENT_APPLY_STATUS_FAILED = 3;
 }
 
 message ChainDepositEvent {
@@ -61,4 +63,55 @@ message EventApplyResult {
 
 message SubmitChainEventsResponse {
   repeated EventApplyResult results = 1;
+}
+
+message RequestWithdrawRequest {
+  int64 player_id = 1;
+  string amount_wei = 2;
+  int32 token_amount = 3;
+  bytes signature = 4;
+}
+
+message RequestWithdrawResponse {
+  string request_id = 1;
+  string tx_hash = 2;
+  string collector_address = 3;
+  uint64 ledger_id = 4;
+  string status = 5;
+}
+
+message ListChainTokenLedgersRequest {
+  int64 player_id = 1;
+  string event_type = 2;
+  string status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ChainTokenLedgerRecord {
+  uint64 id = 1;
+  string request_id = 2;
+  int64 chain_id = 3;
+  string tx_hash = 4;
+  uint32 log_index = 5;
+  uint64 block_number = 6;
+  string block_hash = 7;
+  string event_type = 8;
+  int64 player_id = 9;
+  string collector_address = 10;
+  string amount_wei = 11;
+  int32 token_delta = 12;
+  string status = 13;
+  string fail_reason = 14;
+  string signature = 15;
+  string from_address = 16;
+  string to_address = 17;
+  string operator = 18;
+  string new_credited_wei = 19;
+  int64 created_at = 20;
+}
+
+message ListChainTokenLedgersResponse {
+  repeated ChainTokenLedgerRecord records = 1;
+  int64 total = 2;
 }

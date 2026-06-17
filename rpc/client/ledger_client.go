@@ -1,0 +1,26 @@
+package client
+
+import (
+	"context"
+	"fmt"
+
+	pb "github.com/CryptoElementals/common/rpc/proto"
+)
+
+// RequestWithdraw calls ledger-server RequestWithdraw for the given server type.
+func RequestWithdraw(ctx context.Context, serverType string, req *pb.RequestWithdrawRequest) (*pb.RequestWithdrawResponse, error) {
+	cl := LedgerClientForType(serverType)
+	if cl == nil {
+		return nil, fmt.Errorf("ledger client is not initialized for server type %q", serverType)
+	}
+	return cl.RequestWithdraw(ctx, req)
+}
+
+// ListChainTokenLedgers calls ledger-server ListChainTokenLedgers for the given server type.
+func ListChainTokenLedgers(ctx context.Context, serverType string, req *pb.ListChainTokenLedgersRequest) (*pb.ListChainTokenLedgersResponse, error) {
+	cl := LedgerClientForType(serverType)
+	if cl == nil {
+		return nil, fmt.Errorf("ledger client is not initialized for server type %q", serverType)
+	}
+	return cl.ListChainTokenLedgers(ctx, req)
+}
