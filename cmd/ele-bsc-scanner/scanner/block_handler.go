@@ -6,10 +6,10 @@ import "context"
 type BlockHandler struct {
 	registry  *WalletRegistry
 	processor *TokenProcessor
-	sink      *LogSink
+	sink      EventSink
 }
 
-func NewBlockHandler(registry *WalletRegistry, processor *TokenProcessor, sink *LogSink) *BlockHandler {
+func NewBlockHandler(registry *WalletRegistry, processor *TokenProcessor, sink EventSink) *BlockHandler {
 	return &BlockHandler{
 		registry:  registry,
 		processor: processor,
@@ -27,8 +27,8 @@ func (h *BlockHandler) HandleBlock(ctx context.Context, data *BlockData) error {
 		}
 	}
 	events := h.processor.ParseEvents(data)
-	for _, ev := range events {
-		h.sink.Emit(ev)
+	if len(events) == 0 {
+		return nil
 	}
-	return nil
+	return h.sink.EmitBlock(ctx, data, events)
 }

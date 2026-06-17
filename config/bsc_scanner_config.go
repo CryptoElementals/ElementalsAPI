@@ -16,6 +16,9 @@ type BscScannerConfig struct {
 	ChainCfg                      BscChainConfig `mapstructure:"chain"`
 	WorkerCount                   int            `mapstructure:"worker-count"`
 	WalletRegistryRefreshInterval time.Duration  `mapstructure:"wallet-registry-refresh-interval"`
+	LedgerServer                  string         `mapstructure:"ledger-server"`
+	LedgerServerMocked            bool           `mapstructure:"ledger-server-mocked"`
+	LedgerServerTimeout           time.Duration  `mapstructure:"ledger-server-timeout"`
 }
 
 type BscChainConfig struct {

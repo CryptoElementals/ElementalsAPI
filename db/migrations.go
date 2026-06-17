@@ -40,6 +40,7 @@ func Migrate() error {
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
 		&dao.BatchWithdrawLedger{},
+		&dao.ChainTokenLedger{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -88,6 +89,7 @@ func MigrateMemDb() error {
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
 		&dao.BatchWithdrawLedger{},
+		&dao.ChainTokenLedger{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

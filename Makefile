@@ -30,6 +30,9 @@ ROOMSERVER_MAIN = ./cmd/ele-roomserver
 CHAINSERVER_BIN = ele-chainserver
 CHAINSERVER_MAIN = ./cmd/ele-chainserver
 
+LEDGERSERVER_BIN = ele-ledgerserver
+LEDGERSERVER_MAIN = ./cmd/ele-ledgerserver
+
 LOBBYSERVER_BIN = ele-lobbyserver
 LOBBYSERVER_MAIN = ./cmd/ele-lobbyserver
 
@@ -47,11 +50,11 @@ REDISSTREAM_MAIN = ./cmd/ele-redis-stream
 
 LDFLAGS = -ldflags "-X 'main.TAG=$(TAG)' -X 'main.COMMIT=$(COMMIT)' -X 'main.BLDTIME=$(BLDTIME)' -X 'main.GOVER=$(GOVER)'"
 
-.PHONY: all build apiserver scanner bsc-scanner roomserver chainserver lobbyserver botserver stat tools redisstream clean deps lint check-persist help
+.PHONY: all build apiserver scanner bsc-scanner roomserver chainserver ledgerserver lobbyserver botserver stat tools redisstream clean deps lint check-persist help
 
 all: build
 
-build: apiserver scanner bsc-scanner roomserver chainserver lobbyserver botserver stat tools redisstream
+build: apiserver scanner bsc-scanner roomserver chainserver ledgerserver lobbyserver botserver stat tools redisstream
 
 apiserver: $(BIN_DIR)
 	@echo "Building $(APISERVER_BIN)..."
@@ -77,6 +80,11 @@ chainserver: $(BIN_DIR)
 	@echo "Building $(CHAINSERVER_BIN)..."
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(CHAINSERVER_BIN) $(CHAINSERVER_MAIN)
 	@echo "Build completed: $(BIN_DIR)/$(CHAINSERVER_BIN)"
+
+ledgerserver: $(BIN_DIR)
+	@echo "Building $(LEDGERSERVER_BIN)..."
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(LDFLAGS) -o $(BIN_DIR)/$(LEDGERSERVER_BIN) $(LEDGERSERVER_MAIN)
+	@echo "Build completed: $(BIN_DIR)/$(LEDGERSERVER_BIN)"
 
 lobbyserver: $(BIN_DIR)
 	@echo "Building $(LOBBYSERVER_BIN)..."
@@ -137,6 +145,7 @@ help:
 	@echo "  bsc-scanner   - Build ele-bsc-scanner only"
 	@echo "  roomserver    - Build ele-roomserver only"
 	@echo "  chainserver   - Build ele-chainserver only"
+	@echo "  ledgerserver  - Build ele-ledgerserver only"
 	@echo "  botserver     - Build ele-botserver only"
 	@echo "  stat          - Build ele-stat only"
 	@echo "  tools         - Build ele-tools (includes stress run subcommand)"

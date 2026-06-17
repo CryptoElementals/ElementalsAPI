@@ -18,6 +18,7 @@ type BscScanner struct {
 	engine        *ScanEngine
 	source        *FinalizedBlockSource
 	registry      *WalletRegistry
+	eventSink     EventSink
 	catchupCancel context.CancelFunc
 	catchupWg     sync.WaitGroup
 }
@@ -50,7 +51,10 @@ func NewBscScanner(parent context.Context) (*BscScanner, error) {
 	if err != nil {
 		return nil, err
 	}
-	sink := NewLogSink()
+	sink, err := NewEventSink(parent)
+	if err != nil {
+		return nil, err
+	}
 	handler := NewBlockHandler(registry, processor, sink)
 	prefetcher := NewBlockPrefetcher(cfg.ChainCfg.HttpRpc)
 
@@ -62,11 +66,12 @@ func NewBscScanner(parent context.Context) (*BscScanner, error) {
 
 	ctx, cancel := context.WithCancel(parent)
 	bs := &BscScanner{
-		ctx:      ctx,
-		cancel:   cancel,
-		chainID:  chainID,
-		engine:   engine,
-		registry: registry,
+		ctx:       ctx,
+		cancel:    cancel,
+		chainID:   chainID,
+		engine:    engine,
+		registry:  registry,
+		eventSink: sink,
 	}
 	bs.source = NewFinalizedBlockSource(ctx, cfg.ChainCfg.WsRpc, cfg.ChainCfg.HttpRpc, engine, bs.onWSReconnect)
 	return bs, nil
@@ -100,6 +105,11 @@ func (b *BscScanner) Stop() {
 		b.catchupCancel()
 	}
 	b.engine.Stop()
+	if b.eventSink != nil {
+		if err := b.eventSink.Close(); err != nil {
+			log.Errorf("close event sink: %v", err)
+		}
+	}
 }
 
 func (b *BscScanner) Run() {
