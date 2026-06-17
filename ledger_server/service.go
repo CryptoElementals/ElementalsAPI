@@ -6,14 +6,17 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	dao "github.com/CryptoElementals/common/models"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/proto"
 )
 
 // Service applies on-chain token events to the ledger and user balances.
-type Service struct{}
+type Service struct {
+	publisher pubsub.Publisher
+}
 
-func NewService() *Service {
-	return &Service{}
+func NewService(publisher pubsub.Publisher) *Service {
+	return &Service{publisher: publisher}
 }
 
 func (s *Service) SubmitChainEvents(ctx context.Context, req *proto.SubmitChainEventsRequest) (*proto.SubmitChainEventsResponse, error) {
@@ -45,7 +48,9 @@ func (s *Service) applyOne(ctx context.Context, ev *proto.ChainTokenEvent) (*pro
 	if err != nil {
 		return nil, err
 	}
-	return dbApplyResultToProto(ev.GetTxHash(), ev.GetLogIndex(), applyResult), nil
+	result := dbApplyResultToProto(ev.GetTxHash(), ev.GetLogIndex(), applyResult)
+	s.publishTokenUpdated(ctx, ev, applyResult)
+	return result, nil
 }
 
 func protoToChainTokenEventInput(ev *proto.ChainTokenEvent) (db.ChainTokenEventInput, error) {

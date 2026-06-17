@@ -48,6 +48,7 @@ const (
 	REFUSE_CONTINUE_GAME_LABEL     = "RefuseContinueGame"
 	CONTINUE_GAME_LABEL            = "ContinueGame"
 	SUBSCRIBE_GAME_INFO_LABEL      = "SubscribeGameInfo"
+	SUBSCRIBE_TOKEN_UPDATES_LABEL  = "SubscribeTokenUpdates"
 	SSE_EXAMPLE_LABEL              = "SSEExample"
 	SURRENDER_LABEL                = "Surrender"
 	SUBMIT_PLAYER_COMMITMENT_LABEL = "SubmitPlayerCommitment"

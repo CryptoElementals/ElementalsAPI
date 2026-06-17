@@ -7,8 +7,10 @@ import (
 
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/middleware"
 	"github.com/CryptoElementals/common/rpc/proto"
+	"github.com/CryptoElementals/common/stream"
 	"google.golang.org/grpc"
 )
 
@@ -18,11 +20,17 @@ type ServiceProcess struct {
 	cfg          *config.LedgerServerConfig
 	grpcServer   *grpc.Server
 	grpcHandlers *GRPCServices
+	eventStream  stream.Stream
 }
 
 // New constructs a ledger server. Call Start after DB is initialized.
 func New(ctx context.Context, cfg *config.LedgerServerConfig) (*ServiceProcess, error) {
-	svc := NewService()
+	st, err := stream.NewRedisStream()
+	if err != nil {
+		return nil, fmt.Errorf("redis stream: %w", err)
+	}
+	tokenPublisher := pubsub.NewStreamPublisher(st, pubsub.TopicToken)
+	svc := NewService(tokenPublisher)
 	handlers := NewGRPCServices(svc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	proto.RegisterLedgerServiceServer(server, handlers)
@@ -31,6 +39,7 @@ func New(ctx context.Context, cfg *config.LedgerServerConfig) (*ServiceProcess, 
 		cfg:          cfg,
 		grpcServer:   server,
 		grpcHandlers: handlers,
+		eventStream:  st,
 	}, nil
 }
 

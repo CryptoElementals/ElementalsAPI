@@ -92,7 +92,7 @@ func Handle(c *gin.Context) {
 // isSSETask 判断是否是 SSE 任务
 func isSSETask(action string) bool {
 	// 根据 action 名称判断是否是 SSE 任务
-	sseActions := []string{"SubscribeGameInfo", "SSEExample"}
+	sseActions := []string{"SubscribeGameInfo", "SubscribeTokenUpdates", "SSEExample"}
 	for _, sseAction := range sseActions {
 		if action == sseAction {
 			return true

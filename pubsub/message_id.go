@@ -19,6 +19,7 @@ var eventTypeNumber = map[proto.EventType]int{
 	proto.EventType_TYPE_MATCH_CANCELED:           10,
 	proto.EventType_TYPE_TOURNAMENT_MATCH_OUTCOME: 11,
 	proto.EventType_TYPE_TOURNAMENT_ROSTER_UPDATE: 12,
+	proto.EventType_TYPE_TOKEN_UPDATED:            13,
 }
 
 // gamePhaseSyncMessageTypeIndex maps GamePhase.{TurnStatus, PlayerTurnStatus} to the same semantic
@@ -111,6 +112,21 @@ func BuildEventMessageID(evt *proto.Event) string {
 			h = (h << 5) + h + uint64(c)
 		}
 		primaryID = int64(h & 0x7fffffffffffffff)
+	case proto.EventType_TYPE_TOKEN_UPDATED:
+		tu := evt.GetTokenUpdated()
+		if tu != nil {
+			var h uint64 = 5381
+			for _, part := range []string{
+				fmt.Sprintf("%d", tu.GetChainId()),
+				tu.GetTxHash(),
+				fmt.Sprintf("%d", tu.GetLogIndex()),
+			} {
+				for _, c := range part {
+					h = (h << 5) + h + uint64(c)
+				}
+			}
+			primaryID = int64(h & 0x7fffffffffffffff)
+		}
 	}
 
 	isSync := 0

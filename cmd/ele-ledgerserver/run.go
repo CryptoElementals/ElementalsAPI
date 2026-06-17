@@ -10,6 +10,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	ledgerserver "github.com/CryptoElementals/common/ledger_server"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/redis"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,10 @@ var runCmd = &cobra.Command{
 			log.Fatalf("db migrate failed, err: %v", err)
 		}
 		log.Info("db migrated")
+		if err := redis.Init(&config.LedgerGConf.RedisCfg); err != nil {
+			log.Fatal("init redis failed, err: %v", err)
+		}
+		log.Info("redis initialized")
 
 		svr, err := ledgerserver.New(context.Background(), &config.LedgerGConf)
 		if err != nil {
