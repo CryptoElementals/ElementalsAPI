@@ -13,53 +13,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestChainBatchWithdrawNotConfigured(t *testing.T) {
+func TestChainWithdrawNotConfigured(t *testing.T) {
 	h := &Chain{}
-	_, err := h.BatchWithdraw(context.Background(), []BatchWithdrawItem{
-		{PlayerID: 1, Amount: 1000, Signature: []byte{0x01}},
-	})
+	_, err := h.Withdraw(context.Background(), 1, 1000, []byte{0x01})
 	require.ErrorIs(t, err, ErrWalletChainNotConfigured)
 }
 
 func TestGasLimitWithBuffer(t *testing.T) {
 	require.EqualValues(t, 110_000, gasLimitWithBuffer(100_000))
-	require.EqualValues(t, batchWithdrawGasLimit, gasLimitWithBuffer(0))
-	require.EqualValues(t, batchWithdrawGasLimit, gasLimitWithBuffer(950_000))
+	require.EqualValues(t, withdrawGasLimit, gasLimitWithBuffer(0))
+	require.EqualValues(t, withdrawGasLimit, gasLimitWithBuffer(400_000))
 }
 
-func TestWalletRuntimeBatchWithdrawValidation(t *testing.T) {
+func TestWalletRuntimeWithdrawValidation(t *testing.T) {
 	r := &walletRuntime{}
 
-	_, err := r.BatchWithdraw(context.Background(), nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "items is required")
-
-	_, err = r.BatchWithdraw(context.Background(), []BatchWithdrawItem{
-		{PlayerID: 0, Amount: 1000, Signature: []byte{0x01}},
-	})
+	_, err := r.Withdraw(context.Background(), 0, 1000, []byte{0x01})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid player_id")
 
-	_, err = r.BatchWithdraw(context.Background(), []BatchWithdrawItem{
-		{PlayerID: 1, Amount: 0, Signature: []byte{0x01}},
-	})
+	_, err = r.Withdraw(context.Background(), 1, 0, []byte{0x01})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid amount")
 
-	_, err = r.BatchWithdraw(context.Background(), []BatchWithdrawItem{
-		{PlayerID: 1, Amount: -1, Signature: []byte{0x01}},
-	})
+	_, err = r.Withdraw(context.Background(), 1, -1, []byte{0x01})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid amount")
 
-	_, err = r.BatchWithdraw(context.Background(), []BatchWithdrawItem{
-		{PlayerID: 1, Amount: 1000, Signature: nil},
-	})
+	_, err = r.Withdraw(context.Background(), 1, 1000, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "signature is required")
 }
 
-func TestWalletRuntimeBatchWithdrawNoSend(t *testing.T) {
+func TestWalletRuntimeWithdrawNoSend(t *testing.T) {
 	rpcURL := os.Getenv("WALLET_CHAIN_RPC")
 	wmAddr := os.Getenv("WALLET_MANAGER_ADDRESS")
 	if rpcURL == "" || wmAddr == "" {
@@ -89,17 +75,14 @@ func TestWalletRuntimeBatchWithdrawNoSend(t *testing.T) {
 		sig[i] = byte(i + 1)
 	}
 
-	results, err := rt.BatchWithdraw(ctx, []BatchWithdrawItem{
-		{PlayerID: 1, Amount: 1_000_000_000_000_000_000, Signature: sig},
-	})
+	result, err := rt.Withdraw(ctx, 1, 1_000_000_000_000_000_000, sig)
 	if err != nil {
-		t.Skipf("batch withdraw integration requires valid on-chain state and signatures: %v", err)
+		t.Skipf("withdraw integration requires valid on-chain state and signature: %v", err)
 	}
-	require.Len(t, results, 1)
-	require.NotEmpty(t, results[0].TxHash)
-	require.NotZero(t, results[0].LedgerID)
+	require.NotEmpty(t, result.TxHash)
+	require.NotZero(t, result.LedgerID)
 
-	var row dao.BatchWithdrawLedger
-	require.NoError(t, db.Get().First(&row, results[0].LedgerID).Error)
-	require.Equal(t, results[0].TxHash, row.TxHash)
+	var row dao.WithdrawLedger
+	require.NoError(t, db.Get().First(&row, result.LedgerID).Error)
+	require.Equal(t, result.TxHash, row.TxHash)
 }

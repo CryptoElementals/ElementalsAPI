@@ -273,11 +273,11 @@ func (h *Chain) AddCard(evt *proto.SubmitPlayerCardRequest) error {
 
 var ErrWalletChainNotConfigured = errors.New("wallet-chain not configured")
 
-func (h *Chain) BatchWithdraw(ctx context.Context, items []BatchWithdrawItem) ([]BatchWithdrawResult, error) {
+func (h *Chain) Withdraw(ctx context.Context, playerID int64, amount int64, signature []byte) (*WithdrawResult, error) {
 	if h.walletRuntime == nil {
 		return nil, ErrWalletChainNotConfigured
 	}
-	return h.walletRuntime.BatchWithdraw(ctx, items)
+	return h.walletRuntime.Withdraw(ctx, playerID, amount, signature)
 }
 
 // ClearGameInfo removes pending tx pool rows for a finished game.

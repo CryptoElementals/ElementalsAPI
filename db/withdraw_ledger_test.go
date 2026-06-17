@@ -7,11 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInsertBatchWithdrawLedger(t *testing.T) {
+func TestInsertWithdrawLedger(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	id, err := InsertBatchWithdrawLedger(&dao.BatchWithdrawLedger{
+	id, err := InsertWithdrawLedger(&dao.WithdrawLedger{
 		PlayerID:         42,
 		Amount:           1_000_000_000_000_000_000,
 		Signature:        "0xAB01",
@@ -22,7 +22,7 @@ func TestInsertBatchWithdrawLedger(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, id)
 
-	var row dao.BatchWithdrawLedger
+	var row dao.WithdrawLedger
 	require.NoError(t, Get().First(&row, id).Error)
 	require.EqualValues(t, 42, row.PlayerID)
 	require.EqualValues(t, 1_000_000_000_000_000_000, row.Amount)

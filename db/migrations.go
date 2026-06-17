@@ -38,7 +38,7 @@ func Migrate() error {
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
-		&dao.BatchWithdrawLedger{},
+		&dao.WithdrawLedger{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -85,7 +85,7 @@ func MigrateMemDb() error {
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
-		&dao.BatchWithdrawLedger{},
+		&dao.WithdrawLedger{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {
