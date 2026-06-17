@@ -1,0 +1,66 @@
+package main
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/db"
+	ledgerserver "github.com/CryptoElementals/common/ledger_server"
+	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/redis"
+	"github.com/spf13/cobra"
+)
+
+var configPath string
+
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "start ledger server",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := config.InitLedgerServerConfig(configPath); err != nil {
+			log.Fatal("init config failed, err: %v", err)
+		}
+		if err := log.InitGlobalLogger(&config.LedgerGConf.LogCfg); err != nil {
+			log.Fatal("init logger failed, err: %v", err)
+		}
+		log.Infof("config: %+v", config.LedgerGConf)
+		if err := db.Init(&config.LedgerGConf.DbCfg); err != nil {
+			log.Fatal("init db failed, err: %v", err)
+		}
+		log.Info("db initialized")
+		if err := db.Migrate(); err != nil {
+			log.Fatalf("db migrate failed, err: %v", err)
+		}
+		log.Info("db migrated")
+		if err := redis.Init(&config.LedgerGConf.RedisCfg); err != nil {
+			log.Fatal("init redis failed, err: %v", err)
+		}
+		log.Info("redis initialized")
+
+		svr, err := ledgerserver.New(context.Background(), &config.LedgerGConf)
+		if err != nil {
+			log.Fatalf("init ledger server failed, err: %v", err)
+		}
+		log.Info("ledger server initialized")
+		if err := svr.Start(); err != nil {
+			log.Fatalf("start ledger server failed, err: %v", err)
+		}
+		log.Info("start ledger server success")
+
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		log.Info("receive signal, exit")
+		svr.Stop()
+		log.Info("ledger server stopped")
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(runCmd)
+	runCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
+	runCmd.MarkFlagRequired("config")
+}

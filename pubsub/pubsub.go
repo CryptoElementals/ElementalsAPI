@@ -20,7 +20,7 @@ func Publish(ctx context.Context, pub Publisher, evt *proto.Event) error {
 		return nil
 	}
 	topic := pub.Topic()
-	if topic == TopicRoom || topic == TopicLobby || topic == TopicTournamentRoster {
+	if topic == TopicRoom || topic == TopicLobby || topic == TopicTournamentRoster || topic == TopicToken {
 		if evt.MessageId == "" {
 			evt.MessageId = BuildEventMessageID(evt)
 		}

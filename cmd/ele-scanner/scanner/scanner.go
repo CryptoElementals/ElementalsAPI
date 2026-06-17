@@ -59,6 +59,7 @@ type Scanner struct {
 	//roomManagerAbi            *abi.ABI
 	roomAddress               string
 	roomAbi                   *abi.ABI
+	chainID                   uint64
 	currentScannedHeight      uint64
 	currentScannedHeightMutex sync.RWMutex
 	toSubmitHeight            uint64
@@ -120,6 +121,27 @@ func (s *Scanner) Stop() {
 	log.Info("Scanner Stop() called")
 }
 
+func (s *Scanner) resolveChainID() error {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		default:
+		}
+		ctx, cancel := context.WithTimeout(s.ctx, time.Duration(dialTimeout)*time.Second)
+		chainID, err := blockchain.GetChainID(ctx, s.gethHttpRpc)
+		cancel()
+		if err != nil {
+			log.Errorf("GetChainID from %s failed: %v, retrying in %d seconds...", s.gethHttpRpc, err, dialTimeout)
+			time.Sleep(time.Duration(dialTimeout) * time.Second)
+			continue
+		}
+		s.chainID = chainID
+		log.Infof("Resolved chainID=%d from %s", chainID, s.gethHttpRpc)
+		return nil
+	}
+}
+
 func (s *Scanner) Run() {
 	var err error
 	err = s.initEventSigHashCache()
@@ -128,21 +150,24 @@ func (s *Scanner) Run() {
 		return
 	}
 
+	if err := s.resolveChainID(); err != nil {
+		log.Errorf("resolveChainID failed: %v", err)
+		return
+	}
+
 	for {
-		syncs, err := db.FindBlockSyncs()
+		sync, err := db.FindBlockSync(s.chainID, "head")
 		if err != nil {
-			log.Errorf("db.FindBlockSyncs() failed, err %s", err.Error())
+			log.Errorf("db.FindBlockSync(chainID=%d, type=head) failed, err %s", s.chainID, err.Error())
 			time.Sleep(10 * time.Second)
 			continue
 		}
-		for _, sync := range syncs {
-			if sync.Type == "head" {
-				s.headNumberOnChain = sync.BlockHeight
-				s.currentScannedHeight = sync.BlockHeight + 1
-				s.toSubmitHeight = sync.BlockHeight + 1
-				log.Infof("Scanner initialized: headNumberOnChain=%d, currentScannedHeight=%d, toSubmitHeight=%d",
-					s.headNumberOnChain, s.currentScannedHeight, s.toSubmitHeight)
-			}
+		if sync != nil {
+			s.headNumberOnChain = sync.BlockHeight
+			s.currentScannedHeight = sync.BlockHeight + 1
+			s.toSubmitHeight = sync.BlockHeight + 1
+			log.Infof("Scanner initialized: chainID=%d headNumberOnChain=%d, currentScannedHeight=%d, toSubmitHeight=%d",
+				s.chainID, s.headNumberOnChain, s.currentScannedHeight, s.toSubmitHeight)
 		}
 		break
 	}
@@ -372,7 +397,7 @@ func (s *Scanner) CatchUpChain(ctx context.Context) {
 					}
 
 					if blockNumber%10 == 0 {
-						err = db.SaveBlockSync(dao.BlockSync{Type: "head", BlockHeight: blockNumber})
+						err = db.SaveBlockSync(dao.BlockSync{ChainID: s.chainID, Type: "head", BlockHeight: blockNumber})
 						if err != nil {
 							log.Errorf("Worker %d Insert head block sync to db err %v, blockNumber %d. Don't update now!!！", workerID, err.Error(), blockNumber)
 							// 失败重试，重新放回队列

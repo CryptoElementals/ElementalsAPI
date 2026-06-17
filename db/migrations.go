@@ -22,6 +22,7 @@ func Migrate() error {
 		&dao.Room{},
 		&dao.Card{},
 		&dao.BlockSync{},
+		&dao.TokenCollectorAddress{},
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
 		&dao.UserStat{},
@@ -39,6 +40,7 @@ func Migrate() error {
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
 		&dao.WithdrawLedger{},
+		&dao.ChainTokenLedger{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -69,6 +71,7 @@ func MigrateMemDb() error {
 		&dao.Room{},
 		&dao.Card{},
 		&dao.BlockSync{},
+		&dao.TokenCollectorAddress{},
 		&dao.UserToken{},
 		&dao.LockedUserToken{},
 		&dao.UserStat{},
@@ -86,6 +89,7 @@ func MigrateMemDb() error {
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
 		&dao.WithdrawLedger{},
+		&dao.ChainTokenLedger{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

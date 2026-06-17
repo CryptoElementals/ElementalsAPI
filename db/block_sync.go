@@ -13,6 +13,18 @@ func FindBlockSyncs() ([]dao.BlockSync, error) {
 	return blockSync, err
 }
 
+func FindBlockSync(chainID uint64, syncType string) (*dao.BlockSync, error) {
+	var blockSync dao.BlockSync
+	err := db.Where("chain_id = ? AND type = ?", chainID, syncType).First(&blockSync).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &blockSync, nil
+}
+
 func SaveBlockSyncs(blockSyncs []dao.BlockSync) error {
 	// Use Save method: if the record exists, update it; if not, insert it
 	if err := db.Save(&blockSyncs).Error; err != nil {
@@ -23,9 +35,8 @@ func SaveBlockSyncs(blockSyncs []dao.BlockSync) error {
 }
 
 func SaveBlockSync(blockSync dao.BlockSync) error {
-	// Check if a record with the same Type exists
 	var existingSync dao.BlockSync
-	err := db.Where("type = ?", blockSync.Type).First(&existingSync).Error
+	err := db.Where("chain_id = ? AND type = ?", blockSync.ChainID, blockSync.Type).First(&existingSync).Error
 
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err // Return error if query fails

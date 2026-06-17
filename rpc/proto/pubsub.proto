@@ -218,6 +218,20 @@ message TournamentRosterUpdate {
   string TournamentID = 1;
 }
 
+// TokenUpdated is published on token_events after wallet balance changes (e.g. chain deposit/withdraw).
+message TokenUpdated {
+  int64 player_id = 1;
+  int32 token_delta = 2;
+  int32 tokens = 3;
+  int32 points = 4;
+  int32 locked_tokens = 5;
+  string source = 6;
+  uint64 chain_id = 7;
+  string tx_hash = 8;
+  uint32 log_index = 9;
+  string collector_address = 10;
+}
+
 enum EventType {
   TYPE_KNOWN = 0;
   TYPE_MATCHED = 1;
@@ -236,6 +250,8 @@ enum EventType {
   TYPE_TOURNAMENT_MATCH_OUTCOME = 14;
   // Broadcast on tournament_roster_events: a player joined; clients refresh snapshot (empty receivers).
   TYPE_TOURNAMENT_ROSTER_UPDATE = 15;
+  // Published on token_events when user wallet balance changes.
+  TYPE_TOKEN_UPDATED = 16;
 }
 
 message Event {
@@ -258,5 +274,6 @@ message Event {
     GameCompletedNotice GameCompletedNotice = 14;
     TournamentMatchOutcome TournamentMatchOutcome = 16;
     TournamentRosterUpdate TournamentRosterUpdate = 17;
+    TokenUpdated TokenUpdated = 18;
   }
 }

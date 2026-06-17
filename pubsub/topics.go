@@ -6,6 +6,8 @@ const (
 	TopicLobby = "lobby_events"
 	// TopicTournamentRoster is a broadcast stream (empty Event.receivers): anyone on subscribe_game_info refreshes tournament snapshot.
 	TopicTournamentRoster         = "tournament_roster_events"
+	// TopicToken is wallet balance updates from ledger-server; SubscribeTokenUpdates filters by player_id.
+	TopicToken                    = "token_events"
 	TopicRoomSettlementPVP        = "room_settlement_PVP"
 	TopicRoomSettlementTournament = "room_settlement_tournament"
 )

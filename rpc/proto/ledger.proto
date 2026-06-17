@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package rpc;
+
+option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
+
+service LedgerService {
+  rpc SubmitChainEvents(SubmitChainEventsRequest) returns (SubmitChainEventsResponse);
+}
+
+enum EventApplyStatus {
+  EVENT_APPLY_STATUS_UNSPECIFIED = 0;
+  EVENT_APPLY_STATUS_APPLIED = 1;
+  EVENT_APPLY_STATUS_DUPLICATE = 2;
+  EVENT_APPLY_STATUS_REJECTED = 3;
+}
+
+message ChainDepositEvent {
+  int64 player_id = 1;
+  string from_address = 2;
+  string amount_wei = 3;
+  string new_credited_wei = 4;
+}
+
+message ChainWithdrawEvent {
+  int64 player_id = 1;
+  string operator = 2;
+  string to_address = 3;
+  string amount_wei = 4;
+}
+
+message ChainTokenEvent {
+  uint64 chain_id = 1;
+  uint64 block_number = 2;
+  string block_hash = 3;
+  uint64 timestamp = 4;
+  string tx_hash = 5;
+  uint32 log_index = 6;
+  string collector_address = 7;
+  string event_type = 8;
+
+  oneof payload {
+    ChainDepositEvent deposit = 9;
+    ChainWithdrawEvent withdraw = 10;
+  }
+}
+
+message SubmitChainEventsRequest {
+  uint64 block_number = 1;
+  repeated ChainTokenEvent events = 2;
+}
+
+message EventApplyResult {
+  string tx_hash = 1;
+  uint32 log_index = 2;
+  EventApplyStatus status = 3;
+  string message = 4;
+  int32 token_delta = 5;
+  int32 new_balance = 6;
+}
+
+message SubmitChainEventsResponse {
+  repeated EventApplyResult results = 1;
+}
