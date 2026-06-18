@@ -39,7 +39,7 @@ func Migrate() error {
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
-		&dao.BatchWithdrawLedger{},
+		&dao.WithdrawLedger{},
 		&dao.ChainTokenLedger{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
@@ -88,7 +88,7 @@ func MigrateMemDb() error {
 		&dao.BotAccount{},
 		&dao.GameChainID{},
 		&dao.ChainTxPoolItem{},
-		&dao.BatchWithdrawLedger{},
+		&dao.WithdrawLedger{},
 		&dao.ChainTokenLedger{},
 	}
 	err := Get().AutoMigrate(migrates...)

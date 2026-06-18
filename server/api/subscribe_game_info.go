@@ -49,9 +49,9 @@ type SubscribeGameInfoTask struct {
 }
 
 var (
-	subscribeGameInfoBusMu    sync.Mutex
-	subscribeGameInfoBuses    = make(map[string]client.EventBus)
-	subscribeGameInfoBusErrs  = make(map[string]error)
+	subscribeGameInfoBusMu   sync.Mutex
+	subscribeGameInfoBuses   = make(map[string]client.EventBus)
+	subscribeGameInfoBusErrs = make(map[string]error)
 )
 
 func getSubscribeGameInfoEventBus(serverType string) (client.EventBus, error) {

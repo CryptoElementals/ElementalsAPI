@@ -46,9 +46,9 @@ via LobbyService.SetUserTokenAmount, then promotes the bot registry entry to idl
 		}
 		sort.Strings(candidates)
 
-		toProcess, skipped := filterTokenInsufficientBots(candidates, strings.TrimSpace(rechargePlayerKey), rechargeLimit)
+		toProcess, skipped := filterBotRegistryKeys(candidates, strings.TrimSpace(rechargePlayerKey), rechargeLimit)
 		if skipped > 0 {
-			fmt.Printf("skipped: player-key %q not in token_insufficient set\n", rechargePlayerKey)
+			fmt.Printf("skipped: player-key %q not in candidate list\n", rechargePlayerKey)
 		}
 
 		var (
@@ -123,7 +123,7 @@ via LobbyService.SetUserTokenAmount, then promotes the bot registry entry to idl
 	},
 }
 
-func filterTokenInsufficientBots(candidates []string, playerKeyFilter string, limit int) (filtered []string, skipped int) {
+func filterBotRegistryKeys(candidates []string, playerKeyFilter string, limit int) (filtered []string, skipped int) {
 	if playerKeyFilter != "" {
 		for _, k := range candidates {
 			if k == playerKeyFilter {

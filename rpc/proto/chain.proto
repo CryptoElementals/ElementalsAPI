@@ -13,7 +13,7 @@ service ChainService {
     rpc AddCommitment(SubmitPlayerCommitmentRequest) returns (google.protobuf.Empty);
     rpc AddCard(SubmitPlayerCardRequest) returns (google.protobuf.Empty);
     rpc ClearGameInfo(ClearGameInfoRequest) returns (google.protobuf.Empty);
-    rpc BatchWithdraw(BatchWithdrawRequest) returns (BatchWithdrawResponse);
+    rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
 }
 
 message RequireGameCreationEvent {
@@ -36,22 +36,14 @@ message ClearGameInfoRequest {
     int64 game_id = 1;
 }
 
-message BatchWithdrawItem {
+message WithdrawRequest {
     int64 player_id = 1;
     int64 amount = 2;
     bytes signature = 3;
 }
 
-message BatchWithdrawRequest {
-    repeated BatchWithdrawItem items = 1;
-}
-
-message BatchWithdrawResult {
+message WithdrawResponse {
     string tx_hash = 1;
     uint64 ledger_id = 2;
     string collector_address = 3;
-}
-
-message BatchWithdrawResponse {
-    repeated BatchWithdrawResult results = 1;
 }

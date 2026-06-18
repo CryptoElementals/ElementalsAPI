@@ -25,7 +25,7 @@ const (
 	ChainService_AddCommitment_FullMethodName   = "/rpc.ChainService/AddCommitment"
 	ChainService_AddCard_FullMethodName         = "/rpc.ChainService/AddCard"
 	ChainService_ClearGameInfo_FullMethodName   = "/rpc.ChainService/ClearGameInfo"
-	ChainService_BatchWithdraw_FullMethodName   = "/rpc.ChainService/BatchWithdraw"
+	ChainService_Withdraw_FullMethodName        = "/rpc.ChainService/Withdraw"
 )
 
 // ChainServiceClient is the client API for ChainService service.
@@ -37,7 +37,7 @@ type ChainServiceClient interface {
 	AddCommitment(ctx context.Context, in *SubmitPlayerCommitmentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCard(ctx context.Context, in *SubmitPlayerCardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ClearGameInfo(ctx context.Context, in *ClearGameInfoRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	BatchWithdraw(ctx context.Context, in *BatchWithdrawRequest, opts ...grpc.CallOption) (*BatchWithdrawResponse, error)
+	Withdraw(ctx context.Context, in *WithdrawRequest, opts ...grpc.CallOption) (*WithdrawResponse, error)
 }
 
 type chainServiceClient struct {
@@ -98,10 +98,10 @@ func (c *chainServiceClient) ClearGameInfo(ctx context.Context, in *ClearGameInf
 	return out, nil
 }
 
-func (c *chainServiceClient) BatchWithdraw(ctx context.Context, in *BatchWithdrawRequest, opts ...grpc.CallOption) (*BatchWithdrawResponse, error) {
+func (c *chainServiceClient) Withdraw(ctx context.Context, in *WithdrawRequest, opts ...grpc.CallOption) (*WithdrawResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BatchWithdrawResponse)
-	err := c.cc.Invoke(ctx, ChainService_BatchWithdraw_FullMethodName, in, out, cOpts...)
+	out := new(WithdrawResponse)
+	err := c.cc.Invoke(ctx, ChainService_Withdraw_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ type ChainServiceServer interface {
 	AddCommitment(context.Context, *SubmitPlayerCommitmentRequest) (*emptypb.Empty, error)
 	AddCard(context.Context, *SubmitPlayerCardRequest) (*emptypb.Empty, error)
 	ClearGameInfo(context.Context, *ClearGameInfoRequest) (*emptypb.Empty, error)
-	BatchWithdraw(context.Context, *BatchWithdrawRequest) (*BatchWithdrawResponse, error)
+	Withdraw(context.Context, *WithdrawRequest) (*WithdrawResponse, error)
 	mustEmbedUnimplementedChainServiceServer()
 }
 
@@ -143,8 +143,8 @@ func (UnimplementedChainServiceServer) AddCard(context.Context, *SubmitPlayerCar
 func (UnimplementedChainServiceServer) ClearGameInfo(context.Context, *ClearGameInfoRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ClearGameInfo not implemented")
 }
-func (UnimplementedChainServiceServer) BatchWithdraw(context.Context, *BatchWithdrawRequest) (*BatchWithdrawResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BatchWithdraw not implemented")
+func (UnimplementedChainServiceServer) Withdraw(context.Context, *WithdrawRequest) (*WithdrawResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Withdraw not implemented")
 }
 func (UnimplementedChainServiceServer) mustEmbedUnimplementedChainServiceServer() {}
 func (UnimplementedChainServiceServer) testEmbeddedByValue()                      {}
@@ -257,20 +257,20 @@ func _ChainService_ClearGameInfo_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ChainService_BatchWithdraw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BatchWithdrawRequest)
+func _ChainService_Withdraw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WithdrawRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ChainServiceServer).BatchWithdraw(ctx, in)
+		return srv.(ChainServiceServer).Withdraw(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ChainService_BatchWithdraw_FullMethodName,
+		FullMethod: ChainService_Withdraw_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ChainServiceServer).BatchWithdraw(ctx, req.(*BatchWithdrawRequest))
+		return srv.(ChainServiceServer).Withdraw(ctx, req.(*WithdrawRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -303,8 +303,8 @@ var ChainService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ChainService_ClearGameInfo_Handler,
 		},
 		{
-			MethodName: "BatchWithdraw",
-			Handler:    _ChainService_BatchWithdraw_Handler,
+			MethodName: "Withdraw",
+			Handler:    _ChainService_Withdraw_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
