@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -22,19 +21,23 @@ func TestSignTokenCollectorWithdrawRecover(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	payloadHash, err := SolidityPackedKeccak256([]any{depositAddr, amount, playerID})
+	ok, err := VerifyTokenCollectorWithdraw(depositAddr, amount, playerID, sig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sigCopy := append([]byte(nil), sig...)
-	if sigCopy[crypto.RecoveryIDOffset] >= 27 {
-		sigCopy[crypto.RecoveryIDOffset] -= 27
+	if !ok {
+		t.Fatal("VerifyTokenCollectorWithdraw returned false")
 	}
-	pub, err := crypto.SigToPub(accounts.TextHash(payloadHash.Bytes()), sigCopy)
+
+	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if crypto.PubkeyToAddress(*pub) != depositAddr {
-		t.Fatalf("recovered %s want %s", crypto.PubkeyToAddress(*pub).Hex(), depositAddr.Hex())
+	recovered, err := recoverWithdrawSigner(payloadHash, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered != depositAddr {
+		t.Fatalf("recovered %s want %s", recovered.Hex(), depositAddr.Hex())
 	}
 }

@@ -75,8 +75,8 @@ func (s *GrpcSink) EmitBlock(ctx context.Context, block *BlockData, events []Tok
 	}
 	log.Infof("SubmitChainEvents success: block=%d events=%d results=%d", block.BlockNumber, len(events), len(resp.GetResults()))
 	for _, result := range resp.GetResults() {
-		if result.GetStatus() == proto.EventApplyStatus_EVENT_APPLY_STATUS_REJECTED {
-			log.Warnf("ledger rejected chain event tx=%s log=%d: %s",
+		if result.GetStatus() == proto.EventApplyStatus_EVENT_APPLY_STATUS_FAILED {
+			log.Warnf("ledger failed chain event tx=%s log=%d: %s",
 				result.GetTxHash(), result.GetLogIndex(), result.GetMessage())
 		} else {
 			log.Infof("ledger apply result: block=%d tx=%s log=%d status=%s delta=%d balance=%d msg=%s",

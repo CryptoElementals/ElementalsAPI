@@ -7,11 +7,11 @@ import (
 	"strings"
 )
 
-const WeiToGameDivisor int64 = 1_000_000_000_000_000 // 10^15
+const WeiToGameDivisor int64 = 10_000_000_000_000_000 // 10^16
 
 var weiToGameDivisorBig = big.NewInt(WeiToGameDivisor)
 
-// WeiToGameToken converts on-chain wei to game token units via floor division by 10^15.
+// WeiToGameToken converts on-chain wei to game token units via floor division by 10^16.
 func WeiToGameToken(amountWei string) (int32, error) {
 	raw := strings.TrimSpace(amountWei)
 	if raw == "" {
@@ -33,6 +33,15 @@ func WeiToGameToken(amountWei string) (int32, error) {
 		return 0, fmt.Errorf("amount wei too small after conversion: %s", amountWei)
 	}
 	return delta, nil
+}
+
+// GameTokenToWei converts game token units to on-chain wei (multiply by 10^16).
+func GameTokenToWei(tokenAmount int32) (string, error) {
+	if tokenAmount <= 0 {
+		return "", fmt.Errorf("token amount must be positive")
+	}
+	wei := new(big.Int).Mul(big.NewInt(int64(tokenAmount)), weiToGameDivisorBig)
+	return wei.String(), nil
 }
 
 // WeiToGameTokenRemainder returns the remainder after floor division (for logging).

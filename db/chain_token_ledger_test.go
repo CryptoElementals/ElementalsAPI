@@ -46,14 +46,14 @@ func TestApplyChainTokenEvent_DepositCreditsUserToken(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	const amountWei = "1000000000000000000" // 1000 game tokens
+	const amountWei = "1000000000000000000" // 100 game tokens
 	ev := chainDepositEvent(97, "0xtx1", 1, 42, amountWei)
 
 	result, err := ApplyChainTokenEvent(context.Background(), ev)
 	require.NoError(t, err)
-	require.Equal(t, ChainTokenEventApplyApplied, result.Status)
-	require.Equal(t, int32(1000), result.TokenDelta)
-	require.Equal(t, int32(1000), result.NewBalance)
+	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
+	require.Equal(t, int32(100), result.TokenDelta)
+	require.Equal(t, int32(100), result.NewBalance)
 
 	dup, err := ApplyChainTokenEvent(context.Background(), ev)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestApplyChainTokenEvent_DepositCreditsUserToken(t *testing.T) {
 
 	token, err := EnsureUserTokenByPlayerID(42)
 	require.NoError(t, err)
-	require.Equal(t, int32(1000), token.TokenAmount)
+	require.Equal(t, int32(100), token.TokenAmount)
 }
 
 func TestApplyChainTokenEvent_WithdrawDeductsUserToken(t *testing.T) {
@@ -75,30 +75,109 @@ func TestApplyChainTokenEvent_WithdrawDeductsUserToken(t *testing.T) {
 	withdrawWei := "500000000000000000"
 	result, err := ApplyChainTokenEvent(context.Background(), chainWithdrawEvent(97, "0xtxwd", 2, 7, withdrawWei))
 	require.NoError(t, err)
-	require.Equal(t, ChainTokenEventApplyApplied, result.Status)
-	require.Equal(t, int32(-500), result.TokenDelta)
-	require.Equal(t, int32(500), result.NewBalance)
+	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
+	require.Equal(t, int32(-50), result.TokenDelta)
+	require.Equal(t, int32(50), result.NewBalance)
 }
 
-func TestApplyChainTokenEvent_WithdrawInsufficientBalanceRejected(t *testing.T) {
+func TestApplyChainTokenEvent_WithdrawInsufficientBalanceFailed(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	depositWei := "500000000000000000" // 500 game tokens
+	depositWei := "500000000000000000" // 50 game tokens
 	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xtxdep2", 1, 9, depositWei))
 	require.NoError(t, err)
 
-	withdrawWei := "1000000000000000000" // 1000 game tokens
+	withdrawWei := "1000000000000000000" // 100 game tokens
 	result, err := ApplyChainTokenEvent(context.Background(), chainWithdrawEvent(97, "0xtxwd2", 2, 9, withdrawWei))
 	require.NoError(t, err)
-	require.Equal(t, ChainTokenEventApplyRejected, result.Status)
-	require.Equal(t, chainTokenRejectInsufficientBalance, result.Message)
+	require.Equal(t, ChainTokenEventApplyFailed, result.Status)
+	require.Equal(t, chainTokenFailInsufficientBalance, result.Message)
 
 	token, err := EnsureUserTokenByPlayerID(9)
 	require.NoError(t, err)
-	require.Equal(t, int32(500), token.TokenAmount)
+	require.Equal(t, int32(50), token.TokenAmount)
 
 	dup, err := ApplyChainTokenEvent(context.Background(), chainWithdrawEvent(97, "0xtxwd2", 2, 9, withdrawWei))
 	require.NoError(t, err)
-	require.Equal(t, ChainTokenEventApplyRejected, dup.Status)
+	require.Equal(t, ChainTokenEventApplyFailed, dup.Status)
+}
+
+func TestCreatePendingWithdrawAndFinalize(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	const depositWei = "2000000000000000000" // 200 tokens
+	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep3", 1, 11, depositWei))
+	require.NoError(t, err)
+
+	const withdrawWei = "500000000000000000"
+	pending, err := CreatePendingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID:   97,
+		PlayerID:  11,
+		AmountWei: withdrawWei,
+		Signature: "0xabc",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, pending.RequestID)
+
+	token, err := EnsureUserTokenByPlayerID(11)
+	require.NoError(t, err)
+	require.Equal(t, int32(200), token.TokenAmount)
+
+	require.NoError(t, UpdatePendingWithdrawTxHash(context.Background(), pending.RequestID, "0xtxpending", "0xcollector"))
+
+	result, err := FinalizeChainTokenWithdraw(context.Background(), chainWithdrawEvent(97, "0xtxpending", 3, 11, withdrawWei))
+	require.NoError(t, err)
+	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
+	require.Equal(t, int32(-50), result.TokenDelta)
+	require.Equal(t, int32(150), result.NewBalance)
+
+	token, err = EnsureUserTokenByPlayerID(11)
+	require.NoError(t, err)
+	require.Equal(t, int32(150), token.TokenAmount)
+}
+
+func TestCreatePendingWithdrawInsufficientAvailableBalance(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	const depositWei = "500000000000000000"
+	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep4", 1, 12, depositWei))
+	require.NoError(t, err)
+
+	_, err = CreatePendingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID:   97,
+		PlayerID:  12,
+		AmountWei: "400000000000000000",
+		Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	_, err = CreatePendingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID:   97,
+		PlayerID:  12,
+		AmountWei: "300000000000000000",
+		Signature: "0xdef",
+	})
+	require.ErrorIs(t, err, ErrInsufficientAvailableBalance)
+}
+
+func TestListChainTokenLedgersFilter(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xlist1", 1, 20, "1000000000000000000"))
+	require.NoError(t, err)
+
+	list, err := ListChainTokenLedgers(context.Background(), ChainTokenLedgerFilter{
+		PlayerID:  20,
+		EventType: string(dao.ChainTokenLedgerEventDeposit),
+		Status:    string(dao.ChainTokenLedgerStatusFinalized),
+		Limit:     10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), list.Total)
+	require.Len(t, list.Records, 1)
+	require.Equal(t, dao.ChainTokenLedgerStatusFinalized, list.Records[0].Status)
 }

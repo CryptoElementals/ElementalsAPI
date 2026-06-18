@@ -3,8 +3,9 @@ package dao
 type ChainTokenLedgerStatus string
 
 const (
-	ChainTokenLedgerStatusApplied  ChainTokenLedgerStatus = "applied"
-	ChainTokenLedgerStatusRejected ChainTokenLedgerStatus = "rejected"
+	ChainTokenLedgerStatusPending   ChainTokenLedgerStatus = "pending"
+	ChainTokenLedgerStatusFinalized ChainTokenLedgerStatus = "finalized"
+	ChainTokenLedgerStatusFailed    ChainTokenLedgerStatus = "failed"
 )
 
 type ChainTokenLedgerEventType string
@@ -17,6 +18,7 @@ const (
 type ChainTokenLedger struct {
 	BaseModel
 
+	RequestID        *string                   `gorm:"size:36;uniqueIndex" json:"request_id"`
 	ChainID          int64                     `gorm:"not null;uniqueIndex:uq_chain_token_ledger,priority:1;index" json:"chain_id"`
 	TxHash           string                    `gorm:"not null;size:66;uniqueIndex:uq_chain_token_ledger,priority:2;index" json:"tx_hash"`
 	LogIndex         uint32                    `gorm:"not null;uniqueIndex:uq_chain_token_ledger,priority:3" json:"log_index"`
@@ -28,7 +30,8 @@ type ChainTokenLedger struct {
 	AmountWei        string                    `gorm:"not null;size:78" json:"amount_wei"`
 	TokenDelta       int32                     `gorm:"not null" json:"token_delta"`
 	Status           ChainTokenLedgerStatus    `gorm:"type:varchar(16);not null;index" json:"status"`
-	RejectReason     string                    `gorm:"type:varchar(64)" json:"reject_reason"`
+	FailReason       string                    `gorm:"type:varchar(64)" json:"fail_reason"`
+	Signature        string                    `gorm:"size:132" json:"signature"`
 	FromAddress      string                    `gorm:"size:42" json:"from_address"`
 	ToAddress        string                    `gorm:"size:42" json:"to_address"`
 	Operator         string                    `gorm:"size:42" json:"operator"`

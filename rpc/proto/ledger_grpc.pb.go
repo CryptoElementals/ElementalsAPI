@@ -19,7 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_SubmitChainEvents_FullMethodName = "/rpc.LedgerService/SubmitChainEvents"
+	LedgerService_SubmitChainEvents_FullMethodName     = "/rpc.LedgerService/SubmitChainEvents"
+	LedgerService_RequestWithdraw_FullMethodName       = "/rpc.LedgerService/RequestWithdraw"
+	LedgerService_ListChainTokenLedgers_FullMethodName = "/rpc.LedgerService/ListChainTokenLedgers"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -27,6 +29,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LedgerServiceClient interface {
 	SubmitChainEvents(ctx context.Context, in *SubmitChainEventsRequest, opts ...grpc.CallOption) (*SubmitChainEventsResponse, error)
+	RequestWithdraw(ctx context.Context, in *RequestWithdrawRequest, opts ...grpc.CallOption) (*RequestWithdrawResponse, error)
+	ListChainTokenLedgers(ctx context.Context, in *ListChainTokenLedgersRequest, opts ...grpc.CallOption) (*ListChainTokenLedgersResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -47,11 +51,33 @@ func (c *ledgerServiceClient) SubmitChainEvents(ctx context.Context, in *SubmitC
 	return out, nil
 }
 
+func (c *ledgerServiceClient) RequestWithdraw(ctx context.Context, in *RequestWithdrawRequest, opts ...grpc.CallOption) (*RequestWithdrawResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestWithdrawResponse)
+	err := c.cc.Invoke(ctx, LedgerService_RequestWithdraw_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ledgerServiceClient) ListChainTokenLedgers(ctx context.Context, in *ListChainTokenLedgersRequest, opts ...grpc.CallOption) (*ListChainTokenLedgersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListChainTokenLedgersResponse)
+	err := c.cc.Invoke(ctx, LedgerService_ListChainTokenLedgers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerServiceServer is the server API for LedgerService service.
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
 type LedgerServiceServer interface {
 	SubmitChainEvents(context.Context, *SubmitChainEventsRequest) (*SubmitChainEventsResponse, error)
+	RequestWithdraw(context.Context, *RequestWithdrawRequest) (*RequestWithdrawResponse, error)
+	ListChainTokenLedgers(context.Context, *ListChainTokenLedgersRequest) (*ListChainTokenLedgersResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -64,6 +90,12 @@ type UnimplementedLedgerServiceServer struct{}
 
 func (UnimplementedLedgerServiceServer) SubmitChainEvents(context.Context, *SubmitChainEventsRequest) (*SubmitChainEventsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitChainEvents not implemented")
+}
+func (UnimplementedLedgerServiceServer) RequestWithdraw(context.Context, *RequestWithdrawRequest) (*RequestWithdrawResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestWithdraw not implemented")
+}
+func (UnimplementedLedgerServiceServer) ListChainTokenLedgers(context.Context, *ListChainTokenLedgersRequest) (*ListChainTokenLedgersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListChainTokenLedgers not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
 func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
@@ -104,6 +136,42 @@ func _LedgerService_SubmitChainEvents_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_RequestWithdraw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestWithdrawRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).RequestWithdraw(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_RequestWithdraw_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).RequestWithdraw(ctx, req.(*RequestWithdrawRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LedgerService_ListChainTokenLedgers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListChainTokenLedgersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).ListChainTokenLedgers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_ListChainTokenLedgers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).ListChainTokenLedgers(ctx, req.(*ListChainTokenLedgersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +182,14 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitChainEvents",
 			Handler:    _LedgerService_SubmitChainEvents_Handler,
+		},
+		{
+			MethodName: "RequestWithdraw",
+			Handler:    _LedgerService_RequestWithdraw_Handler,
+		},
+		{
+			MethodName: "ListChainTokenLedgers",
+			Handler:    _LedgerService_ListChainTokenLedgers_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

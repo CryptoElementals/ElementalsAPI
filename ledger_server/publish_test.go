@@ -42,8 +42,8 @@ func TestSumLockedTokens(t *testing.T) {
 	require.Equal(t, int32(300), total)
 }
 
-func TestPublishTokenUpdatedSkipsNonApplied(t *testing.T) {
-	svc := NewService(nil)
+func TestPublishTokenUpdatedSkipsNonFinalized(t *testing.T) {
+	svc := NewService(nil, nil, 0)
 	ev := &proto.ChainTokenEvent{
 		EventType: string(dao.ChainTokenLedgerEventDeposit),
 		Payload: &proto.ChainTokenEvent_Deposit{

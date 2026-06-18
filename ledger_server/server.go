@@ -6,12 +6,14 @@ import (
 	"net"
 
 	"github.com/CryptoElementals/common/config"
+	"github.com/CryptoElementals/common/ledger_server/chainclient"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/middleware"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/stream"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // ServiceProcess is the ledger server process.
@@ -21,6 +23,7 @@ type ServiceProcess struct {
 	grpcServer   *grpc.Server
 	grpcHandlers *GRPCServices
 	eventStream  stream.Stream
+	chainClient  *chainclient.Client
 }
 
 // New constructs a ledger server. Call Start after DB is initialized.
@@ -30,16 +33,31 @@ func New(ctx context.Context, cfg *config.LedgerServerConfig) (*ServiceProcess, 
 		return nil, fmt.Errorf("redis stream: %w", err)
 	}
 	tokenPublisher := pubsub.NewStreamPublisher(st, pubsub.TopicToken)
-	svc := NewService(tokenPublisher)
+
+	var chainCli *chainclient.Client
+	if cfg != nil && cfg.UChainCfg.ChainServerAddress != "" {
+		chainCli, err = chainclient.Dial(ctx, cfg.UChainCfg.ChainServerAddress)
+		if err != nil {
+			return nil, fmt.Errorf("dial chain server: %w", err)
+		}
+	}
+
+	chainID := int64(0)
+	if cfg != nil {
+		chainID = cfg.UChainCfg.ChainID
+	}
+	svc := NewService(tokenPublisher, chainCli, chainID)
 	handlers := NewGRPCServices(svc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	proto.RegisterLedgerServiceServer(server, handlers)
+	reflection.Register(server)
 	return &ServiceProcess{
 		ctx:          ctx,
 		cfg:          cfg,
 		grpcServer:   server,
 		grpcHandlers: handlers,
 		eventStream:  st,
+		chainClient:  chainCli,
 	}, nil
 }
 
@@ -51,6 +69,9 @@ func (s *ServiceProcess) Start() error {
 // Stop shuts down the gRPC server.
 func (s *ServiceProcess) Stop() {
 	log.Info("stopping ledger server grpc")
+	if s.chainClient != nil {
+		_ = s.chainClient.Close()
+	}
 	s.grpcServer.GracefulStop()
 	log.Info("ledger server grpc stopped")
 }

@@ -22,6 +22,14 @@ func RoomClientForType(serverType string) pb.RoomServiceClient {
 	return GetGlobalRpcClient()
 }
 
+// LedgerClientForType returns the ledger client for the user's server type.
+func LedgerClientForType(serverType string) pb.LedgerServiceClient {
+	if cl := GetLedgerServiceClient(config.NormalizeServerType(serverType)); cl != nil {
+		return cl
+	}
+	return GetGlobalLedgerClient()
+}
+
 // EventStreamForType returns the Redis event stream for the user's server type.
 func EventStreamForType(serverType string) stream.Stream {
 	if st := GetEventStream(config.NormalizeServerType(serverType)); st != nil {
