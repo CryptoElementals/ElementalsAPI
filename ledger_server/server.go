@@ -13,6 +13,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/CryptoElementals/common/stream"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // ServiceProcess is the ledger server process.
@@ -49,6 +50,7 @@ func New(ctx context.Context, cfg *config.LedgerServerConfig) (*ServiceProcess, 
 	handlers := NewGRPCServices(svc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	proto.RegisterLedgerServiceServer(server, handlers)
+	reflection.Register(server)
 	return &ServiceProcess{
 		ctx:          ctx,
 		cfg:          cfg,

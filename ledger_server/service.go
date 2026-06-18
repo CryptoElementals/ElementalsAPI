@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/db"
@@ -18,7 +17,7 @@ import (
 
 // ChainWithdrawSubmitter submits withdraw transactions to chain-server.
 type ChainWithdrawSubmitter interface {
-	BatchWithdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*chainclient.BatchWithdrawResult, error)
+	Withdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*chainclient.WithdrawResult, error)
 }
 
 // Service applies on-chain token events to the ledger and user balances.
@@ -67,7 +66,10 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 		return nil, fmt.Errorf("chain_id is not configured")
 	}
 
-	amountWei, err := resolveWithdrawAmountWei(req)
+	if req.GetTokenAmount() <= 0 {
+		return nil, fmt.Errorf("token_amount is required")
+	}
+	amountWei, err := chainamount.GameTokenToWei(req.GetTokenAmount())
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +94,10 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 
 	submitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	result, err := s.chain.BatchWithdraw(submitCtx, req.GetPlayerId(), amountWei, signature)
+	result, err := s.chain.Withdraw(submitCtx, req.GetPlayerId(), amountWei, signature)
 	if err != nil {
 		_ = db.MarkPendingWithdrawFailed(ctx, pending.RequestID, "chain_submit_failed")
-		return nil, fmt.Errorf("chain batch withdraw: %w", err)
+		return nil, fmt.Errorf("chain withdraw: %w", err)
 	}
 	if err := db.UpdatePendingWithdrawTxHash(ctx, pending.RequestID, result.TxHash, result.CollectorAddress); err != nil {
 		return nil, err
@@ -154,17 +156,6 @@ func (s *Service) applyOne(ctx context.Context, ev *proto.ChainTokenEvent) (*pro
 	result := dbApplyResultToProto(ev.GetTxHash(), ev.GetLogIndex(), applyResult)
 	s.publishTokenUpdated(ctx, ev, applyResult)
 	return result, nil
-}
-
-func resolveWithdrawAmountWei(req *proto.RequestWithdrawRequest) (string, error) {
-	amountWei := strings.TrimSpace(req.GetAmountWei())
-	if amountWei != "" {
-		return amountWei, nil
-	}
-	if req.GetTokenAmount() > 0 {
-		return chainamount.GameTokenToWei(req.GetTokenAmount())
-	}
-	return "", fmt.Errorf("amount_wei or token_amount is required")
 }
 
 func chainTokenLedgerToProto(row *dao.ChainTokenLedger) *proto.ChainTokenLedgerRecord {

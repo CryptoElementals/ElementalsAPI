@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/CryptoElementals/common/errors"
-	"github.com/CryptoElementals/common/internal/chainamount"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/gin-gonic/gin"
@@ -22,8 +21,7 @@ func init() {
 type RequestWithdrawRequest struct {
 	BaseRequest
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
-	AmountWei   string `mapstructure:"AmountWei"`
-	TokenAmount int32  `mapstructure:"TokenAmount"`
+	TokenAmount int32  `mapstructure:"TokenAmount" validate:"min=1"`
 	Signature   string `mapstructure:"Signature" validate:"required"`
 }
 
@@ -81,17 +79,6 @@ func (task *RequestWithdrawTask) Run(c *gin.Context) (Response, error) {
 		return nil, errors.ParamsJudgeError("invalid player id")
 	}
 
-	amountWei := strings.TrimSpace(task.Request.AmountWei)
-	if amountWei == "" && task.Request.TokenAmount > 0 {
-		amountWei, err = chainamount.GameTokenToWei(task.Request.TokenAmount)
-		if err != nil {
-			return nil, errors.ParamsJudgeError(err.Error())
-		}
-	}
-	if amountWei == "" {
-		return nil, errors.ParamsJudgeError("AmountWei or TokenAmount is required")
-	}
-
 	sigBytes, err := decodeHexSignature(task.Request.Signature)
 	if err != nil {
 		return nil, errors.ParamsJudgeError(err.Error())
@@ -99,7 +86,6 @@ func (task *RequestWithdrawTask) Run(c *gin.Context) (Response, error) {
 
 	resp, err := client.RequestWithdraw(context.Background(), ServerTypeFromGin(c), &proto.RequestWithdrawRequest{
 		PlayerId:    playerID,
-		AmountWei:   amountWei,
 		TokenAmount: task.Request.TokenAmount,
 		Signature:   sigBytes,
 	})

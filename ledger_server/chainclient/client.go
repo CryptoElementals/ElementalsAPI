@@ -55,14 +55,15 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// BatchWithdrawResult is the outcome of a single withdraw submission.
-type BatchWithdrawResult struct {
+// WithdrawResult is the outcome of a withdraw submission.
+type WithdrawResult struct {
 	TxHash           string
 	CollectorAddress string
+	LedgerID         uint64
 }
 
-// BatchWithdraw submits one withdraw item to chain-server.
-func (c *Client) BatchWithdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*BatchWithdrawResult, error) {
+// Withdraw submits a withdraw to chain-server.
+func (c *Client) Withdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*WithdrawResult, error) {
 	if c == nil || c.client == nil {
 		return nil, fmt.Errorf("chain client is nil")
 	}
@@ -77,25 +78,18 @@ func (c *Client) BatchWithdraw(ctx context.Context, playerID int64, amountWei st
 		return nil, fmt.Errorf("signature is required")
 	}
 
-	resp, err := c.client.BatchWithdraw(ctx, &proto.BatchWithdrawRequest{
-		Items: []*proto.BatchWithdrawItem{
-			{
-				PlayerId:  playerID,
-				Amount:    wei.Int64(),
-				Signature: signature,
-			},
-		},
+	resp, err := c.client.Withdraw(ctx, &proto.WithdrawRequest{
+		PlayerId:  playerID,
+		Amount:    wei.Int64(),
+		Signature: signature,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.GetResults()) == 0 {
-		return nil, fmt.Errorf("batch withdraw returned no results")
-	}
-	r := resp.GetResults()[0]
-	return &BatchWithdrawResult{
-		TxHash:           strings.ToLower(strings.TrimSpace(r.GetTxHash())),
-		CollectorAddress: strings.ToLower(strings.TrimSpace(r.GetCollectorAddress())),
+	return &WithdrawResult{
+		TxHash:           strings.ToLower(strings.TrimSpace(resp.GetTxHash())),
+		CollectorAddress: strings.ToLower(strings.TrimSpace(resp.GetCollectorAddress())),
+		LedgerID:         resp.GetLedgerId(),
 	}, nil
 }
 

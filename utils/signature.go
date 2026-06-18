@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -12,9 +13,10 @@ import (
 
 // SignTokenCollectorWithdraw matches TokenCollector._withdraw:
 // keccak256(abi.encodePacked(depositAddr, amount, playerId)) then EIP-191 ("\x19Ethereum Signed Message:\n32", hash).
+// Returns a 65-byte ECDSA signature (r||s||v) with v in {27,28}, suitable for withdraw(playerId, amount, signature).
 // The recovered signer must equal depositAddr (Credited.depositAddr).
 func SignTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *big.Int, privateKey *ecdsa.PrivateKey) ([]byte, error) {
-	payloadHash, err := SolidityPackedKeccak256([]any{depositAddr, amount, playerID})
+	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID)
 	if err != nil {
 		return nil, err
 	}
@@ -27,6 +29,40 @@ func SignTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *bi
 		sig[crypto.RecoveryIDOffset] += 27
 	}
 	return sig, nil
+}
+
+// TokenCollectorWithdrawPayloadHash is keccak256(abi.encodePacked(depositAddr, amount, playerId)).
+func TokenCollectorWithdrawPayloadHash(depositAddr common.Address, amount, playerID *big.Int) (common.Hash, error) {
+	return SolidityPackedKeccak256([]any{depositAddr, amount, playerID})
+}
+
+// VerifyTokenCollectorWithdraw mirrors TokenCollector._withdraw ecrecover check:
+// signer(payloadHash) must equal depositAddr (Credited.depositAddr).
+func VerifyTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *big.Int, signature []byte) (bool, error) {
+	if len(signature) != crypto.SignatureLength {
+		return false, fmt.Errorf("signature must be %d bytes, got %d", crypto.SignatureLength, len(signature))
+	}
+	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID)
+	if err != nil {
+		return false, err
+	}
+	recovered, err := recoverWithdrawSigner(payloadHash, signature)
+	if err != nil {
+		return false, err
+	}
+	return recovered == depositAddr, nil
+}
+
+func recoverWithdrawSigner(payloadHash common.Hash, signature []byte) (common.Address, error) {
+	sigCopy := append([]byte(nil), signature...)
+	if sigCopy[crypto.RecoveryIDOffset] >= 27 {
+		sigCopy[crypto.RecoveryIDOffset] -= 27
+	}
+	pub, err := crypto.SigToPub(accounts.TextHash(payloadHash.Bytes()), sigCopy)
+	if err != nil {
+		return common.Address{}, err
+	}
+	return crypto.PubkeyToAddress(*pub), nil
 }
 
 func Sign(values []any, privateKey *ecdsa.PrivateKey) (signature []byte, err error) {

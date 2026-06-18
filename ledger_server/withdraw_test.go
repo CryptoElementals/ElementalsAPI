@@ -18,11 +18,11 @@ type stubChainSubmitter struct {
 	err       error
 }
 
-func (s *stubChainSubmitter) BatchWithdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*chainclient.BatchWithdrawResult, error) {
+func (s *stubChainSubmitter) Withdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*chainclient.WithdrawResult, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	return &chainclient.BatchWithdrawResult{
+	return &chainclient.WithdrawResult{
 		TxHash:           s.txHash,
 		CollectorAddress: s.collector,
 	}, nil
@@ -47,7 +47,7 @@ func TestRequestWithdrawCreatesPendingAndUpdatesTxHash(t *testing.T) {
 
 	resp, err := svc.RequestWithdraw(context.Background(), &proto.RequestWithdrawRequest{
 		PlayerId:    50,
-		TokenAmount: 500,
+		TokenAmount: 50,
 		Signature:   []byte("abcdef"),
 	})
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestRequestWithdrawMarksFailedOnChainError(t *testing.T) {
 	svc := NewService(nil, &stubChainSubmitter{err: errors.New("chain down")}, 97)
 	_, err = svc.RequestWithdraw(context.Background(), &proto.RequestWithdrawRequest{
 		PlayerId:    51,
-		TokenAmount: 100,
+		TokenAmount: 10,
 		Signature:   []byte("abcdef"),
 	})
 	require.Error(t, err)
