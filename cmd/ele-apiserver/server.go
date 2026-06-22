@@ -15,6 +15,7 @@ import (
 	"github.com/CryptoElementals/common/redis"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/server"
+	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/session"
 	"github.com/CryptoElementals/common/snowflake"
 	"github.com/spf13/cobra"
@@ -108,6 +109,10 @@ func startServer() error {
 	}
 	log.Info("gRPC clients initialized successfully")
 
+	if err := api.StartTokenServerTypeListener(); err != nil {
+		return fmt.Errorf("failed to start token server type listener: %w", err)
+	}
+
 	// Get Redis connection pool
 	pool, err := redis.GetRedigoPool()
 	if err != nil {
@@ -149,6 +154,8 @@ func startServer() error {
 	<-sigs
 
 	log.Info("Received shutdown signal, closing server...")
+
+	api.StopTokenServerTypeListener()
 
 	// 取消上下文，停止调度器
 	cancel()

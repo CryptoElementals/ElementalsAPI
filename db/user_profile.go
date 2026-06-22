@@ -66,6 +66,17 @@ func CreateUserProfile(userProfile *dao.UserProfile) error {
 	return Get().Create(userProfile).Error
 }
 
+// PromoteUserServerTypeToNormalIfTrial upgrades trial users to normal when they receive token activity.
+func PromoteUserServerTypeToNormalIfTrial(playerID int64) (updated bool, err error) {
+	res := Get().Model(&dao.UserProfile{}).
+		Where("player_id = ? AND server_type = ?", playerID, dao.ServerTypeTrial).
+		Update("server_type", dao.ServerTypeNormal)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
 // UpdateUserProfile 更新用户档案
 func UpdateUserProfile(userProfile *dao.UserProfile) error {
 	err := Get().Save(userProfile).Error
