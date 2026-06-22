@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/CryptoElementals/common/internal/chainamount"
+	"github.com/CryptoElementals/common/internal/tokenunits"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/google/uuid"
@@ -128,11 +128,11 @@ func applyChainDepositEventTx(tx *gorm.DB, ev ChainTokenEventInput) (*ChainToken
 		return duplicateChainTokenResult(existing), nil
 	}
 
-	tokenDelta, err := chainamount.WeiToGameToken(ev.AmountWei)
+	tokenDelta, err := tokenunits.WeiToToken(ev.AmountWei)
 	if err != nil {
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}
-	if remainder, remErr := chainamount.WeiToGameTokenRemainder(ev.AmountWei); remErr == nil && remainder.Sign() > 0 {
+	if remainder, remErr := tokenunits.WeiToTokenRemainder(ev.AmountWei); remErr == nil && remainder.Sign() > 0 {
 		log.Warnf("chain token event tx=%s log=%d has wei remainder %s after /10^16",
 			normalizedTxHash, ev.LogIndex, remainder.String())
 	}
@@ -195,7 +195,7 @@ func finalizeChainTokenWithdrawTx(tx *gorm.DB, ev ChainTokenEventInput) (*ChainT
 		return duplicateChainTokenResult(existing), nil
 	}
 
-	tokenDelta, err := chainamount.WeiToGameToken(ev.AmountWei)
+	tokenDelta, err := tokenunits.WeiToToken(ev.AmountWei)
 	if err != nil {
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}
@@ -315,7 +315,7 @@ func CreatePendingWithdraw(ctx context.Context, input PendingWithdrawInput) (*Pe
 		return nil, fmt.Errorf("signature is required")
 	}
 
-	tokenDelta, err := chainamount.WeiToGameToken(input.AmountWei)
+	tokenDelta, err := tokenunits.WeiToToken(input.AmountWei)
 	if err != nil {
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}
@@ -464,16 +464,39 @@ func ListChainTokenLedgers(ctx context.Context, filter ChainTokenLedgerFilter) (
 	return &ChainTokenLedgerListResult{Records: records, Total: total}, nil
 }
 
-func availableTokenBalanceTx(tx *gorm.DB, playerID int64) (int32, error) {
+// WithdrawableTokenAmountBreakdown is the withdrawable token amount and how it is derived for a player.
+type WithdrawableTokenAmountBreakdown struct {
+	WithdrawableTokenAmount    int32
+	TokenAmount                int32
+	LockedTokens               int32
+	PendingWithdrawTokenAmount int32
+}
+
+// GetWithdrawableTokenAmount returns how many game tokens the player can withdraw now.
+func GetWithdrawableTokenAmount(ctx context.Context, playerID int64) (*WithdrawableTokenAmountBreakdown, error) {
+	if playerID <= 0 {
+		return nil, fmt.Errorf("player_id is required")
+	}
+	var breakdown WithdrawableTokenAmountBreakdown
+	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		breakdown, err = withdrawableTokenAmountTx(tx, playerID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &breakdown, nil
+}
+
+func withdrawableTokenAmountTx(tx *gorm.DB, playerID int64) (WithdrawableTokenAmountBreakdown, error) {
 	token, err := EnsureUserTokenByPlayerIDTx(tx, playerID)
 	if err != nil {
-		return 0, err
+		return WithdrawableTokenAmountBreakdown{}, err
 	}
-	var locked int32
-	for _, lt := range token.LockedTokens {
-		if lt != nil {
-			locked += lt.TokenAmount
-		}
+	locked, err := sumActiveLockedTokensTx(tx, token.ID)
+	if err != nil {
+		return WithdrawableTokenAmountBreakdown{}, err
 	}
 	var pendingSum int64
 	if err := tx.Model(&dao.ChainTokenLedger{}).
@@ -481,16 +504,35 @@ func availableTokenBalanceTx(tx *gorm.DB, playerID int64) (int32, error) {
 			playerID, dao.ChainTokenLedgerEventWithdraw, dao.ChainTokenLedgerStatusPending).
 		Select("COALESCE(SUM(token_delta), 0)").
 		Scan(&pendingSum).Error; err != nil {
+		return WithdrawableTokenAmountBreakdown{}, err
+	}
+	if pendingSum > int64(^uint32(0)>>1) {
+		return WithdrawableTokenAmountBreakdown{}, fmt.Errorf("pending withdraw sum overflows int32")
+	}
+	pending := int32(pendingSum)
+	available := int64(token.TokenAmount) - int64(locked) - int64(pending)
+	withdrawable := int32(0)
+	if available > 0 {
+		if available > int64(^uint32(0)>>1) {
+			withdrawable = int32(^uint32(0) >> 1)
+		} else {
+			withdrawable = int32(available)
+		}
+	}
+	return WithdrawableTokenAmountBreakdown{
+		WithdrawableTokenAmount:    withdrawable,
+		TokenAmount:                token.TokenAmount,
+		LockedTokens:               locked,
+		PendingWithdrawTokenAmount: pending,
+	}, nil
+}
+
+func availableTokenBalanceTx(tx *gorm.DB, playerID int64) (int32, error) {
+	breakdown, err := withdrawableTokenAmountTx(tx, playerID)
+	if err != nil {
 		return 0, err
 	}
-	available := int64(token.TokenAmount) - int64(locked) - pendingSum
-	if available < 0 {
-		return 0, nil
-	}
-	if available > int64(^uint32(0)>>1) {
-		return int32(^uint32(0) >> 1), nil
-	}
-	return int32(available), nil
+	return breakdown.WithdrawableTokenAmount, nil
 }
 
 func pendingWithdrawTxHash(requestID string) string {

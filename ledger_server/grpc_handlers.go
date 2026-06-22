@@ -9,6 +9,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // GRPCServices implements LedgerService.
@@ -61,6 +62,39 @@ func (s *GRPCServices) ListChainTokenLedgers(ctx context.Context, req *proto.Lis
 	resp, err := s.svc.ListChainTokenLedgers(ctx, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "required") {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+	return resp, nil
+}
+
+func (s *GRPCServices) GetWithdrawableTokenAmount(ctx context.Context, req *proto.GetWithdrawableTokenAmountRequest) (*proto.GetWithdrawableTokenAmountResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	resp, err := s.svc.GetWithdrawableTokenAmount(ctx, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+	return resp, nil
+}
+
+func (s *GRPCServices) GetTokenUnitRates(ctx context.Context, _ *emptypb.Empty) (*proto.GetTokenUnitRatesResponse, error) {
+	_ = ctx
+	return s.svc.GetTokenUnitRates(), nil
+}
+
+func (s *GRPCServices) ConvertTokenAmount(ctx context.Context, req *proto.ConvertTokenAmountRequest) (*proto.ConvertTokenAmountResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	resp, err := s.svc.ConvertTokenAmount(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "unsupported") || strings.Contains(err.Error(), "empty") || strings.Contains(err.Error(), "positive") || strings.Contains(err.Error(), "small") {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		return nil, status.Errorf(codes.Internal, "%v", err)

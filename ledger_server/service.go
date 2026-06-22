@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/db"
-	"github.com/CryptoElementals/common/internal/chainamount"
+	"github.com/CryptoElementals/common/internal/tokenunits"
 	"github.com/CryptoElementals/common/ledger_server/chainclient"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/pubsub"
@@ -69,7 +69,7 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 	if req.GetTokenAmount() <= 0 {
 		return nil, fmt.Errorf("token_amount is required")
 	}
-	amountWei, err := chainamount.GameTokenToWei(req.GetTokenAmount())
+	amountWei, err := tokenunits.TokenToWei(req.GetTokenAmount())
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +134,48 @@ func (s *Service) ListChainTokenLedgers(ctx context.Context, req *proto.ListChai
 		out.Records = append(out.Records, chainTokenLedgerToProto(row))
 	}
 	return out, nil
+}
+
+func (s *Service) GetWithdrawableTokenAmount(ctx context.Context, req *proto.GetWithdrawableTokenAmountRequest) (*proto.GetWithdrawableTokenAmountResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	if req.GetPlayerId() <= 0 {
+		return nil, fmt.Errorf("player_id is required")
+	}
+	breakdown, err := db.GetWithdrawableTokenAmount(ctx, req.GetPlayerId())
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetWithdrawableTokenAmountResponse{
+		WithdrawableTokenAmount:    breakdown.WithdrawableTokenAmount,
+		TokenAmount:                breakdown.TokenAmount,
+		LockedTokens:               breakdown.LockedTokens,
+		PendingWithdrawTokenAmount: breakdown.PendingWithdrawTokenAmount,
+	}, nil
+}
+
+func (s *Service) GetTokenUnitRates() *proto.GetTokenUnitRatesResponse {
+	return tokenUnitRatesToProto(tokenunits.DefaultSpec.Rates())
+}
+
+func (s *Service) ConvertTokenAmount(req *proto.ConvertTokenAmountRequest) (*proto.ConvertTokenAmountResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	from := tokenunits.ProtoUnit(int32(req.GetFromUnit()))
+	to := tokenunits.ProtoUnit(int32(req.GetToUnit()))
+	if from == tokenunits.UnitUnspecified || to == tokenunits.UnitUnspecified {
+		return nil, fmt.Errorf("from_unit and to_unit are required")
+	}
+	amount, remainder, err := tokenunits.Convert(from, to, req.GetAmount())
+	if err != nil {
+		return nil, err
+	}
+	return &proto.ConvertTokenAmountResponse{
+		Amount:    amount,
+		Remainder: remainder,
+	}, nil
 }
 
 func (s *Service) applyOne(ctx context.Context, ev *proto.ChainTokenEvent) (*proto.EventApplyResult, error) {
