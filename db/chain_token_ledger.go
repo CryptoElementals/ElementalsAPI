@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/CryptoElementals/common/internal/chainamount"
+	"github.com/CryptoElementals/common/internal/tokenunits"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/google/uuid"
@@ -128,11 +128,11 @@ func applyChainDepositEventTx(tx *gorm.DB, ev ChainTokenEventInput) (*ChainToken
 		return duplicateChainTokenResult(existing), nil
 	}
 
-	tokenDelta, err := chainamount.WeiToGameToken(ev.AmountWei)
+	tokenDelta, err := tokenunits.WeiToToken(ev.AmountWei)
 	if err != nil {
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}
-	if remainder, remErr := chainamount.WeiToGameTokenRemainder(ev.AmountWei); remErr == nil && remainder.Sign() > 0 {
+	if remainder, remErr := tokenunits.WeiToTokenRemainder(ev.AmountWei); remErr == nil && remainder.Sign() > 0 {
 		log.Warnf("chain token event tx=%s log=%d has wei remainder %s after /10^16",
 			normalizedTxHash, ev.LogIndex, remainder.String())
 	}
@@ -195,7 +195,7 @@ func finalizeChainTokenWithdrawTx(tx *gorm.DB, ev ChainTokenEventInput) (*ChainT
 		return duplicateChainTokenResult(existing), nil
 	}
 
-	tokenDelta, err := chainamount.WeiToGameToken(ev.AmountWei)
+	tokenDelta, err := tokenunits.WeiToToken(ev.AmountWei)
 	if err != nil {
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}
@@ -315,7 +315,7 @@ func CreatePendingWithdraw(ctx context.Context, input PendingWithdrawInput) (*Pe
 		return nil, fmt.Errorf("signature is required")
 	}
 
-	tokenDelta, err := chainamount.WeiToGameToken(input.AmountWei)
+	tokenDelta, err := tokenunits.WeiToToken(input.AmountWei)
 	if err != nil {
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}

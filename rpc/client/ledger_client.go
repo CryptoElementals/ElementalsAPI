@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	pb "github.com/CryptoElementals/common/rpc/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // RequestWithdraw calls ledger-server RequestWithdraw for the given server type.
@@ -23,4 +24,13 @@ func ListChainTokenLedgers(ctx context.Context, serverType string, req *pb.ListC
 		return nil, fmt.Errorf("ledger client is not initialized for server type %q", serverType)
 	}
 	return cl.ListChainTokenLedgers(ctx, req)
+}
+
+// GetTokenUnitRates calls ledger-server GetTokenUnitRates for the given server type.
+func GetTokenUnitRates(ctx context.Context, serverType string) (*pb.GetTokenUnitRatesResponse, error) {
+	cl := LedgerClientForType(serverType)
+	if cl == nil {
+		return nil, fmt.Errorf("ledger client is not initialized for server type %q", serverType)
+	}
+	return cl.GetTokenUnitRates(ctx, &emptypb.Empty{})
 }

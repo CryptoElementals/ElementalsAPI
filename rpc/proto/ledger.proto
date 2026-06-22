@@ -2,12 +2,16 @@ syntax = "proto3";
 
 package rpc;
 
+import "google/protobuf/empty.proto";
+
 option go_package = "github.com/CryptoElementals/common/rpc/proto;proto";
 
 service LedgerService {
   rpc SubmitChainEvents(SubmitChainEventsRequest) returns (SubmitChainEventsResponse);
   rpc RequestWithdraw(RequestWithdrawRequest) returns (RequestWithdrawResponse);
   rpc ListChainTokenLedgers(ListChainTokenLedgersRequest) returns (ListChainTokenLedgersResponse);
+  rpc GetTokenUnitRates(google.protobuf.Empty) returns (GetTokenUnitRatesResponse);
+  rpc ConvertTokenAmount(ConvertTokenAmountRequest) returns (ConvertTokenAmountResponse);
 }
 
 enum EventApplyStatus {
@@ -115,4 +119,36 @@ message ChainTokenLedgerRecord {
 message ListChainTokenLedgersResponse {
   repeated ChainTokenLedgerRecord records = 1;
   int64 total = 2;
+}
+
+enum TokenAmountUnit {
+  TOKEN_AMOUNT_UNIT_UNSPECIFIED = 0;
+  TOKEN_AMOUNT_UNIT_TOKEN = 1;
+  TOKEN_AMOUNT_UNIT_USDT = 2;
+  TOKEN_AMOUNT_UNIT_WEI = 3;
+}
+
+message MulDivRate {
+  string mul = 1;
+  string div = 2;
+}
+
+message GetTokenUnitRatesResponse {
+  MulDivRate token_to_usdt = 1;
+  MulDivRate usdt_to_wei = 2;
+  MulDivRate token_to_wei = 3;
+  MulDivRate usdt_to_token = 4;
+  MulDivRate wei_to_usdt = 5;
+  MulDivRate wei_to_token = 6;
+}
+
+message ConvertTokenAmountRequest {
+  TokenAmountUnit from_unit = 1;
+  TokenAmountUnit to_unit = 2;
+  string amount = 3;
+}
+
+message ConvertTokenAmountResponse {
+  string amount = 1;
+  string remainder = 2;
 }
