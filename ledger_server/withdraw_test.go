@@ -92,3 +92,26 @@ func TestRequestWithdrawMarksFailedOnChainError(t *testing.T) {
 	require.Equal(t, int64(1), list.GetTotal())
 	require.Equal(t, "chain_submit_failed", list.GetRecords()[0].GetFailReason())
 }
+
+func TestGetWithdrawableTokenAmountService(t *testing.T) {
+	require.NoError(t, db.Init(&db.Config{Development: true}))
+	require.NoError(t, db.MigrateMemDb())
+
+	const depositWei = "1000000000000000000"
+	_, err := db.ApplyChainTokenEvent(context.Background(), db.ChainTokenEventInput{
+		ChainID: 97, BlockNumber: 1, BlockHash: "0xabc", TxHash: "0xdep-wd", LogIndex: 1,
+		CollectorAddress: "0xcol", EventType: dao.ChainTokenLedgerEventDeposit,
+		PlayerID: 60, AmountWei: depositWei, FromAddress: "0xfrom", NewCreditedWei: depositWei,
+	})
+	require.NoError(t, err)
+
+	svc := NewService(nil, nil, 97)
+	resp, err := svc.GetWithdrawableTokenAmount(context.Background(), &proto.GetWithdrawableTokenAmountRequest{
+		PlayerId: 60,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(100), resp.GetWithdrawableTokenAmount())
+	require.Equal(t, int32(100), resp.GetTokenAmount())
+	require.Equal(t, int32(0), resp.GetLockedTokens())
+	require.Equal(t, int32(0), resp.GetPendingWithdrawTokenAmount())
+}

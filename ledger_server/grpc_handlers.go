@@ -69,6 +69,20 @@ func (s *GRPCServices) ListChainTokenLedgers(ctx context.Context, req *proto.Lis
 	return resp, nil
 }
 
+func (s *GRPCServices) GetWithdrawableTokenAmount(ctx context.Context, req *proto.GetWithdrawableTokenAmountRequest) (*proto.GetWithdrawableTokenAmountResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	resp, err := s.svc.GetWithdrawableTokenAmount(ctx, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+	return resp, nil
+}
+
 func (s *GRPCServices) GetTokenUnitRates(ctx context.Context, _ *emptypb.Empty) (*proto.GetTokenUnitRatesResponse, error) {
 	_ = ctx
 	return s.svc.GetTokenUnitRates(), nil

@@ -163,6 +163,61 @@ func TestCreatePendingWithdrawInsufficientAvailableBalance(t *testing.T) {
 	require.ErrorIs(t, err, ErrInsufficientAvailableBalance)
 }
 
+func TestGetWithdrawableTokenAmountFullBalance(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	const depositWei = "1000000000000000000" // 100 tokens
+	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xwd-full", 1, 30, depositWei))
+	require.NoError(t, err)
+
+	got, err := GetWithdrawableTokenAmount(context.Background(), 30)
+	require.NoError(t, err)
+	require.Equal(t, int32(100), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(100), got.TokenAmount)
+	require.Equal(t, int32(0), got.LockedTokens)
+	require.Equal(t, int32(0), got.PendingWithdrawTokenAmount)
+}
+
+func TestGetWithdrawableTokenAmountPendingWithdraw(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	const depositWei = "500000000000000000" // 50 tokens
+	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xwd-pend", 1, 31, depositWei))
+	require.NoError(t, err)
+
+	_, err = CreatePendingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 31, AmountWei: "400000000000000000", Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	got, err := GetWithdrawableTokenAmount(context.Background(), 31)
+	require.NoError(t, err)
+	require.Equal(t, int32(10), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(50), got.TokenAmount)
+	require.Equal(t, int32(0), got.LockedTokens)
+	require.Equal(t, int32(40), got.PendingWithdrawTokenAmount)
+}
+
+func TestGetWithdrawableTokenAmountLockedTokens(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	const depositWei = "1000000000000000000" // 100 tokens
+	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xwd-lock", 1, 32, depositWei))
+	require.NoError(t, err)
+
+	require.NoError(t, LockUserToken(context.Background(), 32, "0xtemp", 30, ""))
+
+	got, err := GetWithdrawableTokenAmount(context.Background(), 32)
+	require.NoError(t, err)
+	require.Equal(t, int32(70), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(100), got.TokenAmount)
+	require.Equal(t, int32(30), got.LockedTokens)
+	require.Equal(t, int32(0), got.PendingWithdrawTokenAmount)
+}
+
 func TestListChainTokenLedgersFilter(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())

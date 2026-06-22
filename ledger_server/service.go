@@ -136,6 +136,25 @@ func (s *Service) ListChainTokenLedgers(ctx context.Context, req *proto.ListChai
 	return out, nil
 }
 
+func (s *Service) GetWithdrawableTokenAmount(ctx context.Context, req *proto.GetWithdrawableTokenAmountRequest) (*proto.GetWithdrawableTokenAmountResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	if req.GetPlayerId() <= 0 {
+		return nil, fmt.Errorf("player_id is required")
+	}
+	breakdown, err := db.GetWithdrawableTokenAmount(ctx, req.GetPlayerId())
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetWithdrawableTokenAmountResponse{
+		WithdrawableTokenAmount:    breakdown.WithdrawableTokenAmount,
+		TokenAmount:                breakdown.TokenAmount,
+		LockedTokens:               breakdown.LockedTokens,
+		PendingWithdrawTokenAmount: breakdown.PendingWithdrawTokenAmount,
+	}, nil
+}
+
 func (s *Service) GetTokenUnitRates() *proto.GetTokenUnitRatesResponse {
 	return tokenUnitRatesToProto(tokenunits.DefaultSpec.Rates())
 }

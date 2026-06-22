@@ -34,3 +34,12 @@ func GetTokenUnitRates(ctx context.Context, serverType string) (*pb.GetTokenUnit
 	}
 	return cl.GetTokenUnitRates(ctx, &emptypb.Empty{})
 }
+
+// GetWithdrawableTokenAmount calls ledger-server GetWithdrawableTokenAmount for the given server type.
+func GetWithdrawableTokenAmount(ctx context.Context, serverType string, req *pb.GetWithdrawableTokenAmountRequest) (*pb.GetWithdrawableTokenAmountResponse, error) {
+	cl := LedgerClientForType(serverType)
+	if cl == nil {
+		return nil, fmt.Errorf("ledger client is not initialized for server type %q", serverType)
+	}
+	return cl.GetWithdrawableTokenAmount(ctx, req)
+}

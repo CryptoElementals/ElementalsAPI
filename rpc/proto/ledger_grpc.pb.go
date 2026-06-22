@@ -20,11 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_SubmitChainEvents_FullMethodName     = "/rpc.LedgerService/SubmitChainEvents"
-	LedgerService_RequestWithdraw_FullMethodName       = "/rpc.LedgerService/RequestWithdraw"
-	LedgerService_ListChainTokenLedgers_FullMethodName = "/rpc.LedgerService/ListChainTokenLedgers"
-	LedgerService_GetTokenUnitRates_FullMethodName     = "/rpc.LedgerService/GetTokenUnitRates"
-	LedgerService_ConvertTokenAmount_FullMethodName    = "/rpc.LedgerService/ConvertTokenAmount"
+	LedgerService_SubmitChainEvents_FullMethodName          = "/rpc.LedgerService/SubmitChainEvents"
+	LedgerService_RequestWithdraw_FullMethodName            = "/rpc.LedgerService/RequestWithdraw"
+	LedgerService_ListChainTokenLedgers_FullMethodName      = "/rpc.LedgerService/ListChainTokenLedgers"
+	LedgerService_GetTokenUnitRates_FullMethodName          = "/rpc.LedgerService/GetTokenUnitRates"
+	LedgerService_ConvertTokenAmount_FullMethodName         = "/rpc.LedgerService/ConvertTokenAmount"
+	LedgerService_GetWithdrawableTokenAmount_FullMethodName = "/rpc.LedgerService/GetWithdrawableTokenAmount"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -36,6 +37,7 @@ type LedgerServiceClient interface {
 	ListChainTokenLedgers(ctx context.Context, in *ListChainTokenLedgersRequest, opts ...grpc.CallOption) (*ListChainTokenLedgersResponse, error)
 	GetTokenUnitRates(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetTokenUnitRatesResponse, error)
 	ConvertTokenAmount(ctx context.Context, in *ConvertTokenAmountRequest, opts ...grpc.CallOption) (*ConvertTokenAmountResponse, error)
+	GetWithdrawableTokenAmount(ctx context.Context, in *GetWithdrawableTokenAmountRequest, opts ...grpc.CallOption) (*GetWithdrawableTokenAmountResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -96,6 +98,16 @@ func (c *ledgerServiceClient) ConvertTokenAmount(ctx context.Context, in *Conver
 	return out, nil
 }
 
+func (c *ledgerServiceClient) GetWithdrawableTokenAmount(ctx context.Context, in *GetWithdrawableTokenAmountRequest, opts ...grpc.CallOption) (*GetWithdrawableTokenAmountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWithdrawableTokenAmountResponse)
+	err := c.cc.Invoke(ctx, LedgerService_GetWithdrawableTokenAmount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerServiceServer is the server API for LedgerService service.
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
@@ -105,6 +117,7 @@ type LedgerServiceServer interface {
 	ListChainTokenLedgers(context.Context, *ListChainTokenLedgersRequest) (*ListChainTokenLedgersResponse, error)
 	GetTokenUnitRates(context.Context, *emptypb.Empty) (*GetTokenUnitRatesResponse, error)
 	ConvertTokenAmount(context.Context, *ConvertTokenAmountRequest) (*ConvertTokenAmountResponse, error)
+	GetWithdrawableTokenAmount(context.Context, *GetWithdrawableTokenAmountRequest) (*GetWithdrawableTokenAmountResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -129,6 +142,9 @@ func (UnimplementedLedgerServiceServer) GetTokenUnitRates(context.Context, *empt
 }
 func (UnimplementedLedgerServiceServer) ConvertTokenAmount(context.Context, *ConvertTokenAmountRequest) (*ConvertTokenAmountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConvertTokenAmount not implemented")
+}
+func (UnimplementedLedgerServiceServer) GetWithdrawableTokenAmount(context.Context, *GetWithdrawableTokenAmountRequest) (*GetWithdrawableTokenAmountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWithdrawableTokenAmount not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
 func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
@@ -241,6 +257,24 @@ func _LedgerService_ConvertTokenAmount_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_GetWithdrawableTokenAmount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWithdrawableTokenAmountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).GetWithdrawableTokenAmount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_GetWithdrawableTokenAmount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).GetWithdrawableTokenAmount(ctx, req.(*GetWithdrawableTokenAmountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -267,6 +301,10 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ConvertTokenAmount",
 			Handler:    _LedgerService_ConvertTokenAmount_Handler,
+		},
+		{
+			MethodName: "GetWithdrawableTokenAmount",
+			Handler:    _LedgerService_GetWithdrawableTokenAmount_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

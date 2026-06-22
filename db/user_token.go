@@ -481,6 +481,29 @@ func GetPlayerToken(ctx context.Context, playerId int64) (*dao.UserToken, error)
 	return &userToken, nil
 }
 
+// sumActiveLockedTokensTx returns the sum of non-expired locked_user_tokens for a user_token row.
+func sumActiveLockedTokensTx(tx *gorm.DB, userTokenID uint) (int32, error) {
+	var locks []*dao.LockedUserToken
+	if err := tx.Where("user_token_id = ?", userTokenID).Find(&locks).Error; err != nil {
+		return 0, err
+	}
+	now := time.Now()
+	var total int32
+	for _, locked := range locks {
+		if locked == nil {
+			continue
+		}
+		maxLockTime := maxLockTimeForQueue
+		if locked.TournamentID != "" {
+			maxLockTime = maxLockTimeForTournament
+		}
+		if now.Sub(locked.CreatedAt) < maxLockTime {
+			total += locked.TokenAmount
+		}
+	}
+	return total, nil
+}
+
 // DeleteAllLockedUserTokens removes all rows from locked_user_tokens (operator/tools; matchmaking reset).
 func DeleteAllLockedUserTokens() (rowsAffected int64, err error) {
 	res := Get().Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().

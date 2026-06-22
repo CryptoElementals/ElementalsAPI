@@ -12,6 +12,7 @@ service LedgerService {
   rpc ListChainTokenLedgers(ListChainTokenLedgersRequest) returns (ListChainTokenLedgersResponse);
   rpc GetTokenUnitRates(google.protobuf.Empty) returns (GetTokenUnitRatesResponse);
   rpc ConvertTokenAmount(ConvertTokenAmountRequest) returns (ConvertTokenAmountResponse);
+  rpc GetWithdrawableTokenAmount(GetWithdrawableTokenAmountRequest) returns (GetWithdrawableTokenAmountResponse);
 }
 
 enum EventApplyStatus {
@@ -151,4 +152,15 @@ message ConvertTokenAmountRequest {
 message ConvertTokenAmountResponse {
   string amount = 1;
   string remainder = 2;
+}
+
+message GetWithdrawableTokenAmountRequest {
+  int64 player_id = 1;
+}
+
+message GetWithdrawableTokenAmountResponse {
+  int32 withdrawable_token_amount = 1;
+  int32 token_amount = 2;
+  int32 locked_tokens = 3;
+  int32 pending_withdraw_token_amount = 4;
 }
