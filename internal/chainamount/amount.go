@@ -6,7 +6,7 @@ import (
 	"github.com/CryptoElementals/common/internal/tokenunits"
 )
 
-// WeiToGameDivisor is 10^16: 1 game token = 0.01 USDT = 10^16 wei.
+// WeiToGameDivisor is 10^15: 1 game token = 0.001 USDT = 10^15 wei (1000 tokens per 1 USDT).
 const WeiToGameDivisor int64 = tokenunits.TokenToWeiMul
 
 // WeiToGameToken converts on-chain wei to game token units.
