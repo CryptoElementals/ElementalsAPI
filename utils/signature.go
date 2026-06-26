@@ -11,12 +11,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// SignTokenCollectorWithdraw matches TokenCollector._withdraw:
-// keccak256(abi.encodePacked(depositAddr, amount, playerId)) then EIP-191 ("\x19Ethereum Signed Message:\n32", hash).
+// SignTokenCollectorWithdraw matches TokenCollector._verifyWithdrawSignature:
+// keccak256(abi.encodePacked(depositAddr, amount, playerId, nonce)) then EIP-191 ("\x19Ethereum Signed Message:\n32", hash).
 // Returns a 65-byte ECDSA signature (r||s||v) with v in {27,28}, suitable for withdraw(playerId, amount, signature).
 // The recovered signer must equal depositAddr (Credited.depositAddr).
-func SignTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *big.Int, privateKey *ecdsa.PrivateKey) ([]byte, error) {
-	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID)
+func SignTokenCollectorWithdraw(depositAddr common.Address, amount, playerID, nonce *big.Int, privateKey *ecdsa.PrivateKey) ([]byte, error) {
+	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -31,18 +31,18 @@ func SignTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *bi
 	return sig, nil
 }
 
-// TokenCollectorWithdrawPayloadHash is keccak256(abi.encodePacked(depositAddr, amount, playerId)).
-func TokenCollectorWithdrawPayloadHash(depositAddr common.Address, amount, playerID *big.Int) (common.Hash, error) {
-	return SolidityPackedKeccak256([]any{depositAddr, amount, playerID})
+// TokenCollectorWithdrawPayloadHash is keccak256(abi.encodePacked(depositAddr, amount, playerId, nonce)).
+func TokenCollectorWithdrawPayloadHash(depositAddr common.Address, amount, playerID, nonce *big.Int) (common.Hash, error) {
+	return SolidityPackedKeccak256([]any{depositAddr, amount, playerID, nonce})
 }
 
-// VerifyTokenCollectorWithdraw mirrors TokenCollector._withdraw ecrecover check:
+// VerifyTokenCollectorWithdraw mirrors TokenCollector._verifyWithdrawSignature ecrecover check:
 // signer(payloadHash) must equal depositAddr (Credited.depositAddr).
-func VerifyTokenCollectorWithdraw(depositAddr common.Address, amount, playerID *big.Int, signature []byte) (bool, error) {
+func VerifyTokenCollectorWithdraw(depositAddr common.Address, amount, playerID, nonce *big.Int, signature []byte) (bool, error) {
 	if len(signature) != crypto.SignatureLength {
 		return false, fmt.Errorf("signature must be %d bytes, got %d", crypto.SignatureLength, len(signature))
 	}
-	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID)
+	payloadHash, err := TokenCollectorWithdrawPayloadHash(depositAddr, amount, playerID, nonce)
 	if err != nil {
 		return false, err
 	}

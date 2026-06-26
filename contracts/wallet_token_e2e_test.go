@@ -370,9 +370,13 @@ func TestTokenCollectorWithdraw(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("[before] recipient mock USDT balance (%s): %s", depositAddr.Hex(), formatWei18(recipientBefore))
 
-	sig, err := utils.SignTokenCollectorWithdraw(depositAddr, withdrawAmount, playerID, userPriv)
+	withdrawNonce, err := QueryWithdrawNonce(ctx, client, playerCollector.Address, playerID)
 	require.NoError(t, err)
-	t.Logf("withdraw signature: depositAddr signs encodePacked(to,amount,playerId) + EIP-191")
+	t.Logf("withdrawNonce(playerId=%s)=%s", playerID.String(), withdrawNonce.String())
+
+	sig, err := utils.SignTokenCollectorWithdraw(depositAddr, withdrawAmount, playerID, withdrawNonce, userPriv)
+	require.NoError(t, err)
+	t.Logf("withdraw signature: depositAddr signs encodePacked(to,amount,playerId,nonce) + EIP-191")
 
 	chainID := big.NewInt(testChainID)
 	auth, err := bind.NewKeyedTransactorWithChainID(adminPriv, chainID)
