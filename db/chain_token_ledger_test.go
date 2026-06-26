@@ -46,14 +46,14 @@ func TestApplyChainTokenEvent_DepositCreditsUserToken(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	const amountWei = "1000000000000000000" // 100 game tokens
+	const amountWei = "1000000000000000000" // 1000 game tokens
 	ev := chainDepositEvent(97, "0xtx1", 1, 42, amountWei)
 
 	result, err := ApplyChainTokenEvent(context.Background(), ev)
 	require.NoError(t, err)
 	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
-	require.Equal(t, int32(100), result.TokenDelta)
-	require.Equal(t, int32(100), result.NewBalance)
+	require.Equal(t, int32(1000), result.TokenDelta)
+	require.Equal(t, int32(1000), result.NewBalance)
 
 	dup, err := ApplyChainTokenEvent(context.Background(), ev)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestApplyChainTokenEvent_DepositCreditsUserToken(t *testing.T) {
 
 	token, err := EnsureUserTokenByPlayerID(42)
 	require.NoError(t, err)
-	require.Equal(t, int32(100), token.TokenAmount)
+	require.Equal(t, int32(1000), token.TokenAmount)
 }
 
 func TestApplyChainTokenEvent_WithdrawDeductsUserToken(t *testing.T) {
@@ -76,19 +76,19 @@ func TestApplyChainTokenEvent_WithdrawDeductsUserToken(t *testing.T) {
 	result, err := ApplyChainTokenEvent(context.Background(), chainWithdrawEvent(97, "0xtxwd", 2, 7, withdrawWei))
 	require.NoError(t, err)
 	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
-	require.Equal(t, int32(-50), result.TokenDelta)
-	require.Equal(t, int32(50), result.NewBalance)
+	require.Equal(t, int32(-500), result.TokenDelta)
+	require.Equal(t, int32(500), result.NewBalance)
 }
 
 func TestApplyChainTokenEvent_WithdrawInsufficientBalanceFailed(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	depositWei := "500000000000000000" // 50 game tokens
+	depositWei := "500000000000000000" // 500 game tokens
 	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xtxdep2", 1, 9, depositWei))
 	require.NoError(t, err)
 
-	withdrawWei := "1000000000000000000" // 100 game tokens
+	withdrawWei := "1000000000000000000" // 1000 game tokens
 	result, err := ApplyChainTokenEvent(context.Background(), chainWithdrawEvent(97, "0xtxwd2", 2, 9, withdrawWei))
 	require.NoError(t, err)
 	require.Equal(t, ChainTokenEventApplyFailed, result.Status)
@@ -96,7 +96,7 @@ func TestApplyChainTokenEvent_WithdrawInsufficientBalanceFailed(t *testing.T) {
 
 	token, err := EnsureUserTokenByPlayerID(9)
 	require.NoError(t, err)
-	require.Equal(t, int32(50), token.TokenAmount)
+	require.Equal(t, int32(500), token.TokenAmount)
 
 	dup, err := ApplyChainTokenEvent(context.Background(), chainWithdrawEvent(97, "0xtxwd2", 2, 9, withdrawWei))
 	require.NoError(t, err)
@@ -107,7 +107,7 @@ func TestCreatePendingWithdrawAndFinalize(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	const depositWei = "2000000000000000000" // 200 tokens
+	const depositWei = "2000000000000000000" // 2000 tokens
 	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep3", 1, 11, depositWei))
 	require.NoError(t, err)
 
@@ -123,19 +123,19 @@ func TestCreatePendingWithdrawAndFinalize(t *testing.T) {
 
 	token, err := EnsureUserTokenByPlayerID(11)
 	require.NoError(t, err)
-	require.Equal(t, int32(200), token.TokenAmount)
+	require.Equal(t, int32(2000), token.TokenAmount)
 
 	require.NoError(t, UpdatePendingWithdrawTxHash(context.Background(), pending.RequestID, "0xtxpending", "0xcollector"))
 
 	result, err := FinalizeChainTokenWithdraw(context.Background(), chainWithdrawEvent(97, "0xtxpending", 3, 11, withdrawWei))
 	require.NoError(t, err)
 	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
-	require.Equal(t, int32(-50), result.TokenDelta)
-	require.Equal(t, int32(150), result.NewBalance)
+	require.Equal(t, int32(-500), result.TokenDelta)
+	require.Equal(t, int32(1500), result.NewBalance)
 
 	token, err = EnsureUserTokenByPlayerID(11)
 	require.NoError(t, err)
-	require.Equal(t, int32(150), token.TokenAmount)
+	require.Equal(t, int32(1500), token.TokenAmount)
 }
 
 func TestCreatePendingWithdrawInsufficientAvailableBalance(t *testing.T) {
@@ -167,14 +167,14 @@ func TestGetWithdrawableTokenAmountFullBalance(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	const depositWei = "1000000000000000000" // 100 tokens
+	const depositWei = "1000000000000000000" // 1000 tokens
 	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xwd-full", 1, 30, depositWei))
 	require.NoError(t, err)
 
 	got, err := GetWithdrawableTokenAmount(context.Background(), 30)
 	require.NoError(t, err)
-	require.Equal(t, int32(100), got.WithdrawableTokenAmount)
-	require.Equal(t, int32(100), got.TokenAmount)
+	require.Equal(t, int32(1000), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(1000), got.TokenAmount)
 	require.Equal(t, int32(0), got.LockedTokens)
 	require.Equal(t, int32(0), got.PendingWithdrawTokenAmount)
 }
@@ -183,7 +183,7 @@ func TestGetWithdrawableTokenAmountPendingWithdraw(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	const depositWei = "500000000000000000" // 50 tokens
+	const depositWei = "500000000000000000" // 500 tokens
 	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xwd-pend", 1, 31, depositWei))
 	require.NoError(t, err)
 
@@ -194,17 +194,17 @@ func TestGetWithdrawableTokenAmountPendingWithdraw(t *testing.T) {
 
 	got, err := GetWithdrawableTokenAmount(context.Background(), 31)
 	require.NoError(t, err)
-	require.Equal(t, int32(10), got.WithdrawableTokenAmount)
-	require.Equal(t, int32(50), got.TokenAmount)
+	require.Equal(t, int32(100), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(500), got.TokenAmount)
 	require.Equal(t, int32(0), got.LockedTokens)
-	require.Equal(t, int32(40), got.PendingWithdrawTokenAmount)
+	require.Equal(t, int32(400), got.PendingWithdrawTokenAmount)
 }
 
 func TestGetWithdrawableTokenAmountLockedTokens(t *testing.T) {
 	require.NoError(t, initMemDbSqlite())
 	require.NoError(t, MigrateMemDb())
 
-	const depositWei = "1000000000000000000" // 100 tokens
+	const depositWei = "1000000000000000000" // 1000 tokens
 	_, err := ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xwd-lock", 1, 32, depositWei))
 	require.NoError(t, err)
 
@@ -212,8 +212,8 @@ func TestGetWithdrawableTokenAmountLockedTokens(t *testing.T) {
 
 	got, err := GetWithdrawableTokenAmount(context.Background(), 32)
 	require.NoError(t, err)
-	require.Equal(t, int32(70), got.WithdrawableTokenAmount)
-	require.Equal(t, int32(100), got.TokenAmount)
+	require.Equal(t, int32(970), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(1000), got.TokenAmount)
 	require.Equal(t, int32(30), got.LockedTokens)
 	require.Equal(t, int32(0), got.PendingWithdrawTokenAmount)
 }

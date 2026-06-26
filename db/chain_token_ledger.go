@@ -133,7 +133,7 @@ func applyChainDepositEventTx(tx *gorm.DB, ev ChainTokenEventInput) (*ChainToken
 		return nil, fmt.Errorf("convert amount wei: %w", err)
 	}
 	if remainder, remErr := tokenunits.WeiToTokenRemainder(ev.AmountWei); remErr == nil && remainder.Sign() > 0 {
-		log.Warnf("chain token event tx=%s log=%d has wei remainder %s after /10^16",
+		log.Warnf("chain token event tx=%s log=%d has wei remainder %s after /10^15",
 			normalizedTxHash, ev.LogIndex, remainder.String())
 	}
 

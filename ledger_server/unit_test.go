@@ -11,10 +11,11 @@ func TestGetTokenUnitRates(t *testing.T) {
 	svc := NewService(nil, nil, 0)
 	resp := svc.GetTokenUnitRates()
 	require.NotNil(t, resp.GetTokenToUsdt())
-	require.Equal(t, "1000000000000000000", resp.GetTokenToUsdt().GetMul())
-	require.Equal(t, "100", resp.GetTokenToUsdt().GetDiv())
-	require.Equal(t, "1", resp.GetUsdtToWei().GetMul())
-	require.Equal(t, "10000000000000000", resp.GetTokenToWei().GetMul())
+	require.Equal(t, "1", resp.GetTokenToUsdt().GetMul())
+	require.Equal(t, "1000", resp.GetTokenToUsdt().GetDiv())
+	require.Equal(t, "1000000000000000000", resp.GetUsdtToWei().GetMul())
+	require.Equal(t, "1", resp.GetUsdtToWei().GetDiv())
+	require.Equal(t, "1000000000000000", resp.GetTokenToWei().GetMul())
 }
 
 func TestConvertTokenAmount(t *testing.T) {
@@ -22,7 +23,7 @@ func TestConvertTokenAmount(t *testing.T) {
 	resp, err := svc.ConvertTokenAmount(&proto.ConvertTokenAmountRequest{
 		FromUnit: proto.TokenAmountUnit_TOKEN_AMOUNT_UNIT_TOKEN,
 		ToUnit:   proto.TokenAmountUnit_TOKEN_AMOUNT_UNIT_WEI,
-		Amount:   "100",
+		Amount:   "1000",
 	})
 	require.NoError(t, err)
 	require.Equal(t, "1000000000000000000", resp.GetAmount())

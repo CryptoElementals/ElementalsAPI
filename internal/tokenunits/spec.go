@@ -3,18 +3,16 @@ package tokenunits
 import "math/big"
 
 const (
-	// token -> usdt (smallest): amount * TokenToUsdtMul * UsdtToWeiMul / (TokenToUsdtDenom * UsdtToWeiDenom)
-	// 1 Token = TokenToUsdtMul / TokenToUsdtDenom USDT.
+	// 1 USDT = TokenToUsdtDenom game tokens (1000 tokens per 1 USDT).
 	TokenToUsdtMul   int64 = 1
-	TokenToUsdtDenom int64 = 100
+	TokenToUsdtDenom int64 = 1000
 
-	// usdt -> wei: amount * UsdtToWeiMul / UsdtToWeiDenom
-	// 1 USDT = UsdtToWeiMul / UsdtToWeiDenom wei (smallest on-chain unit).
+	// 1 USDT = UsdtToWeiMul / UsdtToWeiDenom wei on chain (ERC-20 18 decimals).
 	UsdtToWeiMul   int64 = 1_000_000_000_000_000_000 // 10^18
 	UsdtToWeiDenom int64 = 1
 
-	// token -> wei derived: TokenToUsdtMul * UsdtToWeiMul / (TokenToUsdtDenom * UsdtToWeiDenom)
-	TokenToWeiMul int64 = TokenToUsdtMul * UsdtToWeiMul / UsdtToWeiDenom / TokenToUsdtDenom // 10^16
+	// token -> wei: 1 token = TokenToWeiMul wei (10^15; 1000 tokens = 1 USDT = 10^18 wei).
+	TokenToWeiMul int64 = 1_000_000_000_000_000 // 10^15
 )
 
 // Unit identifies token amount denomination.
@@ -23,8 +21,8 @@ type Unit int
 const (
 	UnitUnspecified Unit = iota
 	UnitToken
-	UnitUSDT
-	UnitWei
+	UnitUSDT // whole USDT (1 = 1 USDT)
+	UnitWei  // on-chain wei (10^-18 USDT on 18-decimal ERC-20)
 )
 
 // MulDiv is a rational conversion factor: result = floor(amount * Mul / Div).
@@ -58,19 +56,25 @@ var DefaultSpec = NewSpec()
 
 func NewSpec() Spec {
 	tokenToUsdt := MulDiv{
-		Mul: big.NewInt(TokenToUsdtMul * UsdtToWeiMul / UsdtToWeiDenom),
+		Mul: big.NewInt(TokenToUsdtMul),
 		Div: big.NewInt(TokenToUsdtDenom),
+	}
+	usdtToToken := MulDiv{
+		Mul: big.NewInt(TokenToUsdtDenom),
+		Div: big.NewInt(1),
+	}
+	usdtToWei := MulDiv{
+		Mul: big.NewInt(UsdtToWeiMul),
+		Div: big.NewInt(UsdtToWeiDenom),
+	}
+	weiToUsdt := MulDiv{
+		Mul: big.NewInt(1),
+		Div: big.NewInt(UsdtToWeiMul),
 	}
 	tokenToWei := MulDiv{
 		Mul: big.NewInt(TokenToWeiMul),
 		Div: big.NewInt(1),
 	}
-	usdtToWei := MulDiv{Mul: big.NewInt(1), Div: big.NewInt(1)}
-	usdtToToken := MulDiv{
-		Mul: big.NewInt(TokenToUsdtDenom * UsdtToWeiDenom),
-		Div: big.NewInt(TokenToUsdtMul * UsdtToWeiMul),
-	}
-	weiToUsdt := usdtToWei
 	weiToToken := MulDiv{
 		Mul: big.NewInt(1),
 		Div: big.NewInt(TokenToWeiMul),
@@ -85,7 +89,6 @@ func NewSpec() Spec {
 		weiToToken:  weiToToken,
 	}
 }
-
 
 func (s Spec) Rates() Rates {
 	return Rates{

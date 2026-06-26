@@ -110,8 +110,8 @@ func TestGetWithdrawableTokenAmountService(t *testing.T) {
 		PlayerId: 60,
 	})
 	require.NoError(t, err)
-	require.Equal(t, int32(100), resp.GetWithdrawableTokenAmount())
-	require.Equal(t, int32(100), resp.GetTokenAmount())
+	require.Equal(t, int32(1000), resp.GetWithdrawableTokenAmount())
+	require.Equal(t, int32(1000), resp.GetTokenAmount())
 	require.Equal(t, int32(0), resp.GetLockedTokens())
 	require.Equal(t, int32(0), resp.GetPendingWithdrawTokenAmount())
 }
