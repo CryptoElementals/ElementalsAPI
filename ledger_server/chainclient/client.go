@@ -64,24 +64,25 @@ type WithdrawResult struct {
 
 // Withdraw submits a withdraw to chain-server.
 func (c *Client) Withdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*WithdrawResult, error) {
-	if c == nil || c.client == nil {
-		return nil, fmt.Errorf("chain client is nil")
+	amountWei = strings.TrimSpace(amountWei)
+	if amountWei == "" {
+		return nil, fmt.Errorf("amount_wei is required")
 	}
-	wei, ok := new(big.Int).SetString(strings.TrimSpace(amountWei), 10)
+	wei, ok := new(big.Int).SetString(amountWei, 10)
 	if !ok || wei.Sign() <= 0 {
 		return nil, fmt.Errorf("invalid amount_wei: %q", amountWei)
-	}
-	if !wei.IsInt64() {
-		return nil, fmt.Errorf("amount_wei overflows int64: %s", wei.String())
 	}
 	if len(signature) == 0 {
 		return nil, fmt.Errorf("signature is required")
 	}
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("chain client is nil")
+	}
 
 	resp, err := c.client.Withdraw(ctx, &proto.WithdrawRequest{
-		PlayerId:  playerID,
-		Amount:    wei.Int64(),
-		Signature: signature,
+		PlayerId:   playerID,
+		AmountWei:  wei.String(),
+		Signature:  signature,
 	})
 	if err != nil {
 		return nil, err

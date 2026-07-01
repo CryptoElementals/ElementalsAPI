@@ -38,7 +38,7 @@ message ClearGameInfoRequest {
 
 message WithdrawRequest {
     int64 player_id = 1;
-    int64 amount = 2;
+    string amount_wei = 2;
     bytes signature = 3;
 }
 

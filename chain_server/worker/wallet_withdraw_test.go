@@ -15,7 +15,7 @@ import (
 
 func TestChainWithdrawNotConfigured(t *testing.T) {
 	h := &Chain{}
-	_, err := h.Withdraw(context.Background(), 1, 1000, []byte{0x01})
+	_, err := h.Withdraw(context.Background(), 1, "1000", []byte{0x01})
 	require.ErrorIs(t, err, ErrWalletChainNotConfigured)
 }
 
@@ -28,19 +28,19 @@ func TestGasLimitWithBuffer(t *testing.T) {
 func TestWalletRuntimeWithdrawValidation(t *testing.T) {
 	r := &walletRuntime{}
 
-	_, err := r.Withdraw(context.Background(), 0, 1000, []byte{0x01})
+	_, err := r.Withdraw(context.Background(), 0, "1000", []byte{0x01})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid player_id")
 
-	_, err = r.Withdraw(context.Background(), 1, 0, []byte{0x01})
+	_, err = r.Withdraw(context.Background(), 1, "0", []byte{0x01})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid amount")
 
-	_, err = r.Withdraw(context.Background(), 1, -1, []byte{0x01})
+	_, err = r.Withdraw(context.Background(), 1, "-1", []byte{0x01})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid amount")
 
-	_, err = r.Withdraw(context.Background(), 1, 1000, nil)
+	_, err = r.Withdraw(context.Background(), 1, "1000", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "signature is required")
 }
@@ -75,7 +75,7 @@ func TestWalletRuntimeWithdrawNoSend(t *testing.T) {
 		sig[i] = byte(i + 1)
 	}
 
-	result, err := rt.Withdraw(ctx, 1, 1_000_000_000_000_000_000, sig)
+	result, err := rt.Withdraw(ctx, 1, "1000000000000000000", sig)
 	if err != nil {
 		t.Skipf("withdraw integration requires valid on-chain state and signature: %v", err)
 	}

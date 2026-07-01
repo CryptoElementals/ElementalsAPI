@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/internal/tokenunits"
 	"github.com/CryptoElementals/common/ledger_server/chainclient"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -91,6 +92,17 @@ func TestRequestWithdrawMarksFailedOnChainError(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), list.GetTotal())
 	require.Equal(t, "chain_submit_failed", list.GetRecords()[0].GetFailReason())
+}
+
+func TestRequestWithdrawExceedsMaxTokenAmount(t *testing.T) {
+	svc := NewService(nil, &stubChainSubmitter{}, 97)
+	_, err := svc.RequestWithdraw(context.Background(), &proto.RequestWithdrawRequest{
+		PlayerId:    1,
+		TokenAmount: tokenunits.MaxWithdrawTokenAmount + 1,
+		Signature:   []byte("abcdef"),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "max withdraw limit")
 }
 
 func TestGetWithdrawableTokenAmountService(t *testing.T) {

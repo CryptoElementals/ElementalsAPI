@@ -72,7 +72,7 @@ message SubmitChainEventsResponse {
 
 message RequestWithdrawRequest {
   int64 player_id = 1;
-  // token_amount is in-game token units (NOT wei). ledger-server converts it to wei before calling chain-server.
+  // token_amount is in-game token units (NOT wei). Max 100,000,000 per request.
   int32 token_amount = 2;
   // signature is the user's withdraw authorization signature (hex-decoded bytes).
   bytes signature = 3;

@@ -109,8 +109,8 @@ type resolvedWithdrawItem struct {
 	collector common.Address
 }
 
-func (r *walletRuntime) Withdraw(ctx context.Context, playerID int64, amount int64, signature []byte) (*WithdrawResult, error) {
-	item, err := r.resolveWithdrawItem(ctx, playerID, amount, signature)
+func (r *walletRuntime) Withdraw(ctx context.Context, playerID int64, amountWei string, signature []byte) (*WithdrawResult, error) {
+	item, err := r.resolveWithdrawItem(ctx, playerID, amountWei, signature)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (r *walletRuntime) Withdraw(ctx context.Context, playerID int64, amount int
 	collectorHex := strings.ToLower(item.collector.Hex())
 	ledgerID, err := db.InsertWithdrawLedger(&dao.WithdrawLedger{
 		PlayerID:         item.playerID,
-		Amount:           item.amount.Int64(),
+		Amount:           item.amount.String(),
 		Signature:        db.FormatWithdrawSignatureHex(item.signature),
 		CollectorAddress: collectorHex,
 		ChainID:          r.chainID,
@@ -173,14 +173,18 @@ func (r *walletRuntime) Withdraw(ctx context.Context, playerID int64, amount int
 	}, nil
 }
 
-func (r *walletRuntime) resolveWithdrawItem(ctx context.Context, playerID int64, amount int64, signature []byte) (resolvedWithdrawItem, error) {
+func (r *walletRuntime) resolveWithdrawItem(ctx context.Context, playerID int64, amountWei string, signature []byte) (resolvedWithdrawItem, error) {
 	if playerID <= 0 {
 		return resolvedWithdrawItem{}, fmt.Errorf("invalid player_id: %d", playerID)
 	}
-	if amount <= 0 {
-		return resolvedWithdrawItem{}, fmt.Errorf("invalid amount for player %d: %d", playerID, amount)
+	amountWei = strings.TrimSpace(amountWei)
+	if amountWei == "" {
+		return resolvedWithdrawItem{}, fmt.Errorf("invalid amount for player %d: amount_wei is required", playerID)
 	}
-	amountBigInt := big.NewInt(amount)
+	amountBigInt, ok := new(big.Int).SetString(amountWei, 10)
+	if !ok || amountBigInt.Sign() <= 0 {
+		return resolvedWithdrawItem{}, fmt.Errorf("invalid amount for player %d: %q", playerID, amountWei)
+	}
 	if len(signature) == 0 {
 		return resolvedWithdrawItem{}, fmt.Errorf("signature is required for player %d", playerID)
 	}
