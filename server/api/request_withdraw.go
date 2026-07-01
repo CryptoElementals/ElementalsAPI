@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -82,6 +83,14 @@ func (task *RequestWithdrawTask) Run(c *gin.Context) (Response, error) {
 	sigBytes, err := decodeHexSignature(task.Request.Signature)
 	if err != nil {
 		return nil, errors.ParamsJudgeError(err.Error())
+	}
+
+	profile, err := db.GetUserProfileByPlayerIDInt(playerID)
+	if err != nil {
+		return nil, errors.GetUserProfileFailed(playerID)
+	}
+	if strings.TrimSpace(profile.Address) == "" {
+		return nil, errors.WithdrawRequiresDeposit(playerID)
 	}
 
 	resp, err := client.RequestWithdraw(context.Background(), ServerTypeFromGin(c), &proto.RequestWithdrawRequest{
