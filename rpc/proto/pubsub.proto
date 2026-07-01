@@ -230,6 +230,8 @@ message TokenUpdated {
   string tx_hash = 8;
   uint32 log_index = 9;
   string collector_address = 10;
+  // deposit_address is the depositor wallet (from_address) on chain deposit events.
+  string deposit_address = 11;
 }
 
 enum EventType {

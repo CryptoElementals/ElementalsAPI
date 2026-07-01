@@ -43,7 +43,7 @@ func TestSumLockedTokens(t *testing.T) {
 }
 
 func TestPublishTokenUpdatedSkipsNonFinalized(t *testing.T) {
-	svc := NewService(nil, nil, 0)
+	svc := NewService(nil, nil, 0, 0)
 	ev := &proto.ChainTokenEvent{
 		EventType: string(dao.ChainTokenLedgerEventDeposit),
 		Payload: &proto.ChainTokenEvent_Deposit{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/CryptoElementals/common/internal/tokenunits"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/stretchr/testify/require"
 )
@@ -54,6 +55,7 @@ func TestApplyChainTokenEvent_DepositCreditsUserToken(t *testing.T) {
 	require.Equal(t, ChainTokenEventApplyFinalized, result.Status)
 	require.Equal(t, int32(1000), result.TokenDelta)
 	require.Equal(t, int32(1000), result.NewBalance)
+	require.Equal(t, "0xfrom", result.DepositAddress)
 
 	dup, err := ApplyChainTokenEvent(context.Background(), ev)
 	require.NoError(t, err)
@@ -235,4 +237,128 @@ func TestListChainTokenLedgersFilter(t *testing.T) {
 	require.Equal(t, int64(1), list.Total)
 	require.Len(t, list.Records, 1)
 	require.Equal(t, dao.ChainTokenLedgerStatusFinalized, list.Records[0].Status)
+}
+
+func TestCreateAuditingWithdrawReservesBalance(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	depositWei, err := tokenunits.TokenToWei(200_000)
+	require.NoError(t, err)
+	_, err = ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep-audit", 1, 40, depositWei))
+	require.NoError(t, err)
+
+	withdrawWei, err := tokenunits.TokenToWei(100_001)
+	require.NoError(t, err)
+	_, err = CreateAuditingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 40, AmountWei: withdrawWei, Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	got, err := GetWithdrawableTokenAmount(context.Background(), 40)
+	require.NoError(t, err)
+	require.Equal(t, int32(99_999), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(100_001), got.PendingWithdrawTokenAmount)
+}
+
+func TestRejectAuditingWithdrawReleasesBalance(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	depositWei, err := tokenunits.TokenToWei(200_000)
+	require.NoError(t, err)
+	_, err = ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep-rej", 1, 41, depositWei))
+	require.NoError(t, err)
+
+	withdrawWei, err := tokenunits.TokenToWei(100_001)
+	require.NoError(t, err)
+	pending, err := CreateAuditingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 41, AmountWei: withdrawWei, Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, RejectAuditingWithdraw(context.Background(), pending.RequestID, "manual_reject"))
+
+	got, err := GetWithdrawableTokenAmount(context.Background(), 41)
+	require.NoError(t, err)
+	require.Equal(t, int32(200_000), got.WithdrawableTokenAmount)
+	require.Equal(t, int32(0), got.PendingWithdrawTokenAmount)
+}
+
+func TestAuditingWithdrawBlocksNewWithdraw(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	depositWei, err := tokenunits.TokenToWei(300_000)
+	require.NoError(t, err)
+	_, err = ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep-block", 1, 42, depositWei))
+	require.NoError(t, err)
+
+	withdrawWei, err := tokenunits.TokenToWei(100_001)
+	require.NoError(t, err)
+	_, err = CreateAuditingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 42, AmountWei: withdrawWei, Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	smallWei, err := tokenunits.TokenToWei(1_000)
+	require.NoError(t, err)
+	_, err = CreatePendingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 42, AmountWei: smallWei, Signature: "0xdef",
+	})
+	require.ErrorIs(t, err, ErrAuditingWithdrawInProgress)
+}
+
+func TestApproveAuditingWithdrawTransitionsToPending(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	depositWei, err := tokenunits.TokenToWei(200_000)
+	require.NoError(t, err)
+	_, err = ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xdep-appr", 1, 43, depositWei))
+	require.NoError(t, err)
+
+	withdrawWei, err := tokenunits.TokenToWei(100_001)
+	require.NoError(t, err)
+	pending, err := CreateAuditingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 43, AmountWei: withdrawWei, Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	row, err := ApproveAuditingWithdraw(context.Background(), pending.RequestID)
+	require.NoError(t, err)
+	require.Equal(t, int64(43), row.PlayerID)
+
+	var ledger dao.ChainTokenLedger
+	require.NoError(t, Get().First(&ledger, pending.LedgerID).Error)
+	require.Equal(t, dao.ChainTokenLedgerStatusPending, ledger.Status)
+}
+
+func TestListChainTokenLedgersCrossPlayer(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	depositWei, err := tokenunits.TokenToWei(200_000)
+	require.NoError(t, err)
+	_, err = ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xlist-a", 1, 21, depositWei))
+	require.NoError(t, err)
+	_, err = ApplyChainTokenEvent(context.Background(), chainDepositEvent(97, "0xlist-b", 1, 22, depositWei))
+	require.NoError(t, err)
+
+	withdrawWei, err := tokenunits.TokenToWei(100_001)
+	require.NoError(t, err)
+	_, err = CreateAuditingWithdraw(context.Background(), PendingWithdrawInput{
+		ChainID: 97, PlayerID: 21, AmountWei: withdrawWei, Signature: "0xabc",
+	})
+	require.NoError(t, err)
+
+	list, err := ListChainTokenLedgers(context.Background(), ChainTokenLedgerFilter{
+		PlayerID:  0,
+		Status:    string(dao.ChainTokenLedgerStatusAuditing),
+		EventType: string(dao.ChainTokenLedgerEventWithdraw),
+		Limit:     20,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), list.Total)
+	require.Equal(t, int64(21), list.Records[0].PlayerID)
 }

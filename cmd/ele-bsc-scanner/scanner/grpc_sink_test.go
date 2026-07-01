@@ -8,6 +8,7 @@ import (
 	"github.com/CryptoElementals/common/rpc/proto"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type mockLedgerClient struct {
@@ -23,6 +24,22 @@ func (m *mockLedgerClient) RequestWithdraw(ctx context.Context, in *proto.Reques
 }
 
 func (m *mockLedgerClient) ListChainTokenLedgers(ctx context.Context, in *proto.ListChainTokenLedgersRequest, opts ...grpc.CallOption) (*proto.ListChainTokenLedgersResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockLedgerClient) AuditWithdraw(ctx context.Context, in *proto.AuditWithdrawRequest, opts ...grpc.CallOption) (*proto.AuditWithdrawResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockLedgerClient) GetTokenUnitRates(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*proto.GetTokenUnitRatesResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockLedgerClient) ConvertTokenAmount(ctx context.Context, in *proto.ConvertTokenAmountRequest, opts ...grpc.CallOption) (*proto.ConvertTokenAmountResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockLedgerClient) GetWithdrawableTokenAmount(ctx context.Context, in *proto.GetWithdrawableTokenAmountRequest, opts ...grpc.CallOption) (*proto.GetWithdrawableTokenAmountResponse, error) {
 	return nil, errors.New("not implemented")
 }
 

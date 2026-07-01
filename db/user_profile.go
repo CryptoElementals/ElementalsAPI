@@ -77,6 +77,21 @@ func PromoteUserServerTypeToNormalIfTrial(playerID int64) (updated bool, err err
 	return res.RowsAffected > 0, nil
 }
 
+// UpdateUserProfileAddressFromDeposit sets user_profiles.address from a chain deposit wallet.
+func UpdateUserProfileAddressFromDeposit(playerID int64, address string) (updated bool, err error) {
+	address = strings.ToLower(strings.TrimSpace(address))
+	if playerID <= 0 || address == "" {
+		return false, nil
+	}
+	res := Get().Model(&dao.UserProfile{}).
+		Where("player_id = ?", playerID).
+		Update("address", address)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
 // UpdateUserProfile 更新用户档案
 func UpdateUserProfile(userProfile *dao.UserProfile) error {
 	err := Get().Save(userProfile).Error
