@@ -78,9 +78,9 @@ func (c *concurrentRoomV3Client) submitTasks(indexes []uint8, tasks [][]byte) (s
 	}
 
 	bindOpts := <-c.optsPool
-	var sendErr error
+	var txSent bool
 	defer func() {
-		if sendErr == nil && !bindOpts.NoSend && bindOpts.Nonce != nil {
+		if txSent && !bindOpts.NoSend && bindOpts.Nonce != nil {
 			bindOpts.Nonce = new(big.Int).Add(bindOpts.Nonce, big.NewInt(1))
 		}
 		c.optsPool <- bindOpts
@@ -90,11 +90,11 @@ func (c *concurrentRoomV3Client) submitTasks(indexes []uint8, tasks [][]byte) (s
 	bindOpts.GasLimit = uint64(len(tasks) * roomV3SingleTxGasLimit)
 
 	tx, err := c.roomV3Ctr.BatchSubmitTasks(bindOpts, indexes, tasks)
-	sendErr = err
 	if err != nil {
 		log.Errorf("sendBatchTasks: batchSubmitTasks failed: %s", err.Error())
 		return "", fmt.Errorf("batchSubmitTasks failed: %s", err.Error())
 	}
+	txSent = true
 
 	txHash := strings.ToLower(tx.Hash().String())
 	log.Debugw("sendBatchTasks: batch submitted",

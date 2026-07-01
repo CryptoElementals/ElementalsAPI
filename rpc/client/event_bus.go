@@ -19,6 +19,8 @@ type SubscriberID struct {
 type EventBus interface {
 	RegisterSubscriber(subscriberID SubscriberID) (chan *pb.Message, chan error)
 	UnregisterSubscriber(subscriberID SubscriberID)
+	RegisterAllEventsSubscriber(subscriberID string) (chan *pb.Message, chan error)
+	UnregisterAllEventsSubscriber(subscriberID string)
 }
 
 type eventBus struct {
@@ -28,8 +30,9 @@ type eventBus struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	mu          sync.RWMutex
-	subscribers map[string]map[string]*subscriberState
+	mu                    sync.RWMutex
+	subscribers           map[string]map[string]*subscriberState
+	allEventsSubscribers  map[string]*subscriberState
 }
 
 type subscriberState struct {
@@ -56,7 +59,8 @@ func NewEventBus(subscriber *pubsub.StreamSubscriber, topics ...string) EventBus
 		topics:      topics,
 		ctx:         ctx,
 		cancel:      cancel,
-		subscribers: map[string]map[string]*subscriberState{},
+		subscribers:          map[string]map[string]*subscriberState{},
+		allEventsSubscribers: map[string]*subscriberState{},
 	}
 	b.start()
 	return b
@@ -102,6 +106,32 @@ func (b *eventBus) UnregisterSubscriber(subscriberID SubscriberID) {
 	b.closeSubscriber(state, nil)
 }
 
+func (b *eventBus) RegisterAllEventsSubscriber(subscriberID string) (chan *pb.Message, chan error) {
+	state := &subscriberState{
+		msgCh: make(chan *pb.Message, 32),
+		errCh: make(chan error, 1),
+	}
+
+	b.mu.Lock()
+	b.allEventsSubscribers[subscriberID] = state
+	b.mu.Unlock()
+
+	return state.msgCh, state.errCh
+}
+
+func (b *eventBus) UnregisterAllEventsSubscriber(subscriberID string) {
+	b.mu.Lock()
+	state, exists := b.allEventsSubscribers[subscriberID]
+	if exists {
+		delete(b.allEventsSubscribers, subscriberID)
+	}
+	b.mu.Unlock()
+	if !exists {
+		return
+	}
+	b.closeSubscriber(state, nil)
+}
+
 func (b *eventBus) start() {
 	for _, topic := range b.topics {
 		t := topic
@@ -144,6 +174,7 @@ func (b *eventBus) dispatch(msg *pb.Message) {
 		if tu == nil {
 			return
 		}
+		b.dispatchToAllEventsSubscribers(msg)
 		b.dispatchToPlayerID(tu.GetPlayerId(), msg)
 		return
 	}
@@ -193,6 +224,18 @@ func (b *eventBus) dispatchBroadcast(msg *pb.Message) {
 	}
 }
 
+func (b *eventBus) dispatchToAllEventsSubscribers(msg *pb.Message) {
+	b.mu.RLock()
+	targets := make([]*subscriberState, 0, len(b.allEventsSubscribers))
+	for _, sub := range b.allEventsSubscribers {
+		targets = append(targets, sub)
+	}
+	b.mu.RUnlock()
+	for _, sub := range targets {
+		b.sendToSubscriber(sub, msg)
+	}
+}
+
 func (b *eventBus) dispatchToPlayerID(playerID int64, msg *pb.Message) {
 	b.mu.RLock()
 	targets := make([]*subscriberState, 0)
@@ -218,6 +261,9 @@ func (b *eventBus) finishAll(err error) {
 		for _, sub := range group {
 			targets = append(targets, sub)
 		}
+	}
+	for _, sub := range b.allEventsSubscribers {
+		targets = append(targets, sub)
 	}
 	b.mu.RUnlock()
 

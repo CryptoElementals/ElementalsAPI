@@ -14,9 +14,10 @@ func TestEventBusDispatchTokenToPlayerID(t *testing.T) {
 	defer cancel()
 
 	bus := &eventBus{
-		ctx:         ctx,
-		cancel:      cancel,
-		subscribers: map[string]map[string]*subscriberState{},
+		ctx:                  ctx,
+		cancel:               cancel,
+		subscribers:          map[string]map[string]*subscriberState{},
+		allEventsSubscribers: map[string]*subscriberState{},
 	}
 
 	player1 := &proto.PlayerAddress{Id: 1, TemporaryAddress: "0xaa"}
@@ -29,23 +30,51 @@ func TestEventBusDispatchTokenToPlayerID(t *testing.T) {
 		ClientID: "c1b",
 	})
 
-	msg := &proto.Message{
-		Topic: pubsub.TopicToken,
-		Event: &proto.Event{
-			Type: proto.EventType_TYPE_TOKEN_UPDATED,
-			Event: &proto.Event_TokenUpdated{
-				TokenUpdated: &proto.TokenUpdated{
-					PlayerId: 1,
-					Tokens:   1000,
-				},
-			},
-		},
-	}
+	msg := tokenUpdatedMessage(1, 1000)
 	bus.dispatch(msg)
 
 	require.Len(t, drain(ch1), 1)
 	require.Len(t, drain(ch1b), 1)
 	require.Len(t, drain(ch2), 0)
+}
+
+func TestEventBusDispatchTokenToAllEventsSubscriber(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bus := &eventBus{
+		ctx:                  ctx,
+		cancel:               cancel,
+		subscribers:          map[string]map[string]*subscriberState{},
+		allEventsSubscribers: map[string]*subscriberState{},
+	}
+
+	player1 := &proto.PlayerAddress{Id: 1, TemporaryAddress: "0xaa"}
+	chPlayer, _ := registerTestSubscriber(bus, SubscriberID{Address: player1, ClientID: "c1"})
+	chAll, _ := bus.RegisterAllEventsSubscriber("all")
+
+	msg1 := tokenUpdatedMessage(1, 1000)
+	msg2 := tokenUpdatedMessage(2, 2000)
+	bus.dispatch(msg1)
+	bus.dispatch(msg2)
+
+	require.Len(t, drain(chAll), 2)
+	require.Len(t, drain(chPlayer), 1)
+}
+
+func tokenUpdatedMessage(playerID int64, tokens int32) *proto.Message {
+	return &proto.Message{
+		Topic: pubsub.TopicToken,
+		Event: &proto.Event{
+			Type: proto.EventType_TYPE_TOKEN_UPDATED,
+			Event: &proto.Event_TokenUpdated{
+				TokenUpdated: &proto.TokenUpdated{
+					PlayerId: playerID,
+					Tokens:   tokens,
+				},
+			},
+		},
+	}
 }
 
 func registerTestSubscriber(bus *eventBus, id SubscriberID) (chan *proto.Message, chan error) {

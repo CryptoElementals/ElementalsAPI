@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/pubsub"
 	"github.com/CryptoElementals/common/rpc/client"
@@ -41,26 +42,24 @@ type SubscribeTokenUpdatesTask struct {
 }
 
 var (
-	subscribeTokenBusMu   sync.Mutex
-	subscribeTokenBuses   = make(map[string]client.EventBus)
-	subscribeTokenBusErrs = make(map[string]error)
+	subscribeTokenBusMu  sync.Mutex
+	subscribeTokenBus    client.EventBus
+	subscribeTokenBusErr error
 )
 
-func getSubscribeTokenEventBus(serverType string) (client.EventBus, error) {
+func getSubscribeTokenEventBus() (client.EventBus, error) {
 	subscribeTokenBusMu.Lock()
 	defer subscribeTokenBusMu.Unlock()
-	if bus, ok := subscribeTokenBuses[serverType]; ok {
-		return bus, subscribeTokenBusErrs[serverType]
+	if subscribeTokenBus != nil || subscribeTokenBusErr != nil {
+		return subscribeTokenBus, subscribeTokenBusErr
 	}
-	eventStream := client.EventStreamForType(serverType)
+	eventStream := client.EventStreamForType(config.ServerTypeNormal)
 	if eventStream == nil {
-		err := fmt.Errorf("event stream is nil for server type %q", serverType)
-		subscribeTokenBusErrs[serverType] = err
-		return nil, err
+		subscribeTokenBusErr = fmt.Errorf("event stream is nil for server type %q", config.ServerTypeNormal)
+		return nil, subscribeTokenBusErr
 	}
-	bus := client.NewTokenEventBus(pubsub.NewStreamSubscriber(eventStream))
-	subscribeTokenBuses[serverType] = bus
-	return bus, subscribeTokenBusErrs[serverType]
+	subscribeTokenBus = client.NewTokenEventBus(pubsub.NewStreamSubscriber(eventStream))
+	return subscribeTokenBus, subscribeTokenBusErr
 }
 
 func NewSubscribeTokenUpdatesRequest(data *map[string]interface{}) (*SubscribeTokenUpdatesRequest, error) {
@@ -111,8 +110,7 @@ func (task *SubscribeTokenUpdatesTask) Run(c *gin.Context) (Response, error) {
 		return nil, fmt.Errorf("invalid player id: %v", err)
 	}
 
-	serverType := ServerTypeFromGin(c)
-	eventBus, err := getSubscribeTokenEventBus(serverType)
+	eventBus, err := getSubscribeTokenEventBus()
 	if err != nil {
 		log.Errorf("failed to initialize token event bus: %v", err)
 		errorEvent := sse.Event{

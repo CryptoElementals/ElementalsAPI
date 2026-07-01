@@ -121,9 +121,9 @@ func (r *walletRuntime) Withdraw(ctx context.Context, playerID int64, amount int
 	}
 
 	bindOpts := <-r.optsPool
-	var sendErr error
+	var txSent bool
 	defer func() {
-		if sendErr == nil && !bindOpts.NoSend && bindOpts.Nonce != nil {
+		if txSent && !bindOpts.NoSend && bindOpts.Nonce != nil {
 			bindOpts.Nonce = new(big.Int).Add(bindOpts.Nonce, big.NewInt(1))
 		}
 		r.optsPool <- bindOpts
@@ -131,17 +131,21 @@ func (r *walletRuntime) Withdraw(ctx context.Context, playerID int64, amount int
 
 	estimatedGas, err := estimateWithdrawGas(ctx, r.client, bindOpts.From, item.collector, big.NewInt(item.playerID), item.amount, item.signature)
 	if err != nil {
-		log.Errorw("estimate withdraw gas", "collector", item.collector.Hex(), "player_id", item.playerID, "err", err)
+		log.Errorw("estimate withdraw gas",
+			"collector", item.collector.Hex(),
+			"player_id", item.playerID,
+			"signature", db.FormatWithdrawSignatureHex(item.signature),
+			"err", err)
 		return nil, fmt.Errorf("estimate withdraw gas: %w", err)
 	}
 	bindOpts.GasLimit = gasLimitWithBuffer(estimatedGas)
 
 	tx, err := tc.Withdraw(bindOpts, big.NewInt(item.playerID), item.amount, item.signature)
-	sendErr = err
 	if err != nil {
 		log.Errorw("withdraw tx", "collector", item.collector.Hex(), "player_id", item.playerID, "err", err)
 		return nil, fmt.Errorf("withdraw: %w", err)
 	}
+	txSent = true
 
 	txHash := strings.ToLower(tx.Hash().String())
 	collectorHex := strings.ToLower(item.collector.Hex())
