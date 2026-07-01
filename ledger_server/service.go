@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/CryptoElementals/common/db"
@@ -22,16 +23,18 @@ type ChainWithdrawSubmitter interface {
 
 // Service applies on-chain token events to the ledger and user balances.
 type Service struct {
-	publisher pubsub.Publisher
-	chain     ChainWithdrawSubmitter
-	chainID   int64
+	publisher                    pubsub.Publisher
+	chain                        ChainWithdrawSubmitter
+	chainID                      int64
+	withdrawAuditThresholdTokens int32
 }
 
-func NewService(publisher pubsub.Publisher, chain ChainWithdrawSubmitter, chainID int64) *Service {
+func NewService(publisher pubsub.Publisher, chain ChainWithdrawSubmitter, chainID int64, withdrawAuditThresholdTokens int32) *Service {
 	return &Service{
-		publisher: publisher,
-		chain:     chain,
-		chainID:   chainID,
+		publisher:                    publisher,
+		chain:                        chain,
+		chainID:                      chainID,
+		withdrawAuditThresholdTokens: tokenunits.ResolveWithdrawAuditThreshold(withdrawAuditThresholdTokens),
 	}
 }
 
@@ -79,6 +82,26 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 	signature := req.GetSignature()
 	sigHex := "0x" + hex.EncodeToString(signature)
 
+	if tokenunits.RequiresWithdrawAudit(req.GetTokenAmount(), s.withdrawAuditThresholdTokens) {
+		auditing, err := db.CreateAuditingWithdraw(ctx, db.PendingWithdrawInput{
+			ChainID:   s.chainID,
+			PlayerID:  req.GetPlayerId(),
+			AmountWei: amountWei,
+			Signature: sigHex,
+		})
+		if err != nil {
+			if errors.Is(err, db.ErrInsufficientAvailableBalance) || errors.Is(err, db.ErrAuditingWithdrawInProgress) {
+				return nil, fmt.Errorf("%w", err)
+			}
+			return nil, err
+		}
+		return &proto.RequestWithdrawResponse{
+			RequestId: auditing.RequestID,
+			LedgerId:  uint64(auditing.LedgerID),
+			Status:    string(dao.ChainTokenLedgerStatusAuditing),
+		}, nil
+	}
+
 	pending, err := db.CreatePendingWithdraw(ctx, db.PendingWithdrawInput{
 		ChainID:   s.chainID,
 		PlayerID:  req.GetPlayerId(),
@@ -86,20 +109,14 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 		Signature: sigHex,
 	})
 	if err != nil {
-		if errors.Is(err, db.ErrInsufficientAvailableBalance) {
+		if errors.Is(err, db.ErrInsufficientAvailableBalance) || errors.Is(err, db.ErrAuditingWithdrawInProgress) {
 			return nil, fmt.Errorf("%w", err)
 		}
 		return nil, err
 	}
 
-	submitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	result, err := s.chain.Withdraw(submitCtx, req.GetPlayerId(), amountWei, signature)
+	result, err := s.submitWithdrawToChain(ctx, pending.RequestID, req.GetPlayerId(), amountWei, signature)
 	if err != nil {
-		_ = db.MarkPendingWithdrawFailed(ctx, pending.RequestID, "chain_submit_failed")
-		return nil, fmt.Errorf("chain withdraw: %w", err)
-	}
-	if err := db.UpdatePendingWithdrawTxHash(ctx, pending.RequestID, result.TxHash, result.CollectorAddress); err != nil {
 		return nil, err
 	}
 
@@ -112,12 +129,87 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 	}, nil
 }
 
-func (s *Service) ListChainTokenLedgers(ctx context.Context, req *proto.ListChainTokenLedgersRequest) (*proto.ListChainTokenLedgersResponse, error) {
+func (s *Service) submitWithdrawToChain(ctx context.Context, requestID string, playerID int64, amountWei string, signature []byte) (*chainclient.WithdrawResult, error) {
+	submitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	result, err := s.chain.Withdraw(submitCtx, playerID, amountWei, signature)
+	if err != nil {
+		_ = db.MarkPendingWithdrawFailed(ctx, requestID, chainTokenFailChainSubmit)
+		return nil, fmt.Errorf("chain withdraw: %w", err)
+	}
+	if err := db.UpdatePendingWithdrawTxHash(ctx, requestID, result.TxHash, result.CollectorAddress); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+const chainTokenFailChainSubmit = "chain_submit_failed"
+
+func (s *Service) AuditWithdraw(ctx context.Context, req *proto.AuditWithdrawRequest) (*proto.AuditWithdrawResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
-	if req.GetPlayerId() <= 0 {
-		return nil, fmt.Errorf("player_id is required")
+	requestID := strings.TrimSpace(req.GetRequestId())
+	if requestID == "" {
+		return nil, fmt.Errorf("request_id is required")
+	}
+	if s.chain == nil {
+		return nil, fmt.Errorf("chain client is not configured")
+	}
+
+	switch req.GetDecision() {
+	case proto.WithdrawAuditDecision_WITHDRAW_AUDIT_DECISION_REJECT:
+		if strings.TrimSpace(req.GetFailReason()) == "" {
+			return nil, fmt.Errorf("fail_reason is required")
+		}
+		if err := db.RejectAuditingWithdraw(ctx, requestID, req.GetFailReason()); err != nil {
+			return nil, err
+		}
+		return &proto.AuditWithdrawResponse{
+			RequestId: requestID,
+			Status:    string(dao.ChainTokenLedgerStatusFailed),
+		}, nil
+	case proto.WithdrawAuditDecision_WITHDRAW_AUDIT_DECISION_APPROVE:
+		row, err := db.ApproveAuditingWithdraw(ctx, requestID)
+		if err != nil {
+			return nil, err
+		}
+		sigBytes, err := decodeHexSignature(row.Signature)
+		if err != nil {
+			return nil, fmt.Errorf("invalid stored signature: %w", err)
+		}
+		result, err := s.submitWithdrawToChain(ctx, row.RequestID, row.PlayerID, row.AmountWei, sigBytes)
+		if err != nil {
+			return nil, err
+		}
+		return &proto.AuditWithdrawResponse{
+			RequestId:        row.RequestID,
+			TxHash:           result.TxHash,
+			CollectorAddress: result.CollectorAddress,
+			LedgerId:         uint64(row.LedgerID),
+			Status:           string(dao.ChainTokenLedgerStatusPending),
+		}, nil
+	default:
+		return nil, fmt.Errorf("decision is required")
+	}
+}
+
+func decodeHexSignature(sig string) ([]byte, error) {
+	raw := strings.TrimSpace(sig)
+	raw = strings.TrimPrefix(raw, "0x")
+	if raw == "" {
+		return nil, fmt.Errorf("signature is empty")
+	}
+	b, err := hex.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid signature hex")
+	}
+	return b, nil
+}
+
+func (s *Service) ListChainTokenLedgers(ctx context.Context, req *proto.ListChainTokenLedgersRequest) (*proto.ListChainTokenLedgersResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
 	}
 	list, err := db.ListChainTokenLedgers(ctx, db.ChainTokenLedgerFilter{
 		PlayerID:  req.GetPlayerId(),

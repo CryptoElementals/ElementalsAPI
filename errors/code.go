@@ -42,7 +42,8 @@ var (
 	c_UserNotFound        ErrorCode = 8372 // 用户不存在
 	c_UserNameTooLong     ErrorCode = 8373 // 用户名过长
 	c_InvalidAvatarURL    ErrorCode = 8374 // 头像URL无效
-	c_UserNameDuplicate   ErrorCode = 8375 // 用户名重复
+	c_UserNameDuplicate        ErrorCode = 8375 // 用户名重复
+	c_WithdrawRequiresDeposit  ErrorCode = 8376 // 未充值不允许提现
 
 	// Server
 	s_ActionError                ErrorCode = 8433 // [行为]出错（目前被滥用，考虑将一部分拆到s_CallThirdApiError
@@ -142,6 +143,10 @@ func UserNameTooLong(a ...interface{}) Error {
 
 func UserNameDuplicate(a ...interface{}) Error {
 	return Error{code: c_UserNameDuplicate, items: a, message: "User name [%s] already exists"}
+}
+
+func WithdrawRequiresDeposit(a ...interface{}) Error {
+	return Error{code: c_WithdrawRequiresDeposit, items: a, message: "Withdraw requires deposit"}
 }
 
 func InvalidAvatarURL(a ...interface{}) Error {

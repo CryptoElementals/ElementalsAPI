@@ -43,10 +43,12 @@ func New(ctx context.Context, cfg *config.LedgerServerConfig) (*ServiceProcess, 
 	}
 
 	chainID := int64(0)
+	auditThreshold := int32(0)
 	if cfg != nil {
 		chainID = cfg.UChainCfg.ChainID
+		auditThreshold = cfg.ResolvedWithdrawAuditThreshold()
 	}
-	svc := NewService(tokenPublisher, chainCli, chainID)
+	svc := NewService(tokenPublisher, chainCli, chainID, auditThreshold)
 	handlers := NewGRPCServices(svc)
 	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.UnaryServerInterceptor))
 	proto.RegisterLedgerServiceServer(server, handlers)

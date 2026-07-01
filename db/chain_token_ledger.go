@@ -27,6 +27,12 @@ const (
 )
 
 var ErrInsufficientAvailableBalance = errors.New("insufficient available balance")
+var ErrAuditingWithdrawInProgress = errors.New("auditing withdraw in progress")
+
+var reservedWithdrawStatuses = []dao.ChainTokenLedgerStatus{
+	dao.ChainTokenLedgerStatusPending,
+	dao.ChainTokenLedgerStatusAuditing,
+}
 
 // ChainTokenEventInput is a parsed on-chain deposit or withdraw event.
 type ChainTokenEventInput struct {
@@ -47,10 +53,11 @@ type ChainTokenEventInput struct {
 }
 
 type ChainTokenEventApplyResult struct {
-	Status     ChainTokenEventApplyStatus
-	Message    string
-	TokenDelta int32
-	NewBalance int32
+	Status         ChainTokenEventApplyStatus
+	Message        string
+	TokenDelta     int32
+	NewBalance     int32
+	DepositAddress string // set on finalized chain deposits (from_address)
 }
 
 type PendingWithdrawInput struct {
@@ -65,6 +72,15 @@ type PendingWithdrawResult struct {
 	LedgerID   uint
 	TxHash     string
 	TokenDelta int32
+}
+
+// AuditingWithdrawRow is an auditing withdraw approved for chain submission.
+type AuditingWithdrawRow struct {
+	RequestID string
+	LedgerID  uint
+	PlayerID  int64
+	AmountWei string
+	Signature string
 }
 
 type ChainTokenLedgerFilter struct {
@@ -172,9 +188,10 @@ func applyChainDepositEventTx(tx *gorm.DB, ev ChainTokenEventInput) (*ChainToken
 		return nil, err
 	}
 	return &ChainTokenEventApplyResult{
-		Status:     ChainTokenEventApplyFinalized,
-		TokenDelta: tokenDelta,
-		NewBalance: newBalance,
+		Status:         ChainTokenEventApplyFinalized,
+		TokenDelta:     tokenDelta,
+		NewBalance:     newBalance,
+		DepositAddress: strings.ToLower(strings.TrimSpace(ev.FromAddress)),
 	}, nil
 }
 
@@ -302,6 +319,15 @@ func finalizePendingWithdrawTx(tx *gorm.DB, pending *dao.ChainTokenLedger, ev Ch
 
 // CreatePendingWithdraw records an API-initiated withdraw before chain submission.
 func CreatePendingWithdraw(ctx context.Context, input PendingWithdrawInput) (*PendingWithdrawResult, error) {
+	return createWithdrawLedger(ctx, input, dao.ChainTokenLedgerStatusPending)
+}
+
+// CreateAuditingWithdraw records a large withdraw awaiting manual audit before chain submission.
+func CreateAuditingWithdraw(ctx context.Context, input PendingWithdrawInput) (*PendingWithdrawResult, error) {
+	return createWithdrawLedger(ctx, input, dao.ChainTokenLedgerStatusAuditing)
+}
+
+func createWithdrawLedger(ctx context.Context, input PendingWithdrawInput, status dao.ChainTokenLedgerStatus) (*PendingWithdrawResult, error) {
 	if input.ChainID <= 0 {
 		return nil, fmt.Errorf("chain_id is required")
 	}
@@ -322,6 +348,14 @@ func CreatePendingWithdraw(ctx context.Context, input PendingWithdrawInput) (*Pe
 
 	var result *PendingWithdrawResult
 	err = Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		inAudit, err := hasAuditingWithdrawTx(tx, input.PlayerID)
+		if err != nil {
+			return err
+		}
+		if inAudit {
+			return ErrAuditingWithdrawInProgress
+		}
+
 		available, err := availableTokenBalanceTx(tx, input.PlayerID)
 		if err != nil {
 			return err
@@ -345,7 +379,7 @@ func CreatePendingWithdraw(ctx context.Context, input PendingWithdrawInput) (*Pe
 			CollectorAddress: "0x0",
 			AmountWei:        strings.TrimSpace(input.AmountWei),
 			TokenDelta:       tokenDelta,
-			Status:           dao.ChainTokenLedgerStatusPending,
+			Status:           status,
 			Signature:        strings.TrimSpace(input.Signature),
 		}
 		if err := tx.Create(row).Error; err != nil {
@@ -363,6 +397,70 @@ func CreatePendingWithdraw(ctx context.Context, input PendingWithdrawInput) (*Pe
 		return nil, err
 	}
 	return result, nil
+}
+
+// ApproveAuditingWithdraw moves an auditing withdraw to pending for chain submission.
+func ApproveAuditingWithdraw(ctx context.Context, requestID string) (*AuditingWithdrawRow, error) {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return nil, fmt.Errorf("request_id is required")
+	}
+
+	var row AuditingWithdrawRow
+	err := Get().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var ledger dao.ChainTokenLedger
+		if err := tx.Where("request_id = ? AND status = ?", requestID, dao.ChainTokenLedgerStatusAuditing).
+			First(&ledger).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("auditing withdraw not found for request_id %s", requestID)
+			}
+			return err
+		}
+		res := tx.Model(&ledger).Update("status", dao.ChainTokenLedgerStatusPending)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("auditing withdraw not found for request_id %s", requestID)
+		}
+		row = AuditingWithdrawRow{
+			RequestID: requestID,
+			LedgerID:  ledger.ID,
+			PlayerID:  ledger.PlayerID,
+			AmountWei: ledger.AmountWei,
+			Signature: ledger.Signature,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// RejectAuditingWithdraw marks an auditing withdraw as failed.
+func RejectAuditingWithdraw(ctx context.Context, requestID, failReason string) error {
+	requestID = strings.TrimSpace(requestID)
+	normalized, err := normalizeChainTokenFailReason(failReason)
+	if err != nil {
+		return err
+	}
+	if requestID == "" {
+		return fmt.Errorf("request_id is required")
+	}
+	res := Get().WithContext(ctx).Model(&dao.ChainTokenLedger{}).
+		Where("request_id = ? AND status = ?", requestID, dao.ChainTokenLedgerStatusAuditing).
+		Updates(map[string]any{
+			"status":      dao.ChainTokenLedgerStatusFailed,
+			"fail_reason": normalized,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("auditing withdraw not found for request_id %s", requestID)
+	}
+	return nil
 }
 
 // UpdatePendingWithdrawTxHash sets the on-chain tx hash after chain-server submission.
@@ -394,11 +492,15 @@ func MarkPendingWithdrawFailed(ctx context.Context, requestID, failReason string
 	if requestID == "" {
 		return fmt.Errorf("request_id is required")
 	}
+	normalized, err := normalizeChainTokenFailReason(failReason)
+	if err != nil {
+		return err
+	}
 	res := Get().WithContext(ctx).Model(&dao.ChainTokenLedger{}).
 		Where("request_id = ? AND status = ?", requestID, dao.ChainTokenLedgerStatusPending).
 		Updates(map[string]any{
 			"status":      dao.ChainTokenLedgerStatusFailed,
-			"fail_reason": strings.TrimSpace(failReason),
+			"fail_reason": normalized,
 		})
 	if res.Error != nil {
 		return res.Error
@@ -409,12 +511,12 @@ func MarkPendingWithdrawFailed(ctx context.Context, requestID, failReason string
 	return nil
 }
 
-// SumPendingWithdrawTokens returns the total game-token amount reserved by pending withdraws.
+// SumPendingWithdrawTokens returns the total game-token amount reserved by in-flight withdraws.
 func SumPendingWithdrawTokens(ctx context.Context, playerID int64) (int32, error) {
 	var total int64
 	err := Get().WithContext(ctx).Model(&dao.ChainTokenLedger{}).
-		Where("player_id = ? AND event_type = ? AND status = ?",
-			playerID, dao.ChainTokenLedgerEventWithdraw, dao.ChainTokenLedgerStatusPending).
+		Where("player_id = ? AND event_type = ? AND status IN ?",
+			playerID, dao.ChainTokenLedgerEventWithdraw, reservedWithdrawStatuses).
 		Select("COALESCE(SUM(token_delta), 0)").
 		Scan(&total).Error
 	if err != nil {
@@ -426,11 +528,9 @@ func SumPendingWithdrawTokens(ctx context.Context, playerID int64) (int32, error
 	return int32(total), nil
 }
 
-// ListChainTokenLedgers returns ledger rows filtered by player and optional event_type/status.
+// ListChainTokenLedgers returns ledger rows filtered by optional player and event_type/status.
+// player_id <= 0 lists across all players (ops gRPC); event_type and status are optional filters.
 func ListChainTokenLedgers(ctx context.Context, filter ChainTokenLedgerFilter) (*ChainTokenLedgerListResult, error) {
-	if filter.PlayerID <= 0 {
-		return nil, fmt.Errorf("player_id is required")
-	}
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 20
@@ -443,8 +543,10 @@ func ListChainTokenLedgers(ctx context.Context, filter ChainTokenLedgerFilter) (
 		offset = 0
 	}
 
-	q := Get().WithContext(ctx).Model(&dao.ChainTokenLedger{}).
-		Where("player_id = ?", filter.PlayerID)
+	q := Get().WithContext(ctx).Model(&dao.ChainTokenLedger{})
+	if filter.PlayerID > 0 {
+		q = q.Where("player_id = ?", filter.PlayerID)
+	}
 	if strings.TrimSpace(filter.EventType) != "" {
 		q = q.Where("event_type = ?", strings.TrimSpace(filter.EventType))
 	}
@@ -458,7 +560,7 @@ func ListChainTokenLedgers(ctx context.Context, filter ChainTokenLedgerFilter) (
 	}
 
 	var records []*dao.ChainTokenLedger
-	if err := q.Order("id DESC").Limit(limit).Offset(offset).Find(&records).Error; err != nil {
+	if err := q.Order("created_at DESC").Limit(limit).Offset(offset).Find(&records).Error; err != nil {
 		return nil, err
 	}
 	return &ChainTokenLedgerListResult{Records: records, Total: total}, nil
@@ -500,8 +602,8 @@ func withdrawableTokenAmountTx(tx *gorm.DB, playerID int64) (WithdrawableTokenAm
 	}
 	var pendingSum int64
 	if err := tx.Model(&dao.ChainTokenLedger{}).
-		Where("player_id = ? AND event_type = ? AND status = ?",
-			playerID, dao.ChainTokenLedgerEventWithdraw, dao.ChainTokenLedgerStatusPending).
+		Where("player_id = ? AND event_type = ? AND status IN ?",
+			playerID, dao.ChainTokenLedgerEventWithdraw, reservedWithdrawStatuses).
 		Select("COALESCE(SUM(token_delta), 0)").
 		Scan(&pendingSum).Error; err != nil {
 		return WithdrawableTokenAmountBreakdown{}, err
@@ -537,6 +639,30 @@ func availableTokenBalanceTx(tx *gorm.DB, playerID int64) (int32, error) {
 
 func pendingWithdrawTxHash(requestID string) string {
 	return "pending:" + requestID
+}
+
+func hasAuditingWithdrawTx(tx *gorm.DB, playerID int64) (bool, error) {
+	var count int64
+	err := tx.Model(&dao.ChainTokenLedger{}).
+		Where("player_id = ? AND event_type = ? AND status = ?",
+			playerID, dao.ChainTokenLedgerEventWithdraw, dao.ChainTokenLedgerStatusAuditing).
+		Limit(1).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func normalizeChainTokenFailReason(failReason string) (string, error) {
+	normalized := strings.TrimSpace(failReason)
+	if normalized == "" {
+		return "", fmt.Errorf("fail_reason is required")
+	}
+	if len(normalized) > dao.MaxChainTokenFailReasonLen {
+		return "", fmt.Errorf("fail_reason exceeds max length %d", dao.MaxChainTokenFailReasonLen)
+	}
+	return normalized, nil
 }
 
 func validateChainTokenEventInput(ev ChainTokenEventInput) error {
@@ -600,6 +726,12 @@ func duplicateChainTokenResult(existing *dao.ChainTokenLedger) *ChainTokenEventA
 		Status:     status,
 		Message:    msg,
 		TokenDelta: delta,
+		DepositAddress: func() string {
+			if existing.EventType == dao.ChainTokenLedgerEventDeposit {
+				return existing.FromAddress
+			}
+			return ""
+		}(),
 	}
 }
 

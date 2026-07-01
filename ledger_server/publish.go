@@ -52,6 +52,7 @@ func (s *Service) publishTokenUpdated(ctx context.Context, ev *proto.ChainTokenE
 		TxHash:           strings.ToLower(strings.TrimSpace(ev.GetTxHash())),
 		LogIndex:         ev.GetLogIndex(),
 		CollectorAddress: strings.ToLower(strings.TrimSpace(ev.GetCollectorAddress())),
+		DepositAddress:   strings.ToLower(strings.TrimSpace(applyResult.DepositAddress)),
 	}
 
 	out := &proto.Event{

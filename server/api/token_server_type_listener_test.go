@@ -33,7 +33,11 @@ func TestHandleTokenServerTypePromotion(t *testing.T) {
 		Event: &proto.Event{
 			Type: proto.EventType_TYPE_TOKEN_UPDATED,
 			Event: &proto.Event_TokenUpdated{
-				TokenUpdated: &proto.TokenUpdated{PlayerId: 5001},
+				TokenUpdated: &proto.TokenUpdated{
+					PlayerId:       5001,
+					Source:         tokenSourceChainDeposit,
+					DepositAddress: "0xDepositorWallet",
+				},
 			},
 		},
 	})
@@ -41,6 +45,7 @@ func TestHandleTokenServerTypePromotion(t *testing.T) {
 	updated, err := db.GetUserProfileByPlayerIDInt(5001)
 	require.NoError(t, err)
 	require.Equal(t, dao.ServerTypeNormal, updated.ServerType)
+	require.Equal(t, "0xdepositorwallet", updated.Address)
 
 	handleTokenServerTypePromotion(nil)
 	handleTokenServerTypePromotion(&proto.Message{

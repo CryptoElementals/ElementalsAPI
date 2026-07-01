@@ -10,6 +10,7 @@ service LedgerService {
   rpc SubmitChainEvents(SubmitChainEventsRequest) returns (SubmitChainEventsResponse);
   rpc RequestWithdraw(RequestWithdrawRequest) returns (RequestWithdrawResponse);
   rpc ListChainTokenLedgers(ListChainTokenLedgersRequest) returns (ListChainTokenLedgersResponse);
+  rpc AuditWithdraw(AuditWithdrawRequest) returns (AuditWithdrawResponse);
   rpc GetTokenUnitRates(google.protobuf.Empty) returns (GetTokenUnitRatesResponse);
   rpc ConvertTokenAmount(ConvertTokenAmountRequest) returns (ConvertTokenAmountResponse);
   rpc GetWithdrawableTokenAmount(GetWithdrawableTokenAmountRequest) returns (GetWithdrawableTokenAmountResponse);
@@ -87,6 +88,8 @@ message RequestWithdrawResponse {
 }
 
 message ListChainTokenLedgersRequest {
+  // player_id > 0 filters by player. player_id = 0 lists across all players (ops gRPC).
+  // event_type and status are optional filters.
   int64 player_id = 1;
   string event_type = 2;
   string status = 3;
@@ -163,4 +166,24 @@ message GetWithdrawableTokenAmountResponse {
   int32 token_amount = 2;
   int32 locked_tokens = 3;
   int32 pending_withdraw_token_amount = 4;
+}
+
+enum WithdrawAuditDecision {
+  WITHDRAW_AUDIT_DECISION_UNSPECIFIED = 0;
+  WITHDRAW_AUDIT_DECISION_APPROVE = 1;
+  WITHDRAW_AUDIT_DECISION_REJECT = 2;
+}
+
+message AuditWithdrawRequest {
+  string request_id = 1;
+  WithdrawAuditDecision decision = 2;
+  string fail_reason = 3;
+}
+
+message AuditWithdrawResponse {
+  string request_id = 1;
+  string tx_hash = 2;
+  string collector_address = 3;
+  uint64 ledger_id = 4;
+  string status = 5;
 }

@@ -26,6 +26,15 @@ func ListChainTokenLedgers(ctx context.Context, serverType string, req *pb.ListC
 	return cl.ListChainTokenLedgers(ctx, req)
 }
 
+// AuditWithdraw calls ledger-server AuditWithdraw for the given server type.
+func AuditWithdraw(ctx context.Context, serverType string, req *pb.AuditWithdrawRequest) (*pb.AuditWithdrawResponse, error) {
+	cl := LedgerClientForType(serverType)
+	if cl == nil {
+		return nil, fmt.Errorf("ledger client is not initialized for server type %q", serverType)
+	}
+	return cl.AuditWithdraw(ctx, req)
+}
+
 // GetTokenUnitRates calls ledger-server GetTokenUnitRates for the given server type.
 func GetTokenUnitRates(ctx context.Context, serverType string) (*pb.GetTokenUnitRatesResponse, error) {
 	cl := LedgerClientForType(serverType)

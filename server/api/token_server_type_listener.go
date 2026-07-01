@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/CryptoElementals/common/db"
@@ -9,6 +10,8 @@ import (
 )
 
 const tokenServerTypePromoterID = "token-server-type-promoter"
+
+const tokenSourceChainDeposit = "chain_deposit"
 
 var (
 	tokenServerTypeListenerMu sync.Mutex
@@ -104,5 +107,19 @@ func handleTokenServerTypePromotion(msg *proto.Message) {
 	}
 	if updated {
 		log.Infow("promoted user server type to normal", "player_id", playerID)
+	}
+
+	if tu.GetSource() == tokenSourceChainDeposit {
+		depositAddr := strings.TrimSpace(tu.GetDepositAddress())
+		if depositAddr != "" {
+			addrUpdated, err := db.UpdateUserProfileAddressFromDeposit(playerID, depositAddr)
+			if err != nil {
+				log.Errorw("update user profile deposit address", "player_id", playerID, "err", err)
+				return
+			}
+			if addrUpdated {
+				log.Infow("updated user profile deposit address", "player_id", playerID, "address", strings.ToLower(depositAddr))
+			}
+		}
 	}
 }

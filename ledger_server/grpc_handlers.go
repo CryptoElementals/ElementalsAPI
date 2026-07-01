@@ -40,7 +40,7 @@ func (s *GRPCServices) RequestWithdraw(ctx context.Context, req *proto.RequestWi
 	}
 	resp, err := s.svc.RequestWithdraw(ctx, req)
 	if err != nil {
-		if errors.Is(err, db.ErrInsufficientAvailableBalance) {
+		if errors.Is(err, db.ErrInsufficientAvailableBalance) || errors.Is(err, db.ErrAuditingWithdrawInProgress) {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -63,6 +63,30 @@ func (s *GRPCServices) ListChainTokenLedgers(ctx context.Context, req *proto.Lis
 	if err != nil {
 		if strings.Contains(err.Error(), "required") {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+	return resp, nil
+}
+
+func (s *GRPCServices) AuditWithdraw(ctx context.Context, req *proto.AuditWithdrawRequest) (*proto.AuditWithdrawResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "nil request")
+	}
+	resp, err := s.svc.AuditWithdraw(ctx, req)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "required") || strings.Contains(msg, "invalid") || strings.Contains(msg, "exceeds") {
+			return nil, status.Error(codes.InvalidArgument, msg)
+		}
+		if strings.Contains(msg, "not found") {
+			return nil, status.Error(codes.FailedPrecondition, msg)
+		}
+		if strings.Contains(msg, "not configured") {
+			return nil, status.Error(codes.InvalidArgument, msg)
+		}
+		if strings.Contains(msg, "chain withdraw") {
+			return nil, status.Errorf(codes.Internal, "%v", err)
 		}
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}

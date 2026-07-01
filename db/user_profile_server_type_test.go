@@ -15,6 +15,35 @@ func setupTestDBForServerTypePromote(t *testing.T) {
 	require.NoError(t, MigrateMemDb())
 }
 
+func TestUpdateUserProfileAddressFromDeposit(t *testing.T) {
+	require.NoError(t, initMemDbSqlite())
+	require.NoError(t, MigrateMemDb())
+
+	profile := &dao.UserProfile{
+		PlayerID:   6001,
+		Address:    "",
+		Name:       "deposit_addr_user",
+		ServerType: dao.ServerTypeTrial,
+	}
+	require.NoError(t, Get().Create(profile).Error)
+
+	updated, err := UpdateUserProfileAddressFromDeposit(6001, "0xDepositorABC")
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	got, err := GetUserProfileByPlayerIDInt(6001)
+	require.NoError(t, err)
+	require.Equal(t, "0xdepositorabc", got.Address)
+
+	updated, err = UpdateUserProfileAddressFromDeposit(6001, "0xother")
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	got, err = GetUserProfileByPlayerIDInt(6001)
+	require.NoError(t, err)
+	require.Equal(t, "0xother", got.Address)
+}
+
 func TestPromoteUserServerTypeToNormalIfTrial(t *testing.T) {
 	setupTestDBForServerTypePromote(t)
 

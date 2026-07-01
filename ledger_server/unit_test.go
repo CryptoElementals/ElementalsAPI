@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetTokenUnitRates(t *testing.T) {
-	svc := NewService(nil, nil, 0)
+	svc := NewService(nil, nil, 0, 0)
 	resp := svc.GetTokenUnitRates()
 	require.NotNil(t, resp.GetTokenToUsdt())
 	require.Equal(t, "1", resp.GetTokenToUsdt().GetMul())
@@ -19,7 +19,7 @@ func TestGetTokenUnitRates(t *testing.T) {
 }
 
 func TestConvertTokenAmount(t *testing.T) {
-	svc := NewService(nil, nil, 0)
+	svc := NewService(nil, nil, 0, 0)
 	resp, err := svc.ConvertTokenAmount(&proto.ConvertTokenAmountRequest{
 		FromUnit: proto.TokenAmountUnit_TOKEN_AMOUNT_UNIT_TOKEN,
 		ToUnit:   proto.TokenAmountUnit_TOKEN_AMOUNT_UNIT_WEI,
@@ -31,7 +31,7 @@ func TestConvertTokenAmount(t *testing.T) {
 }
 
 func TestConvertTokenAmountInvalidUnit(t *testing.T) {
-	svc := NewService(nil, nil, 0)
+	svc := NewService(nil, nil, 0, 0)
 	_, err := svc.ConvertTokenAmount(&proto.ConvertTokenAmountRequest{
 		FromUnit: proto.TokenAmountUnit_TOKEN_AMOUNT_UNIT_UNSPECIFIED,
 		ToUnit:   proto.TokenAmountUnit_TOKEN_AMOUNT_UNIT_WEI,
