@@ -607,7 +607,7 @@ type RequestWithdrawRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	PlayerId int64 `protobuf:"varint,1,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"`
-	// token_amount is in-game token units (NOT wei). ledger-server converts it to wei before calling chain-server.
+	// token_amount is in-game token units (NOT wei). Max 100,000,000 per request.
 	TokenAmount int32 `protobuf:"varint,2,opt,name=token_amount,json=tokenAmount,proto3" json:"token_amount,omitempty"`
 	// signature is the user's withdraw authorization signature (hex-decoded bytes).
 	Signature []byte `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`

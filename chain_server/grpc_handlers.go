@@ -75,7 +75,7 @@ func (s *GRPCServices) Withdraw(ctx context.Context, req *proto.WithdrawRequest)
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "nil request")
 	}
-	result, err := s.chain.Withdraw(ctx, req.GetPlayerId(), req.GetAmount(), req.GetSignature())
+	result, err := s.chain.Withdraw(ctx, req.GetPlayerId(), req.GetAmountWei(), req.GetSignature())
 	if err != nil {
 		if errors.Is(err, worker.ErrWalletChainNotConfigured) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())

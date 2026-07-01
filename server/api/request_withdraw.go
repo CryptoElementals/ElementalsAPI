@@ -21,7 +21,7 @@ func init() {
 type RequestWithdrawRequest struct {
 	BaseRequest
 	PlayerID    string `mapstructure:"PlayerID" validate:"required"`
-	TokenAmount int32  `mapstructure:"TokenAmount" validate:"min=1"`
+	TokenAmount int32  `mapstructure:"TokenAmount" validate:"required,min=1,max=100000000"`
 	Signature   string `mapstructure:"Signature" validate:"required"`
 }
 

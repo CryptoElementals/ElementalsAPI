@@ -66,8 +66,8 @@ func (s *Service) RequestWithdraw(ctx context.Context, req *proto.RequestWithdra
 		return nil, fmt.Errorf("chain_id is not configured")
 	}
 
-	if req.GetTokenAmount() <= 0 {
-		return nil, fmt.Errorf("token_amount is required")
+	if err := tokenunits.ValidateWithdrawTokenAmount(req.GetTokenAmount()); err != nil {
+		return nil, err
 	}
 	amountWei, err := tokenunits.TokenToWei(req.GetTokenAmount())
 	if err != nil {
