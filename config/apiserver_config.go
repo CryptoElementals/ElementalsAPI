@@ -39,6 +39,9 @@ type ApiServerConfig struct {
 	ServerCfg          ServerConfig        `mapstructure:"server"`
 	S3Config           S3Config            `mapstructure:"s3"`
 	EnvironmentConfigs []EnvironmentConfig `mapstructure:"environments"`
+
+	InviteeInitialPoints int `mapstructure:"invitee-initial-points"`
+	MaxInviteesPerCode   int `mapstructure:"max-invitees-per-code"`
 }
 
 // EnvironmentForServerType returns the environment for trial/normal server type.
@@ -266,4 +269,10 @@ func setDefaultValues(cfg *ApiServerConfig) {
 		cfg.S3Config.PresignExpire = 3600 // 1小时过期
 	}
 
+	if cfg.InviteeInitialPoints == 0 {
+		cfg.InviteeInitialPoints = 50
+	}
+	if cfg.MaxInviteesPerCode == 0 {
+		cfg.MaxInviteesPerCode = 3
+	}
 }

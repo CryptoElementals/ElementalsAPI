@@ -8,7 +8,9 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
+	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/server/invite"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -44,6 +46,10 @@ type UserInfo struct {
 	CurrentLevelPoints int               `json:"CurrentLevelPoints"`
 	NextLevelPoints    int               `json:"NextLevelPoints"`
 	ServerType         string            `json:"ServerType"`
+	InviteCode         string            `json:"InviteCode"`
+	InvitedCount       int               `json:"InvitedCount"`
+	MaxInviteesPerCode int               `json:"MaxInviteesPerCode"`
+	InviteEnabled      bool              `json:"InviteEnabled"`
 	CardStatInfo       []db.CardStatInfo `json:"CardStatInfo"`
 }
 
@@ -77,47 +83,9 @@ func NewGetUserProfileResponse(sessionId string) *GetUserProfileResponse {
 	}
 }
 
-// Level 阈值配置
-var levelThresholds = []int{
-	0, 5000, 10000, 20500, 35000, 54500, 81000, 120000, 175000, 260000,
-	410000, 650000, 1050000, 1700000, 2800000, 4600000, 7500000, 12300000,
-	20500000, 35000000, 60000000,
-}
-
 // calculateLevel 根据积分计算等级、当前等级所需积分和下一级所需积分
 func calculateLevel(points int) (level int, currentLevelPoints int, nextLevelPoints int) {
-	// 如果积分为0，返回等级0，当前等级需要0积分，下一级需要5000积分
-	if points == 0 {
-		return 0, 0, levelThresholds[1]
-	}
-
-	// 查找当前等级
-	for i, threshold := range levelThresholds {
-		if points < threshold {
-			// 找到第一个超过当前积分的阈值，等级为 i-1
-			level = i - 1
-			// 当前等级所需积分
-			if level >= 0 {
-				currentLevelPoints = levelThresholds[level]
-			} else {
-				currentLevelPoints = 0
-			}
-			// 下一级所需积分
-			if i < len(levelThresholds) {
-				nextLevelPoints = levelThresholds[i]
-			} else {
-				// 已经是最高等级
-				nextLevelPoints = levelThresholds[len(levelThresholds)-1]
-			}
-			return
-		}
-	}
-
-	// 如果积分超过所有阈值，返回最高等级
-	level = len(levelThresholds) - 1
-	currentLevelPoints = levelThresholds[level]
-	nextLevelPoints = levelThresholds[len(levelThresholds)-1]
-	return
+	return playerlevel.CalculateLevelDetail(points)
 }
 
 func NewGetUserProfileTask(data *map[string]interface{}) (Task, error) {
@@ -182,6 +150,17 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		cardStatInfo = db.GetCardStatsInfo(cardStats)
 	}
 	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
+	serverType := db.EffectiveServerType(userProfile)
+	inviteEnabled := serverType == dao.ServerTypeNormal
+	maxInviteesPerCode := invite.MaxInviteesPerCode()
+	inviteCode := ""
+	invitedCount := 0
+	if inviteEnabled {
+		if row, ierr := db.GetInviteCodeByPlayerID(userProfile.PlayerID); ierr == nil && row != nil {
+			inviteCode = row.InviteCode
+			invitedCount = row.InviteCount
+		}
+	}
 	task.Response.UserInfo = UserInfo{
 		PlayerID:           strconv.FormatInt(userProfile.PlayerID, 10),
 		Address:            userProfile.Address,
@@ -197,7 +176,11 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 		Level:              level,
 		CurrentLevelPoints: currentLevelPoints,
 		NextLevelPoints:    nextLevelPoints,
-		ServerType:         db.EffectiveServerType(userProfile),
+		ServerType:         serverType,
+		InviteCode:         inviteCode,
+		InvitedCount:       invitedCount,
+		MaxInviteesPerCode: maxInviteesPerCode,
+		InviteEnabled:      inviteEnabled,
 		CardStatInfo:       cardStatInfo,
 	}
 

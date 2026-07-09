@@ -97,6 +97,14 @@ func TournamentSettlePlayerRewardToWalletTx(tx *gorm.DB, tournamentID string, pl
 	if row.TokenChange == 0 && row.PointChange == 0 {
 		return nil
 	}
+	var pointsBefore int32
+	if row.PointChange != 0 {
+		var before dao.UserToken
+		if err := tx.Where("player_id = ?", playerID).First(&before).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		pointsBefore = before.Points
+	}
 	res := tx.Model(&dao.UserToken{}).Where("player_id = ?", playerID).
 		Updates(map[string]any{
 			"token_amount": gorm.Expr("token_amount + ?", row.TokenChange),
@@ -107,6 +115,15 @@ func TournamentSettlePlayerRewardToWalletTx(tx *gorm.DB, tournamentID string, pl
 	}
 	if res.RowsAffected == 0 {
 		return fmt.Errorf("tournament settle: user_token missing for player_id %d", playerID)
+	}
+	if row.PointChange != 0 {
+		var after dao.UserToken
+		if err := tx.Where("player_id = ?", playerID).First(&after).Error; err != nil {
+			return err
+		}
+		if err := ProcessInviteeLevelMilestonesTx(tx, playerID, pointsBefore, after.Points); err != nil {
+			return err
+		}
 	}
 	log.Infow("tournament: player reward settled to wallet",
 		"tournament_id", tournamentID, "player_id", playerID, "temp_address", tempAddress,

@@ -116,75 +116,69 @@ func isDuplicateEntryError(err error) bool {
 		strings.Contains(errStr, "unique constraint")
 }
 
-// GetOrCreateUserProfile 获取或创建用户档案
-func GetOrCreateUserProfile(address string) (*dao.UserProfile, error) {
+// GetOrCreateUserProfile 获取或创建用户档案，返回 profile 与是否新建。
+func GetOrCreateUserProfile(address string) (*dao.UserProfile, bool, error) {
 	var userProfile dao.UserProfile
+	var isNewUser bool
 	err := Get().Where("address = ?", address).First(&userProfile).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			isNewUser = true
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
 					Address:    strings.ToLower(address),
 					ServerType: dao.DefaultServerTypeForNewUser,
 				}
-				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
 				if err = userProfile.BeforeCreate(tx); err != nil {
 					return err
 				}
-				// 直接使用生成的 PlayerID 设置 Name
 				userProfile.Name = strconv.FormatInt(userProfile.PlayerID, 10)
 				if err = tx.Create(&userProfile).Error; err != nil {
 					return err
 				}
-
 				return nil
 			})
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 		} else {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	return &userProfile, nil
+	return &userProfile, isNewUser, nil
 }
 
-// GetOrCreateUserProfileByEmail 根据邮箱获取或创建用户档案
-func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile, error) {
+// GetOrCreateUserProfileByEmail 根据邮箱获取或创建用户档案，返回 profile 与是否新建。
+func GetOrCreateUserProfileByEmail(email string, name string) (*dao.UserProfile, bool, error) {
 	var userProfile dao.UserProfile
+	var isNewUser bool
 	log.Infof("GetOrCreateUserProfileByEmail: email: %s, name: %s", email, name)
-	log.Infof("GetOrCreateUserProfileByEmail: userProfile: %+v", userProfile)
 	err := Get().Where("email = ?", email).First(&userProfile).Error
-	log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
 	if err != nil {
-		log.Infof("GetOrCreateUserProfileByEmail: errors.Is(err, gorm.ErrRecordNotFound): %v", errors.Is(err, gorm.ErrRecordNotFound))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			isNewUser = true
 			err = Get().Transaction(func(tx *gorm.DB) error {
 				userProfile = dao.UserProfile{
 					Email:      email,
 					ServerType: dao.DefaultServerTypeForNewUser,
 				}
-				// 手动触发 BeforeCreate hook 来生成 PlayerID（传入 DB 实例）
 				if err = userProfile.BeforeCreate(tx); err != nil {
 					return err
 				}
-				// 统一使用 player_id 作为默认 name
 				userProfile.Name = strconv.FormatInt(userProfile.PlayerID, 10)
-				log.Infof("GetOrCreateUserProfileByEmail: userProfile: %+v", userProfile)
 				if err = tx.Create(&userProfile).Error; err != nil {
-					log.Infof("GetOrCreateUserProfileByEmail: err: %v", err)
 					return err
 				}
 				return nil
 			})
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 		} else {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	return &userProfile, nil
+	return &userProfile, isNewUser, nil
 }
 
 // HasCollectedDailyReward 检查用户是否已领取今日奖励

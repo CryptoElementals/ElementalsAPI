@@ -28,6 +28,7 @@ const (
 	LobbyService_GetPlayerToken_FullMethodName                              = "/rpc.LobbyService/GetPlayerToken"
 	LobbyService_EnsureUserToken_FullMethodName                             = "/rpc.LobbyService/EnsureUserToken"
 	LobbyService_CreditUserTokens_FullMethodName                            = "/rpc.LobbyService/CreditUserTokens"
+	LobbyService_CreditUserPoints_FullMethodName                            = "/rpc.LobbyService/CreditUserPoints"
 	LobbyService_SetUserTokenAmount_FullMethodName                          = "/rpc.LobbyService/SetUserTokenAmount"
 	LobbyService_RegisterBots_FullMethodName                                = "/rpc.LobbyService/RegisterBots"
 	LobbyService_UnregisterBots_FullMethodName                              = "/rpc.LobbyService/UnregisterBots"
@@ -53,6 +54,7 @@ type LobbyServiceClient interface {
 	GetPlayerToken(ctx context.Context, in *GetPlayerTokenRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	EnsureUserToken(ctx context.Context, in *EnsureUserTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CreditUserTokens(ctx context.Context, in *CreditUserTokensRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
+	CreditUserPoints(ctx context.Context, in *CreditUserPointsRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	SetUserTokenAmount(ctx context.Context, in *SetUserTokenAmountRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error)
 	// Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
 	RegisterBots(ctx context.Context, in *RegisterBotsForLobbyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -156,6 +158,16 @@ func (c *lobbyServiceClient) CreditUserTokens(ctx context.Context, in *CreditUse
 	return out, nil
 }
 
+func (c *lobbyServiceClient) CreditUserPoints(ctx context.Context, in *CreditUserPointsRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPlayerTokenResponse)
+	err := c.cc.Invoke(ctx, LobbyService_CreditUserPoints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *lobbyServiceClient) SetUserTokenAmount(ctx context.Context, in *SetUserTokenAmountRequest, opts ...grpc.CallOption) (*GetPlayerTokenResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPlayerTokenResponse)
@@ -251,6 +263,7 @@ type LobbyServiceServer interface {
 	GetPlayerToken(context.Context, *GetPlayerTokenRequest) (*GetPlayerTokenResponse, error)
 	EnsureUserToken(context.Context, *EnsureUserTokenRequest) (*emptypb.Empty, error)
 	CreditUserTokens(context.Context, *CreditUserTokensRequest) (*GetPlayerTokenResponse, error)
+	CreditUserPoints(context.Context, *CreditUserPointsRequest) (*GetPlayerTokenResponse, error)
 	SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error)
 	// Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
 	RegisterBots(context.Context, *RegisterBotsForLobbyRequest) (*emptypb.Empty, error)
@@ -297,6 +310,9 @@ func (UnimplementedLobbyServiceServer) EnsureUserToken(context.Context, *EnsureU
 }
 func (UnimplementedLobbyServiceServer) CreditUserTokens(context.Context, *CreditUserTokensRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreditUserTokens not implemented")
+}
+func (UnimplementedLobbyServiceServer) CreditUserPoints(context.Context, *CreditUserPointsRequest) (*GetPlayerTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreditUserPoints not implemented")
 }
 func (UnimplementedLobbyServiceServer) SetUserTokenAmount(context.Context, *SetUserTokenAmountRequest) (*GetPlayerTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetUserTokenAmount not implemented")
@@ -487,6 +503,24 @@ func _LobbyService_CreditUserTokens_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LobbyService_CreditUserPoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreditUserPointsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LobbyServiceServer).CreditUserPoints(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LobbyService_CreditUserPoints_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LobbyServiceServer).CreditUserPoints(ctx, req.(*CreditUserPointsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LobbyService_SetUserTokenAmount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetUserTokenAmountRequest)
 	if err := dec(in); err != nil {
@@ -669,6 +703,10 @@ var LobbyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreditUserTokens",
 			Handler:    _LobbyService_CreditUserTokens_Handler,
+		},
+		{
+			MethodName: "CreditUserPoints",
+			Handler:    _LobbyService_CreditUserPoints_Handler,
 		},
 		{
 			MethodName: "SetUserTokenAmount",

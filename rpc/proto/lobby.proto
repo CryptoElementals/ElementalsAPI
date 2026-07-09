@@ -18,6 +18,7 @@ service LobbyService {
   rpc GetPlayerToken(GetPlayerTokenRequest) returns (GetPlayerTokenResponse);
   rpc EnsureUserToken(EnsureUserTokenRequest) returns (google.protobuf.Empty);
   rpc CreditUserTokens(CreditUserTokensRequest) returns (GetPlayerTokenResponse);
+  rpc CreditUserPoints(CreditUserPointsRequest) returns (GetPlayerTokenResponse);
   rpc SetUserTokenAmount(SetUserTokenAmountRequest) returns (GetPlayerTokenResponse);
   // Bot queue registration (replaces room PubSub AddBotPlayer/RemoveBotPlayer hooks). Clients may also use lobby PubSub with subscriber_id prefix "bot".
   rpc RegisterBots(RegisterBotsForLobbyRequest) returns (google.protobuf.Empty);
@@ -42,6 +43,12 @@ message EnsureUserTokenRequest {
 }
 
 message CreditUserTokensRequest {
+  int64 PlayerID = 1;
+  int32 Delta = 2;
+  string Reason = 3;
+}
+
+message CreditUserPointsRequest {
   int64 PlayerID = 1;
   int32 Delta = 2;
   string Reason = 3;

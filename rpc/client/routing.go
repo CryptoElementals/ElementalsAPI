@@ -48,3 +48,17 @@ func ConfiguredTypeEnvKeys() []string {
 	}
 	return keys
 }
+
+// ForEachConfiguredLobby invokes fn for each configured trial/normal lobby client.
+func ForEachConfiguredLobby(fn func(envName string, cl pb.LobbyServiceClient) error) error {
+	for _, name := range ConfiguredTypeEnvKeys() {
+		cl := GetLobbyServiceClient(name)
+		if cl == nil {
+			continue
+		}
+		if err := fn(name, cl); err != nil {
+			return err
+		}
+	}
+	return nil
+}

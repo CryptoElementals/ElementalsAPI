@@ -41,6 +41,10 @@ func Migrate() error {
 		&dao.ChainTxPoolItem{},
 		&dao.WithdrawLedger{},
 		&dao.ChainTokenLedger{},
+		&dao.UserInviteCode{},
+		&dao.UserInviteRelation{},
+		&dao.UserInviteeReward{},
+		&dao.UserInviterReward{},
 	}
 	err := Get().Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(migrates...)
 	if err != nil {
@@ -90,6 +94,10 @@ func MigrateMemDb() error {
 		&dao.ChainTxPoolItem{},
 		&dao.WithdrawLedger{},
 		&dao.ChainTokenLedger{},
+		&dao.UserInviteCode{},
+		&dao.UserInviteRelation{},
+		&dao.UserInviteeReward{},
+		&dao.UserInviterReward{},
 	}
 	err := Get().AutoMigrate(migrates...)
 	if err != nil {

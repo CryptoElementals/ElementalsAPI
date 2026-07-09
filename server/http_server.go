@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/cache"
@@ -17,6 +18,7 @@ import (
 	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/api"
 	"github.com/CryptoElementals/common/server/handler"
+	"github.com/CryptoElementals/common/server/invite"
 	"github.com/CryptoElementals/common/server/middlewares"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
@@ -208,6 +210,9 @@ func googleLoginHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		if env != "" {
 			session.Set("oauth_env", env)
 		}
+		if inviteCode := strings.TrimSpace(c.Query("invite_code")); inviteCode != "" {
+			session.Set("oauth_invite_code", inviteCode)
+		}
 		_ = session.Save()
 
 		q := url.Values{}
@@ -306,10 +311,33 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: id_token: %s", tokenPayload.IdToken)
 		log.Infof("googleCallbackHandler: token_type: %s", tokenPayload.TokenType)
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
-		profile, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
+		profile, isNewUser, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
 			return
+		}
+		serverType := db.EffectiveServerType(profile)
+		inviteCode := ""
+		if v := session.Get("oauth_invite_code"); v != nil {
+			if s, ok := v.(string); ok {
+				inviteCode = strings.TrimSpace(s)
+			}
+			session.Delete("oauth_invite_code")
+			_ = session.Save()
+		}
+		if inviteErr := invite.EnsureInviterCodeOnLogin(profile.PlayerID, serverType); inviteErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "ensure inviter code failed"})
+			return
+		}
+		var warnCode int
+		var warnMessage string
+		if inviteCode != "" {
+			var inviteErr error
+			warnCode, warnMessage, inviteErr = invite.TryApplyOnLogin(isNewUser, profile.PlayerID, inviteCode)
+			if inviteErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "apply invite failed"})
+				return
+			}
 		}
 		playerIDStr := fmt.Sprintf("%d", profile.PlayerID)
 		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
@@ -346,6 +374,10 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 		q := u.Query()
 		q.Set("code", tempCode)
+		if warnCode > 0 {
+			q.Set("warn_code", strconv.Itoa(warnCode))
+			q.Set("warn_message", warnMessage)
+		}
 		u.RawQuery = q.Encode()
 		c.Redirect(http.StatusFound, u.String())
 	}
