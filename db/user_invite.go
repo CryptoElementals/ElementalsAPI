@@ -355,13 +355,23 @@ func ListUserInviteRelationsByInviter(inviterPlayerID int64, limit, offset int) 
 	return out, nil
 }
 
-// InviterHasClaimableRewardForInvitee returns true if any unclaimed milestone exists for invitee under inviter.
-func InviterHasClaimableRewardForInvitee(inviterPlayerID, inviteePlayerID int64) (bool, error) {
-	var count int64
-	err := Get().Model(&dao.UserInviterReward{}).
-		Where("inviter_player_id = ? AND invitee_player_id = ? AND claimed_at IS NULL", inviterPlayerID, inviteePlayerID).
-		Count(&count).Error
-	return count > 0, err
+// ListInviterMilestoneRewardsForInvitee returns milestone reward rows for one invitee under an inviter.
+func ListInviterMilestoneRewardsForInvitee(inviterPlayerID, inviteePlayerID int64) ([]invite.MilestoneRewardState, error) {
+	var rows []dao.UserInviterReward
+	err := Get().Where("inviter_player_id = ? AND invitee_player_id = ?", inviterPlayerID, inviteePlayerID).
+		Order("milestone_level").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]invite.MilestoneRewardState, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, invite.MilestoneRewardState{
+			MilestoneLevel: row.MilestoneLevel,
+			Claimed:        row.ClaimedAt != nil,
+		})
+	}
+	return out, nil
 }
 
 // InviterRewardSummary is a row for ListInviterRewards.

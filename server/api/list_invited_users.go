@@ -6,9 +6,10 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
+	"github.com/CryptoElementals/common/internal/invite"
 	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/invite"
+	serverinvite "github.com/CryptoElementals/common/server/invite"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -27,10 +28,11 @@ type ListInvitedUsersRequest struct {
 }
 
 type InvitedUserItem struct {
-	PlayerID  string `json:"PlayerID"`
-	Username  string `json:"Username"`
-	Level     int    `json:"Level"`
-	Claimable bool   `json:"Claimable"`
+	PlayerID           string `json:"PlayerID"`
+	Username           string `json:"Username"`
+	Level              int    `json:"Level"`
+	RewardStatus       string `json:"RewardStatus"`
+	NextMilestoneLevel int    `json:"NextMilestoneLevel"`
 }
 
 type ListInvitedUsersResponse struct {
@@ -103,20 +105,23 @@ func (task *ListInvitedUsersTask) Run(c *gin.Context) (Response, error) {
 		if perr == nil && inviteeProfile != nil {
 			inviteeServerType = db.EffectiveServerType(inviteeProfile)
 		}
-		points, perr := invite.PlayerPointsFromLobby(inviteeServerType, row.InviteePlayerID)
+		points, perr := serverinvite.PlayerPointsFromLobby(inviteeServerType, row.InviteePlayerID)
 		if perr != nil {
 			log.Errorf("%s, get invitee points failed: %v", task.Request.RequestUUID, perr)
 			points = 0
 		}
-		claimable, cerr := db.InviterHasClaimableRewardForInvitee(inviterID, row.InviteePlayerID)
-		if cerr != nil {
+		inviteeLevel := playerlevel.CalculateLevel(points)
+		milestones, merr := db.ListInviterMilestoneRewardsForInvitee(inviterID, row.InviteePlayerID)
+		if merr != nil {
 			return nil, cmnErrors.OperateDbFailed()
 		}
+		rewardStatus, nextMilestoneLevel := invite.DeriveInviterRewardStatus(inviteeLevel, milestones)
 		items = append(items, InvitedUserItem{
-			PlayerID:  strconv.FormatInt(row.InviteePlayerID, 10),
-			Username:  row.InviteeName,
-			Level:     playerlevel.CalculateLevel(points),
-			Claimable: claimable,
+			PlayerID:           strconv.FormatInt(row.InviteePlayerID, 10),
+			Username:           row.InviteeName,
+			Level:              inviteeLevel,
+			RewardStatus:       string(rewardStatus),
+			NextMilestoneLevel: nextMilestoneLevel,
 		})
 	}
 	task.Response.Users = items
