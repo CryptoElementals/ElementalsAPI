@@ -127,8 +127,8 @@ func newRouter(cfg *config.ServerConfig, serviceName string, store sessions.Stor
 	r.POST("/", middlewares.PreJobMiddleware(), middlewares.AuthMiddleware(cfg.ServerMode), handler.Handle)
 
 	// Google OAuth endpoints
-	r.GET("/auth/google/login", googleLoginHandler(cfg))
-	r.GET("/auth/google/callback", googleCallbackHandler(cfg))
+	r.GET("/auth/google/login", googleLoginLogMiddleware(), googleLoginHandler(cfg))
+	r.GET("/auth/google/callback", googleCallbackLogMiddleware(), googleCallbackHandler(cfg))
 	return r
 }
 
@@ -194,10 +194,72 @@ func ginLogger() gin.HandlerFunc {
 }
 
 // Helpers for Google OAuth
+
+func googleLoginLogMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		log.Infow("google oauth login request",
+			"client", c.ClientIP(),
+			"path", c.Request.URL.Path,
+			"query", c.Request.URL.RawQuery,
+			"invite_code", c.Query("invite_code"),
+			"env", c.Query("env"),
+			"force", c.Query("force"),
+		)
+		c.Next()
+	}
+}
+
+func googleCallbackLogMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		sessionInviteCode := ""
+		if v := session.Get("oauth_invite_code"); v != nil {
+			if s, ok := v.(string); ok {
+				sessionInviteCode = s
+			}
+		}
+		sessionEnv := ""
+		if v := session.Get("oauth_env"); v != nil {
+			if s, ok := v.(string); ok {
+				sessionEnv = s
+			}
+		}
+		log.Infow("google oauth callback request",
+			"client", c.ClientIP(),
+			"path", c.Request.URL.Path,
+			"query", c.Request.URL.RawQuery,
+			"state", c.Query("state"),
+			"has_code", c.Query("code") != "",
+			"session_invite_code", sessionInviteCode,
+			"session_env", sessionEnv,
+		)
+		c.Next()
+	}
+}
+
+func logGoogleOAuthJSONResponse(handler string, status int, body gin.H) {
+	payload, _ := json.Marshal(body)
+	log.Infow("google oauth response",
+		"handler", handler,
+		"status", status,
+		"body", string(payload),
+	)
+}
+
+func logGoogleOAuthRedirectResponse(handler string, status int, location string) {
+	log.Infow("google oauth response",
+		"handler", handler,
+		"status", status,
+		"redirect", location,
+	)
+}
+
 func googleLoginHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cfg.GoogleClientID == "" || cfg.GoogleClientSecret == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "google oauth not configured"})
+			body := gin.H{"error": "google oauth not configured"}
+			logGoogleOAuthJSONResponse("googleLoginHandler", http.StatusBadRequest, body)
+			c.JSON(http.StatusBadRequest, body)
 			return
 		}
 		// generate state and store in session
@@ -227,6 +289,7 @@ func googleLoginHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 
 		authURL := "https://accounts.google.com/o/oauth2/auth?" + q.Encode()
+		logGoogleOAuthRedirectResponse("googleLoginHandler", http.StatusFound, authURL)
 		c.Redirect(http.StatusFound, authURL)
 	}
 }
@@ -236,13 +299,17 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		queryState := c.Query("state")
 		code := c.Query("code")
 		if queryState == "" || code == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing state or code"})
+			body := gin.H{"error": "missing state or code"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadRequest, body)
+			c.JSON(http.StatusBadRequest, body)
 			return
 		}
 		session := sessions.Default(c)
 		state := session.Get("oauth_state")
 		if state == nil || state.(string) != queryState {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state"})
+			body := gin.H{"error": "invalid state"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadRequest, body)
+			c.JSON(http.StatusBadRequest, body)
 			return
 		}
 		// clear state and read env hint
@@ -269,13 +336,17 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		form.Set("grant_type", "authorization_code")
 		tokenResp, err := http.PostForm("https://oauth2.googleapis.com/token", form)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "exchange failed"})
+			body := gin.H{"error": "exchange failed"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadGateway, body)
+			c.JSON(http.StatusBadGateway, body)
 			return
 		}
 		defer tokenResp.Body.Close()
 		if tokenResp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(tokenResp.Body)
-			c.JSON(http.StatusBadGateway, gin.H{"error": "exchange failed", "detail": string(body)})
+			bodyBytes, _ := io.ReadAll(tokenResp.Body)
+			body := gin.H{"error": "exchange failed", "detail": string(bodyBytes)}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadGateway, body)
+			c.JSON(http.StatusBadGateway, body)
 			return
 		}
 		var tokenPayload struct {
@@ -285,14 +356,18 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			ExpiresIn   int    `json:"expires_in"`
 		}
 		if err := json.NewDecoder(tokenResp.Body).Decode(&tokenPayload); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "invalid token response"})
+			body := gin.H{"error": "invalid token response"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadGateway, body)
+			c.JSON(http.StatusBadGateway, body)
 			return
 		}
 		req, _ := http.NewRequest("GET", "https://openidconnect.googleapis.com/v1/userinfo", nil)
 		req.Header.Set("Authorization", "Bearer "+tokenPayload.AccessToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "userinfo fetch failed"})
+			body := gin.H{"error": "userinfo fetch failed"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadGateway, body)
+			c.JSON(http.StatusBadGateway, body)
 			return
 		}
 		defer resp.Body.Close()
@@ -301,7 +376,9 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			Name  string `json:"name"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "invalid userinfo"})
+			body := gin.H{"error": "invalid userinfo"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusBadGateway, body)
+			c.JSON(http.StatusBadGateway, body)
 			return
 		}
 		log.Infof("googleCallbackHandler: payload: %+v", payload)
@@ -313,7 +390,9 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		log.Infof("googleCallbackHandler: expires_in: %d", tokenPayload.ExpiresIn)
 		profile, isNewUser, err := db.GetOrCreateUserProfileByEmail(payload.Email, payload.Name)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "create user profile failed"})
+			body := gin.H{"error": "create user profile failed"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+			c.JSON(http.StatusInternalServerError, body)
 			return
 		}
 		serverType := db.EffectiveServerType(profile)
@@ -326,7 +405,9 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			_ = session.Save()
 		}
 		if inviteErr := invite.EnsureInviterCodeOnLogin(profile.PlayerID, serverType); inviteErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "ensure inviter code failed"})
+			body := gin.H{"error": "ensure inviter code failed"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+			c.JSON(http.StatusInternalServerError, body)
 			return
 		}
 		var warnCode int
@@ -335,19 +416,25 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			var inviteErr error
 			warnCode, warnMessage, inviteErr = invite.TryApplyOnLogin(isNewUser, profile.PlayerID, inviteCode)
 			if inviteErr != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "apply invite failed"})
+				body := gin.H{"error": "apply invite failed"}
+				logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+				c.JSON(http.StatusInternalServerError, body)
 				return
 			}
 		}
 		playerIDStr := fmt.Sprintf("%d", profile.PlayerID)
 		token, err := api.SaveRefreshTokenForUserId(playerIDStr)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue refresh token failed"})
+			body := gin.H{"error": "issue refresh token failed"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+			c.JSON(http.StatusInternalServerError, body)
 			return
 		}
 		tempCode, err := api.SaveTempCodeForRefreshToken(token, 300)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "issue temp code failed"})
+			body := gin.H{"error": "issue temp code failed"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+			c.JSON(http.StatusInternalServerError, body)
 			return
 		}
 
@@ -364,12 +451,16 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 		}
 
 		if frontendURL == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "frontend redirect url not configured"})
+			body := gin.H{"error": "frontend redirect url not configured"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+			c.JSON(http.StatusInternalServerError, body)
 			return
 		}
 		u, err := url.Parse(frontendURL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid frontend redirect url"})
+			body := gin.H{"error": "invalid frontend redirect url"}
+			logGoogleOAuthJSONResponse("googleCallbackHandler", http.StatusInternalServerError, body)
+			c.JSON(http.StatusInternalServerError, body)
 			return
 		}
 		q := u.Query()
@@ -379,7 +470,9 @@ func googleCallbackHandler(cfg *config.ServerConfig) gin.HandlerFunc {
 			q.Set("warn_message", warnMessage)
 		}
 		u.RawQuery = q.Encode()
-		c.Redirect(http.StatusFound, u.String())
+		redirectURL := u.String()
+		logGoogleOAuthRedirectResponse("googleCallbackHandler", http.StatusFound, redirectURL)
+		c.Redirect(http.StatusFound, redirectURL)
 	}
 }
 
