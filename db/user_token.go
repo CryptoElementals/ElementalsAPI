@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/battlereward"
+	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -479,19 +480,32 @@ func BattleResultSettlement(gr *dao.GameResult) (skippedDuplicate bool, err erro
 				}
 				pointsBefore = before.Points
 			}
+			var pointsUpdate any = gorm.Expr("points + ?", pr.pointChange)
+			var finalPoints int32
+			if pr.pointChange > 0 && playerlevel.IsPvpFastLevelPlayer(pr.playerId) {
+				naturalAfter := int(pointsBefore) + int(pr.pointChange)
+				finalPoints = int32(playerlevel.BoostPointsAfterPVPIncrease(int(pointsBefore), naturalAfter))
+				pointsUpdate = finalPoints
+			}
 			if err := tx.Model(&dao.UserToken{}).Where("player_id = ?", pr.playerId).
 				Updates(map[string]any{
 					"token_amount": gorm.Expr("token_amount + ?", pr.tokenChange),
-					"points":       gorm.Expr("points + ?", pr.pointChange),
+					"points":       pointsUpdate,
 				}).Error; err != nil {
 				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", gameID, pr.playerId, err)
 			}
 			if pr.pointChange != 0 {
-				var after dao.UserToken
-				if err := tx.Where("player_id = ?", pr.playerId).First(&after).Error; err != nil {
-					return err
+				var afterPoints int32
+				if pr.pointChange > 0 && playerlevel.IsPvpFastLevelPlayer(pr.playerId) {
+					afterPoints = finalPoints
+				} else {
+					var after dao.UserToken
+					if err := tx.Where("player_id = ?", pr.playerId).First(&after).Error; err != nil {
+						return err
+					}
+					afterPoints = after.Points
 				}
-				if err := ProcessInviteeLevelMilestonesTx(tx, pr.playerId, pointsBefore, after.Points); err != nil {
+				if err := ProcessInviteeLevelMilestonesTx(tx, pr.playerId, pointsBefore, afterPoints); err != nil {
 					return err
 				}
 			}
