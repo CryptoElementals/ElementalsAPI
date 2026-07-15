@@ -6,10 +6,11 @@ import (
 
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
+	"github.com/CryptoElementals/common/internal/invite"
 	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/invite"
 	dao "github.com/CryptoElementals/common/models"
+	serverinvite "github.com/CryptoElementals/common/server/invite"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
@@ -21,19 +22,18 @@ func init() {
 
 type ListInviterRewardsRequest struct {
 	BaseRequest
-	PlayerID          string `mapstructure:"PlayerID" validate:"required"`
-	InviteePlayerID   string `mapstructure:"InviteePlayerID"`
+	PlayerID        string `mapstructure:"PlayerID" validate:"required"`
+	InviteePlayerID string `mapstructure:"InviteePlayerID"`
 }
 
 type InviterRewardItem struct {
-	RewardID        uint   `json:"RewardID"`
-	InviteePlayerID string `json:"InviteePlayerID"`
-	InviteeUsername string `json:"InviteeUsername"`
-	MilestoneLevel  int    `json:"MilestoneLevel"`
-	Point           int32  `json:"Point"`
-	Claimed         bool   `json:"Claimed"`
-	Claimable       bool   `json:"Claimable"`
-	InviteeLevel    int    `json:"InviteeLevel"`
+	RewardID            uint   `json:"RewardID"`
+	InviteePlayerID     string `json:"InviteePlayerID"`
+	InviteeUsername     string `json:"InviteeUsername"`
+	MilestoneLevel      int    `json:"MilestoneLevel"`
+	Point               int32  `json:"Point"`
+	InviterRewardStatus string `json:"InviterRewardStatus"` // locked | claimable | claimed
+	InviteeLevel        int    `json:"InviteeLevel"`
 }
 
 type ListInviterRewardsResponse struct {
@@ -106,26 +106,31 @@ func (task *ListInviterRewardsTask) Run(c *gin.Context) (Response, error) {
 		return nil, cmnErrors.OperateDbFailed()
 	}
 	items := make([]InviterRewardItem, 0, len(rows))
+	levelByInvitee := make(map[int64]int)
 	for _, row := range rows {
-		inviteeProfile, perr := db.GetUserProfileByPlayerIDInt(row.InviteePlayerID)
-		inviteeServerType := dao.ServerTypeTrial
-		if perr == nil && inviteeProfile != nil {
-			inviteeServerType = db.EffectiveServerType(inviteeProfile)
-		}
-		points, perr := invite.PlayerPointsFromLobby(inviteeServerType, row.InviteePlayerID)
-		if perr != nil {
-			log.Errorf("%s, get invitee points failed: %v", task.Request.RequestUUID, perr)
-			points = 0
+		inviteeLevel, ok := levelByInvitee[row.InviteePlayerID]
+		if !ok {
+			inviteeProfile, perr := db.GetUserProfileByPlayerIDInt(row.InviteePlayerID)
+			inviteeServerType := dao.ServerTypeTrial
+			if perr == nil && inviteeProfile != nil {
+				inviteeServerType = db.EffectiveServerType(inviteeProfile)
+			}
+			points, perr := serverinvite.PlayerPointsFromLobby(inviteeServerType, row.InviteePlayerID)
+			if perr != nil {
+				log.Errorf("%s, get invitee points failed: %v", task.Request.RequestUUID, perr)
+				points = 0
+			}
+			inviteeLevel = playerlevel.CalculateLevel(points)
+			levelByInvitee[row.InviteePlayerID] = inviteeLevel
 		}
 		items = append(items, InviterRewardItem{
-			RewardID:        row.RewardID,
-			InviteePlayerID: strconv.FormatInt(row.InviteePlayerID, 10),
-			InviteeUsername: row.InviteeName,
-			MilestoneLevel:  row.MilestoneLevel,
-			Point:           row.Point,
-			Claimed:         row.Claimed,
-			Claimable:       row.Claimable,
-			InviteeLevel:    playerlevel.CalculateLevel(points),
+			RewardID:            row.RewardID,
+			InviteePlayerID:     strconv.FormatInt(row.InviteePlayerID, 10),
+			InviteeUsername:     row.InviteeName,
+			MilestoneLevel:      row.MilestoneLevel,
+			Point:               row.Point,
+			InviterRewardStatus: invite.DeriveInviterRewardItemStatus(row.HasRow, row.Claimed),
+			InviteeLevel:        inviteeLevel,
 		})
 	}
 	task.Response.Rewards = items

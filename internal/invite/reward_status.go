@@ -68,3 +68,21 @@ func nextTargetMilestoneLevel(inviteeLevel int, claimed map[int]bool) int {
 	}
 	return 0
 }
+
+// Per-milestone statuses for ListInviterRewards items (distinct from aggregate InviterRewardStatus).
+const (
+	InviterRewardItemLocked    = "locked"
+	InviterRewardItemClaimable = "claimable"
+	InviterRewardItemClaimed   = "claimed"
+)
+
+// DeriveInviterRewardItemStatus returns locked / claimable / claimed for one milestone row.
+func DeriveInviterRewardItemStatus(hasRow, claimed bool) string {
+	if claimed {
+		return InviterRewardItemClaimed
+	}
+	if hasRow {
+		return InviterRewardItemClaimable
+	}
+	return InviterRewardItemLocked
+}

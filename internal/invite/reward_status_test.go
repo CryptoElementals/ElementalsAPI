@@ -46,3 +46,11 @@ func TestDeriveInviterRewardStatusCompleted(t *testing.T) {
 	require.Equal(t, InviterRewardCompleted, status)
 	require.Equal(t, 0, next)
 }
+
+func TestDeriveInviterRewardItemStatus(t *testing.T) {
+	require.Equal(t, InviterRewardItemLocked, DeriveInviterRewardItemStatus(false, false))
+	require.Equal(t, InviterRewardItemClaimable, DeriveInviterRewardItemStatus(true, false))
+	require.Equal(t, InviterRewardItemClaimed, DeriveInviterRewardItemStatus(true, true))
+	// claimed without a row should still report claimed
+	require.Equal(t, InviterRewardItemClaimed, DeriveInviterRewardItemStatus(false, true))
+}

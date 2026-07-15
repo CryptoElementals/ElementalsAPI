@@ -374,33 +374,76 @@ func ListInviterMilestoneRewardsForInvitee(inviterPlayerID, inviteePlayerID int6
 	return out, nil
 }
 
-// InviterRewardSummary is a row for ListInviterRewards.
+// InviterRewardSummary is a row for ListInviterRewards (may be a virtual locked milestone).
 type InviterRewardSummary struct {
 	RewardID        uint
 	InviteePlayerID int64
 	InviteeName     string
 	MilestoneLevel  int
 	Point           int32
+	HasRow          bool
 	Claimed         bool
-	Claimable       bool
 }
 
-// ListInviterRewards lists inviter milestone reward rows.
+// ListInviterRewards expands DefaultInviterMilestones for each invite relation,
+// merging existing user_inviter_rewards rows (virtual locked rows have RewardID=0).
 func ListInviterRewards(inviterPlayerID int64, optionalInviteePlayerID int64) ([]InviterRewardSummary, error) {
-	q := Get().Table("user_inviter_rewards r").
-		Select(`r.id AS reward_id, r.invitee_player_id, p.name AS invitee_name,
-			r.milestone_level, r.point, r.claimed_at IS NOT NULL AS claimed,
-			r.claimed_at IS NULL AS claimable`).
+	relQ := Get().Table("user_invite_relations r").
+		Select("r.invitee_player_id, p.name AS invitee_name").
 		Joins("JOIN user_profiles p ON p.player_id = r.invitee_player_id").
 		Where("r.inviter_player_id = ?", inviterPlayerID)
 	if optionalInviteePlayerID > 0 {
-		q = q.Where("r.invitee_player_id = ?", optionalInviteePlayerID)
+		relQ = relQ.Where("r.invitee_player_id = ?", optionalInviteePlayerID)
 	}
-	var rows []InviterRewardSummary
-	if err := q.Order("r.invitee_player_id, r.milestone_level").Scan(&rows).Error; err != nil {
+	var relations []struct {
+		InviteePlayerID int64
+		InviteeName     string
+	}
+	if err := relQ.Order("r.invitee_player_id").Scan(&relations).Error; err != nil {
 		return nil, err
 	}
-	return rows, nil
+	if len(relations) == 0 {
+		return []InviterRewardSummary{}, nil
+	}
+
+	inviteeIDs := make([]int64, 0, len(relations))
+	for _, r := range relations {
+		inviteeIDs = append(inviteeIDs, r.InviteePlayerID)
+	}
+
+	var rewardRows []dao.UserInviterReward
+	if err := Get().Where("inviter_player_id = ? AND invitee_player_id IN ?", inviterPlayerID, inviteeIDs).
+		Find(&rewardRows).Error; err != nil {
+		return nil, err
+	}
+	type rewardKey struct {
+		inviteeID int64
+		level     int
+	}
+	existing := make(map[rewardKey]dao.UserInviterReward, len(rewardRows))
+	for _, row := range rewardRows {
+		existing[rewardKey{inviteeID: row.InviteePlayerID, level: row.MilestoneLevel}] = row
+	}
+
+	out := make([]InviterRewardSummary, 0, len(relations)*len(invite.DefaultInviterMilestones))
+	for _, rel := range relations {
+		for _, m := range invite.DefaultInviterMilestones {
+			sum := InviterRewardSummary{
+				InviteePlayerID: rel.InviteePlayerID,
+				InviteeName:     rel.InviteeName,
+				MilestoneLevel:  m.Level,
+				Point:           m.Point,
+			}
+			if row, ok := existing[rewardKey{inviteeID: rel.InviteePlayerID, level: m.Level}]; ok {
+				sum.RewardID = row.ID
+				sum.Point = row.Point
+				sum.HasRow = true
+				sum.Claimed = row.ClaimedAt != nil
+			}
+			out = append(out, sum)
+		}
+	}
+	return out, nil
 }
 
 // MarkInviterRewardClaimedTx marks a single inviter milestone reward as claimed.
