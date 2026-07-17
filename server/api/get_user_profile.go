@@ -10,7 +10,6 @@ import (
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/log"
-	"github.com/CryptoElementals/common/server/invite"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/client"
 	"github.com/CryptoElementals/common/rpc/proto"
@@ -152,13 +151,14 @@ func (task *GetUserProfileTask) Run(c *gin.Context) (Response, error) {
 	level, currentLevelPoints, nextLevelPoints := calculateLevel(points)
 	serverType := db.EffectiveServerType(userProfile)
 	inviteEnabled := serverType == dao.ServerTypeNormal
-	maxInviteesPerCode := invite.MaxInviteesPerCode()
 	inviteCode := ""
 	invitedCount := 0
+	maxInviteesPerCode := 0
 	if inviteEnabled {
 		if row, ierr := db.GetInviteCodeByPlayerID(userProfile.PlayerID); ierr == nil && row != nil {
 			inviteCode = row.InviteCode
 			invitedCount = row.InviteCount
+			maxInviteesPerCode = row.MaxInviteCount
 		}
 	}
 	task.Response.UserInfo = UserInfo{

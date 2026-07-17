@@ -64,7 +64,10 @@ func randomInviteCode() (string, error) {
 }
 
 // EnsureInviteCode creates an invite code row for normal users when missing.
-func EnsureInviteCode(playerID int64) error {
+func EnsureInviteCode(playerID int64, initialMax int) error {
+	if initialMax <= 0 {
+		initialMax = 3
+	}
 	profile, err := GetUserProfileByPlayerIDInt(playerID)
 	if err != nil {
 		return err
@@ -87,10 +90,41 @@ func EnsureInviteCode(playerID int64) error {
 			return err
 		}
 		return tx.Create(&dao.UserInviteCode{
-			PlayerID:    playerID,
-			InviteCode:  code,
-			InviteCount: 0,
+			PlayerID:       playerID,
+			InviteCode:     code,
+			InviteCount:    0,
+			MaxInviteCount: initialMax,
 		}).Error
+	})
+}
+
+// SetPlayerMaxInviteCountTx raises a player's persisted invite quota (never lowers it).
+func SetPlayerMaxInviteCountTx(tx *gorm.DB, playerID int64, newMax int) error {
+	if newMax <= 0 {
+		return fmt.Errorf("max invite count must be positive")
+	}
+	var row dao.UserInviteCode
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("player_id = ?", playerID).First(&row).Error
+	if err != nil {
+		return err
+	}
+	if newMax < row.MaxInviteCount {
+		return fmt.Errorf("cannot decrease max invite count from %d to %d", row.MaxInviteCount, newMax)
+	}
+	if newMax < row.InviteCount {
+		return fmt.Errorf("max invite count %d is below current invite count %d", newMax, row.InviteCount)
+	}
+	if newMax == row.MaxInviteCount {
+		return nil
+	}
+	return tx.Model(&row).Update("max_invite_count", newMax).Error
+}
+
+// SetPlayerMaxInviteCount raises a player's persisted invite quota in its own transaction.
+func SetPlayerMaxInviteCount(playerID int64, newMax int) error {
+	return Get().Transaction(func(tx *gorm.DB) error {
+		return SetPlayerMaxInviteCountTx(tx, playerID, newMax)
 	})
 }
 
@@ -125,7 +159,7 @@ func GetInviterByInviteCode(code string) (*dao.UserInviteCode, error) {
 }
 
 // CheckInviteCodePreLogin validates an invite code before login (read-only).
-func CheckInviteCodePreLogin(inviteCode string, maxInviteCount int) (InviteApplyOutcome, error) {
+func CheckInviteCodePreLogin(inviteCode string) (InviteApplyOutcome, error) {
 	code := strings.TrimSpace(strings.ToUpper(inviteCode))
 	if code == "" {
 		return inviteOutcome(cmnErrors.WarnInviteInvalidCode), nil
@@ -144,14 +178,14 @@ func CheckInviteCodePreLogin(inviteCode string, maxInviteCount int) (InviteApply
 	if profile == nil || EffectiveServerType(profile) != dao.ServerTypeNormal {
 		return inviteOutcome(cmnErrors.WarnInviteInvalidCode), nil
 	}
-	if inviterRow.InviteCount >= maxInviteCount {
+	if inviterRow.InviteCount >= inviterRow.MaxInviteCount {
 		return inviteOutcome(cmnErrors.WarnInviteLimitReached), nil
 	}
 	return inviteOutcome(cmnErrors.WarnOK), nil
 }
 
 // ApplyInviteReferral binds invitee to inviter when allowed.
-func ApplyInviteReferral(inviteePlayerID int64, inviteCode string, rewardPoints int32, maxInviteCount int) (InviteApplyOutcome, error) {
+func ApplyInviteReferral(inviteePlayerID int64, inviteCode string, rewardPoints int32) (InviteApplyOutcome, error) {
 	code := strings.TrimSpace(strings.ToUpper(inviteCode))
 	if code == "" {
 		return inviteOutcome(cmnErrors.WarnOK), nil
@@ -188,7 +222,7 @@ func ApplyInviteReferral(inviteePlayerID int64, inviteCode string, rewardPoints 
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		if inviterRow.InviteCount >= maxInviteCount {
+		if inviterRow.InviteCount >= inviterRow.MaxInviteCount {
 			outcome = inviteOutcome(cmnErrors.WarnInviteLimitReached)
 			return nil
 		}

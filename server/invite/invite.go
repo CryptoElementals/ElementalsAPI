@@ -75,7 +75,7 @@ func EnsureInviterCodeOnLogin(playerID int64, serverType string) error {
 	if dao.NormalizeServerType(serverType) != dao.ServerTypeNormal {
 		return nil
 	}
-	return db.EnsureInviteCode(playerID)
+	return db.EnsureInviteCode(playerID, MaxInviteesPerCode())
 }
 
 // TryApplyOnLogin applies invite binding for new users when a code was provided.
@@ -92,7 +92,6 @@ func TryApplyOnLogin(isNewUser bool, inviteePlayerID int64, inviteCode string) (
 		inviteePlayerID,
 		inviteCode,
 		int32(InviteeInitialPoints()),
-		MaxInviteesPerCode(),
 	)
 	if err != nil {
 		return 0, "", err

@@ -3,7 +3,6 @@ package api
 import (
 	"strings"
 
-	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/server/invite"
@@ -70,9 +69,8 @@ func NewCheckInviteCodeTask(data *map[string]interface{}) (Task, error) {
 }
 
 func (task *CheckInviteCodeTask) Run(c *gin.Context) (Response, error) {
-	maxCount := invite.MaxInviteesPerCode()
 	rewardPoints := invite.InviteeInitialPoints()
-	outcome, err := db.CheckInviteCodePreLogin(task.Request.InviteCode, maxCount)
+	outcome, err := db.CheckInviteCodePreLogin(task.Request.InviteCode)
 	if err != nil {
 		return nil, cmnErrors.OperateDbFailed()
 	}
@@ -81,22 +79,24 @@ func (task *CheckInviteCodeTask) Run(c *gin.Context) (Response, error) {
 		task.Response.WarnMessage = outcome.Message
 	}
 	task.Response.InviteeInitialPoints = rewardPoints
+
+	code := strings.TrimSpace(strings.ToUpper(task.Request.InviteCode))
+	inviter, ierr := db.GetInviterByInviteCode(code)
+	if ierr != nil {
+		return nil, cmnErrors.OperateDbFailed()
+	}
+	maxCount := 0
+	if inviter != nil {
+		maxCount = inviter.MaxInviteCount
+	}
 	task.Response.MaxInviteesPerCode = maxCount
-	if outcome.WarnCode == cmnErrors.WarnCodeOK {
-		code := strings.TrimSpace(strings.ToUpper(task.Request.InviteCode))
-		inviter, ierr := db.GetInviterByInviteCode(code)
-		if ierr != nil {
-			return nil, cmnErrors.OperateDbFailed()
-		}
-		remaining := maxCount
-		if inviter != nil {
-			remaining = maxCount - inviter.InviteCount
-			if remaining < 0 {
-				remaining = 0
-			}
+
+	if outcome.WarnCode == cmnErrors.WarnCodeOK && inviter != nil {
+		remaining := maxCount - inviter.InviteCount
+		if remaining < 0 {
+			remaining = 0
 		}
 		task.Response.InviteSlotsRemaining = remaining
 	}
-	_ = config.GConf
 	return task.Response, nil
 }
