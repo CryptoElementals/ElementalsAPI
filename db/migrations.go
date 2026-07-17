@@ -53,6 +53,9 @@ func Migrate() error {
 	if err := DropLegacyChainTxPoolIndexes(); err != nil {
 		return err
 	}
+	if err := EnsureUserTokenActivePlayerUniqueIndex(); err != nil {
+		return err
+	}
 	if err := BackfillGameArgsRewardRates(); err != nil {
 		return err
 	}
@@ -104,6 +107,9 @@ func MigrateMemDb() error {
 		return err
 	}
 	if err := DropLegacyChainTxPoolIndexes(); err != nil {
+		return err
+	}
+	if err := EnsureUserTokenActivePlayerUniqueIndex(); err != nil {
 		return err
 	}
 	if err := BackfillGameArgsRewardRates(); err != nil {

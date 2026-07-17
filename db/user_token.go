@@ -13,6 +13,7 @@ import (
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const maxLockTimeForQueue = 10 * time.Minute
@@ -29,6 +30,7 @@ func EnsureUserTokenByPlayerID(playerID int64) (*dao.UserToken, error) {
 }
 
 // EnsureUserTokenByPlayerIDTx creates an empty user_token row when missing in an existing DB session.
+// Concurrent creates race-safely against ux_user_tokens_active_player (active_player_id).
 func EnsureUserTokenByPlayerIDTx(tx *gorm.DB, playerID int64) (*dao.UserToken, error) {
 	var userToken dao.UserToken
 	err := tx.Where("player_id = ?", playerID).First(&userToken).Error
@@ -43,7 +45,17 @@ func EnsureUserTokenByPlayerIDTx(tx *gorm.DB, playerID int64) (*dao.UserToken, e
 		Points:      0,
 		TokenAmount: 0,
 	}
-	if err := tx.Create(&userToken).Error; err != nil {
+	err = tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: userTokenActivePlayerColumn}},
+		DoNothing: true,
+	}).Create(&userToken).Error
+	if err != nil {
+		return nil, err
+	}
+	if userToken.ID != 0 {
+		return &userToken, nil
+	}
+	if err := tx.Where("player_id = ?", playerID).First(&userToken).Error; err != nil {
 		return nil, err
 	}
 	return &userToken, nil
