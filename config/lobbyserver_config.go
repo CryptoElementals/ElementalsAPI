@@ -25,6 +25,7 @@ type LobbyServerConfig struct {
 	BotRegistryFreshnessSec int64            `mapstructure:"bot-registry-freshness-sec"`
 	StatServiceEndpoint     string           `mapstructure:"stat-service-endpoint"`
 	IsDevelop               bool             `mapstructure:"is-develop"`
+	PvpFastLevelPlayerIDs   []int64          `mapstructure:"pvp-fast-level-player-ids"`
 }
 
 type TournamentConfig struct {

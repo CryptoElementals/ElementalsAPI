@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/CryptoElementals/common/battlereward"
+	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/log"
 	dao "github.com/CryptoElementals/common/models"
 	"github.com/CryptoElementals/common/rpc/proto"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const maxLockTimeForQueue = 10 * time.Minute
@@ -28,6 +30,7 @@ func EnsureUserTokenByPlayerID(playerID int64) (*dao.UserToken, error) {
 }
 
 // EnsureUserTokenByPlayerIDTx creates an empty user_token row when missing in an existing DB session.
+// Concurrent creates race-safely against ux_user_tokens_active_player (active_player_id).
 func EnsureUserTokenByPlayerIDTx(tx *gorm.DB, playerID int64) (*dao.UserToken, error) {
 	var userToken dao.UserToken
 	err := tx.Where("player_id = ?", playerID).First(&userToken).Error
@@ -42,7 +45,17 @@ func EnsureUserTokenByPlayerIDTx(tx *gorm.DB, playerID int64) (*dao.UserToken, e
 		Points:      0,
 		TokenAmount: 0,
 	}
-	if err := tx.Create(&userToken).Error; err != nil {
+	err = tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: userTokenActivePlayerColumn}},
+		DoNothing: true,
+	}).Create(&userToken).Error
+	if err != nil {
+		return nil, err
+	}
+	if userToken.ID != 0 {
+		return &userToken, nil
+	}
+	if err := tx.Where("player_id = ?", playerID).First(&userToken).Error; err != nil {
 		return nil, err
 	}
 	return &userToken, nil
@@ -67,6 +80,37 @@ func CreditUserTokenAmount(playerID int64, delta int32) (*dao.UserToken, error) 
 		}
 		updated, err = EnsureUserTokenByPlayerIDTx(tx, playerID)
 		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// CreditUserPointsAmount adds delta to points for the player (creates row if missing).
+func CreditUserPointsAmount(playerID int64, delta int32) (*dao.UserToken, error) {
+	var updated *dao.UserToken
+	var pointsBefore int32
+	err := Get().Transaction(func(tx *gorm.DB) error {
+		token, err := EnsureUserTokenByPlayerIDTx(tx, playerID)
+		if err != nil {
+			return err
+		}
+		pointsBefore = token.Points
+		res := tx.Model(&dao.UserToken{}).
+			Where("id = ?", token.ID).
+			Update("points", gorm.Expr("points + ?", delta))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("user token not found")
+		}
+		updated, err = EnsureUserTokenByPlayerIDTx(tx, playerID)
+		if err != nil {
+			return err
+		}
+		return ProcessInviteeLevelMilestonesTx(tx, playerID, pointsBefore, updated.Points)
 	})
 	if err != nil {
 		return nil, err
@@ -440,12 +484,42 @@ func BattleResultSettlement(gr *dao.GameResult) (skippedDuplicate bool, err erro
 				Delete(&dao.LockedUserToken{}).Error; err != nil {
 				return err
 			}
+			var pointsBefore int32
+			if pr.pointChange != 0 {
+				var before dao.UserToken
+				if err := tx.Where("player_id = ?", pr.playerId).First(&before).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
+				pointsBefore = before.Points
+			}
+			var pointsUpdate any = gorm.Expr("points + ?", pr.pointChange)
+			var finalPoints int32
+			if pr.pointChange > 0 && playerlevel.IsPvpFastLevelPlayer(pr.playerId) {
+				naturalAfter := int(pointsBefore) + int(pr.pointChange)
+				finalPoints = int32(playerlevel.BoostPointsAfterPVPIncrease(int(pointsBefore), naturalAfter))
+				pointsUpdate = finalPoints
+			}
 			if err := tx.Model(&dao.UserToken{}).Where("player_id = ?", pr.playerId).
 				Updates(map[string]any{
 					"token_amount": gorm.Expr("token_amount + ?", pr.tokenChange),
-					"points":       gorm.Expr("points + ?", pr.pointChange),
+					"points":       pointsUpdate,
 				}).Error; err != nil {
 				return fmt.Errorf("update user token failed, game id: %d, player id: %d, err: %w", gameID, pr.playerId, err)
+			}
+			if pr.pointChange != 0 {
+				var afterPoints int32
+				if pr.pointChange > 0 && playerlevel.IsPvpFastLevelPlayer(pr.playerId) {
+					afterPoints = finalPoints
+				} else {
+					var after dao.UserToken
+					if err := tx.Where("player_id = ?", pr.playerId).First(&after).Error; err != nil {
+						return err
+					}
+					afterPoints = after.Points
+				}
+				if err := ProcessInviteeLevelMilestonesTx(tx, pr.playerId, pointsBefore, afterPoints); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

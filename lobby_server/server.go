@@ -9,6 +9,7 @@ import (
 	"github.com/CryptoElementals/common/bot_manager"
 	"github.com/CryptoElementals/common/config"
 	"github.com/CryptoElementals/common/db"
+	"github.com/CryptoElementals/common/internal/playerlevel"
 	"github.com/CryptoElementals/common/lobby_server/roomclient"
 	"github.com/CryptoElementals/common/lobby_server/worker/queue"
 	tournament "github.com/CryptoElementals/common/lobby_server/worker/tournament"
@@ -37,6 +38,7 @@ type Service struct {
 // New constructs a lobby server. Call Start after DB/redis are initialized.
 func New(ctx context.Context, cfg *config.LobbyServerConfig) (*Service, error) {
 	s := &Service{ctx: ctx, cfg: cfg}
+	playerlevel.SetPvpFastLevelPlayerIDs(cfg.PvpFastLevelPlayerIDs)
 
 	argsTemplate, err := db.LoadRoomServerGameArgs(cfg.GameArgsID)
 	if err != nil {

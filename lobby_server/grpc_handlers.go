@@ -120,6 +120,18 @@ func (s *GRPCServices) CreditUserTokens(ctx context.Context, req *proto.CreditUs
 	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
 }
 
+func (s *GRPCServices) CreditUserPoints(ctx context.Context, req *proto.CreditUserPointsRequest) (*proto.GetPlayerTokenResponse, error) {
+	_ = ctx
+	if req == nil || req.GetPlayerID() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid player id")
+	}
+	userToken, err := db.CreditUserPointsAmount(req.GetPlayerID(), req.GetDelta())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "credit user points failed: %v", err)
+	}
+	return conversion.DbUserTokenToProtoGetPlayerTokenResponse(userToken), nil
+}
+
 func (s *GRPCServices) SetUserTokenAmount(ctx context.Context, req *proto.SetUserTokenAmountRequest) (*proto.GetPlayerTokenResponse, error) {
 	_ = ctx
 	if req == nil || req.GetPlayerID() == 0 {

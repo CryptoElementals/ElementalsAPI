@@ -36,6 +36,14 @@ const (
 	COLLECT_NEW_USER_REWARD_LABEL       = "CollectNewUserReward"
 	SET_USER_TOKEN_LABEL                = "SetUserToken"
 
+	CHECK_INVITE_CODE_LABEL    = "CheckInviteCode"
+	LIST_INVITED_USERS_LABEL   = "ListInvitedUsers"
+	GET_MY_INVITER_LABEL       = "GetMyInviter"
+	CLAIM_INVITEE_REWARD_LABEL        = "ClaimInviteeReward"
+	GET_INVITEE_INITIAL_REWARD_LABEL  = "GetInviteeInitialReward"
+	LIST_INVITER_REWARDS_LABEL = "ListInviterRewards"
+	CLAIM_INVITER_REWARD_LABEL = "ClaimInviterReward"
+
 	// 匹配与对战
 	JOIN_QUEUE_LABEL               = "JoinQueue"
 	JOIN_TOURNAMENT_LABEL          = "JoinTournament"

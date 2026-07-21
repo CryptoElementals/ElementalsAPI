@@ -12,6 +12,7 @@ import (
 	"github.com/CryptoElementals/common/db"
 	"github.com/CryptoElementals/common/errors"
 	"github.com/CryptoElementals/common/log"
+	"github.com/CryptoElementals/common/server/invite"
 	"github.com/CryptoElementals/common/wallet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-contrib/sessions"
@@ -70,15 +71,18 @@ func GetSigningData(addr string, nonce int) string {
 
 type LoginDillRequest struct {
 	BaseRequest
-	Signature string `mapstructure:"Signature" validate:"required"`
-	Address   string `mapstructure:"Address" validate:"required"`
-	Nonce     int    `mapstructure:"Nonce" validate:"required"`
+	Signature  string `mapstructure:"Signature" validate:"required"`
+	Address    string `mapstructure:"Address" validate:"required"`
+	Nonce      int    `mapstructure:"Nonce" validate:"required"`
+	InviteCode string `mapstructure:"InviteCode"`
 }
 
 type LoginDillResponse struct {
 	BaseResponse
 	RefreshToken               string
 	RefreshTokenExpirationTime int64 // timestamp
+	WarnCode                   int
+	WarnMessage                string
 }
 
 type LoginDillTask struct {
@@ -165,15 +169,32 @@ func (task *LoginDillTask) Run(c *gin.Context) (Response, error) {
 	// 先确保/获取用户档案，得到 player_id
 	var playerIDStr string
 	var serverType string
+	var isNewUser bool
 	if task.Request.Address != "" {
 		lowercaseAddress := strings.ToLower(task.Request.Address)
-		apiProfile, pErr := db.GetOrCreateUserProfile(lowercaseAddress)
+		apiProfile, created, pErr := db.GetOrCreateUserProfile(lowercaseAddress)
 		if pErr != nil {
 			log.Errorf("%s, GetOrCreateUserProfile failed: %v", task.Request.RequestUUID, pErr)
 			return nil, errors.OperateDbFailed()
 		}
+		isNewUser = created
 		playerIDStr = strconv.FormatInt(apiProfile.PlayerID, 10)
 		serverType = db.EffectiveServerType(apiProfile)
+		// 1. normal 用户始终补自己的邀请码
+		if inviteErr := invite.EnsureInviterCodeOnLogin(apiProfile.PlayerID, serverType); inviteErr != nil {
+			log.Errorf("%s, ensure inviter code on login failed: %v", task.Request.RequestUUID, inviteErr)
+			return nil, errors.OperateDbFailed()
+		}
+		// 2. 仅当客户端传了 InviteCode 时才尝试绑定邀请码
+		if inviteCode := strings.TrimSpace(task.Request.InviteCode); inviteCode != "" {
+			warnCode, warnMsg, inviteErr := invite.TryApplyOnLogin(isNewUser, apiProfile.PlayerID, inviteCode)
+			if inviteErr != nil {
+				log.Errorf("%s, apply invite on login failed: %v", task.Request.RequestUUID, inviteErr)
+				return nil, errors.OperateDbFailed()
+			}
+			task.Response.WarnCode = warnCode
+			task.Response.WarnMessage = warnMsg
+		}
 	}
 	err = withRetry(10, func(retryTime int) error {
 		var saveErr error
