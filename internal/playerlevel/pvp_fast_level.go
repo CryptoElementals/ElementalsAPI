@@ -1,10 +1,11 @@
 package playerlevel
 
-// PVP fast-level milestone targets (level 3 / 6 / 9 minimum points).
+// PVP fast-level milestone targets (level 3 / 6 / 9 / 12 minimum points).
 const (
-	pvpFastLevel3MinPoints = 20500
-	pvpFastLevel6MinPoints = 81000
-	pvpFastLevel9MinPoints = 260000
+	pvpFastLevel3MinPoints  = 20500
+	pvpFastLevel6MinPoints  = 81000
+	pvpFastLevel9MinPoints  = 260000
+	pvpFastLevel12MinPoints = 1050000
 )
 
 var pvpFastLevelPlayerIDs map[int64]struct{}
@@ -33,14 +34,14 @@ func IsPvpFastLevelPlayer(playerID int64) bool {
 	return ok
 }
 
-// BoostPointsAfterPVPIncrease bumps points to the next milestone floor (3/6/9) when
-// points increased and the pre-settlement level is below 9.
+// BoostPointsAfterPVPIncrease bumps points to the next milestone floor (3/6/9/12) when
+// points increased and the pre-settlement level is below 12.
 func BoostPointsAfterPVPIncrease(pointsBefore, pointsAfter int) int {
 	if pointsAfter <= pointsBefore {
 		return pointsAfter
 	}
 	level := CalculateLevel(pointsBefore)
-	if level >= 9 {
+	if level >= 12 {
 		return pointsAfter
 	}
 	minTarget := pvpFastLevelMinPointsForLevel(level)
@@ -56,7 +57,9 @@ func pvpFastLevelMinPointsForLevel(level int) int {
 		return pvpFastLevel3MinPoints
 	case level < 6:
 		return pvpFastLevel6MinPoints
-	default:
+	case level < 9:
 		return pvpFastLevel9MinPoints
+	default:
+		return pvpFastLevel12MinPoints
 	}
 }

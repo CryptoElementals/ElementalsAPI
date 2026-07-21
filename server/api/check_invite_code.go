@@ -1,10 +1,13 @@
 package api
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/CryptoElementals/common/db"
 	cmnErrors "github.com/CryptoElementals/common/errors"
+	"github.com/CryptoElementals/common/internal/playerlevel"
+	"github.com/CryptoElementals/common/log"
 	"github.com/CryptoElementals/common/server/invite"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -20,13 +23,20 @@ type CheckInviteCodeRequest struct {
 	InviteCode string `mapstructure:"InviteCode" validate:"required"`
 }
 
+type CheckInviteCodeInviter struct {
+	PlayerID string `json:"PlayerID"`
+	Username string `json:"Username"`
+	Level    int    `json:"Level"`
+}
+
 type CheckInviteCodeResponse struct {
 	BaseResponse
-	WarnCode             int    `json:"WarnCode"`
-	WarnMessage          string `json:"WarnMessage"`
-	InviteeInitialPoints int    `json:"InviteeInitialPoints"`
-	InviteSlotsRemaining int    `json:"InviteSlotsRemaining"`
-	MaxInviteesPerCode   int    `json:"MaxInviteesPerCode"`
+	WarnCode             int                     `json:"WarnCode"`
+	WarnMessage          string                  `json:"WarnMessage"`
+	InviteeInitialPoints int                     `json:"InviteeInitialPoints"`
+	InviteSlotsRemaining int                     `json:"InviteSlotsRemaining"`
+	MaxInviteesPerCode   int                     `json:"MaxInviteesPerCode"`
+	Inviter              *CheckInviteCodeInviter `json:"Inviter,omitempty"`
 }
 
 type CheckInviteCodeTask struct {
@@ -88,6 +98,21 @@ func (task *CheckInviteCodeTask) Run(c *gin.Context) (Response, error) {
 	maxCount := 0
 	if inviter != nil {
 		maxCount = inviter.MaxInviteCount
+		if profile, perr := db.GetUserProfileByPlayerIDInt(inviter.PlayerID); perr != nil {
+			return nil, cmnErrors.GetUserProfileFailed(strconv.FormatInt(inviter.PlayerID, 10))
+		} else if profile != nil {
+			points := 0
+			if pts, ptsErr := invite.PlayerPointsFromLobby(db.EffectiveServerType(profile), inviter.PlayerID); ptsErr != nil {
+				log.Errorf("%s, get inviter points failed: %v", task.Request.RequestUUID, ptsErr)
+			} else {
+				points = pts
+			}
+			task.Response.Inviter = &CheckInviteCodeInviter{
+				PlayerID: strconv.FormatInt(inviter.PlayerID, 10),
+				Username: profile.Name,
+				Level:    playerlevel.CalculateLevel(points),
+			}
+		}
 	}
 	task.Response.MaxInviteesPerCode = maxCount
 

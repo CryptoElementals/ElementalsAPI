@@ -26,6 +26,11 @@ func TestBoostPointsAfterPVPIncreaseLevel7To9(t *testing.T) {
 	require.Equal(t, pvpFastLevel9MinPoints, got)
 }
 
+func TestBoostPointsAfterPVPIncreaseLevel10To12(t *testing.T) {
+	got := BoostPointsAfterPVPIncrease(500000, 501000)
+	require.Equal(t, pvpFastLevel12MinPoints, got)
+}
+
 func TestBoostPointsAfterPVPIncreaseNoChangeWhenNotIncreased(t *testing.T) {
 	got := BoostPointsAfterPVPIncrease(15000, 15000)
 	require.Equal(t, 15000, got)
@@ -33,9 +38,9 @@ func TestBoostPointsAfterPVPIncreaseNoChangeWhenNotIncreased(t *testing.T) {
 	require.Equal(t, 14000, got)
 }
 
-func TestBoostPointsAfterPVPIncreaseNoChangeAtLevel9Plus(t *testing.T) {
-	got := BoostPointsAfterPVPIncrease(260000, 261000)
-	require.Equal(t, 261000, got)
+func TestBoostPointsAfterPVPIncreaseNoChangeAtLevel12Plus(t *testing.T) {
+	got := BoostPointsAfterPVPIncrease(1050000, 1051000)
+	require.Equal(t, 1051000, got)
 }
 
 func TestBoostPointsAfterPVPIncreaseKeepsHigherNaturalGain(t *testing.T) {

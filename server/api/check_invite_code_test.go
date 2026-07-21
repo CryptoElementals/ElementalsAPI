@@ -52,6 +52,9 @@ func TestCheckInviteCodeAPIReturnsPersistedMax(t *testing.T) {
 	require.Equal(t, cmnErrors.WarnCodeOK, cmnErrors.WarnCode(typed.WarnCode))
 	require.Equal(t, 8, typed.MaxInviteesPerCode)
 	require.Equal(t, 7, typed.InviteSlotsRemaining)
+	require.NotNil(t, typed.Inviter)
+	require.Equal(t, "9101", typed.Inviter.PlayerID)
+	require.Equal(t, "inv", typed.Inviter.Username)
 }
 
 func TestGetUserProfileReturnsPersistedMaxInvitees(t *testing.T) {
